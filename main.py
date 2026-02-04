@@ -1,56 +1,59 @@
-import argparse
-import sys
-from tasks.manifold import run_manifold_task
-from tasks.hyperbolic import run_hyperbolic_task
-from tasks.semantic import run_semantic_task
-from tasks.cross_modal import run_crossmodal_task
-from tasks.sanity_check import run_sanity_check
+# Versor: Universal Geometric Algebra Neural Network
+# Copyright (C) 2026 Eunkyum Kim <nemonanconcode@gmail.com>
+# https://github.com/Concode0/Versor
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# [INTELLECTUAL PROPERTY NOTICE]
+# This implementation is protected under ROK Patent Application 10-2026-0023023.
+# All rights reserved. Commercial use, redistribution, or modification 
+# for-profit without an explicit commercial license is strictly prohibited.
+#
+# Contact for Commercial Licensing: nemonanconcode@gmail.com
 
-def main():
-    parser = argparse.ArgumentParser(description="Versor: Geometric Algebra Neural Networks CLI")
+"""Entry point for the Versor CLI.
+
+Uses Hydra for configuration management to dispatch specific geometric learning tasks.
+"""
+
+import hydra
+from omegaconf import DictConfig, OmegaConf
+from tasks.manifold import ManifoldTask
+from tasks.cross_modal import CrossModalTask
+from tasks.hyperbolic import HyperbolicTask
+from tasks.semantic import SemanticTask
+from tasks.sanity_check import SanityCheckTask
+
+@hydra.main(version_base=None, config_path="conf", config_name="config")
+def main(cfg: DictConfig):
+    """Main execution function.
+
+    Args:
+        cfg (DictConfig): Hydra configuration object.
     
-    subparsers = parser.add_subparsers(dest='task', help='Available tasks')
+    Raises:
+        ValueError: If the requested task is not found in the task map.
+    """
+    # Determine which task to run based on config
+    task_name = cfg.task.name
     
-    # Task: Manifold Restoration
-    parser_manifold = subparsers.add_parser('manifold', help='Run Figure-8 Manifold Restoration (Unbending)')
-    parser_manifold.add_argument('--epochs', type=int, default=800, help='Number of training epochs')
-    parser_manifold.add_argument('--lr', type=float, default=0.02, help='Learning rate')
-
-    # Task: Hyperbolic Geometry
-    parser_hyperbolic = subparsers.add_parser('hyperbolic', help='Run Hyperbolic Geometry Task (Lorentz Boost)')
-    parser_hyperbolic.add_argument('--epochs', type=int, default=500, help='Number of training epochs')
-    parser_hyperbolic.add_argument('--lr', type=float, default=0.05, help='Learning rate')
-
-    # Task: Semantic Unbending (BERT)
-    parser_semantic = subparsers.add_parser('semantic', help='Run Semantic Manifold Unbending (BERT Projection)')
-    parser_semantic.add_argument('--epochs', type=int, default=100, help='Number of training epochs')
-    parser_semantic.add_argument('--lr', type=float, default=0.01, help='Learning rate')
-
-    # Task: Cross-Modal Unification
-    parser_cross = subparsers.add_parser('crossmodal', help='Run Cross-Modal Manifold Unification')
-    parser_cross.add_argument('--epochs', type=int, default=100, help='Number of training epochs')
-    parser_cross.add_argument('--lr', type=float, default=0.01, help='Learning rate')
-
-    # Task: Sanity Check (Random Noise)
-    parser_sanity = subparsers.add_parser('sanity', help='Run Sanity Check (Random Noise Input)')
-    parser_sanity.add_argument('--epochs', type=int, default=100, help='Number of training epochs')
-    parser_sanity.add_argument('--lr', type=float, default=0.01, help='Learning rate')
-
-    args = parser.parse_args()
+    task_map = {
+        'manifold': ManifoldTask,
+        'crossmodal': CrossModalTask,
+        'hyperbolic': HyperbolicTask,
+        'semantic': SemanticTask,
+        'sanity': SanityCheckTask
+    }
     
-    if args.task == 'manifold':
-        run_manifold_task(epochs=args.epochs, lr=args.lr)
-    elif args.task == 'hyperbolic':
-        run_hyperbolic_task(epochs=args.epochs, lr=args.lr)
-    elif args.task == 'semantic':
-        run_semantic_task(epochs=args.epochs, lr=args.lr)
-    elif args.task == 'crossmodal':
-        run_crossmodal_task(epochs=args.epochs, lr=args.lr)
-    elif args.task == 'sanity':
-        run_sanity_check(epochs=args.epochs, lr=args.lr)
-    else:
-        parser.print_help()
-        sys.exit(1)
+    if task_name not in task_map:
+        raise ValueError(f"Unknown task: {task_name}")
+        
+    TaskClass = task_map[task_name]
+    task = TaskClass(cfg)
+    task.run()
 
 if __name__ == "__main__":
     main()

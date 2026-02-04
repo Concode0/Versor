@@ -1,128 +1,156 @@
+# Versor: Universal Geometric Algebra Neural Network
+# Copyright (C) 2026 Eunkyum Kim <nemonanconcode@gmail.com>
+# https://github.com/Concode0/Versor
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# [INTELLECTUAL PROPERTY NOTICE]
+# This implementation is protected under ROK Patent Application 10-2026-0023023.
+# All rights reserved. Commercial use, redistribution, or modification 
+# for-profit without an explicit commercial license is strictly prohibited.
+#
+# Contact for Commercial Licensing: nemonanconcode@gmail.com
+
 import torch
 import torch.nn as nn
-import matplotlib.pyplot as plt
 from core.algebra import CliffordAlgebra
 from layers.rotor import RotorLayer
 from functional.loss import GeometricMSELoss
 from tasks.base import BaseTask
 from core.visualizer import GeneralVisualizer
+import matplotlib.pyplot as plt
 
-class BoostLearner(nn.Module):
+class HyperbolicNetwork(nn.Module):
+    """Network for learning hyperbolic transformations (Lorentz Boosts).
+
+    Uses a RotorLayer in a mixed-signature algebra Cl(1, 1) or Cl(1, 3).
+    """
+
     def __init__(self, algebra):
+        """Initializes the network.
+
+        Args:
+            algebra: The algebra instance.
+        """
         super().__init__()
-        self.algebra = algebra
-        # Learn a single rotor to undo the boost
+        # Learn a single rotor (Lorentz transformation)
         self.rotor = RotorLayer(algebra, channels=1)
 
     def forward(self, x):
+        """Forward pass."""
         return self.rotor(x)
 
 class HyperbolicTask(BaseTask):
+    """Task for reversing a Lorentz Boost in Minkowski Spacetime.
+
+    Demonstrates the capability to handle non-Euclidean metrics (q > 0).
+    """
+
+    def __init__(self, cfg):
+        super().__init__(cfg)
+
     def setup_algebra(self):
-        # R1,1: p=1, q=1
+        """Sets up 2D Spacetime algebra Cl(1, 1)."""
         return CliffordAlgebra(p=1, q=1, device=self.device)
 
     def setup_model(self):
-        return BoostLearner(self.algebra)
+        """Sets up the HyperbolicNetwork."""
+        return HyperbolicNetwork(self.algebra)
 
     def setup_criterion(self):
+        """Sets up Geometric MSE Loss."""
         return GeometricMSELoss(self.algebra)
 
     def get_data(self):
-        num_samples = 1000
-        # x^2 - t^2 = 1 (Unit hyperbola)
-        eta = torch.linspace(-2, 2, num_samples)
-        x = torch.cosh(eta)
-        t = torch.sinh(eta)
+        """Generates spacetime events and applies a Lorentz boost."""
+        # 1. Random events in 2D spacetime (t, x)
+        # e1 (time, +), e2 (space, -)
+        n = 100
+        x = torch.randn(n, 1, self.algebra.dim, device=self.device)
         
-        # In R1,1: e1 is Space, e2 is Time
-        # points: [N, 2]
-        points = torch.stack([x, t], dim=1)
+        # Mask only vector parts (index 1 and 2)
+        # 0: scalar, 1: e1, 2: e2, 3: e12
+        mask = torch.tensor([0, 1, 1, 0], dtype=torch.bool, device=self.device)
+        data = torch.zeros_like(x)
+        data[..., mask] = x[..., mask]
         
-        # Apply random boost
-        boost_factor = 1.5
-        true_phi = boost_factor
+        # 2. Apply a known Lorentz Boost
+        # Boost parameter phi (rapidity)
+        phi = 1.5
+        # Bivector B = phi * e1e2 (index 3)
+        B = torch.zeros(1, self.algebra.dim, device=self.device)
+        B[0, 3] = phi
         
-        # Create the boost rotor manually
-        B = torch.zeros(1, self.algebra.dim)
-        B[0, 3] = 1.0 # e1e2
+        # R = exp(-B/2) -> cosh(phi/2) - sinh(phi/2) e1e2
+        self.target_rotor = self.algebra.exp(-0.5 * B)
+        self.target_rotor_rev = self.algebra.reverse(self.target_rotor)
         
-        R = self.algebra.exp(-0.5 * true_phi * B)
-        R_rev = self.algebra.reverse(R)
+        # Boosted data: x' = R x R~
+        data_boosted = self.algebra.geometric_product(self.target_rotor.expand_as(data), data)
+        data_boosted = self.algebra.geometric_product(data_boosted, self.target_rotor_rev.expand_as(data))
         
-        # Original MV
-        original_mv = torch.zeros(num_samples, 1, self.algebra.dim)
-        original_mv[:, 0, 1] = points[:, 0]
-        original_mv[:, 0, 2] = points[:, 1]
-        
-        # Boosted MV
-        R_exp = R.unsqueeze(0)
-        R_rev_exp = R_rev.unsqueeze(0)
-        boosted_mv = self.algebra.geometric_product(R_exp, original_mv)
-        boosted_mv = self.algebra.geometric_product(boosted_mv, R_rev_exp)
-        
-        return original_mv, boosted_mv, true_phi
+        # Task: Given boosted data, recover original (Reverse the boost)
+        # Input: Boosted, Target: Original
+        return data_boosted, data
 
     def train_step(self, data):
-        original_mv, boosted_mv, true_phi = data
-        
+        """Training step to recover original frame."""
+        input_data, target_data = data
         self.optimizer.zero_grad()
-        
-        recovered = self.model(boosted_mv)
-        loss = self.criterion(recovered, original_mv)
-        
+        output = self.model(input_data)
+        loss = self.criterion(output, target_data)
         loss.backward()
         self.optimizer.step()
-        
         return loss.item(), {}
 
     def evaluate(self, data):
-        original_mv, boosted_mv, true_phi = data
+        """Evaluates parameter recovery."""
+        # Check learned rotor vs inverse of target rotor
+        learned_rotor = self.model.rotor.bivector_weights
+        print(f"True Phi: 1.5")
+        print(f"Learned Rotor Weights: {learned_rotor.detach().cpu().numpy().flatten()}")
         
-        learned_weights = self.model.rotor.bivector_weights.detach()
-        print(f"True Phi: {true_phi}")
-        print(f"Learned Rotor Weights: {learned_weights.flatten().cpu().numpy()}")
-        
-        recovered = self.model(boosted_mv)
-        final_loss = self.criterion(recovered, original_mv)
-        print(f"Final Reconstruction Loss: {final_loss.item():.6f}")
+        input_data, target_data = data
+        output = self.model(input_data)
+        loss = self.criterion(output, target_data).item()
+        print(f"Final Reconstruction Loss: {loss:.6f}")
 
     def visualize(self, data):
-        original_mv, boosted_mv, true_phi = data
-        recovered = self.model(boosted_mv)
+        """Visualizes spacetime diagrams."""
+        input_data, target_data = data
+        output = self.model(input_data)
         
-        # Custom 2D Plot for R1,1
-        fig = plt.figure(figsize=(12, 4))
-        ax1 = fig.add_subplot(131)
-        self._plot_2d(ax1, original_mv, "Original (Rest Frame)")
-        
-        ax2 = fig.add_subplot(132)
-        self._plot_2d(ax2, boosted_mv, f"Boosted (Phi={true_phi})")
-        
-        ax3 = fig.add_subplot(133)
-        self._plot_2d(ax3, recovered, "Recovered")
-        
-        plt.tight_layout()
-        filename = "hyperbolic_viz.png"
-        plt.savefig(filename)
-        print(f"Saved {filename}")
-        plt.close()
-        
-        # Also use GeneralVisualizer for heatmaps
         viz = GeneralVisualizer(self.algebra)
-        viz.plot_grade_heatmap(recovered, title="Recovered Grade Energy")
-        viz.save("hyperbolic_grades.png")
-
-    def _plot_2d(self, ax, mv_data, title):
-        x = mv_data[:, 0, 1].cpu().numpy()
-        t = mv_data[:, 0, 2].cpu().numpy()
-        ax.scatter(x, t, s=2, alpha=0.6)
-        ax.set_title(title)
-        ax.set_xlabel('x (Space)')
-        ax.set_ylabel('t (Time)')
-        ax.grid(True)
-        ax.set_aspect('equal')
-
-def run_hyperbolic_task(epochs=500, lr=0.05):
-    task = HyperbolicTask(epochs=epochs, lr=lr, device='cpu')
-    task.run()
+        
+        # We need to plot (t, x) components
+        # e1 index 1, e2 index 2
+        
+        def extract_tx(tensor):
+            t = tensor[..., 1].detach().cpu().numpy().flatten()
+            x = tensor[..., 2].detach().cpu().numpy().flatten()
+            return t, x
+            
+        t_orig, x_orig = extract_tx(target_data)
+        t_boost, x_boost = extract_tx(input_data)
+        t_rec, x_rec = extract_tx(output)
+        
+        plt.figure(figsize=(8, 8))
+        plt.scatter(x_orig, t_orig, label="Original (Rest)", alpha=0.6)
+        plt.scatter(x_boost, t_boost, label="Boosted (Input)", alpha=0.6)
+        plt.scatter(x_rec, t_rec, label="Recovered", marker='x', alpha=0.6)
+        
+        # Draw light cones
+        plt.plot([-3, 3], [-3, 3], 'k--', alpha=0.3, label="Light Cone")
+        plt.plot([-3, 3], [3, -3], 'k--', alpha=0.3)
+        
+        plt.xlabel("Space (x)")
+        plt.ylabel("Time (t)")
+        plt.title("Lorentz Boost Recovery in Cl(1, 1)")
+        plt.legend()
+        plt.grid(True)
+        plt.axis('equal')
+        plt.savefig("hyperbolic_viz.png")
+        print("Saved hyperbolic visualization.")

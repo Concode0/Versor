@@ -9,6 +9,7 @@ wheels/
 GEMINI.md
 .DS_Store
 *.png
+outputs/
 
 PATENT_*.md
 

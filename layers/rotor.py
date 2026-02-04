@@ -1,20 +1,48 @@
+# Versor: Universal Geometric Algebra Neural Network
+# Copyright (C) 2026 Eunkyum Kim <nemonanconcode@gmail.com>
+# https://github.com/Concode0/Versor
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# [INTELLECTUAL PROPERTY NOTICE]
+# This implementation is protected under ROK Patent Application 10-2026-0023023.
+# All rights reserved. Commercial use, redistribution, or modification 
+# for-profit without an explicit commercial license is strictly prohibited.
+#
+# Contact for Commercial Licensing: nemonanconcode@gmail.com
+
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
 from layers.base import CliffordModule
 
 class RotorLayer(CliffordModule):
+    """A Learnable Rotor Layer.
+
+    Learns a set of rotors R = exp(-B/2) to perform geometric rotations on the input.
+    Rotors preserve the origin, lengths, and angles (isometries).
+
+    Attributes:
+        channels (int): Number of independent rotors to learn.
+        bivector_indices (torch.Tensor): Indices of bivector basis elements in the algebra.
+        num_bivectors (int): Count of bivector components.
+        bivector_weights (nn.Parameter): Learnable coefficients for B [Channels, Num_Bivectors].
+    """
+
     def __init__(self, algebra: CliffordAlgebra, channels: int):
-        """
-        Learns a rotor R = exp(-B/2) per channel to rotate input multivectors.
-        Preserves lengths and angles (and grades, mostly).
+        """Initializes the Rotor Layer.
+
+        Args:
+            algebra (CliffordAlgebra): The algebra instance.
+            channels (int): Number of channels (features) to rotate independently.
         """
         super().__init__(algebra)
         self.channels = channels
         
         # We learn the bivector B directly.
-        # Bivector coefficients only.
-        # We need to know which indices are bivectors.
         self.bivector_indices = self._get_bivector_indices()
         self.num_bivectors = len(self.bivector_indices)
         
@@ -23,10 +51,11 @@ class RotorLayer(CliffordModule):
         
         self.reset_parameters()
         
-    def _get_bivector_indices(self):
+    def _get_bivector_indices(self) -> torch.Tensor:
+        """Identifies indices corresponding to Grade-2 elements (bivectors)."""
         indices = []
         for i in range(self.algebra.dim):
-            # count set bits
+            # Count set bits (grade)
             cnt = 0
             temp = i
             while temp > 0:
@@ -37,31 +66,34 @@ class RotorLayer(CliffordModule):
         return torch.tensor(indices, device=self.algebra.device, dtype=torch.long)
 
     def reset_parameters(self):
-        # Initialize to small random rotations (near identity)
+        """Initializes bivector weights to small random values (near identity rotation)."""
         nn.init.normal_(self.bivector_weights, std=0.01)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Applies the rotor transformation x -> R x R~.
+
+        Args:
+            x (torch.Tensor): Input multivectors [Batch, Channels, Dim].
+
+        Returns:
+            torch.Tensor: Rotated multivectors [Batch, Channels, Dim].
         """
-        x: [Batch, Channels, Dim]
-        """
-        # 1. Construct Bivector B
+        # 1. Construct Bivector B from weights
         B = torch.zeros(self.channels, self.algebra.dim, device=x.device, dtype=x.dtype)
         
-        # Scatter weights into bivector components
-        # We need to broadcast indices [Num_Bi] to [Channels, Num_Bi]
+        # Scatter weights into correct bivector indices
         indices = self.bivector_indices.unsqueeze(0).expand(self.channels, -1)
         B.scatter_(1, indices, self.bivector_weights)
         
         # 2. Compute Rotor R = exp(-B/2)
-        # Using Taylor series approximation
-        # OPTIMIZATION: If Euclidean, we could use cos/sin if B^2 is negative scalar.
+        # Using Taylor series or optimized exp map
         R = self.algebra.exp(-0.5 * B)
         
         # 3. Compute Reverse R_rev
         R_rev = self.algebra.reverse(R)
         
-        # 4. Apply sandwich product: R * x * R_rev
-        # Broadcasting: R [Channels, Dim], x [Batch, Channels, Dim]
+        # 4. Apply Sandwich Product: R * x * R_rev
+        # R is [Channels, Dim], x is [Batch, Channels, Dim]
         
         R_expanded = R.unsqueeze(0) # [1, C, D]
         R_rev_expanded = R_rev.unsqueeze(0) # [1, C, D]

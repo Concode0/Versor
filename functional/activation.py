@@ -1,90 +1,128 @@
+# Versor: Universal Geometric Algebra Neural Network
+# Copyright (C) 2026 Eunkyum Kim <nemonanconcode@gmail.com>
+# https://github.com/Concode0/Versor
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# [INTELLECTUAL PROPERTY NOTICE]
+# This implementation is protected under ROK Patent Application 10-2026-0023023.
+# All rights reserved. Commercial use, redistribution, or modification 
+# for-profit without an explicit commercial license is strictly prohibited.
+#
+# Contact for Commercial Licensing: nemonanconcode@gmail.com
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 class GeometricGELU(nn.Module):
+    """Magnitude-based geometric activation function.
+
+    Preserves the directional orientation of the multivector but scales its
+    magnitude non-linearly using GELU. This ensures the operation is equivariant
+    to global rotations.
+
+    Formula: x' = x * (GELU(|x| + b) / |x|)
+
+    Attributes:
+        bias (nn.Parameter): Learnable scalar bias added to the magnitude.
+    """
+
     def __init__(self, algebra, channels: int = 1):
-        """
-        Magnitude-based activation. Preserves direction (orientation) of the multivector
-        but scales its magnitude non-linearly using GELU.
-        
-        formula: x' = x * (GELU(|x|) / |x|)
+        """Initializes Geometric GELU.
+
+        Args:
+            algebra: The algebra instance.
+            channels (int, optional): Number of feature channels. Defaults to 1.
         """
         super().__init__()
         self.algebra = algebra
-        # Learnable bias for the magnitude?
         self.bias = nn.Parameter(torch.zeros(channels))
 
     def forward(self, x: torch.Tensor):
-        # x: [Batch, Channels, Dim]
-        
-        # Compute magnitude (approximated by Euclidean norm of coefficients for now)
-        # Strictly speaking, geometric magnitude is sqrt(x * x~). 
-        # For Euclidean metric, this aligns with coefficient norm.
-        # For mixed signature, coefficient norm is safer for stability.
+        """Applies the activation.
+
+        Args:
+            x (torch.Tensor): Input multivectors.
+
+        Returns:
+            torch.Tensor: Scaled multivectors.
+        """
+        # Compute magnitude (approximated by Euclidean norm of coefficients)
         norm = x.norm(dim=-1, keepdim=True) # [Batch, C, 1]
         
         # Apply GELU to the biased norm
-        # We want to scale x. 
-        # scale = activation(norm + bias) / norm
-        
-        # Avoid div by zero
+        # Avoid division by zero with eps
         eps = 1e-6
         scale = F.gelu(norm + self.bias.view(1, -1, 1)) / (norm + eps)
         
         return x * scale
 
 class GradeSwish(nn.Module):
+    """Grade-specific gating mechanism.
+
+    Applies a learned gating factor per geometric grade (scalar, vector, bivector...).
+    x_k' = x_k * Sigmoid(w_k * |x_k| + b_k)
+
+    Attributes:
+        grade_weights (nn.Parameter): Weights per grade.
+        grade_biases (nn.Parameter): Biases per grade.
+        grade_masks (torch.Tensor): Precomputed masks for grade extraction.
+    """
+
     def __init__(self, algebra, channels: int = 1):
-        """
-        Applies a learned gating factor per Grade.
-        x_k' = x_k * Sigmoid(w_k * |x_k| + b_k)
+        """Initializes Grade Swish.
+
+        Args:
+            algebra: The algebra instance.
+            channels (int, optional): Unused but kept for API consistency. Defaults to 1.
         """
         super().__init__()
         self.algebra = algebra
         self.n_grades = algebra.n + 1
         
-        # Parameters per grade
         self.grade_weights = nn.Parameter(torch.ones(self.n_grades))
         self.grade_biases = nn.Parameter(torch.zeros(self.n_grades))
         
-        # Precompute grade masks
         self.register_buffer('grade_masks', self._build_masks())
 
     def _build_masks(self):
-        # [Dim, 1] or similar to broadcast
+        """Precomputes boolean masks for each grade."""
         masks = torch.zeros(self.n_grades, self.algebra.dim, dtype=torch.bool)
         for i in range(self.algebra.dim):
-            # count set bits
             grade = bin(i).count('1')
             masks[grade, i] = True
         return masks
 
     def forward(self, x: torch.Tensor):
-        # x: [Batch, Channels, Dim]
+        """Applies grade-specific gating.
+
+        Args:
+            x (torch.Tensor): Input multivectors.
+
+        Returns:
+            torch.Tensor: Gated multivectors.
+        """
         output = torch.zeros_like(x)
         
         for k in range(self.n_grades):
-            mask = self.grade_masks[k] # [Dim]
+            mask = self.grade_masks[k]
             if not mask.any():
                 continue
                 
             # Extract k-vector part
-            x_k = x[..., mask] # [Batch, C, Dim_k]
+            x_k = x[..., mask]
             
             # Compute norm of this grade
-            norm_k = x_k.norm(dim=-1, keepdim=True) # [Batch, C, 1]
+            norm_k = x_k.norm(dim=-1, keepdim=True)
             
-            # Gating factor
-            # Swish-like: x * sigmoid(w*x + b)
-            # Here: x_k * sigmoid(w * |x_k| + b)
             w = self.grade_weights[k]
             b = self.grade_biases[k]
             
             gate = torch.sigmoid(w * norm_k + b)
-            
-            # Broadcast gate back to x_k shape?
-            # x_k is flattened subset.
             
             output[..., mask] = x_k * gate
             

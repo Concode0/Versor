@@ -1,3 +1,19 @@
+# Versor: Universal Geometric Algebra Neural Network
+# Copyright (C) 2026 Eunkyum Kim <nemonanconcode@gmail.com>
+# https://github.com/Concode0/Versor
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# [INTELLECTUAL PROPERTY NOTICE]
+# This implementation is protected under ROK Patent Application 10-2026-0023023.
+# All rights reserved. Commercial use, redistribution, or modification 
+# for-profit without an explicit commercial license is strictly prohibited.
+#
+# Contact for Commercial Licensing: nemonanconcode@gmail.com
+
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,16 +23,32 @@ from sklearn.manifold import TSNE
 from core.algebra import CliffordAlgebra
 
 class GeneralVisualizer:
+    """Visualization toolkit for Clifford Algebra multivectors.
+
+    Provides 3D scatter plots, latent space projections (PCA/t-SNE), and energy
+    heatmaps for analyzing geometric features.
+
+    Attributes:
+        algebra (CliffordAlgebra): The algebra instance.
+        basis_names (list[str]): Names of basis blades (e.g., '1', 'e1', 'e12').
+        img_counter (int): Counter for saved image filenames.
+    """
+
     def __init__(self, algebra: CliffordAlgebra):
+        """Initializes the visualizer.
+
+        Args:
+            algebra (CliffordAlgebra): The algebra instance.
+        """
         self.algebra = algebra
         self.basis_names = self._generate_basis_names()
         
-        # Configure plotting style
+        # Set Seaborn theme
         sns.set_theme(style="whitegrid")
         self.img_counter = 1
 
     def _generate_basis_names(self):
-        # Generate names based on bits
+        """Generates string names for all basis blades based on bit indices."""
         names = []
         for i in range(self.algebra.dim):
             if i == 0:
@@ -35,6 +67,11 @@ class GeneralVisualizer:
         return names
 
     def save(self, filename=None):
+        """Saves the current matplotlib figure to disk.
+
+        Args:
+            filename (str, optional): Output filename. Defaults to viz_{counter}.png.
+        """
         if filename is None:
             filename = f"viz_{self.img_counter}.png"
             self.img_counter += 1
@@ -43,9 +80,15 @@ class GeneralVisualizer:
         plt.close()
 
     def plot_3d(self, data: torch.Tensor, dims=(1, 2, 4), title="3D Projection"):
-        """
-        Scatter plot of 3 specific components of the multivector.
-        Default dims=(1, 2, 4) corresponds to e1, e2, e3.
+        """Creates a 3D scatter plot of selected multivector components.
+
+        Args:
+            data (torch.Tensor): Multivector data [Batch, Dim].
+            dims (tuple, optional): Indices of components for X, Y, Z. Defaults to (1, 2, 4).
+            title (str, optional): Plot title.
+
+        Returns:
+            matplotlib.figure.Figure: The generated figure.
         """
         if data.ndim > 2:
             data = data.reshape(-1, self.algebra.dim)
@@ -54,32 +97,38 @@ class GeneralVisualizer:
         y = data[:, dims[1]].cpu().numpy()
         z = data[:, dims[2]].cpu().numpy()
         
-        fig = plt.figure(figsize=(10, 8))
+        fig = plt.figure(figsize=(12, 10), dpi=120)
         ax = fig.add_subplot(111, projection='3d')
         
-        # Color by angle in xy plane
+        # Color by phase angle in XY plane
         c = np.arctan2(y, x)
         
-        ax.scatter(x, y, z, c=c, cmap='hsv', s=5, alpha=0.7)
-        ax.set_xlabel(self.basis_names[dims[0]])
-        ax.set_ylabel(self.basis_names[dims[1]])
-        ax.set_zlabel(self.basis_names[dims[2]])
-        ax.set_title(title)
+        ax.scatter(x, y, z, c=c, cmap='twilight', s=50, alpha=0.6, edgecolors='w', linewidth=0.3)
         
-        # Equal aspect ratio hack
-        # max_range = np.array([x.max()-x.min(), y.max()-y.min(), z.max()-z.min()]).max() / 2.0
-        # mid_x = (x.max()+x.min()) * 0.5
-        # mid_y = (y.max()+y.min()) * 0.5
-        # mid_z = (z.max()+z.min()) * 0.5
-        # ax.set_xlim(mid_x - max_range, mid_x + max_range)
-        # ax.set_ylim(mid_y - max_range, mid_y + max_range)
-        # ax.set_zlim(mid_z - max_range, mid_z + max_range)
+        ax.set_xlabel(self.basis_names[dims[0]], fontsize=12)
+        ax.set_ylabel(self.basis_names[dims[1]], fontsize=12)
+        ax.set_zlabel(self.basis_names[dims[2]], fontsize=12)
+        ax.set_title(title, fontsize=16, fontweight='bold', pad=20)
+        
+        # Minimalist style
+        ax.grid(False) 
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.zaxis.pane.fill = False
+        ax.view_init(elev=30, azim=45)
         
         return fig
 
     def plot_latent_projection(self, data: torch.Tensor, method='pca', title=None):
-        """
-        Project high-dimensional multivector coefficients to 2D using PCA or t-SNE.
+        """Projects high-dimensional multivectors to 2D using dimensionality reduction.
+
+        Args:
+            data (torch.Tensor): Input data.
+            method (str): 'pca' or 'tsne'. Defaults to 'pca'.
+            title (str, optional): Plot title.
+
+        Returns:
+            matplotlib.figure.Figure: The generated figure.
         """
         if data.ndim > 2:
             data = data.reshape(-1, self.algebra.dim) # Flatten batch
@@ -107,16 +156,18 @@ class GeneralVisualizer:
         return plt.gcf()
 
     def plot_grade_heatmap(self, data: torch.Tensor, title="Grade Energy Distribution"):
-        """
-        Visualizes the average energy (magnitude squared) of each grade.
-        Rows: Samples (or time), Cols: Grades (0 to n).
-        If data is just a batch, we show a bar chart of average energy per grade.
+        """Visualizes the average energy (magnitude squared) per geometric grade.
+
+        Args:
+            data (torch.Tensor): Input multivectors.
+            title (str): Plot title.
+
+        Returns:
+            matplotlib.figure.Figure: The generated figure.
         """
         if data.ndim > 2:
             data = data.reshape(-1, self.algebra.dim)
             
-        # Compute energy per grade
-        # We need a mask for each grade
         energy_per_grade = []
         grade_labels = []
         
@@ -127,12 +178,8 @@ class GeneralVisualizer:
             if not mask.any():
                 continue
                 
-            # Extract components for this grade
-            # data: [Batch, Dim]
             comps = data[:, mask]
-            
-            # Energy: mean of squares sum
-            # Average over batch
+            # Mean energy of this grade across the batch
             energy = (comps ** 2).sum(dim=1).mean().item()
             energy_per_grade.append(energy)
             grade_labels.append(f"Grade {k}")
@@ -141,17 +188,23 @@ class GeneralVisualizer:
         sns.barplot(x=grade_labels, y=energy_per_grade, palette="viridis")
         plt.title(title)
         plt.ylabel("Average Energy")
-        plt.yscale('log') # Log scale often helps if Scalar/Vector dominate
+        plt.yscale('log') # Use log scale for dynamic range
         return plt.gcf()
 
     def plot_components_heatmap(self, data: torch.Tensor, title="Component Activation Heatmap"):
-        """
-        Heatmap of all component magnitudes.
+        """Visualizes the magnitude of all basis components across samples.
+
+        Args:
+            data (torch.Tensor): Input data.
+            title (str): Plot title.
+
+        Returns:
+            matplotlib.figure.Figure: The generated figure.
         """
         if data.ndim > 2:
             data = data.reshape(-1, self.algebra.dim)
             
-        # Take a subset of samples if too large
+        # Subset for visibility
         if data.shape[0] > 100:
             data = data[:100]
             

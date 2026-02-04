@@ -1,98 +1,128 @@
-import torch
-import torch.optim as optim
-import tqdm
-import abc
+# Versor: Universal Geometric Algebra Neural Network
+# Copyright (C) 2026 Eunkyum Kim <nemonanconcode@gmail.com>
+# https://github.com/Concode0/Versor
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# [INTELLECTUAL PROPERTY NOTICE]
+# This implementation is protected under ROK Patent Application 10-2026-0023023.
+# All rights reserved. Commercial use, redistribution, or modification 
+# for-profit without an explicit commercial license is strictly prohibited.
+#
+# Contact for Commercial Licensing: nemonanconcode@gmail.com
 
-class BaseTask(abc.ABC):
-    def __init__(self, epochs: int = 100, lr: float = 0.01, device: str = 'cpu'):
-        self.epochs = epochs
-        self.lr = lr
-        self.device = device
-        
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from abc import ABC, abstractmethod
+from tqdm import tqdm
+from omegaconf import DictConfig
+
+class BaseTask(ABC):
+    """Abstract base class for all geometric learning tasks.
+
+    Standardizes the lifecycle: setup -> data loading -> training loop -> evaluation -> visualization.
+
+    Attributes:
+        cfg (DictConfig): Hydra configuration.
+        device (str): Computation device.
+        algebra (CliffordAlgebra): The algebra instance.
+        model (nn.Module): The neural network.
+        criterion (nn.Module): The loss function.
+        optimizer (optim.Optimizer): The optimizer.
+        epochs (int): Number of training epochs.
+    """
+
+    def __init__(self, cfg: DictConfig):
+        """Initializes the task.
+
+        Args:
+            cfg (DictConfig): Configuration object containing task and training parameters.
+        """
+        self.cfg = cfg
+        self.device = cfg.algebra.device
         self.algebra = self.setup_algebra()
         self.model = self.setup_model().to(self.device)
-        self.optimizer = self.setup_optimizer()
         self.criterion = self.setup_criterion()
+        self.optimizer = optim.Adam(self.model.parameters(), lr=cfg.training.lr)
+        self.epochs = cfg.training.epochs
 
-    @abc.abstractmethod
+    @abstractmethod
     def setup_algebra(self):
-        """Initialize and return the CliffordAlgebra instance."""
+        """Initializes and returns the Clifford Algebra instance."""
         pass
 
-    @abc.abstractmethod
+    @abstractmethod
     def setup_model(self):
-        """Initialize and return the Neural Network model."""
+        """Initializes and returns the Neural Network model."""
         pass
 
-    def setup_optimizer(self):
-        """Initialize the optimizer. Defaults to Adam."""
-        return optim.Adam(self.model.parameters(), lr=self.lr)
-
-    @abc.abstractmethod
+    @abstractmethod
     def setup_criterion(self):
-        """Initialize and return the loss function."""
+        """Initializes and returns the loss function."""
         pass
 
-    @abc.abstractmethod
+    @abstractmethod
     def get_data(self):
-        """Generate or load data. Returns a tensor or tuple of tensors."""
+        """Loads or generates data. Must return a DataLoader or Tensor."""
         pass
 
-    @abc.abstractmethod
+    @abstractmethod
     def train_step(self, data):
-        """
-        Perform a single training step.
+        """Performs a single training step (forward + backward).
+
         Args:
-            data: The data returned by get_data()
+            data: Input batch.
+
         Returns:
-            loss (float): The loss value for the step
-            metrics (dict): Optional dictionary of metrics to display
+            tuple: (scalar loss, dict of log metrics).
         """
+        pass
+
+    @abstractmethod
+    def evaluate(self, data):
+        """Runs evaluation metrics after training."""
+        pass
+
+    @abstractmethod
+    def visualize(self, data):
+        """Generates and saves visualizations of the results."""
         pass
 
     def run(self):
-        """Main execution loop."""
-        print(f">>> Starting Task: {self.__class__.__name__}")
+        """Executes the full task lifecycle."""
+        print(f">>> Starting Task: {self.cfg.task.name}")
+        dataloader = self.get_data()
         
-        # Prepare data
-        data = self.get_data()
-        if isinstance(data, (tuple, list)):
-            data = tuple(d.to(self.device) if isinstance(d, torch.Tensor) else d for d in data)
-        else:
-            data = data.to(self.device)
-
         # Training Loop
         self.model.train()
-        pbar = tqdm.tqdm(range(self.epochs))
+        pbar = tqdm(range(self.epochs))
+        
+        # Determine if we are using a DataLoader or a single Tensor batch
+        is_loader = not isinstance(dataloader, (torch.Tensor, tuple, list))
         
         for epoch in pbar:
-            metrics = self.train_step(data)
-            
-            # Handle return formats
-            if isinstance(metrics, tuple):
-                loss, metric_dict = metrics
+            if is_loader:
+                total_loss = 0
+                for batch in dataloader:
+                    loss, logs = self.train_step(batch)
+                    total_loss += loss
+                avg_loss = total_loss / len(dataloader)
+                logs['Loss'] = avg_loss
             else:
-                loss, metric_dict = metrics, {}
+                loss, logs = self.train_step(dataloader)
                 
-            desc = f"Loss: {loss:.4f}"
-            for k, v in metric_dict.items():
-                desc += f" | {k}: {v:.4f}"
+            desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])
             pbar.set_description(desc)
-            
-        print("\n>>> Training Complete.")
+
+        print(">>> Training Complete.")
         
-        # Evaluation & Visualization
         self.model.eval()
         with torch.no_grad():
-            self.evaluate(data)
-            self.visualize(data)
-
-    @abc.abstractmethod
-    def evaluate(self, data):
-        """Run evaluation metrics after training."""
-        pass
-
-    @abc.abstractmethod
-    def visualize(self, data):
-        """Generate and save visualizations."""
-        pass
+            # Evaluate on a sample/batch for simplicity
+            sample_data = next(iter(dataloader)) if is_loader else dataloader
+            self.evaluate(sample_data)
+            self.visualize(sample_data)

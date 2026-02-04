@@ -1,85 +1,84 @@
+# Versor: Universal Geometric Algebra Neural Network
+# Copyright (C) 2026 Eunkyum Kim <nemonanconcode@gmail.com>
+# https://github.com/Concode0/Versor
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# [INTELLECTUAL PROPERTY NOTICE]
+# This implementation is protected under ROK Patent Application 10-2026-0023023.
+# All rights reserved. Commercial use, redistribution, or modification 
+# for-profit without an explicit commercial license is strictly prohibited.
+#
+# Contact for Commercial Licensing: nemonanconcode@gmail.com
+
 import torch
 import torch.nn as nn
-import math
 from core.algebra import CliffordAlgebra
 from layers.base import CliffordModule
 
 class CliffordLinear(CliffordModule):
-    def __init__(self, algebra: CliffordAlgebra, in_features: int, out_features: int, bias: bool = True):
-        """
-        A linear layer W x + B where W, x, B are multivectors.
-        However, since 'in_features' and 'out_features' usually refer to channel dimensions 
-        rather than GA dimensions in standard DL, we need to clarify.
-        
-        If x is [Batch, 2^n], this is just a single MV.
-        If x is [Batch, C, 2^n], we have C channels of MVs.
-        
-        Standard "Clifford Linear" usually means mapping C_in MVs to C_out MVs via a matrix of MVs.
-        Y_j = Sum_i (W_ji * X_i) + B_j
-        
-        W has shape [Out, In, 2^n]
+    """A fully connected layer for Multivectors.
+
+    Learns a linear transformation W where W is a matrix of multivectors.
+    Unlike standard linear layers, this respects the algebraic structure if
+    designed with geometric constraints (here, it's a general linear map on coefficients).
+
+    Attributes:
+        in_channels (int): Number of input multivector channels.
+        out_channels (int): Number of output multivector channels.
+        weight (torch.Tensor): Learnable weights [Out, In, Dim, Dim] (Full Operator) 
+                               or simplified [Out, In] (Scalar scaling per component).
+                               Currently implements Component-wise Linear map.
+    """
+
+    def __init__(self, algebra: CliffordAlgebra, in_channels: int, out_channels: int):
+        """Initializes the Clifford Linear layer.
+
+        Args:
+            algebra (CliffordAlgebra): The algebra instance.
+            in_channels (int): Input feature size (number of multivectors).
+            out_channels (int): Output feature size.
         """
         super().__init__(algebra)
-        self.in_features = in_features
-        self.out_features = out_features
+        self.in_channels = in_channels
+        self.out_channels = out_channels
         
-        # Weight: [Out, In, Dim]
-        self.weight = nn.Parameter(torch.Tensor(out_features, in_features, algebra.dim))
+        # A full linear map on the algebra would be [Out, In, Dim, Dim].
+        # For efficiency and standard GNN practices, we often use scalar weights 
+        # mixing channels but preserving the multivector components structure 
+        # (i.e. x_out_i = sum_j w_ij * x_in_j).
+        # This is equivariant to basis changes if weights are scalars.
+        self.weight = nn.Parameter(torch.Tensor(out_channels, in_channels))
+        self.bias = nn.Parameter(torch.Tensor(out_channels, algebra.dim))
         
-        if bias:
-            # Bias: [Out, Dim]
-            self.bias = nn.Parameter(torch.Tensor(out_features, algebra.dim))
-        else:
-            self.register_parameter('bias', None)
-            
         self.reset_parameters()
 
     def reset_parameters(self):
-        # Initialization is tricky for GA. 
-        # Standard kaiming init on coefficients might be okay.
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        if self.bias is not None:
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
-            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-            nn.init.uniform_(self.bias, -bound, bound)
+        """Initializes weights using Xavier uniform and bias to zero."""
+        nn.init.xavier_uniform_(self.weight)
+        nn.init.zeros_(self.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Performs the linear transformation.
+
+        Args:
+            x (torch.Tensor): Input tensor [Batch, In_Channels, Dim].
+
+        Returns:
+            torch.Tensor: Output tensor [Batch, Out_Channels, Dim].
         """
-        x: [Batch, In, Dim]
-        Returns: [Batch, Out, Dim]
-        """
-        # We need to perform matrix multiplication where the scalar product is replaced by geometric product.
-        # W: [O, I, D]
-        # X: [B, I, D]
+        # x: [Batch, In, Dim]
+        # weight: [Out, In]
+        # We want: [Batch, Out, Dim]
         
-        # 1. Expand X to [B, 1, I, D] and W to [1, O, I, D]
-        # 2. Geometric Product W * X -> [B, O, I, D] (element-wise on I)
-        # 3. Sum over I -> [B, O, D]
+        # Einsum: b=batch, i=in_channels, o=out_channels, d=dim
+        # w: oi
+        # x: bid
+        # out: bod -> sum_i (w_oi * x_bid)
         
-        # This is expensive. W_ji * X_i
-        
-        # Loop implementation first for clarity/correctness, then optimize if needed.
-        # Or utilize the algebra.geometric_product broadcasting.
-        
-        batch_size = x.size(0)
-        
-        # X: [B, 1, In, D]
-        x_expanded = x.unsqueeze(1)
-        
-        # W: [1, Out, In, D]
-        w_expanded = self.weight.unsqueeze(0)
-        
-        # Product: [B, Out, In, D]
-        # We need to reshape to use algebra.geometric_product which expects [..., D]
-        # but geometric_product supports broadcasting.
-        
-        prod = self.algebra.geometric_product(w_expanded, x_expanded)
-        
-        # Sum over In dimension
-        y = prod.sum(dim=2) # [B, Out, D]
-        
-        if self.bias is not None:
-            y = y + self.bias
-            
-        return y
-import math
+        out = torch.einsum('oi,bid->bod', self.weight, x)
+        out = out + self.bias.unsqueeze(0)
+        return out

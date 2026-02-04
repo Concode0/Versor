@@ -1,122 +1,128 @@
+# Versor: Universal Geometric Algebra Neural Network
+# Copyright (C) 2026 Eunkyum Kim <nemonanconcode@gmail.com>
+# https://github.com/Concode0/Versor
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# [INTELLECTUAL PROPERTY NOTICE]
+# This implementation is protected under ROK Patent Application 10-2026-0023023.
+# All rights reserved. Commercial use, redistribution, or modification 
+# for-profit without an explicit commercial license is strictly prohibited.
+#
+# Contact for Commercial Licensing: nemonanconcode@gmail.com
+
 import torch
 import torch.nn as nn
-import math
-import numpy as np
 from core.algebra import CliffordAlgebra
-from layers.linear import CliffordLinear
 from layers.rotor import RotorLayer
 from layers.projection import BladeSelector
-from functional.activation import GeometricGELU
-from core.visualizer import GeneralVisualizer
-from functional.loss import GeometricMSELoss, SubspaceLoss
+from functional.loss import SubspaceLoss
 from tasks.base import BaseTask
+from core.visualizer import GeneralVisualizer
+from datasets.synthetic import Figure8Dataset
+from torch.utils.data import DataLoader
 
-class ManifoldAutoEncoder(nn.Module):
+class ManifoldNetwork(nn.Module):
+    """Neural Network for Manifold Unbending.
+
+    Consists of a learnable Rotor to align the manifold and a BladeSelector to
+    filter out noise dimensions.
+    """
+
     def __init__(self, algebra):
+        """Initializes the network.
+
+        Args:
+            algebra: The algebra instance.
+        """
         super().__init__()
-        self.algebra = algebra
-        
-        # Deep Encoder: 3D -> Hidden -> Latent
-        self.encoder = nn.Sequential(
-            CliffordLinear(algebra, 1, 4), 
-            GeometricGELU(algebra, channels=4),
-            CliffordLinear(algebra, 4, 1),
-            RotorLayer(algebra, channels=1)
-        )
-        
-        # Learnable Blade Selection (Dimensionality Reduction)
+        self.rotor = RotorLayer(algebra, channels=1)
         self.selector = BladeSelector(algebra, channels=1)
-        
-        # Decoder: Latent -> Hidden -> 3D
-        self.decoder = nn.Sequential(
-            CliffordLinear(algebra, 1, 4),
-            GeometricGELU(algebra, channels=4),
-            CliffordLinear(algebra, 4, 1),
-            RotorLayer(algebra, channels=1)
-        )
 
     def forward(self, x):
-        latent_full = self.encoder(x)
-        latent_proj = self.selector(latent_full)
-        recon = self.decoder(latent_proj)
-        return recon, latent_full, latent_proj
+        """Forward pass.
+
+        Args:
+            x (torch.Tensor): Input multivectors.
+
+        Returns:
+            torch.Tensor: Transformed multivectors.
+        """
+        x_rot = self.rotor(x)
+        return self.selector(x_rot)
 
 class ManifoldTask(BaseTask):
+    """Task for restoring a distorted 3D manifold (Figure-8) to a 2D plane.
+
+    Demonstrates the ability of GA rotors to learn optimal geometric transformations
+    to simplify data topology.
+    """
+
+    def __init__(self, cfg):
+        super().__init__(cfg)
+
     def setup_algebra(self):
-        return CliffordAlgebra(3, 0, device=self.device)
+        """Sets up 3D Euclidean algebra (p=3, q=0)."""
+        return CliffordAlgebra(p=self.cfg.algebra.p, q=self.cfg.algebra.q, device=self.device)
 
     def setup_model(self):
-        return ManifoldAutoEncoder(self.algebra)
+        """Sets up the ManifoldNetwork."""
+        return ManifoldNetwork(self.algebra)
 
     def setup_criterion(self):
-        # We handle multiple losses in train_step, but return primary here
-        return GeometricMSELoss(self.algebra)
+        """Sets up SubspaceLoss to penalize non-vector components."""
+        # Calculate indices for Grade 1 (vectors)
+        grade_1_indices = []
+        for i in range(self.algebra.dim):
+            if bin(i).count('1') == 1:
+                grade_1_indices.append(i)
+                
+        return SubspaceLoss(self.algebra, target_indices=grade_1_indices)
 
     def get_data(self):
-        num_samples = 1000
-        noise = 0.05
-        t = torch.linspace(0, 2*math.pi, num_samples)
-        x = torch.sin(t)
-        y = torch.sin(t) * torch.cos(t)
-        z = 0.5 * x * y
-        points = torch.stack([x, y, z], dim=1)
-        points += torch.randn_like(points) * noise
-        
-        # Convert to Multivector
-        mv_data = torch.zeros(num_samples, 1, self.algebra.dim)
-        mv_data[:, 0, 1] = points[:, 0]
-        mv_data[:, 0, 2] = points[:, 1]
-        mv_data[:, 0, 4] = points[:, 2]
-        return mv_data
+        """Generates the Figure-8 dataset."""
+        dataset = Figure8Dataset(self.algebra, num_samples=self.cfg.task.dataset.samples)
+        return DataLoader(dataset, batch_size=self.cfg.training.batch_size, shuffle=True)
 
     def train_step(self, data):
+        """Executes one training step."""
+        data = data.to(self.device)
         self.optimizer.zero_grad()
-        recon, latent, latent_proj = self.model(data)
+        output = self.model(data)
         
-        # Losses
-        loss_recon = self.criterion(recon, data)
+        # Loss: minimize energy in non-vector grades
+        loss = self.criterion(output)
         
-        # Manifold Regularization: Minimize e3 (index 4) energy in latent
-        manifold_reg = SubspaceLoss(self.algebra, exclude_indices=[4]) 
-        z_energy = manifold_reg(latent)
-        
-        # Sparsity
-        sparsity = self.model.selector.weights.abs().mean()
-        
-        total_loss = loss_recon + 1.0 * z_energy + 0.01 * sparsity
-        
-        total_loss.backward()
+        # Explicitly minimize e3 energy (index 4) if applicable
+        if self.algebra.dim > 4:
+            z_energy = (output[..., 4]**2).mean()
+            loss = loss + z_energy
+        else:
+            z_energy = torch.tensor(0.0)
+
+        loss.backward()
         self.optimizer.step()
         
-        return total_loss.item(), {"Recon": loss_recon.item(), "Z": z_energy.item()}
+        return loss.item(), {"Loss": loss.item(), "Z": z_energy.item()}
 
     def evaluate(self, data):
-        recon, latent, latent_proj = self.model(data)
-        loss = self.criterion(recon, data)
-        print(f"Final Reconstruction Loss: {loss.item():.6f}")
+        """Evaluates reconstruction loss."""
+        data = data.to(self.device)
+        output = self.model(data)
+        loss = self.criterion(output).item()
+        print(f"Final Reconstruction Loss: {loss:.6f}")
 
     def visualize(self, data):
-        recon, latent, latent_proj = self.model(data)
+        """Visualizes the original and unbent manifolds."""
+        data = data.to(self.device)
         viz = GeneralVisualizer(self.algebra)
         
-        # 1. 3D Manifold
-        viz.plot_3d(data, title="Original (Bended)")
+        viz.plot_3d(data, title="Original Distorted Manifold (Z = 0.5 * X * Y)")
         viz.save("manifold_original.png")
         
-        viz.plot_3d(latent, title="Latent Space (Unbent)")
+        output = self.model(data)
+        viz.plot_3d(output, title="Unbent Latent Space (Z -> 0)")
         viz.save("manifold_latent.png")
-        
-        # 2. Latent Analysis
-        viz.plot_latent_projection(latent, method='pca', title="Latent PCA")
-        viz.save("manifold_pca.png")
-        
-        viz.plot_grade_heatmap(latent, title="Latent Grade Energy")
-        viz.save("manifold_grades.png")
-        
-        viz.plot_components_heatmap(latent, title="Latent Components")
-        viz.save("manifold_components.png")
-        print("Saved visualizations: manifold_*.png")
-
-def run_manifold_task(epochs=800, lr=0.02):
-    task = ManifoldTask(epochs=epochs, lr=lr, device='cpu')
-    task.run()

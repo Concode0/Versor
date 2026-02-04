@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: "Kim"
+    given-names: "Eunkyum"
+title: "Versor: Universal Geometric Algebra Neural Network"
+version: 1.0.0
+date-released: 2026-02-04
+url: "https://github.com/nemonanconcode/versor"

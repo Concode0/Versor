@@ -1,0 +1,7 @@
+name: "manifold"
+algebra:
+  p: 3
+  q: 0
+dataset:
+  name: "figure8"
+  samples: 1000
