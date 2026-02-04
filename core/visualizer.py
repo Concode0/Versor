@@ -89,9 +89,11 @@ class GeneralVisualizer:
         if method.lower() == 'pca':
             reducer = PCA(n_components=2)
             title = title or "Latent Space (PCA)"
+            xlabel, ylabel = "Principal Component 1", "Principal Component 2"
         elif method.lower() == 'tsne':
             reducer = TSNE(n_components=2, perplexity=30, n_iter=1000)
             title = title or "Latent Space (t-SNE)"
+            xlabel, ylabel = "t-SNE Dimension 1", "t-SNE Dimension 2"
         else:
             raise ValueError("Method must be 'pca' or 'tsne'")
             
@@ -100,8 +102,8 @@ class GeneralVisualizer:
         plt.figure(figsize=(10, 8))
         sns.scatterplot(x=X_embedded[:, 0], y=X_embedded[:, 1], alpha=0.6, edgecolor=None)
         plt.title(title)
-        plt.xlabel("Component 1")
-        plt.ylabel("Component 2")
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
         return plt.gcf()
 
     def plot_grade_heatmap(self, data: torch.Tensor, title="Grade Energy Distribution"):

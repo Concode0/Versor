@@ -1,12 +1,11 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import math
-import tqdm
 import matplotlib.pyplot as plt
 from core.algebra import CliffordAlgebra
 from layers.rotor import RotorLayer
 from functional.loss import GeometricMSELoss
+from tasks.base import BaseTask
+from core.visualizer import GeneralVisualizer
 
 class BoostLearner(nn.Module):
     def __init__(self, algebra):
@@ -18,132 +17,112 @@ class BoostLearner(nn.Module):
     def forward(self, x):
         return self.rotor(x)
 
-def generate_hyperbola_data(num_samples=1000):
-    # x^2 - t^2 = 1 (Unit hyperbola)
-    # x = cosh(eta), t = sinh(eta)
-    eta = torch.linspace(-2, 2, num_samples)
-    x = torch.cosh(eta)
-    t = torch.sinh(eta)
-    
-    # In R1,1: e1 is Space, e2 is Time
-    return torch.stack([x, t], dim=1)
+class HyperbolicTask(BaseTask):
+    def setup_algebra(self):
+        # R1,1: p=1, q=1
+        return CliffordAlgebra(p=1, q=1, device=self.device)
 
-def apply_random_boost(points, algebra, boost_factor=1.0):
-    # Apply a fixed boost to the data
-    # R = exp(-phi/2 * e12)
-    # e12 in R1,1 squares to +1?
-    # e1*e1 = 1, e2*e2 = -1
-    # e1e2 * e1e2 = -e1e1 e2e2 = -(1)(-1) = 1.
-    # So Taylor series gives cosh - sinh.
-    
-    # Create the boost rotor manually
-    # phi = boost_factor
-    phi = boost_factor
-    
-    # Bivector e1e2 is index 3 (1 | 2)
-    B = torch.zeros(1, algebra.dim)
-    B[0, 3] = 1.0 
-    
-    # R = exp(-phi/2 * B)
-    R = algebra.exp(-0.5 * phi * B)
-    R_rev = algebra.reverse(R)
-    
-    # Apply to points
-    # Convert points to MV: x*e1 + t*e2
-    batch_size = points.shape[0]
-    mv = torch.zeros(batch_size, 1, algebra.dim)
-    mv[:, 0, 1] = points[:, 0]
-    mv[:, 0, 2] = points[:, 1]
-    
-    # RxR~
-    # Broadcast R
-    R_exp = R.unsqueeze(0) # [1, 1, D]
-    R_rev_exp = R_rev.unsqueeze(0)
-    
-    boosted = algebra.geometric_product(R_exp, mv)
-    boosted = algebra.geometric_product(boosted, R_rev_exp)
-    
-    return mv, boosted, phi
+    def setup_model(self):
+        return BoostLearner(self.algebra)
 
-def run_hyperbolic_task(epochs=500, lr=0.05):
-    # R1,1
-    device = 'cpu'
-    algebra = CliffordAlgebra(p=1, q=1, device=device)
-    
-    print(">>> [Task] Hyperbolic Geometry (Learning Lorentz Boost)...")
-    
-    # 1. Generate Data
-    original_mv, boosted_mv, true_phi = apply_random_boost(
-        generate_hyperbola_data(), algebra, boost_factor=1.5
-    )
-    
-    print(f"True Boost Parameter (Phi): {true_phi}")
-    
-    # 2. Model
-    # We want to learn R_inv such that R_inv * Boosted * R_inv~ = Original
-    model = BoostLearner(algebra).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    criterion = GeometricMSELoss(algebra)
-    
-    pbar = tqdm.tqdm(range(epochs))
-    
-    for epoch in pbar:
-        optimizer.zero_grad()
+    def setup_criterion(self):
+        return GeometricMSELoss(self.algebra)
+
+    def get_data(self):
+        num_samples = 1000
+        # x^2 - t^2 = 1 (Unit hyperbola)
+        eta = torch.linspace(-2, 2, num_samples)
+        x = torch.cosh(eta)
+        t = torch.sinh(eta)
         
-        recovered = model(boosted_mv)
+        # In R1,1: e1 is Space, e2 is Time
+        # points: [N, 2]
+        points = torch.stack([x, t], dim=1)
         
-        # Loss: Distance to original points
-        loss = criterion(recovered, original_mv)
+        # Apply random boost
+        boost_factor = 1.5
+        true_phi = boost_factor
+        
+        # Create the boost rotor manually
+        B = torch.zeros(1, self.algebra.dim)
+        B[0, 3] = 1.0 # e1e2
+        
+        R = self.algebra.exp(-0.5 * true_phi * B)
+        R_rev = self.algebra.reverse(R)
+        
+        # Original MV
+        original_mv = torch.zeros(num_samples, 1, self.algebra.dim)
+        original_mv[:, 0, 1] = points[:, 0]
+        original_mv[:, 0, 2] = points[:, 1]
+        
+        # Boosted MV
+        R_exp = R.unsqueeze(0)
+        R_rev_exp = R_rev.unsqueeze(0)
+        boosted_mv = self.algebra.geometric_product(R_exp, original_mv)
+        boosted_mv = self.algebra.geometric_product(boosted_mv, R_rev_exp)
+        
+        return original_mv, boosted_mv, true_phi
+
+    def train_step(self, data):
+        original_mv, boosted_mv, true_phi = data
+        
+        self.optimizer.zero_grad()
+        
+        recovered = self.model(boosted_mv)
+        loss = self.criterion(recovered, original_mv)
         
         loss.backward()
-        optimizer.step()
+        self.optimizer.step()
         
-        pbar.set_description(f"Loss: {loss.item():.6f}")
+        return loss.item(), {}
+
+    def evaluate(self, data):
+        original_mv, boosted_mv, true_phi = data
         
-    print("\n>>> Evaluation...")
-    
-    # Check learned parameter
-    # The model learned a bivector B_learn.
-    # The angle should be approx -1.5 (to undo +1.5)
-    learned_weights = model.rotor.bivector_weights.detach()
-    # In R1,1, there is only 1 bivector (e12).
-    # RotorLayer constructs B = weights * Basis.
-    # The weight is effectively the angle phi (or related).
-    
-    print(f"Learned Rotor Weights (Bivector Coeffs): {learned_weights.flatten().numpy()}")
-    
-    # Visualization
-    img_counter = [1]
-    def save_fig_and_close():
-        filename = f"hyperbolic_viz_{img_counter[0]}.png"
+        learned_weights = self.model.rotor.bivector_weights.detach()
+        print(f"True Phi: {true_phi}")
+        print(f"Learned Rotor Weights: {learned_weights.flatten().cpu().numpy()}")
+        
+        recovered = self.model(boosted_mv)
+        final_loss = self.criterion(recovered, original_mv)
+        print(f"Final Reconstruction Loss: {final_loss.item():.6f}")
+
+    def visualize(self, data):
+        original_mv, boosted_mv, true_phi = data
+        recovered = self.model(boosted_mv)
+        
+        # Custom 2D Plot for R1,1
+        fig = plt.figure(figsize=(12, 4))
+        ax1 = fig.add_subplot(131)
+        self._plot_2d(ax1, original_mv, "Original (Rest Frame)")
+        
+        ax2 = fig.add_subplot(132)
+        self._plot_2d(ax2, boosted_mv, f"Boosted (Phi={true_phi})")
+        
+        ax3 = fig.add_subplot(133)
+        self._plot_2d(ax3, recovered, "Recovered")
+        
+        plt.tight_layout()
+        filename = "hyperbolic_viz.png"
         plt.savefig(filename)
         print(f"Saved {filename}")
         plt.close()
-        img_counter[0] += 1
-    plt.show = save_fig_and_close
+        
+        # Also use GeneralVisualizer for heatmaps
+        viz = GeneralVisualizer(self.algebra)
+        viz.plot_grade_heatmap(recovered, title="Recovered Grade Energy")
+        viz.save("hyperbolic_grades.png")
 
-    # Plot
-    fig = plt.figure(figsize=(12, 4))
-    ax1 = fig.add_subplot(131)
-    plot_2d(ax1, original_mv, "Original (Rest Frame)")
-    
-    ax2 = fig.add_subplot(132)
-    plot_2d(ax2, boosted_mv, f"Boosted (Phi={true_phi})")
-    
-    ax3 = fig.add_subplot(133)
-    with torch.no_grad():
-        recovered = model(boosted_mv)
-    plot_2d(ax3, recovered, "Recovered")
-    
-    plt.tight_layout()
-    plt.show()
+    def _plot_2d(self, ax, mv_data, title):
+        x = mv_data[:, 0, 1].cpu().numpy()
+        t = mv_data[:, 0, 2].cpu().numpy()
+        ax.scatter(x, t, s=2, alpha=0.6)
+        ax.set_title(title)
+        ax.set_xlabel('x (Space)')
+        ax.set_ylabel('t (Time)')
+        ax.grid(True)
+        ax.set_aspect('equal')
 
-def plot_2d(ax, mv_data, title):
-    x = mv_data[:, 0, 1].numpy()
-    t = mv_data[:, 0, 2].numpy()
-    ax.scatter(x, t, s=2, alpha=0.6)
-    ax.set_title(title)
-    ax.set_xlabel('x (Space)')
-    ax.set_ylabel('t (Time)')
-    ax.grid(True)
-    ax.set_aspect('equal')
+def run_hyperbolic_task(epochs=500, lr=0.05):
+    task = HyperbolicTask(epochs=epochs, lr=lr, device='cpu')
+    task.run()

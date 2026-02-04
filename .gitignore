@@ -6,10 +6,11 @@ dist/
 wheels/
 *.egg-info
 
-*.png
 GEMINI.md
 .DS_Store
+*.png
 
+PATENT_*.md
 
 # Virtual environments
 .venv

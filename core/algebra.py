@@ -2,6 +2,8 @@ import torch
 import math
 
 class CliffordAlgebra:
+    _CACHED_TABLES = {}
+
     def __init__(self, p: int, q: int = 0, device='cuda'):
         """
         p: Positive Measure Dimension
@@ -14,7 +16,12 @@ class CliffordAlgebra:
         self.dim = 2 ** self.n
         self.device = device
         
-        self.cayley_indices, self.cayley_signs = self._generate_cayley_table()
+        # Check cache
+        cache_key = (p, q, str(device))
+        if cache_key not in CliffordAlgebra._CACHED_TABLES:
+            CliffordAlgebra._CACHED_TABLES[cache_key] = self._generate_cayley_table()
+            
+        self.cayley_indices, self.cayley_signs, self.gp_signs = CliffordAlgebra._CACHED_TABLES[cache_key]
 
     @property
     def is_euclidean(self):
@@ -25,11 +32,20 @@ class CliffordAlgebra:
         indices = torch.arange(self.dim, device=self.device)
         
         # Result_Index = Index_A XOR Index_B
+        # cayley_indices[i, j] = i ^ j
         cayley_indices = indices.unsqueeze(0) ^ indices.unsqueeze(1)
         
+        # cayley_signs[i, j] = sign(e_i * e_j)
         cayley_signs = self._compute_signs(indices) 
         
-        return cayley_indices, cayley_signs
+        # Precompute signs for geometric_product accumulation
+        # gp_signs[i, k] = sign(e_i * e_{i^k})
+        # This aligns the signs so that the k-th column corresponds to the k-th result basis vector
+        # We need to gather from cayley_signs.
+        # Target indices in cayley_signs: rows=i, cols=i^k (which is cayley_indices[i, k])
+        gp_signs = torch.gather(cayley_signs, 1, cayley_indices)
+        
+        return cayley_indices, cayley_signs, gp_signs
 
     def _compute_signs(self, indices: torch.Tensor) -> torch.Tensor:
         """
@@ -113,59 +129,79 @@ class CliffordAlgebra:
         """
         Geometric Product
         A, B Shape: [Batch, 2^n] or [Batch, ..., 2^n]
+        Optimized to reduce memory usage by avoiding large intermediate tensor (Batch, Dim, Dim).
         """
-        # Ensure input shapes are compatible for broadcasting if needed, 
-        # but strictly for this method assuming last dim is 2^n
+        # A: [..., D]
+        # B: [..., D]
+        # Determine broadcasted batch shape
+        try:
+            batch_shape = torch.broadcast_shapes(A.shape[:-1], B.shape[:-1])
+        except RuntimeError:
+            raise RuntimeError(f"Shapes {A.shape} and {B.shape} are not broadcastable")
+
+        D = self.dim
         
-        # A: [..., I, 1] -> [..., I, 1]
-        # B: [..., 1, J] -> [..., 1, J]
-        # We need to perform outer product on the last dimension and then reduce.
+        # Result accumulator
+        result = torch.zeros(*batch_shape, D, device=A.device, dtype=A.dtype)
         
-        # Let's handle generic batch shapes.
-        # Flatten batch dimensions for operation, then restore? 
-        # Or use einsum with ellipsis.
+        # Expand A for broadcasting in the inner loop: [..., D, 1]
+        A_expanded = A.unsqueeze(-1)
         
-        # torch.einsum('...i, ...j -> ...ij', A, B)
-        prod = torch.einsum('...i, ...j -> ...ij', A, B)
+        # Flatten batch dimensions of B to simplify gather? 
+        # No, gather works on specific dimension.
+        # We want to gather along the last dimension of B.
+        # B: [..., D]
         
-        # Apply signs
-        weighted_prod = prod * self.cayley_signs
+        # Block size for vectorization (trade-off between memory and loop overhead)
+        # 32 is a reasonable default for typical GA dimensions (8, 16, 32, 64, 128, 256)
+        BLOCK_SIZE = 32
         
-        # Flatten the last two dimensions to scatter add
-        # Target indices are in cayley_indices [dim, dim]
-        # We need to map ...ij to ...k where k = indices[i,j]
-        
-        # This scatter operation is tricky with arbitrary batch dims in pure pytorch without loop.
-        # For fixed batch size, it's easier.
-        
-        # We use prod shape to determine the actual batch shape after broadcasting
-        batch_shape = prod.shape[:-2]
-        flat_batch_dim = prod.shape[:-2].numel()
-        
-        weighted_prod_flat = weighted_prod.reshape(flat_batch_dim, self.dim * self.dim) # [Batch, Dim*Dim]
-        
-        # Flatten cayley indices: row-major 
-        # map (i, j) -> i*dim + j. 
-        # cayley_indices stores the *target* basis index k.
-        # We want to sum all (i, j) that map to k.
-        
-        # We can simply iterate over the resulting basis vectors (0 to dim-1)
-        # and sum the relevant entries. This is O(dim) iterations but vectorized over batch.
-        
-        result = torch.zeros(*batch_shape, self.dim, device=A.device, dtype=A.dtype)
-        
-        # Optimized: pre-compute masks for each k? 
-        # Or just use the scatter_add logic if we can linearize correctly.
-        
-        # Let's try to linearize the target indices for the flat batch.
-        # target_indices for a single item: cayley_indices.view(-1) -> [Dim*Dim]
-        
-        flat_indices = self.cayley_indices.view(-1).repeat(flat_batch_dim, 1) # [Batch, Dim*Dim]
-        
-        result_flat = result.view(flat_batch_dim, self.dim)
-        result_flat.scatter_add_(1, flat_indices, weighted_prod_flat)
-        
-        return result_flat.view(*batch_shape, self.dim)
+        for k_start in range(0, D, BLOCK_SIZE):
+            k_end = min(k_start + BLOCK_SIZE, D)
+            # chunk of result indices
+            
+            # 1. Gather B values
+            # Indices for B: cayley_indices[i, k] = i ^ k
+            # We want indices[i, k] for k in [k_start, k_end]
+            # shape: [D, Chunk]
+            idx_chunk = self.cayley_indices[:, k_start:k_end]
+            
+            # We need to gather B along its last dim using these indices.
+            # B is [..., D]. idx_chunk is [D, Chunk].
+            # We want B_gathered [..., D, Chunk]
+            # B[..., i] corresponds to A[..., i]
+            # B_gathered[..., i, c] = B[..., idx_chunk[i, c]]
+            
+            # PyTorch gather requires index to match dimensions.
+            # B: [Batch..., D]
+            # idx: [D, Chunk] -> Broadcast to [Batch..., D, Chunk]
+            
+            # Expanding idx to match batch dims might be expensive memory-wise if Batch is large.
+            # Alternative: B[..., idx] works in numpy style advanced indexing?
+            # B[..., idx_chunk] where idx_chunk is tensor.
+            # If B is [B, D] and idx is [D, C], B[:, idx] -> [B, D, C].
+            # This works directly in PyTorch!
+            B_gathered = B[..., idx_chunk]
+            
+            # 2. Gather Signs
+            # gp_signs[i, k]
+            signs_chunk = self.gp_signs[:, k_start:k_end] # [D, Chunk]
+            
+            # 3. Compute Term
+            # A_expanded: [..., D, 1]
+            # B_gathered: [..., D, Chunk]
+            # signs_chunk: [D, Chunk] (broadcasts to batch)
+            
+            term = A_expanded * B_gathered * signs_chunk
+            
+            # 4. Sum over i (dim -2) to get C_k
+            # [..., Chunk]
+            chunk_res = term.sum(dim=-2)
+            
+            # 5. Store
+            result[..., k_start:k_end] = chunk_res
+            
+        return result
         
     def grade_projection(self, mv: torch.Tensor, grade: int) -> torch.Tensor:
         """
