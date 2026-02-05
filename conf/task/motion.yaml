@@ -1,0 +1,13 @@
+# @package _global_
+name: "motion"
+algebra:
+  p: 4
+  q: 0
+  device: "cpu"
+dataset:
+  name: "amass"
+  samples: 1000
+training:
+  epochs: 50
+  lr: 0.005
+  batch_size: 64

@@ -1,0 +1,13 @@
+# @package _global_
+name: "so3"
+algebra:
+  p: 4
+  q: 0
+  device: "cpu"
+dataset:
+  name: "modelnet"
+  samples: 1000
+training:
+  epochs: 10
+  lr: 0.001
+  batch_size: 32
