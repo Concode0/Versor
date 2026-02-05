@@ -137,6 +137,7 @@ uv run main.py task=semantic training.epochs=200
 
 - [ ] Native CUDA Kernels: Optimized kernels for $Cl(3,0)$ and $Cl(1,3)$
 - [ ] JIT Compilation: Metric-aware operation graph optimization
+- [ ] Experiments on the explainability of RAG & LLM Knowledge Storage
 - [ ] Formal Mathematical Rigor: Stability and convergence proofs for GBN in Clifford space
 - [ ] Automatic Metric Search: Self-optimizing signature ($p, q$) based on data topology
 - [ ] Automatic Bivector Pruning: Geometric sparsity-driven layer compression
