@@ -1,18 +1,12 @@
 # Versor: Universal Geometric Algebra Neural Network
 # Copyright (C) 2026 Eunkyum Kim <nemonanconcode@gmail.com>
-# https://github.com/Concode0/Versor
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
 #
-# [INTELLECTUAL PROPERTY NOTICE]
-# This implementation is protected under ROK Patent Application 10-2026-0023023.
-# All rights reserved. Commercial use, redistribution, or modification 
-# for-profit without an explicit commercial license is strictly prohibited.
-#
-# Contact for Commercial Licensing: nemonanconcode@gmail.com
+# This project is fully open-source, including for commercial use.
+# We believe Geometric Algebra is the future of AI, and we want 
+# the industry to build upon this "unbending" paradigm.
 
 import torch
 import torch.nn as nn
