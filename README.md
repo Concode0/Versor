@@ -116,6 +116,8 @@ uv run main.py task=semantic training.epochs=200
 | **Latent Grade Purity** | 0.98 (Mixed Grade Manifold) |
 | **Visualization** | Bivector Heatmap (Explicit Rotation Planes) |
 
+![motion_latent_space](assets/motion_latent_space.png)
+
 **Result**: The network learns specific rotation planes that distinguish "Walking" from "Running," turning a complex classification problem into a clear geometric alignment task.
 
 ```bash
