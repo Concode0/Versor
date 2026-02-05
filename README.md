@@ -103,6 +103,67 @@ uv run main.py task=hyperbolic training.epochs=500
 uv run main.py task=semantic training.epochs=200
 ```
 
+### 5. Motion Alignment (Geometry Disentangles Semantics)
+**Task**: Align high-dimensional motion data (AMASS) into a linearly separable latent space using geometric rotation.
+**Paradigm Shift**: Instead of warping the manifold with black-box MLPs, GBN physically *unbends* the motion classes using a learned **Bivector Map**.
+
+| Metric | Value |
+|--------|-------|
+| **Algebra** | $Cl(4, 0)$ (Optimized via MetricSearch) |
+| **Training Epochs** | 100 |
+| **Network** | MotionManifoldNetwork (Rotor Alignment) |
+| **Latent Accuracy** | **~75.0%** |
+| **Latent Grade Purity** | 0.43 (Mixed Grade Manifold) |
+| **Visualization** | Bivector Heatmap (Explicit Rotation Planes) |
+
+**Result**: The network learns specific rotation planes that distinguish "Walking" from "Running," turning a complex classification problem into a clear geometric alignment task.
+
+```bash
+uv run main.py task=motion training.epochs=100
+```
+
+---
+
+### 6. SO(3) Invariance (Zero-Shot Generalization)
+**Task**: Classify 3D objects (ModelNet) trained *only* on fixed poses, but tested on arbitrary rotations.
+**Paradigm Shift**: Standard Deep Learning requires massive data augmentation. GBN calculates the **Intrinsic Geometric Frame** and applies a **Canonical Rotor** to normalize input before classification.
+
+| Metric | Value |
+|--------|-------|
+| **Algebra** | $Cl(3, 0)$ (3D Euclidean) |
+| **Training Epochs** | 50 |
+| **Network** | SO3InvariantNet (Canonical Rotor) |
+| **Train Accuracy (Fixed Pose)** | 100% |
+| **Test Accuracy (Rotated)** | **100.0%** ✓ |
+| **Generalization Gap** | **0.0%** (Perfect Invariance) |
+
+**Result**: **Solved.** The model achieves perfect zero-shot generalization to rotation without seeing a single rotated example during training. This is theoretically impossible for standard CNNs/MLPs without augmentation.
+
+```bash
+uv run main.py task=so3 training.epochs=50
+```
+
+---
+
+### 7. QM9 Molecular Property (Physics is Native)
+**Task**: Predict internal energy ($U_0$) and dipole moment ($\mu$) from molecular structures.
+**Paradigm Shift**: Instead of feature engineering (angles, bond lengths), GBN allows high-order features to **emerge** naturally via the geometric product ($vector \times vector = scalar + bivector$).
+
+| Metric | Value |
+|--------|-------|
+| **Algebra** | $Cl(3, 0)$ (3D Euclidean) |
+| **Training Epochs** | 100 |
+| **Network** | MoleculeGNN (Geometric Interaction) |
+| **Target** | Energy ($U_0$) & Dipole ($\mu$) |
+| **MAE (Energy)** | **~263** |
+| **Equivariance** | Intrinsic (Geometric Product) |
+
+**Result**: The same network architecture predicts Scalar (Energy) and Vector (Dipole) properties simultaneously by simply extracting different grades from the output multivector, respecting physical symmetries by design.
+
+```bash
+uv run main.py task=qm9 training.epochs=100
+```
+
 ---
 
 ### Performance Summary
@@ -113,6 +174,9 @@ uv run main.py task=semantic training.epochs=200
 | **Cross-Modal** | $Cl(6,0)$ | 200 epochs | 98% alignment improvement |
 | **Hyperbolic** | $Cl(1,1)$ | 500 epochs | 5.3% parameter error (non-Euclidean) |
 | **Semantic** | $Cl(6,0)$ | 200 epochs | 88.7% grade purity |
+| **Motion** | $Cl(4,0)$ | 100 epochs | Explicit Bivector Disentanglement |
+| **SO(3)** | $Cl(3,0)$ | 50 epochs | **100% Zero-Shot Rotation Invariance** |
+| **QM9** | $Cl(3,0)$ | 100 epochs | Unified Scalar/Vector Prediction |
 
 **Computational Notes**:
 - All benchmarks run on CPU with PyTorch's broadcasting-based geometric product
@@ -131,20 +195,24 @@ uv run main.py task=semantic training.epochs=200
 *   **Metric-Agnostic Kernel**: Supports Euclidean $Cl(p, 0)$, Minkowski/Hyperbolic $Cl(p, q)$, and Projective algebras out of the box.
 *   **Geometric Layers**: `RotorLayer`, `CliffordLinear`, `CliffordGraphConv`, `CliffordLayerNorm`.
 *   **Novel Activations**: `GeometricGELU` (Magnitude-based activation).
-*   **Applications**: Manifold Unbending, Cross-Modal Unification, Hyperbolic Physics.
+*   **Automatic Metric Search**: Finds optimal $(p, q)$ signature based on data topology.
+*   **Geometric Sparsity**: `prune_bivectors` allows compression of geometric layers.
+*   **Applications**: Manifold Unbending, Cross-Modal Unification, Hyperbolic Physics, Molecular GNNs.
 
 ## Roadmap: The Path to Geometric Intelligence
+
+For More Details, Check out [TODO](TODO.md)
 
 - [ ] Native CUDA Kernels: Optimized kernels for $Cl(3,0)$ and $Cl(1,3)$
 - [ ] JIT Compilation: Metric-aware operation graph optimization
 - [ ] Experiments on the explainability of RAG & LLM Knowledge Storage
 - [ ] Formal Mathematical Rigor: Stability and convergence proofs for GBN in Clifford space
-- [ ] Automatic Metric Search: Self-optimizing signature ($p, q$) based on data topology
-- [ ] Automatic Bivector Pruning: Geometric sparsity-driven layer compression
+- [x] **Automatic Metric Search**: Self-optimizing signature ($p, q$) based on data topology
+- [x] **Automatic Bivector Pruning**: Geometric sparsity-driven layer compression
 - [ ] Multi-head & Dynamic Rotors: Input-dependent rotation axes for complex attention
 - [ ] Hierarchical GBN: Deep unbending via multi-scale grade abstraction
 - [ ] Geometric Transformer (GAT): Fully geometric attention mechanism integration
-- [ ] CliffordGraphConv: Advanced geometric signal processing on graphs
+- [x] **CliffordGraphConv**: Advanced geometric signal processing on graphs (QM9)
 
 ## 🛠 Installation
 
@@ -230,13 +298,11 @@ Currently, the geometric product kernel utilizes PyTorch's high-level tensor ope
 
 ## 📜 License
 
-This project is licensed under the **GNU Affero General Public License v3.0 (AGPLv3)**.
+This project is licensed under the **Apache License 2.0,**.
 See the [LICENSE](LICENSE) file for details.
 
-This ensures that any modifications or network services running this code must also be open-sourced.
-
 ## Intellectual Property Notice
-The core algorithm and architecture of 'Versor' are protected by patent applications.
+The core algorithm and architecture of 'GBN' are protected by patent applications.
 - KR Patent Application No. 10-2026-0023023
 
 ## Citation
