@@ -105,3 +105,28 @@ class RotorLayer(CliffordModule):
         res = self.algebra.geometric_product(Rx, R_rev_expanded)
         
         return res
+
+    def prune_bivectors(self, threshold: float = 1e-4) -> int:
+        """Prunes bivector weights with small magnitudes (Geometric Sparsity).
+
+        Args:
+            threshold (float): Magnitude threshold for pruning.
+
+        Returns:
+            int: Number of pruned parameters.
+        """
+        with torch.no_grad():
+            mask = torch.abs(self.bivector_weights) >= threshold
+            num_pruned = (~mask).sum().item()
+            self.bivector_weights.data.mul_(mask.float())
+        return num_pruned
+
+    def sparsity_loss(self) -> torch.Tensor:
+        """Computes the geometric sparsity loss (L1 norm of bivectors).
+
+        Encourages the learning of simpler rotations (fewer active planes).
+
+        Returns:
+            torch.Tensor: Scalar loss.
+        """
+        return torch.norm(self.bivector_weights, p=1)

@@ -26,6 +26,9 @@ from tasks.cross_modal import CrossModalTask
 from tasks.hyperbolic import HyperbolicTask
 from tasks.semantic import SemanticTask
 from tasks.sanity_check import SanityCheckTask
+from tasks.motion import MotionAlignmentTask
+from tasks.so3 import SO3InvariantTask
+from tasks.qm9 import QM9Task
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig):
@@ -45,7 +48,10 @@ def main(cfg: DictConfig):
         'crossmodal': CrossModalTask,
         'hyperbolic': HyperbolicTask,
         'semantic': SemanticTask,
-        'sanity': SanityCheckTask
+        'sanity': SanityCheckTask,
+        'motion': MotionAlignmentTask,
+        'so3': SO3InvariantTask,
+        'qm9': QM9Task
     }
     
     if task_name not in task_map:

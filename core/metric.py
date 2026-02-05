@@ -94,3 +94,49 @@ def geometric_distance(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tenso
     """
     diff = A - B
     return induced_norm(algebra, diff)
+
+def grade_purity(algebra: CliffordAlgebra, A: torch.Tensor, grade: int) -> torch.Tensor:
+    """Computes the energy ratio of a specific grade k.
+
+    Purity = ||<A>_k||^2 / ||A||^2
+
+    Args:
+        algebra (CliffordAlgebra): The algebra instance.
+        A (torch.Tensor): Multivector [..., Dim].
+        grade (int): Target grade.
+
+    Returns:
+        torch.Tensor: Purity score [0, 1].
+    """
+    # Project to grade
+    A_k = algebra.grade_projection(A, grade)
+    
+    # Compute energies (using standard Euclidean norm for coefficient magnitude, 
+    # or induced norm? Purity usually refers to coefficient mass).
+    # Let's use standard squared norm of coefficients for stability.
+    energy_k = (A_k ** 2).sum(dim=-1)
+    energy_total = (A ** 2).sum(dim=-1) + 1e-9
+    
+    return energy_k / energy_total
+
+def mean_active_grade(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor:
+    """Computes the weighted mean grade of the multivector.
+
+    Mean Grade = Sum(k * ||<A>_k||^2) / ||A||^2
+
+    Args:
+        algebra (CliffordAlgebra): The algebra instance.
+        A (torch.Tensor): Multivector.
+
+    Returns:
+        torch.Tensor: Average grade index.
+    """
+    energy_total = (A ** 2).sum(dim=-1) + 1e-9
+    weighted_sum = torch.zeros_like(energy_total)
+    
+    for k in range(algebra.n + 1):
+        A_k = algebra.grade_projection(A, k)
+        energy_k = (A_k ** 2).sum(dim=-1)
+        weighted_sum += k * energy_k
+        
+    return weighted_sum / energy_total

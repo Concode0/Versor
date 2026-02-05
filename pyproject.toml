@@ -17,4 +17,5 @@ dependencies = [
     "imageio>=2.37.2",
     "streamlit>=1.50.0",
     "plotly>=6.5.2",
+    "torch-geometric>=2.6.1",
 ]

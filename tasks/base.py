@@ -47,8 +47,9 @@ class BaseTask(ABC):
         self.algebra = self.setup_algebra()
         self.model = self.setup_model().to(self.device)
         self.criterion = self.setup_criterion()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=cfg.training.lr)
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=cfg.training.lr)
         self.epochs = cfg.training.epochs
+        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.epochs)
 
     @abstractmethod
     def setup_algebra(self):
@@ -114,6 +115,12 @@ class BaseTask(ABC):
                 logs['Loss'] = avg_loss
             else:
                 loss, logs = self.train_step(dataloader)
+            
+            self.scheduler.step()
+            
+            # Log LR
+            current_lr = self.scheduler.get_last_lr()[0]
+            logs['LR'] = current_lr
                 
             desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])
             pbar.set_description(desc)
