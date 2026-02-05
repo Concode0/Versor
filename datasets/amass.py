@@ -83,17 +83,6 @@ class AMASSDataset(Dataset):
             # x = tanh(z * P) + noise
             motion_vec = np.tanh(np.dot(base, P)) + 0.1 * np.random.randn(feature_dim)
             
-            # Convert to Multivector form
-            # Map features to vector basis e_1 ... e_45
-            # Requires high-dim algebra, but usually we project to lower dim first.
-            # For this task, we treat input as raw features to be embedded.
-            
-            # We'll store it as a tensor [1, Dim] where Dim matches Algebra
-            # Note: Algebra dim grows as 2^n. For n=45, it's impossible.
-            # We must use a lower-dimensional embedding algebra (e.g. p=4, q=0 -> dim=16)
-            # and project input features into it, OR use the input as raw features 
-            # for the first layer (Linear).
-            
             data.append(torch.tensor(motion_vec, dtype=torch.float32))
             labels.append(label)
             
