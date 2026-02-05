@@ -91,9 +91,71 @@ class MotionAlignmentTask(BaseTask):
             "Purity": purity.item()
         }
 
-    def evaluate(self, data):
-        # Evaluation is implicit in training logs for this prototype
-        pass
+    def evaluate(self, data=None):
+        """Evaluate model on test data."""
+        self.model.eval()
+
+        # Determine if data is a single batch or DataLoader
+        if data is None:
+            # Load test data
+            try:
+                test_dataset = HARDataset(self.algebra, root='./data/HAR', split='test')
+            except FileNotFoundError:
+                from datasets.amass import AMASSDataset
+                test_dataset = AMASSDataset(self.algebra, num_samples=self.cfg.dataset.samples)
+
+            data = DataLoader(test_dataset, batch_size=self.cfg.training.batch_size, shuffle=False)
+        elif isinstance(data, (tuple, list)) and len(data) == 2 and isinstance(data[0], torch.Tensor):
+            # Single batch case (from base.py) - data is (batch_tensor, labels_tensor)
+            data = [data]  # Wrap in list for iteration
+
+        total_loss = 0.0
+        total_acc = 0.0
+        total_purity = 0.0
+        num_batches = 0
+
+        with torch.no_grad():
+            for batch in data:
+                # Handle batch unpacking robustly
+                if isinstance(batch, (tuple, list)):
+                    batch_data, labels = batch[0], batch[1]
+                else:
+                    raise ValueError(f"Unexpected batch format: {type(batch)}")
+
+                batch_data, labels = batch_data.to(self.device), labels.to(self.device)
+
+                # Forward pass
+                logits, _, aligned = self.model(batch_data)
+
+                # Classification loss
+                loss = self.criterion(logits, labels)
+                total_loss += loss.item()
+
+                # Accuracy
+                preds = logits.argmax(dim=1)
+                acc = (preds == labels).float().mean()
+                total_acc += acc.item()
+
+                # Grade purity (expect Grade 1 vectors in latent space)
+                from core.metric import grade_purity
+                purity = grade_purity(self.algebra, aligned.squeeze(1), grade=1).mean()
+                total_purity += purity.item()
+
+                num_batches += 1
+
+        self.model.train()
+
+        # Return averaged metrics
+        metrics = {
+            "Loss": total_loss / num_batches,
+            "Acc": total_acc / num_batches,
+            "Purity": total_purity / num_batches
+        }
+
+        # Print metrics for visibility
+        print(f"Evaluation - Loss: {metrics['Loss']:.4f}, Acc: {metrics['Acc']:.4f}, Purity: {metrics['Purity']:.4f}")
+
+        return metrics
 
     def visualize(self, data):
         """Visualizes the latent space distribution."""
