@@ -1,9 +1,9 @@
 # @package _global_
-name: "manifold"
+name: "sanity"
 algebra:
   p: 3
   q: 0
   device: "cpu"
 dataset:
-  name: "figure8"
+  name: "random_noise"
   samples: 1000

@@ -1,0 +1,10 @@
+# @package _global_
+name: "hyperbolic"
+algebra:
+  p: 1
+  q: 1
+  device: "cpu"
+dataset:
+  name: "lorentz_boost"
+  samples: 500
+  rapidity: 1.5

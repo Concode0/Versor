@@ -1,6 +1,6 @@
 defaults:
-  - task: manifold
   - _self_
+  - task: manifold
 
 algebra:
   p: 3

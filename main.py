@@ -38,7 +38,7 @@ def main(cfg: DictConfig):
         ValueError: If the requested task is not found in the task map.
     """
     # Determine which task to run based on config
-    task_name = cfg.task.name
+    task_name = cfg.name
     
     task_map = {
         'manifold': ManifoldTask,

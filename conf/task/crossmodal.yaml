@@ -1,7 +1,9 @@
+# @package _global_
 name: "crossmodal"
 algebra:
   p: 6
   q: 0
+  device: "cpu"
 dataset:
   name: "synthetic_modalities"
   embedding_dim: 6

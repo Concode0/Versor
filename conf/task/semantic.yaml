@@ -1,0 +1,12 @@
+# @package _global_
+name: "semantic"
+algebra:
+  p: 6
+  q: 0
+  device: "cpu"
+dataset:
+  name: "bert_embeddings"
+  embedding_dim: 6
+  topics:
+    tech: ["computer", "software", "algorithm", "network", "database"]
+    nature: ["tree", "flower", "river", "mountain", "forest"]
