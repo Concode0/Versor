@@ -5,6 +5,14 @@
 
 **Versor** is a PyTorch framework purpose-built for **Geometric Algebra Deep Learning**. It serves as the primary implementation and proposal for the **Geometric Blade Network (GBN)**—a revolutionary model architecture that replaces distorted linear transformations with pure, manifold-aligned geometric rotations.
 
+![Demo_manifold](Demo_Manifold.gif)
+
+### 🎮 Interactive Demo (Streamlit)
+Explore Geometric Algebra transformations and live manifold unbending in your browser.
+```bash
+streamlit run demo.py
+```
+
 ## The GBN Manifesto: Beyond Linear Algebra
 Traditional Deep Learning is trapped in the "Linear Algebra Cage." Standard weight matrices ($W \in \mathbb{R}^{n \times m}$) apply arbitrary scaling, shearing, and distortions that destroy the underlying geometric purity of data. **GBN (Geometric Blade Network)** declares the end of this era: 
 - Dimensional Escape: We move beyond the 3D Euclidean cage into the multivector space of Clifford Algebra.
@@ -131,24 +139,16 @@ Versor requires Python 3.10+ and PyTorch.
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/versor.git
-cd versor
+git clone https://github.com/Concode0/Versor.git
+cd Versor
 
 # Install dependencies using uv (recommended) or pip
 uv sync
-# OR
-pip install -r requirements.txt
 ```
 
 ## ⚡ Usage
 
-Versor uses **Hydra** for configuration management. You can run tasks via CLI or explore the interactive demo.
-
-### 🎮 Interactive Demo (Streamlit)
-Explore Geometric Algebra transformations and live manifold unbending in your browser.
-```bash
-streamlit run demo.py
-```
+Versor uses **Hydra** for configuration management. You can run tasks via CLI or explore the interactive demo
 
 ### 1. Manifold Restoration (Unbending)
 Trains a rotor to flatten a distorted figure-8 manifold ($z = 0.5xy$) back to the 2D plane.
