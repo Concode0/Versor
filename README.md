@@ -133,6 +133,18 @@ uv run main.py task=semantic training.epochs=200
 *   **Novel Activations**: `GeometricGELU` (Magnitude-based activation).
 *   **Applications**: Manifold Unbending, Cross-Modal Unification, Hyperbolic Physics.
 
+## Roadmap: The Path to Geometric Intelligence
+
+- [ ] Native CUDA Kernels: Optimized kernels for $Cl(3,0)$ and $Cl(1,3)$
+- [ ] JIT Compilation: Metric-aware operation graph optimization
+- [ ] Formal Mathematical Rigor: Stability and convergence proofs for GBN in Clifford space
+- [ ] Automatic Metric Search: Self-optimizing signature ($p, q$) based on data topology
+- [ ] Automatic Bivector Pruning: Geometric sparsity-driven layer compression
+- [ ] Multi-head & Dynamic Rotors: Input-dependent rotation axes for complex attention
+- [ ] Hierarchical GBN: Deep unbending via multi-scale grade abstraction
+- [ ] Geometric Transformer (GAT): Fully geometric attention mechanism integration
+- [ ] CliffordGraphConv: Advanced geometric signal processing on graphs
+
 ## 🛠 Installation
 
 Versor requires Python 3.10+ and PyTorch.
