@@ -57,8 +57,8 @@ class SemanticTask(BaseTask):
     """
 
     def __init__(self, cfg):
+        self.embedding_dim = cfg.dataset.embedding_dim
         super().__init__(cfg)
-        self.embedding_dim = 6 # Example small dimension for GA
 
     def setup_algebra(self):
         """Sets up Cl(6, 0)."""

@@ -102,7 +102,7 @@ class CrossModalTask(BaseTask):
 
     def get_data(self):
         """Generates synthetic multi-modal data."""
-        dataset = CrossModalDataset(self.algebra, embedding_dim=self.cfg.task.dataset.embedding_dim)
+        dataset = CrossModalDataset(self.algebra, embedding_dim=self.cfg.dataset.embedding_dim)
         return DataLoader(dataset, batch_size=self.cfg.training.batch_size, shuffle=True)
 
     def train_step(self, data):

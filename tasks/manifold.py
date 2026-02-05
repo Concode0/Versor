@@ -84,7 +84,7 @@ class ManifoldTask(BaseTask):
 
     def get_data(self):
         """Generates the Figure-8 dataset."""
-        dataset = Figure8Dataset(self.algebra, num_samples=self.cfg.task.dataset.samples)
+        dataset = Figure8Dataset(self.algebra, num_samples=self.cfg.dataset.samples)
         return DataLoader(dataset, batch_size=self.cfg.training.batch_size, shuffle=True)
 
     def train_step(self, data):

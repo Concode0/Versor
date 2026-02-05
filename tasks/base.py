@@ -94,7 +94,7 @@ class BaseTask(ABC):
 
     def run(self):
         """Executes the full task lifecycle."""
-        print(f">>> Starting Task: {self.cfg.task.name}")
+        print(f">>> Starting Task: {self.cfg.name}")
         dataloader = self.get_data()
         
         # Training Loop
