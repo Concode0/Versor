@@ -5,7 +5,6 @@
 
 **Versor** is a PyTorch framework purpose-built for **Geometric Algebra Deep Learning**. It serves as the primary implementation and proposal for the **Geometric Blade Network (GBN)**—a revolutionary model architecture that replaces distorted linear transformations with pure, manifold-aligned geometric rotations.
 
-![Demo_manifold](Demo_Manifold.gif)
 
 ### 🎮 Interactive Demo (Streamlit)
 Explore Geometric Algebra transformations and live manifold unbending in your browser.
