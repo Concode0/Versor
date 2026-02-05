@@ -172,13 +172,16 @@ if start_align:
         loss.backward()
         optimizer.step()
         
-        if epoch % 2 == 0 or epoch == train_epochs - 1:
+        if epoch % 50 == 0 or epoch == train_epochs - 1:
             progress_bar.progress((epoch + 1) / train_epochs)
             status_text.text(f"Epoch {epoch+1}/{train_epochs} | Loss (Z-Energy): {loss.item():.6f}")
             
             with output_placeholder.container():
-                st.warning(f"Training... Epoch {epoch}")
-                st.plotly_chart(plot_3d_manifold(out, f"Unbending... Loss: {loss.item():.4f}", color_data=original_z_colors), key=f"train_step_{epoch}")
+                st.warning(f"Training in progress... (Epoch {epoch})")
+                st.plotly_chart(
+                    plot_3d_manifold(out, f"Unbending... Loss: {loss.item():.4f}", color_data=original_z_colors), 
+                    width='stretch'
+                )
     
     # Save final result strictly
     st.session_state.trained_output = out.detach().clone()
