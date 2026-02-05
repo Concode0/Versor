@@ -8,7 +8,6 @@ wheels/
 
 GEMINI.md
 .DS_Store
-*.png
 outputs/
 data/
 
