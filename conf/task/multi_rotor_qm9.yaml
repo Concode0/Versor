@@ -1,5 +1,5 @@
 # @package _global_
-name: "qm9"
+name: "multi_rotor_qm9"
 algebra:
   p: 3
   q: 0
@@ -7,11 +7,12 @@ algebra:
 dataset:
   name: "qm9"
   samples: null
-  target: "U0" # or "Mu"
+  target: "U0"
 model:
   hidden_dim: 16
-  layers: 2
+  layers: 4
+  num_rotors: 12
 training:
-  epochs: 50
-  lr: 0.001
+  epochs: 500
+  lr: 0.01
   batch_size: 32

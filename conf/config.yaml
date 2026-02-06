@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - task: manifold
+  - task: qm9
 
 algebra:
   p: 3
@@ -12,3 +12,5 @@ training:
   lr: 0.01
   batch_size: 32
   seed: 42
+
+checkpoint: null
