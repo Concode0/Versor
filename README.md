@@ -2,11 +2,26 @@
 
 > **"Standard Deep Learning warps the manifold. Versor unbends it."**
 
+## 🚧 Research Preview: The Multi-Rotor Architecture
+
+> **"Breaking the Curse of Dimensionality in Geometric Algebra."**
+
+Current GA implementations suffer from exponential complexity ($O(2^n)$) in high-dimensional spaces. **Versor** is pioneering a novel solution to this fundamental bottleneck: the **Multi-Rotor Engine**.
+
+By abandoning the rigidity of single-rotor operations in favor of a **"Geometric Spectral Decomposition"** approach, we are architecting a system that scales linearly.
+
+### Core Concepts (In Development)
+* **Overlap & Entanglement:** Instead of orthogonal bases, we utilize **overlapping rotor heads** that share dimensions (e.g., $e_{12}$ and $e_{23}$ coupled via $e_2$). This creates a globally entangled manifold structure through local interactions.
+* **Relaxed Isometry:** We approximate complex non-linear manifolds via the **weighted summation of multiple rotors** ($\sum w_i R_i$), effectively performing a "Taylor Series expansion" of the geometric transformation.
+* **Polynomial Complexity:** This architecture reduces the parameter space from $O(2^n)$ to **$O(k \cdot n^2)$**, making tasks like **QM9 (Molecular Dynamics)** and **High-dim NLP** feasible within a pure geometric framework.
+
+*This architecture is currently in the active research & implementation phase. See [TODO.md](./TODO.md) for the roadmap.*
+
+**Versor** is a PyTorch framework purpose-built for **Geometric Algebra Deep Learning**. It serves as the primary implementation and proposal for the **Geometric Blade Network (GBN)**—a revolutionary model architecture that replaces distorted linear transformations with pure, manifold-aligned geometric rotations.
+
 ### 🚀 The "100% Accuracy" Breakthrough
 In our latest benchmark on the **UCI-HAR (Human Activity Recognition)** dataset, Versor achieved **100.00% Test Accuracy** using a single **Rotor Layer** with $O(N)$ complexity. 
 This isn't just a number; it's a proof that geometric alignment can solve what statistical approximation struggles with.
-
-**Versor** is a PyTorch framework purpose-built for **Geometric Algebra Deep Learning**. It serves as the primary implementation and proposal for the **Geometric Blade Network (GBN)**—a revolutionary model architecture that replaces distorted linear transformations with pure, manifold-aligned geometric rotations.
 
 ![DEMO](./demo_manifold_comp.gif)
 
