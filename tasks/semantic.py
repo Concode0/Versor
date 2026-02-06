@@ -10,9 +10,7 @@
 
 import torch
 import torch.nn as nn
-from transformers import BertTokenizer, BertModel
 import numpy as np
-from sklearn.decomposition import PCA
 
 from core.algebra import CliffordAlgebra
 from layers.rotor import RotorLayer
@@ -66,6 +64,9 @@ class SemanticTask(BaseTask):
 
     def get_data(self):
         """Fetches BERT embeddings. Adds noise."""
+        from transformers import BertTokenizer, BertModel
+        from sklearn.decomposition import PCA
+
         tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
         bert = BertModel.from_pretrained('bert-base-uncased')
         
