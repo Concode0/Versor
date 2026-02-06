@@ -14,14 +14,15 @@ from torch_geometric.datasets import ModelNet
 from torch_geometric.loader import DataLoader
 
 class VersorModelNet(ModelNet):
-    """Wrapper for ModelNet10."""
+    """ModelNet10 Wrapper. Point clouds."""
     pass
 
 def get_modelnet_loader(root, batch_size=32, subset='train', rotated=False):
-    """
+    """Loads ModelNet. Optionally spins it.
+
     Args:
         subset: 'train' or 'test'.
-        rotated: If True, apply random SO(3) rotations.
+        rotated: If True, good luck.
     """
     pre_transform = T.NormalizeScale()
     transform_list = [T.SamplePoints(1024)]

@@ -16,17 +16,13 @@ from torch_geometric.data import Data
 import torch_geometric.transforms as T
 
 class VersorQM9(QM9):
-    """Wrapper around PyG QM9 to handle normalization and target selection.
+    """QM9 Wrapper. Normalizes targets so gradients don't explode.
     """
     
     def __init__(self, root, target_idx=7, transform=None, pre_transform=None):
         super().__init__(root, transform, pre_transform)
         self.target_idx = target_idx
         
-        # Calculate Stats for Normalization
-        # Access _data directly to avoid warning, or better, use sliced access if supported.
-        # PyG 2.x stores data in _data.
-        # y is [N, 19]
         if hasattr(self, '_data'):
             y = self._data.y
         else:
@@ -37,19 +33,13 @@ class VersorQM9(QM9):
 
     def get(self, idx):
         data = super().get(idx)
-        # Override y to be just the target and normalized?
-        # Or handle normalization in Trainer.
-        # Let's handle it in Trainer to keep Data pure, but store stats.
-        
-        # We need to ensure 'pos' is centered? 
-        # QM9 pos are usually centered or we should center them.
+        # Center positions
         data.pos = data.pos - data.pos.mean(dim=0, keepdim=True)
-        
         return data
 
 def get_qm9_loader(root, target='U0', batch_size=32, split='train', max_samples=None):
-    # Target Mapping
-    # 0:mu, 1:alpha, 2:homo, 3:lumo, 4:gap, 5:r2, 6:zpve, 7:u0, 8:u298, 9:h298, 10:g298, 11:cv
+    """Loads QM9. Splits it. Batches it."""
+    # 0:mu, 7:u0
     target_map = {'mu': 0, 'U0': 7}
     target_idx = target_map.get(target, 7)
     
