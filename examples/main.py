@@ -23,9 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import hydra
 from omegaconf import DictConfig
 from examples.tasks.manifold import ManifoldTask
-from examples.tasks.cross_modal import CrossModalTask
 from examples.tasks.hyperbolic import HyperbolicTask
-from examples.tasks.semantic import SemanticTask
 from examples.tasks.sanity_check import SanityCheckTask
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
@@ -35,9 +33,7 @@ def main(cfg: DictConfig):
 
     task_map = {
         'manifold': ManifoldTask,
-        'crossmodal': CrossModalTask,
         'hyperbolic': HyperbolicTask,
-        'semantic': SemanticTask,
         'sanity': SanityCheckTask,
     }
 
