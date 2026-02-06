@@ -55,5 +55,21 @@ class TestLayers(unittest.TestCase):
         
         self.assertTrue(torch.allclose(x_norm, y_norm, atol=1e-5))
 
+    def test_multi_rotor_shape(self):
+        from layers.multi_rotor import MultiRotorLayer
+        x = torch.randn(4, 5, 8)
+        layer = MultiRotorLayer(self.alg, 5, num_rotors=4)
+        y = layer(x)
+        self.assertEqual(y.shape, (4, 5, 8))
+
+    def test_multi_rotor_invariants(self):
+        from layers.multi_rotor import MultiRotorLayer
+        x = torch.randn(4, 5, 8)
+        layer = MultiRotorLayer(self.alg, 5, num_rotors=4)
+        inv = layer(x, return_invariants=True)
+        # 3D algebra has 4 grades (0, 1, 2, 3)
+        self.assertEqual(inv.shape, (4, 5, 4))
+
+
 if __name__ == '__main__':
     unittest.main()
