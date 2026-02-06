@@ -15,3 +15,12 @@ PATENT_*.md
 
 # Virtual environments
 .venv
+
+# Training artifacts
+*.pt
+*.ckpt
+train_log_*.txt
+
+# Visualization outputs (root-level)
+/*.png
+/*.gif
