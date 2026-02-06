@@ -16,11 +16,12 @@ Dispatches geometric learning tasks.
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from tasks.motion import MotionAlignmentTask
-from tasks.so3 import SO3InvariantTask
 from tasks.qm9 import QM9Task
 from tasks.multi_rotor_qm9 import MultiRotorQM9Task
+from tasks.cross_modal import CrossModalTask
+from tasks.semantic import SemanticTask
 
-EXAMPLE_TASKS = {'manifold', 'crossmodal', 'hyperbolic', 'semantic', 'sanity'}
+EXAMPLE_TASKS = {'manifold', 'hyperbolic', 'sanity'}
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig):
@@ -33,9 +34,10 @@ def main(cfg: DictConfig):
 
     task_map = {
         'motion': MotionAlignmentTask,
-        'so3': SO3InvariantTask,
         'qm9': QM9Task,
-        'multi_rotor_qm9': MultiRotorQM9Task
+        'multi_rotor_qm9': MultiRotorQM9Task,
+        'crossmodal': CrossModalTask,
+        'semantic': SemanticTask,
     }
 
     if task_name in EXAMPLE_TASKS:
