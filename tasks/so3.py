@@ -17,9 +17,9 @@ from models.invariant import SO3InvariantNet
 from torch_geometric.utils import to_dense_batch
 
 class SO3InvariantTask(BaseTask):
-    """Task for SO(3)-invariant classification on ModelNet10 data.
-    
-    Demonstrates generalization from fixed-pose training to arbitrary-pose testing.
+    """SO(3) Invariance. Spin it, I don't care.
+
+    Demonstrates robust classification regardless of orientation.
     """
 
     def __init__(self, cfg):
@@ -27,32 +27,32 @@ class SO3InvariantTask(BaseTask):
         super().__init__(cfg)
 
     def setup_algebra(self):
-        """Sets up algebra using config values."""
+        """Standard 3D."""
         return CliffordAlgebra(p=self.cfg.algebra.p, q=self.cfg.algebra.q, device=self.device)
 
     def setup_model(self):
-        # ModelNet10 has 10 classes
+        """Invariant Net."""
         return SO3InvariantNet(self.algebra, num_classes=10)
 
     def setup_criterion(self):
         return nn.CrossEntropyLoss()
 
     def get_data(self):
-        # Return TRAIN loader for training loop
+        """Loads fixed-pose training data."""
         return get_modelnet_loader(
             self.data_root, 
             batch_size=self.cfg.training.batch_size, 
             subset='train', 
-            rotated=False # Fixed Pose
+            rotated=False 
         )
 
     def train_step(self, batch):
+        """Learn from fixed poses."""
         batch = batch.to(self.device)
         pos = batch.pos
         batch_idx = batch.batch
         labels = batch.y.squeeze()
         
-        # Convert to Dense [B, N, 3]
         dense_pos, mask = to_dense_batch(pos, batch_idx)
         
         self.optimizer.zero_grad()
@@ -69,18 +69,13 @@ class SO3InvariantTask(BaseTask):
         return loss.item(), {"Loss": loss.item(), "Acc": acc.item()}
 
     def evaluate(self, data):
-        pass
-
-    def run(self):
-        # Override run to include proper testing on Rotated set
-        super().run()
-        
-        print("\n>>> Testing on Arbitrarily Rotated Data (SO(3))")
+        """Spinning the test set. Does it break?"""
+        print("\n>>> Evaluating on Arbitrarily Rotated Data (SO(3) Robustness)")
         test_loader = get_modelnet_loader(
             self.data_root, 
             batch_size=self.cfg.training.batch_size, 
             subset='test', 
-            rotated=True # Arbitrary Rotation
+            rotated=True 
         )
         self.model.eval()
         
@@ -90,58 +85,41 @@ class SO3InvariantTask(BaseTask):
         with torch.no_grad():
             for batch in test_loader:
                 batch = batch.to(self.device)
-                pos = batch.pos
-                batch_idx = batch.batch
-                labels = batch.y.squeeze()
-                
-                dense_pos, _ = to_dense_batch(pos, batch_idx)
-                
+                dense_pos, _ = to_dense_batch(batch.pos, batch.batch)
                 logits = self.model(dense_pos)
                 preds = logits.argmax(dim=1)
-                acc = (preds == labels).float().mean()
+                acc = (preds == batch.y.squeeze()).float().mean()
                 total_acc += acc.item()
                 batches += 1
                 
         avg_acc = total_acc / batches
         print(f"Test Accuracy on Rotated Data: {avg_acc*100:.2f}%")
-        
-        if avg_acc > 0.8:
-            print("SUCCESS: Model is robust to SO(3) rotations.")
-        else:
-            print("FAILURE: Model struggled with rotations.")
 
     def visualize(self, data):
-        """Visualizes Input and Invariant Features."""
-        # Get one sample from Test set (Rotated)
-        loader = get_modelnet_loader(self.data_root, batch_size=4, subset='test', rotated=True)
-        batch = next(iter(loader))
-        batch = batch.to(self.device)
-        
-        dense_pos, _ = to_dense_batch(batch.pos, batch.batch)
-        
+        """Shows the invariance."""
         try:
             import matplotlib.pyplot as plt
+            import numpy as np
             
-            fig = plt.figure(figsize=(12, 5))
-            
-            # 1. Input (Rotated)
-            ax1 = fig.add_subplot(121, projection='3d')
+            # Get one rotated sample
+            loader = get_modelnet_loader(self.data_root, batch_size=1, subset='test', rotated=True)
+            batch = next(iter(loader)).to(self.device)
+            dense_pos, _ = to_dense_batch(batch.pos, batch.batch)
             pcl = dense_pos[0].cpu().numpy()
-            ax1.scatter(pcl[:,0], pcl[:,1], pcl[:,2], s=1)
-            ax1.set_title("Input (Rotated)")
+
+            fig = plt.figure(figsize=(10, 5))
+            ax1 = fig.add_subplot(121, projection='3d')
+            ax1.scatter(pcl[:,0], pcl[:,1], pcl[:,2], s=2, alpha=0.5)
+            ax1.set_title("Input (Rotated ModelNet10)")
             
-            # 2. Invariant Norm Distribution
             ax2 = fig.add_subplot(122)
-            # Center and norm
-            centered = pcl - pcl.mean(axis=0)
-            norms = (centered**2).sum(axis=1)**0.5
-            ax2.hist(norms, bins=30, color='skyblue', edgecolor='black')
-            ax2.set_title("Invariant Point Norm Distribution")
-            ax2.set_xlabel("Distance to Centroid")
+            norms = np.linalg.norm(pcl - pcl.mean(axis=0), axis=1)
+            ax2.hist(norms, bins=30, color='skyblue', alpha=0.7)
+            ax2.set_title("Invariant Shape Signature (Point Norms)")
             
             plt.savefig("so3_alignment.png")
-            print(">>> Saved visualization to so3_alignment.png")
             plt.close()
+            print(">>> Saved visualization to so3_alignment.png")
             
         except ImportError:
-            print("Matplotlib not found.")
+            pass

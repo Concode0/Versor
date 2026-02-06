@@ -10,13 +10,17 @@
 
 import torch
 import torch.nn as nn
+import time
 from core.algebra import CliffordAlgebra
 from tasks.base import BaseTask
 from datasets.qm9 import get_qm9_loader, VersorQM9
-from models.molecule import MoleculeGNN
+from models.molecule import MultiRotorQuantumNet
 
-class QM9Task(BaseTask):
-    """Predicting molecules. Standard GNN stuff."""
+class MultiRotorQM9Task(BaseTask):
+    """Molecular Prediction. But with Geometric FFT.
+
+    Uses Multi-Rotor networks to approximate the physics.
+    """
 
     def __init__(self, cfg):
         self.target_name = cfg.dataset.get('target', 'U0')
@@ -24,22 +28,16 @@ class QM9Task(BaseTask):
         super().__init__(cfg)
 
     def setup_algebra(self):
-        """Optimized algebra. Let the data decide."""
-        # 1. Sample Data
-        dataset = VersorQM9(root=self.data_root)
-        sample = dataset[0].pos
-        
-        # 2. Metric Search
-        from core.search import MetricSearch
-        searcher = MetricSearch(device=self.device)
-        best_p, best_q = searcher.search(sample)
-        
-        print(f">>> QM9Task: Optimized Signature: Cl({best_p}, {best_q})")
-        
-        return CliffordAlgebra(p=best_p, q=best_q, device=self.device)
+        """Optimized for molecules."""
+        return CliffordAlgebra(p=3, q=0, device=self.device)
 
     def setup_model(self):
-        return MoleculeGNN(self.algebra, hidden_dim=self.cfg.model.hidden_dim, num_layers=self.cfg.model.layers)
+        return MultiRotorQuantumNet(
+            self.algebra, 
+            hidden_dim=self.cfg.model.hidden_dim, 
+            num_layers=self.cfg.model.layers,
+            num_rotors=self.cfg.model.get('num_rotors', 8)
+        )
 
     def setup_criterion(self):
         return nn.MSELoss()
@@ -65,10 +63,6 @@ class QM9Task(BaseTask):
 
     def train_step(self, batch):
         batch = batch.to(self.device)
-        batch_z = batch.z
-        batch_pos = batch.pos
-        batch_idx = batch.batch
-        
         target_map = {'mu': 0, 'U0': 7}
         target_idx = target_map.get(self.target_name, 7)
         targets = batch.y[:, target_idx].unsqueeze(-1)
@@ -76,19 +70,19 @@ class QM9Task(BaseTask):
         targets_norm = (targets - self.t_mean) / (self.t_std + 1e-6)
         
         self.optimizer.zero_grad()
-        out_mv = self.model(batch_z, batch_pos, batch_idx, batch.edge_index).unsqueeze(-1)
+        pred_norm = self.model(batch.z, batch.pos, batch.batch, batch.edge_index).unsqueeze(-1)
         
-        loss = self.criterion(out_mv, targets_norm)
+        loss = self.criterion(pred_norm, targets_norm)
         loss.backward()
         self.optimizer.step()
         
-        pred = out_mv * self.t_std + self.t_mean
+        pred = pred_norm * self.t_std + self.t_mean
         mae = torch.abs(pred - targets).mean()
         
         return loss.item(), {"MSE": loss.item(), "MAE": mae.item()}
 
     def evaluate(self, val_loader):
-        """Standard metrics."""
+        """Validating."""
         self.model.eval()
         total_mae = 0
         count = 0
@@ -105,8 +99,41 @@ class QM9Task(BaseTask):
                 count += targets.size(0)
         
         avg_mae = total_mae / count
-        print(f">>> QM9 Evaluation: MAE = {avg_mae:.4f}")
+        print(f">>> Multi-Rotor QM9 Validation: MAE = {avg_mae:.4f}")
         return avg_mae
+
+    def benchmark_inference(self, val_loader):
+        """Timing it. Speed matters."""
+        self.model.eval()
+        batch = next(iter(val_loader))
+        
+        z = batch.z[batch.batch == 0].to(self.device)
+        pos = batch.pos[batch.batch == 0].to(self.device)
+        
+        mask = (batch.edge_index[0] < z.size(0)) & (batch.edge_index[1] < z.size(0))
+        edge_index = batch.edge_index[:, mask].to(self.device)
+        b = torch.zeros(z.size(0), dtype=torch.long, device=self.device)
+
+        print(f">>> Benchmarking Inference for 1 molecule (N_atoms={z.size(0)})...")
+        
+        for _ in range(10):
+            _ = self.model(z, pos, b, edge_index)
+            
+        if self.device == 'cuda':
+            torch.cuda.synchronize()
+            
+        start = time.perf_counter()
+        iters = 100
+        for _ in range(iters):
+            _ = self.model(z, pos, b, edge_index)
+            
+        if self.device == 'cuda':
+            torch.cuda.synchronize()
+        end = time.perf_counter()
+        
+        avg_time = (end - start) / iters
+        print(f">>> Average Inference Time: {avg_time*1000:.4f} ms per molecule")
+        return avg_time
 
     def visualize(self, val_loader):
         """Scatter plot. Truth vs Prediction."""
@@ -127,26 +154,33 @@ class QM9Task(BaseTask):
             plt.figure(figsize=(6, 5))
             t = targets.cpu().numpy()
             p = pred.cpu().numpy()
-            plt.scatter(t, p, alpha=0.5, label='MoleculeGNN Pred')
+            plt.scatter(t, p, alpha=0.5, label='Multi-Rotor Pred')
             plt.xlabel(f"Actual {self.target_name}")
             plt.ylabel(f"Predicted {self.target_name}")
             min_val = min(t.min(), p.min())
             max_val = max(t.max(), p.max())
             plt.plot([min_val, max_val], [min_val, max_val], 'r--')
-            plt.title(f"QM9 Prediction ({self.target_name})")
+            plt.title(f"Multi-Rotor QM9 Prediction ({self.target_name})")
             plt.grid(True)
             plt.legend()
-            plt.savefig("qm9_prediction.png")
-            print(">>> Saved visualization to qm9_prediction.png")
+            plt.savefig("multi_rotor_qm9_prediction.png")
+            print(">>> Saved visualization to multi_rotor_qm9_prediction.png")
             plt.close()
         except ImportError:
             print("Matplotlib not found.")
 
     def run(self):
-        """Runs train and val."""
+        """The main loop."""
         print(f">>> Starting Task: {self.cfg.name}")
         train_loader, val_loader = self.get_data()
         
+        if self.epochs == 0:
+            print(">>> Epochs set to 0. Skipping training and running evaluation...")
+            self.evaluate(val_loader)
+            self.benchmark_inference(val_loader)
+            self.visualize(val_loader)
+            return
+
         from tqdm import tqdm
         pbar = tqdm(range(self.epochs))
         

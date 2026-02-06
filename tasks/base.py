@@ -16,25 +16,25 @@ from tqdm import tqdm
 from omegaconf import DictConfig
 
 class BaseTask(ABC):
-    """Abstract base class for all geometric learning tasks.
+    """The Template. Every task follows this ritual.
 
-    Standardizes the lifecycle: setup -> data loading -> training loop -> evaluation -> visualization.
+    Setup -> Load -> Train -> Eval -> Visualize.
+    Don't deviate.
 
     Attributes:
-        cfg (DictConfig): Hydra configuration.
-        device (str): Computation device.
-        algebra (CliffordAlgebra): The algebra instance.
-        model (nn.Module): The neural network.
-        criterion (nn.Module): The loss function.
-        optimizer (optim.Optimizer): The optimizer.
-        epochs (int): Number of training epochs.
+        cfg (DictConfig): Config.
+        device (str): Device.
+        algebra (CliffordAlgebra): Math kernel.
+        model (nn.Module): The brain.
+        criterion (nn.Module): The judge.
+        optimizer (optim.Optimizer): The teacher.
     """
 
     def __init__(self, cfg: DictConfig):
-        """Initializes the task.
+        """Sets up the task.
 
         Args:
-            cfg (DictConfig): Configuration object containing task and training parameters.
+            cfg (DictConfig): Hydra config.
         """
         self.cfg = cfg
         self.device = cfg.algebra.device
@@ -43,52 +43,71 @@ class BaseTask(ABC):
         self.criterion = self.setup_criterion()
         self.optimizer = optim.AdamW(self.model.parameters(), lr=cfg.training.lr)
         self.epochs = cfg.training.epochs
-        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.epochs)
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=5)
+
+        if cfg.get('checkpoint'):
+            self.load_checkpoint(cfg.checkpoint)
 
     @abstractmethod
     def setup_algebra(self):
-        """Initializes and returns the Clifford Algebra instance."""
+        """Spawns the algebra."""
         pass
 
     @abstractmethod
     def setup_model(self):
-        """Initializes and returns the Neural Network model."""
+        """Builds the net."""
         pass
 
     @abstractmethod
     def setup_criterion(self):
-        """Initializes and returns the loss function."""
+        """Defines the loss."""
         pass
 
     @abstractmethod
     def get_data(self):
-        """Loads or generates data. Must return a DataLoader or Tensor."""
+        """Fetches data."""
         pass
 
     @abstractmethod
     def train_step(self, data):
-        """Performs a single training step (forward + backward).
-
-        Args:
-            data: Input batch.
-
-        Returns:
-            tuple: (scalar loss, dict of log metrics).
-        """
+        """One step of optimization."""
         pass
 
     @abstractmethod
     def evaluate(self, data):
-        """Runs evaluation metrics after training."""
+        """How bad is it?"""
         pass
 
     @abstractmethod
     def visualize(self, data):
-        """Generates and saves visualizations of the results."""
+        """Draws pretty pictures."""
         pass
 
+    def save_checkpoint(self, path: str):
+        """Dumps state to disk."""
+        checkpoint = {
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'scheduler_state_dict': self.scheduler.state_dict(),
+            'config': self.cfg
+        }
+        torch.save(checkpoint, path)
+        print(f">>> Checkpoint saved to {path}")
+
+    def load_checkpoint(self, path: str):
+        """Resurrects state from disk."""
+        try:
+            checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        except TypeError:
+            checkpoint = torch.load(path, map_location=self.device)
+            
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        print(f">>> Checkpoint loaded from {path}")
+
     def run(self):
-        """Executes the full task lifecycle."""
+        """Runs the show."""
         print(f">>> Starting Task: {self.cfg.name}")
         dataloader = self.get_data()
         
@@ -96,7 +115,6 @@ class BaseTask(ABC):
         self.model.train()
         pbar = tqdm(range(self.epochs))
         
-        # Determine if we are using a DataLoader or a single Tensor batch
         is_loader = not isinstance(dataloader, (torch.Tensor, tuple, list))
         
         for epoch in pbar:
@@ -108,12 +126,11 @@ class BaseTask(ABC):
                 avg_loss = total_loss / len(dataloader)
                 logs['Loss'] = avg_loss
             else:
-                loss, logs = self.train_step(dataloader)
+                avg_loss, logs = self.train_step(dataloader)
             
-            self.scheduler.step()
+            self.scheduler.step(avg_loss)
             
-            # Log LR
-            current_lr = self.scheduler.get_last_lr()[0]
+            current_lr = self.optimizer.param_groups[0]['lr']
             logs['LR'] = current_lr
                 
             desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])
@@ -123,7 +140,6 @@ class BaseTask(ABC):
         
         self.model.eval()
         with torch.no_grad():
-            # Evaluate on a sample/batch for simplicity
             sample_data = next(iter(dataloader)) if is_loader else dataloader
             self.evaluate(sample_data)
             self.visualize(sample_data)

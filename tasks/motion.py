@@ -18,98 +18,102 @@ from torch.utils.data import DataLoader
 from core.visualizer import GeneralVisualizer
 
 class MotionAlignmentTask(BaseTask):
-    """Task for aligning complex motion data into linearly separable latent space."""
+    """Motion Alignment. Walking isn't running.
+
+    Aligns complex motion data into linearly separable latent space.
+    """
 
     def __init__(self, cfg):
         super().__init__(cfg)
+        self.training_snapshots = []
 
     def setup_algebra(self):
-        """Sets up the algebra using config values."""
+        """Sets up algebra."""
         return CliffordAlgebra(p=self.cfg.algebra.p, q=self.cfg.algebra.q, device=self.device)
 
     def setup_model(self):
-        # HAR has 561 features
+        """Sets up the Motion Network."""
         input_dim = 561
-        num_classes = 6 # Default for HAR
+        num_classes = 6
         
-        # Check if we are using synthetic fallback
         import os
         if not os.path.exists('./data/HAR/train.csv'):
             input_dim = 45 # AMASS synthetic default
-            num_classes = 3 # Walk, Run, Jump
+            num_classes = 3
             
         return MotionManifoldNetwork(self.algebra, input_dim=input_dim, latent_dim=self.cfg.algebra.p, num_classes=num_classes)
 
     def setup_criterion(self):
+        """Cross Entropy."""
         return nn.CrossEntropyLoss()
 
     def get_data(self):
+        """Loads HAR or AMASS."""
         try:
             dataset = HARDataset(self.algebra, root='./data/HAR', split='train')
         except FileNotFoundError:
-            from datasets.amass import AMASSDataset
+            try:
+                from examples.datasets.amass import AMASSDataset
+            except ImportError:
+                raise FileNotFoundError("HAR data not found and AMASS fallback unavailable.")
             dataset = AMASSDataset(self.algebra, num_samples=self.cfg.dataset.samples)
             
         return DataLoader(dataset, batch_size=self.cfg.training.batch_size, shuffle=True)
 
     def train_step(self, batch):
+        """Learn to separate."""
         data, labels = batch
         data, labels = data.to(self.device), labels.to(self.device)
         
         self.optimizer.zero_grad()
         
-        # Forward
         logits, vectors, aligned = self.model(data)
         
-        # Loss: Classification accuracy implies linear separability
         loss = self.criterion(logits, labels)
         
-        total_loss = loss
-        
-        total_loss.backward()
+        loss.backward()
         self.optimizer.step()
         
-        # Calculate Acc
         preds = logits.argmax(dim=1)
         acc = (preds == labels).float().mean()
         
-        # Calculate Grade Purity (Expect Grade 1 vectors in latent space)
-        # 'aligned' is [Batch, 1, Algebra_Dim]
         from core.metric import grade_purity
         purity = grade_purity(self.algebra, aligned.squeeze(1), grade=1).mean()
         
-        return total_loss.item(), {
+        return loss.item(), {
             "Loss": loss.item(), 
             "Acc": acc.item(), 
             "Purity": purity.item()
         }
 
-    def evaluate(self, data=None):
-        """Evaluate model on test data."""
+    def evaluate(self, data=None, noise_std=0.1):
+        """Test with noise. Robustness check."""
         self.model.eval()
 
-        # Determine if data is a single batch or DataLoader
         if data is None:
-            # Load test data
             try:
                 test_dataset = HARDataset(self.algebra, root='./data/HAR', split='test')
             except FileNotFoundError:
-                from datasets.amass import AMASSDataset
+                try:
+                    from examples.datasets.amass import AMASSDataset
+                except ImportError:
+                    raise FileNotFoundError("HAR data not found and AMASS fallback unavailable.")
                 test_dataset = AMASSDataset(self.algebra, num_samples=self.cfg.dataset.samples)
 
             data = DataLoader(test_dataset, batch_size=self.cfg.training.batch_size, shuffle=False)
         elif isinstance(data, (tuple, list)) and len(data) == 2 and isinstance(data[0], torch.Tensor):
-            # Single batch case (from base.py) - data is (batch_tensor, labels_tensor)
-            data = [data]  # Wrap in list for iteration
+            data = [data]
 
         total_loss = 0.0
         total_acc = 0.0
         total_purity = 0.0
+        total_loss_noisy = 0.0
+        total_acc_noisy = 0.0
+        total_purity_noisy = 0.0
         num_batches = 0
 
         with torch.no_grad():
             for batch in data:
-                # Handle batch unpacking robustly
                 if isinstance(batch, (tuple, list)):
                     batch_data, labels = batch[0], batch[1]
                 else:
@@ -117,42 +121,193 @@ class MotionAlignmentTask(BaseTask):
 
                 batch_data, labels = batch_data.to(self.device), labels.to(self.device)
 
-                # Forward pass
+                # Clean
                 logits, _, aligned = self.model(batch_data)
-
-                # Classification loss
                 loss = self.criterion(logits, labels)
                 total_loss += loss.item()
 
-                # Accuracy
                 preds = logits.argmax(dim=1)
                 acc = (preds == labels).float().mean()
                 total_acc += acc.item()
 
-                # Grade purity (expect Grade 1 vectors in latent space)
                 from core.metric import grade_purity
                 purity = grade_purity(self.algebra, aligned.squeeze(1), grade=1).mean()
                 total_purity += purity.item()
+
+                # Noisy
+                if noise_std > 0:
+                    noise = torch.randn_like(batch_data) * noise_std
+                    noisy_data = batch_data + noise
+
+                    logits_noisy, _, aligned_noisy = self.model(noisy_data)
+
+                    loss_noisy = self.criterion(logits_noisy, labels)
+                    total_loss_noisy += loss_noisy.item()
+
+                    preds_noisy = logits_noisy.argmax(dim=1)
+                    acc_noisy = (preds_noisy == labels).float().mean()
+                    total_acc_noisy += acc_noisy.item()
+
+                    purity_noisy = grade_purity(self.algebra, aligned_noisy.squeeze(1), grade=1).mean()
+                    total_purity_noisy += purity_noisy.item()
 
                 num_batches += 1
 
         self.model.train()
 
-        # Return averaged metrics
         metrics = {
             "Loss": total_loss / num_batches,
             "Acc": total_acc / num_batches,
             "Purity": total_purity / num_batches
         }
 
-        # Print metrics for visibility
-        print(f"Evaluation - Loss: {metrics['Loss']:.4f}, Acc: {metrics['Acc']:.4f}, Purity: {metrics['Purity']:.4f}")
+        print(f"Evaluation (Clean) - Loss: {metrics['Loss']:.4f}, Acc: {metrics['Acc']:.4f}, Purity: {metrics['Purity']:.4f}")
+
+        if noise_std > 0:
+            metrics_noisy = {
+                "Loss_Noisy": total_loss_noisy / num_batches,
+                "Acc_Noisy": total_acc_noisy / num_batches,
+                "Purity_Noisy": total_purity_noisy / num_batches
+            }
+            print(f"Evaluation (Noisy σ={noise_std}) - Loss: {metrics_noisy['Loss_Noisy']:.4f}, Acc: {metrics_noisy['Acc_Noisy']:.4f}, Purity: {metrics_noisy['Purity_Noisy']:.4f}")
+
+            acc_drop = (metrics['Acc'] - metrics_noisy['Acc_Noisy']) * 100
+            print(f"Robustness - Accuracy drop: {acc_drop:.2f}%")
+
+            metrics.update(metrics_noisy)
 
         return metrics
 
+    def run(self):
+        """Captures history. For the GIF."""
+        from tqdm import tqdm
+
+        print(f">>> Starting Task: motion")
+        dataloader = self.get_data()
+
+        snapshot_batch = next(iter(dataloader))
+        snapshot_inputs, snapshot_labels = snapshot_batch
+        snapshot_inputs = snapshot_inputs.to(self.device)
+
+        is_loader = not isinstance(dataloader, (torch.Tensor, tuple, list))
+
+        self.model.train()
+        pbar = tqdm(range(self.epochs))
+
+        snapshot_epochs = set([0, 1, 5, 10, 20, 30, 50, 75, self.epochs-1])
+
+        for epoch in pbar:
+            if is_loader:
+                total_loss = 0
+                for batch in dataloader:
+                    loss, logs = self.train_step(batch)
+                    total_loss += loss
+                avg_loss = total_loss / len(dataloader)
+                logs['Loss'] = avg_loss
+            else:
+                loss, logs = self.train_step(dataloader)
+
+            self.scheduler.step()
+
+            current_lr = self.scheduler.get_last_lr()[0]
+            logs['LR'] = current_lr
+
+            desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])
+            pbar.set_description(desc)
+
+            if epoch in snapshot_epochs:
+                self.model.eval()
+                with torch.no_grad():
+                    _, vectors, _ = self.model(snapshot_inputs)
+                    self.training_snapshots.append({
+                        'epoch': epoch,
+                        'vectors': vectors.cpu().numpy(),
+                        'labels': snapshot_labels.numpy()
+                    })
+                self.model.train()
+
+        print(">>> Training Complete.")
+
+        self.model.eval()
+        with torch.no_grad():
+            sample_data = next(iter(dataloader)) if is_loader else dataloader
+            self.evaluate(sample_data)
+            self.visualize(sample_data)
+
+            if len(self.training_snapshots) > 0:
+                self.create_animation()
+
+    def create_animation(self):
+        """Makes the GIF."""
+        try:
+            import matplotlib.pyplot as plt
+            from sklearn.decomposition import PCA
+            import imageio
+            import numpy as np
+
+            print(">>> Creating animation of training progression...")
+
+            class_names = ['LAYING', 'SITTING', 'STANDING', 'WALKING', 'WALKING_DOWNSTAIRS', 'WALKING_UPSTAIRS']
+            colors = plt.cm.tab10(np.linspace(0, 1, 6))
+
+            frames = []
+            temp_files = []
+
+            final_snapshot = self.training_snapshots[-1]
+            pca = PCA(n_components=2)
+            pca.fit(final_snapshot['vectors'])
+
+            for snapshot in self.training_snapshots:
+                epoch = snapshot['epoch']
+                vectors = snapshot['vectors']
+                labels = snapshot['labels']
+
+                vecs_2d = pca.transform(vectors)
+
+                fig, ax = plt.subplots(figsize=(10, 8))
+
+                for class_idx, class_name in enumerate(class_names):
+                    mask = labels == class_idx
+                    if mask.any():
+                        ax.scatter(vecs_2d[mask, 0], vecs_2d[mask, 1],
+                                 c=[colors[class_idx]],
+                                 label=class_name,
+                                 alpha=0.6,
+                                 s=30,
+                                 edgecolors='black',
+                                 linewidths=0.5)
+
+                ax.set_xlabel('PC1', fontsize=12)
+                ax.set_ylabel('PC2', fontsize=12)
+                ax.set_title(f'Motion Latent Space Evolution - Epoch {epoch}', fontsize=14, fontweight='bold')
+                ax.grid(True, alpha=0.3)
+                ax.legend(loc='upper right', fontsize=10)
+
+                ax.set_xlim(vecs_2d[:, 0].min() - 1, vecs_2d[:, 0].max() + 1)
+                ax.set_ylim(vecs_2d[:, 1].min() - 1, vecs_2d[:, 1].max() + 1)
+
+                temp_file = f'/tmp/motion_frame_{epoch}.png'
+                plt.tight_layout()
+                plt.savefig(temp_file, dpi=100)
+                temp_files.append(temp_file)
+                frames.append(imageio.imread(temp_file))
+                plt.close()
+
+            output_file = 'motion_training_animation.gif'
+            imageio.mimsave(output_file, frames, duration=0.8, loop=0)
+
+            import os
+            for temp_file in temp_files:
+                os.remove(temp_file)
+
+            print(f">>> Saved animation to {output_file}")
+
+        except ImportError as e:
+            print(f">>> Could not create animation: {e}")
+            print(">>> Install imageio with: pip install imageio")
+
     def visualize(self, data):
-        """Visualizes the latent space distribution."""
-        # Get a batch
+        """Shows the space and the rotors."""
         loader = self.get_data()
         batch = next(iter(loader))
         inputs, labels = batch
@@ -168,7 +323,6 @@ class MotionAlignmentTask(BaseTask):
             vecs = vectors.cpu().numpy()
             lbls = labels.numpy()
             
-            # Use PCA if dims > 2
             if vecs.shape[1] > 2:
                 pca = PCA(n_components=2)
                 vecs_2d = pca.fit_transform(vecs)
@@ -192,7 +346,6 @@ class MotionAlignmentTask(BaseTask):
             plt.close()
             
             # 2. Bivector Map (Rotor Weights)
-            # Weights: [Channels, Num_Bivectors]
             weights = self.model.rotor.bivector_weights.detach().cpu().numpy()
             
             plt.figure(figsize=(10, 4))
