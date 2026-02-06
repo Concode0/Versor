@@ -66,9 +66,11 @@ out = activation(linear(rotor(x)))
 Versor uses **Hydra** for configuration management:
 
 ```bash
-# Run a real-data task
+# Run a task
 uv run main.py task=qm9 training.epochs=100
 uv run main.py task=motion training.epochs=100
+uv run main.py task=crossmodal training.epochs=200
+uv run main.py task=semantic training.epochs=200
 
 # Override parameters
 uv run main.py task=qm9 algebra.device=cuda training.lr=0.001
@@ -92,16 +94,20 @@ streamlit run examples/demo.py
 | **Algebra** | $Cl(3, 0)$ (3D Euclidean) |
 | **Network** | MultiRotorQuantumNet |
 | **Num Rotors** | 12 |
-| **Validation MAE** | **7.3505** |
-| **Avg Inference Time** | **7.0942 ms / molecule** |
+| **Validation MAE** | **7.6468** |
+| **Avg Inference Time** | **5.8439 ms / molecule** |
 
 ![QM9 predictions](assets/multi_rotor_qm9_prediction.png)
 
 ```bash
+# Train from scratch
 uv run main.py task=multi_rotor_qm9 training.epochs=100
+
+# Evaluate pretrained model
+uv run main.py task=multi_rotor_qm9 training.epochs=0 checkpoint=multi_rotor_qm9_best.pt
 ```
 
-> Note on Convergence & Efficiency: The current 7.3505 meV was achieved in just 100 epochs, and training was intentionally halted before reaching a plateau. 
+> Note on Convergence & Efficiency: The current 7.3505 meV was achieved in just 100 epochs, and training was intentionally halted before reaching a plateau.
 > We identified that the gradient descent in the current "Linear Algebra Cage" (standard matrix-based mixing) began to introduce infinitesimal manifold distortions that counteract the pure isometric unbending of the GBN.
 
 ### Motion Alignment (UCI-HAR)
@@ -120,6 +126,33 @@ uv run main.py task=multi_rotor_qm9 training.epochs=100
 uv run main.py task=motion training.epochs=100
 ```
 
+### Cross-Modal Alignment
+**Task**: Align embeddings from two modalities (BERT text + rotated/noisy synthetic) into a shared geometric space using dual rotor encoders.
+
+| Metric | Value |
+|--------|-------|
+| **Algebra** | $Cl(6, 0)$ (6D Euclidean) |
+| **Network** | CrossModalBinder (Dual RotorLayer Encoders) |
+| **Similarity Gap** | **0.86 ~ 1.02** (matched vs unmatched cosine sim) |
+| **Retrieval Accuracy** | **100.00%** (stable across seeds) |
+
+```bash
+uv run main.py task=crossmodal training.epochs=1000
+```
+
+### Semantic Disentanglement
+**Task**: Rotate BERT word embeddings so that semantic concepts align with orthogonal geometric grades (vectors vs bivectors).
+
+| Metric | Value |
+|--------|-------|
+| **Algebra** | $Cl(6, 0)$ (6D Euclidean) |
+| **Network** | SemanticNetwork (RotorLayer + BladeSelector) |
+| **Grade Purity** | **99.12%%** |
+
+```bash
+uv run main.py task=semantic training.epochs=1000
+```
+
 ## Examples (Synthetic/Demo Tasks)
 
 Synthetic experiments demonstrating GA concepts are in the `examples/` directory:
@@ -127,23 +160,19 @@ Synthetic experiments demonstrating GA concepts are in the `examples/` directory
 ```bash
 # Run synthetic tasks
 uv run python -m examples.main task=manifold training.epochs=500
-uv run python -m examples.main task=crossmodal training.epochs=200
 uv run python -m examples.main task=hyperbolic training.epochs=500
-uv run python -m examples.main task=semantic training.epochs=200
 uv run python -m examples.main task=sanity
 ```
 
 | Example | Algebra | Description |
 |---------|---------|-------------|
 | **Manifold** | $Cl(3,0)$ | Flatten a figure-8 manifold (100% topology restoration) |
-| **Cross-Modal** | $Cl(6,0)$ | Align BERT + synthetic modalities (98% alignment improvement) |
 | **Hyperbolic** | $Cl(1,1)$ | Reverse a Lorentz boost in Minkowski spacetime |
-| **Semantic** | $Cl(6,0)$ | Disentangle BERT embeddings by grade (88.7% purity) |
 | **Sanity** | $Cl(3,0)$ | Verify algebra correctness (identity learning) |
 
 ## Configuration
 
-Configuration files are in `conf/` (real tasks) and `examples/conf/` (synthetic tasks).
+Configuration files are in `conf/` (main tasks) and `examples/conf/` (synthetic tasks).
 
 ```bash
 # Override any parameter from CLI
@@ -158,11 +187,12 @@ Versor/
 ├── layers/             # Neural layers (Rotor, MultiRotor, Linear, GNN, Norm)
 ├── functional/         # Activations (GeometricGELU, GradeSwish) & losses
 ├── models/             # Model architectures (GBN, MultiRotor, Molecule, Motion)
-├── tasks/              # Real-data task runners (QM9, Motion)
-├── datasets/           # Real data loaders (QM9, HAR, ModelNet)
-├── conf/               # Hydra configs for real tasks
+├── tasks/              # Task runners (QM9, Motion, CrossModal, Semantic)
+├── datasets/           # Data loaders (QM9, HAR, CrossModal)
+├── conf/               # Hydra configs for main tasks
+├── docs/               # Documentation (philosophy, tutorial, math, FAQ)
 ├── examples/           # Synthetic demos and interactive Streamlit app
-│   ├── tasks/          # Manifold, CrossModal, Hyperbolic, Semantic, Sanity
+│   ├── tasks/          # Manifold, Hyperbolic, Sanity
 │   ├── datasets/       # Synthetic data generators
 │   └── conf/           # Hydra configs for example tasks
 ├── tests/              # Unit & property tests
@@ -182,10 +212,10 @@ Versor/
 
 ## Documentation
 
-*   [**Mathematics**](docs/MATHEMATICS.md): Primer on Clifford Algebra, Rotors, and Metric Signatures.
-*   [**Layers**](docs/LAYERS.md): Guide to `RotorLayer`, `CliffordLinear`, and `CliffordGraphConv`.
-*   [**Tasks**](docs/TASKS.md): Explanation of task architectures.
-*   [**API Reference**](docs/API.md): Overview of core classes and functions.
+*   [**Philosophy**](docs/philosophy.md): Why Geometric Algebra? The "unbending" paradigm.
+*   [**Tutorial**](docs/tutorial.md): Step-by-step guide to building with Versor.
+*   [**Mathematics**](docs/mathematical.md): Clifford Algebra, Rotors, Metric Signatures.
+*   [**FAQ**](docs/faq.md): Common questions and troubleshooting.
 
 ## License & Intellectual Property
 
@@ -208,7 +238,7 @@ By releasing this under Apache 2.0, we provide a **perpetual, royalty-free paten
 }
 ```
 
-## ⚠️ Technical Note: Current State of CliffordLinear
+## Technical Note: Current State of CliffordLinear
 While Versor achieves SOTA-level efficiency, the current implementation of CliffordLinear still utilizes standard scalar weight matrices for channel mixing. We identify this as a lingering vestige of the "Linear Algebra Cage." > Current Limitation: These linear mappings can introduce unconstrained scaling and manifold warping, which slightly deviates from the pure isometric unbending provided by our RotorLayers.
 
 Active Development: We are currently transitioning to a Pure Geometric Update paradigm. This involves:
