@@ -12,7 +12,7 @@ By abandoning the rigidity of single-rotor operations in favor of a **"Geometric
 
 ### Core Concepts (In Development)
 * **Overlap & Entanglement:** Instead of orthogonal bases, we utilize **overlapping rotor heads** that share dimensions (e.g., $e_{12}$ and $e_{23}$ coupled via $e_2$). This creates a globally entangled manifold structure through local interactions.
-* **Relaxed Isometry:** We approximate complex non-linear manifolds via the **weighted summation of multiple rotors** ($\sum w_i R_i$), effectively performing a "Taylor Series expansion" of the geometric transformation.
+* **Relaxed Isometry:** We approximate complex non-linear manifolds via the **weighted summation of multiple rotors** ($\sum w_i R_i$), effectively performing a "Sparse Fourier Decomposition" of the geometric transformation.
 * **Polynomial Complexity:** This architecture reduces the parameter space from $O(2^n)$ to **$O(k \cdot n^2)$**, making tasks like **QM9 (Molecular Dynamics)** and **High-dim NLP** feasible within a pure geometric framework.
 
 *This architecture is currently in the active research & implementation phase. See [TODO.md](./TODO.md) for the roadmap.*
