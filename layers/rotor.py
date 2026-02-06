@@ -14,42 +14,38 @@ from core.algebra import CliffordAlgebra
 from layers.base import CliffordModule
 
 class RotorLayer(CliffordModule):
-    """A Learnable Rotor Layer.
+    """Learnable Rotor. The heart of the GBN.
 
-    Learns a set of rotors R = exp(-B/2) to perform geometric rotations on the input.
-    Rotors preserve the origin, lengths, and angles (isometries).
+    Learns R = exp(-B/2). Rotates without distorting.
+    Preserves origin, lengths, and angles. Pure isometry.
 
     Attributes:
-        channels (int): Number of independent rotors to learn.
-        bivector_indices (torch.Tensor): Indices of bivector basis elements in the algebra.
-        num_bivectors (int): Count of bivector components.
-        bivector_weights (nn.Parameter): Learnable coefficients for B [Channels, Num_Bivectors].
+        channels (int): Number of rotors.
+        bivector_weights (nn.Parameter): Learnable B coefficients.
     """
 
     def __init__(self, algebra: CliffordAlgebra, channels: int):
-        """Initializes the Rotor Layer.
+        """Sets up the Rotor Layer.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
-            channels (int): Number of channels (features) to rotate independently.
+            channels (int): Number of features.
         """
         super().__init__(algebra)
         self.channels = channels
         
-        # We learn the bivector B directly.
         self.bivector_indices = self._get_bivector_indices()
         self.num_bivectors = len(self.bivector_indices)
         
-        # Weights: [Channels, Num_Bivectors]
         self.bivector_weights = nn.Parameter(torch.Tensor(channels, self.num_bivectors))
         
         self.reset_parameters()
         
     def _get_bivector_indices(self) -> torch.Tensor:
-        """Identifies indices corresponding to Grade-2 elements (bivectors)."""
+        """Finds the bivectors (Grade 2)."""
         indices = []
         for i in range(self.algebra.dim):
-            # Count set bits (grade)
+            # Count set bits
             cnt = 0
             temp = i
             while temp > 0:
@@ -60,51 +56,47 @@ class RotorLayer(CliffordModule):
         return torch.tensor(indices, device=self.algebra.device, dtype=torch.long)
 
     def reset_parameters(self):
-        """Initializes bivector weights to small random values (near identity rotation)."""
+        """Starts with near-identity rotations."""
         nn.init.normal_(self.bivector_weights, std=0.01)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Applies the rotor transformation x -> R x R~.
+        """Spins the multivector. Sandwich product style.
 
         Args:
-            x (torch.Tensor): Input multivectors [Batch, Channels, Dim].
+            x (torch.Tensor): Input [Batch, Channels, Dim].
 
         Returns:
-            torch.Tensor: Rotated multivectors [Batch, Channels, Dim].
+            torch.Tensor: Rotated input.
         """
-        # 1. Construct Bivector B from weights
+        # 1. Construct Bivector B
         B = torch.zeros(self.channels, self.algebra.dim, device=x.device, dtype=x.dtype)
         
-        # Scatter weights into correct bivector indices
         indices = self.bivector_indices.unsqueeze(0).expand(self.channels, -1)
         B.scatter_(1, indices, self.bivector_weights)
         
         # 2. Compute Rotor R = exp(-B/2)
-        # Using Taylor series or optimized exp map
         R = self.algebra.exp(-0.5 * B)
         
-        # 3. Compute Reverse R_rev
+        # 3. Reverse R
         R_rev = self.algebra.reverse(R)
         
-        # 4. Apply Sandwich Product: R * x * R_rev
-        # R is [Channels, Dim], x is [Batch, Channels, Dim]
-        
+        # 4. Sandwich: R * x * ~R
         R_expanded = R.unsqueeze(0) # [1, C, D]
         R_rev_expanded = R_rev.unsqueeze(0) # [1, C, D]
         
         # Rx
         Rx = self.algebra.geometric_product(R_expanded, x)
         
-        # (Rx)R_rev
+        # (Rx)~R
         res = self.algebra.geometric_product(Rx, R_rev_expanded)
         
         return res
 
     def prune_bivectors(self, threshold: float = 1e-4) -> int:
-        """Prunes bivector weights with small magnitudes (Geometric Sparsity).
+        """Trims the fat. Removes useless rotation planes.
 
         Args:
-            threshold (float): Magnitude threshold for pruning.
+            threshold (float): Cutoff magnitude.
 
         Returns:
             int: Number of pruned parameters.
@@ -116,11 +108,8 @@ class RotorLayer(CliffordModule):
         return num_pruned
 
     def sparsity_loss(self) -> torch.Tensor:
-        """Computes the geometric sparsity loss (L1 norm of bivectors).
+        """Penalizes complexity. Keep it simple.
 
-        Encourages the learning of simpler rotations (fewer active planes).
-
-        Returns:
-            torch.Tensor: Scalar loss.
+        L1 norm on bivectors.
         """
         return torch.norm(self.bivector_weights, p=1)

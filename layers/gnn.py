@@ -15,46 +15,45 @@ from layers.base import CliffordModule
 from layers.linear import CliffordLinear
 
 class CliffordGraphConv(CliffordModule):
-    """Graph Convolutional Layer for Multivector signals.
+    """Geometric Graph Conv. Neighbors talk in multivectors.
 
-    Aggregates geometric features from neighbors and applies a linear transformation.
-    H' = Aggregate(H) * W + Bias
+    Aggregates geometric features. Because topology matters.
+    H' = Aggregate(H) * W + Bias.
 
     Attributes:
-        linear (CliffordLinear): The learnable linear transformation.
+        linear (CliffordLinear): The transformation.
     """
 
     def __init__(self, algebra: CliffordAlgebra, in_channels: int, out_channels: int):
-        """Initializes the Graph Convolution layer.
+        """Sets up the GNN layer.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
-            in_channels (int): Input node feature size.
-            out_channels (int): Output node feature size.
+            in_channels (int): Input features.
+            out_channels (int): Output features.
         """
         super().__init__(algebra)
         self.linear = CliffordLinear(algebra, in_channels, out_channels)
         
     def forward(self, x: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
-        """Performs graph convolution.
+        """Aggregates and transforms. The usual GNN stuff, but geometric.
 
         Args:
-            x (torch.Tensor): Node features [Num_Nodes, In_Channels, Dim].
-            adj (torch.Tensor): Adjacency matrix [Num_Nodes, Num_Nodes].
+            x (torch.Tensor): Node features.
+            adj (torch.Tensor): Adjacency matrix.
 
         Returns:
-            torch.Tensor: Updated node features [Num_Nodes, Out_Channels, Dim].
+            torch.Tensor: Updated features.
         """
-        # 1. Aggregate Neighbor Information
-        # Flatten channels for matrix multiplication
+        # 1. Aggregate
         N, C, D = x.shape
         x_flat = x.view(N, -1)
         
-        # Sparse aggregation via dense matmul (simplified)
+        # Sparse aggregation
         x_agg_flat = torch.mm(adj, x_flat)
         x_agg = x_agg_flat.view(N, C, D)
         
-        # 2. Geometric Transformation
+        # 2. Transform
         out = self.linear(x_agg)
         
         return out

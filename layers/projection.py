@@ -14,45 +14,41 @@ from core.algebra import CliffordAlgebra
 from layers.base import CliffordModule
 
 class BladeSelector(CliffordModule):
-    """A soft projection/filtering layer for basis blades.
+    """Blade Selector. Filters the noise.
 
-    Learns a scalar weight for each basis element (scalar, vectors, bivectors...)
-    to emphasize or suppress specific geometric grades or directions.
+    Learns which geometric grades actually matter.
+    Suppresses the rest.
 
     Attributes:
-        weights (nn.Parameter): Learnable weights [Channels, Dim].
+        weights (nn.Parameter): Soft gates [Channels, Dim].
     """
 
     def __init__(self, algebra: CliffordAlgebra, channels: int):
-        """Initializes the Blade Selector.
+        """Sets up the selector.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
-            channels (int): Number of independent channels.
+            channels (int): Input features.
         """
         super().__init__(algebra)
         
-        # Learn a weight for each basis element per channel
-        # Weights: [Channels, Dim]
         self.weights = nn.Parameter(torch.Tensor(channels, algebra.dim))
         
         self.reset_parameters()
 
     def reset_parameters(self):
-        """Initializes weights to 1 (pass-through)."""
+        """Defaults to pass-through (all ones)."""
         nn.init.ones_(self.weights)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Applies soft blade selection via element-wise multiplication.
+        """Gates the grades.
 
         Args:
-            x (torch.Tensor): Input multivectors [Batch, Channels, Dim].
+            x (torch.Tensor): Input [Batch, Channels, Dim].
 
         Returns:
-            torch.Tensor: Filtered multivectors [Batch, Channels, Dim].
+            torch.Tensor: Filtered input.
         """
-        # Apply Sigmoid to weights to act as a gate (0 to 1)
-        # Or standard multiplicative weight?
-        # Let's use sigmoid to enforce "selection" semantics.
+        # Sigmoid gate
         w = torch.sigmoid(self.weights).unsqueeze(0)
         return x * w

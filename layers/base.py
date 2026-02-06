@@ -12,38 +12,30 @@ import torch.nn as nn
 from core.algebra import CliffordAlgebra
 
 class CliffordModule(nn.Module):
-    """Base class for all Neural Network layers operating on Multivectors.
+    """Base class. The foundation.
 
-    Ensures that the algebra configuration (metric signature) is consistent
-    across layers and supports serialization by storing configuration parameters
-    instead of the heavy algebra object.
-
-    Attributes:
-        p (int): Positive metric dimensions.
-        q (int): Negative metric dimensions.
-        _algebra (CliffordAlgebra): Lazy-loaded algebra instance.
+    Keeps track of the algebra configuration so you don't have to.
     """
 
     def __init__(self, algebra: CliffordAlgebra):
-        """Initializes the Clifford Module.
+        """Sets up the module.
 
         Args:
-            algebra (CliffordAlgebra): The algebra instance defining the geometric space.
+            algebra (CliffordAlgebra): The algebra instance.
         """
         super().__init__()
-        # Store minimal config to reconstruct algebra if needed (e.g. after loading state_dict)
+        # Store minimal config to reconstruct algebra if needed
         self.p = algebra.p
         self.q = algebra.q
         self._algebra = algebra # transient reference
 
     @property
     def algebra(self) -> CliffordAlgebra:
-        """Returns the Clifford Algebra instance, initializing it if necessary."""
+        """Gets the algebra. Spawns it if missing."""
         if self._algebra is None:
             self._algebra = CliffordAlgebra(self.p, self.q)
         return self._algebra
     
     def forward(self, x):
-        """Defines the computation performed at every call."""
+        """Does the math."""
         raise NotImplementedError
-
