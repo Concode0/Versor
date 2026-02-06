@@ -16,59 +16,45 @@ from layers.projection import BladeSelector
 from functional.loss import SubspaceLoss
 from tasks.base import BaseTask
 from core.visualizer import GeneralVisualizer
-from datasets.synthetic import Figure8Dataset
+from examples.datasets.synthetic import Figure8Dataset
 from torch.utils.data import DataLoader
 
 class ManifoldNetwork(nn.Module):
-    """Neural Network for Manifold Unbending.
+    """The Unbender.
 
-    Consists of a learnable Rotor to align the manifold and a BladeSelector to
-    filter out noise dimensions.
+    Aligns the manifold and filters the noise.
     """
 
     def __init__(self, algebra):
-        """Initializes the network.
-
-        Args:
-            algebra: The algebra instance.
-        """
+        """Sets up the network."""
         super().__init__()
         self.rotor = RotorLayer(algebra, channels=1)
         self.selector = BladeSelector(algebra, channels=1)
 
     def forward(self, x):
-        """Forward pass.
-
-        Args:
-            x (torch.Tensor): Input multivectors.
-
-        Returns:
-            torch.Tensor: Transformed multivectors.
-        """
+        """Forward pass."""
         x_rot = self.rotor(x)
         return self.selector(x_rot)
 
 class ManifoldTask(BaseTask):
-    """Task for restoring a distorted 3D manifold (Figure-8) to a 2D plane.
+    """Manifold Unbending. Flattening the universe.
 
-    Demonstrates the ability of GA rotors to learn optimal geometric transformations
-    to simplify data topology.
+    Restores a distorted 3D manifold to its planar truth.
     """
 
     def __init__(self, cfg):
         super().__init__(cfg)
 
     def setup_algebra(self):
-        """Sets up 3D Euclidean algebra (p=3, q=0)."""
+        """3D Euclidean."""
         return CliffordAlgebra(p=self.cfg.algebra.p, q=self.cfg.algebra.q, device=self.device)
 
     def setup_model(self):
-        """Sets up the ManifoldNetwork."""
+        """The Unbender."""
         return ManifoldNetwork(self.algebra)
 
     def setup_criterion(self):
-        """Sets up SubspaceLoss to penalize non-vector components."""
-        # Calculate indices for Grade 1 (vectors)
+        """Subspace Loss. Only Grade 1 allowed."""
         grade_1_indices = []
         for i in range(self.algebra.dim):
             if bin(i).count('1') == 1:
@@ -77,20 +63,18 @@ class ManifoldTask(BaseTask):
         return SubspaceLoss(self.algebra, target_indices=grade_1_indices)
 
     def get_data(self):
-        """Generates the Figure-8 dataset."""
+        """Figure-8 dataset."""
         dataset = Figure8Dataset(self.algebra, num_samples=self.cfg.dataset.samples)
         return DataLoader(dataset, batch_size=self.cfg.training.batch_size, shuffle=True)
 
     def train_step(self, data):
-        """Executes one training step."""
+        """Flatten it."""
         data = data.to(self.device)
         self.optimizer.zero_grad()
         output = self.model(data)
         
-        # Loss: minimize energy in non-vector grades
         loss = self.criterion(output)
         
-        # Explicitly minimize e3 energy (index 4) if applicable
         if self.algebra.dim > 4:
             z_energy = (output[..., 4]**2).mean()
             loss = loss + z_energy
@@ -103,14 +87,14 @@ class ManifoldTask(BaseTask):
         return loss.item(), {"Loss": loss.item(), "Z": z_energy.item()}
 
     def evaluate(self, data):
-        """Evaluates reconstruction loss."""
+        """How flat is it?"""
         data = data.to(self.device)
         output = self.model(data)
         loss = self.criterion(output).item()
         print(f"Final Reconstruction Loss: {loss:.6f}")
 
     def visualize(self, data):
-        """Visualizes the original and unbent manifolds."""
+        """Plots the evidence."""
         data = data.to(self.device)
         viz = GeneralVisualizer(self.algebra)
         

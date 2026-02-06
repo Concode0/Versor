@@ -1,0 +1,16 @@
+defaults:
+  - _self_
+  - task: manifold
+
+algebra:
+  p: 3
+  q: 0
+  device: "cpu"
+
+training:
+  epochs: 100
+  lr: 0.01
+  batch_size: 32
+  seed: 42
+
+checkpoint: null

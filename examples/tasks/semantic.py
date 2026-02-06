@@ -22,18 +22,13 @@ from tasks.base import BaseTask
 from core.visualizer import GeneralVisualizer
 
 class SemanticNetwork(nn.Module):
-    """Network for semantic manifold alignment (unbending).
+    """Meaning Unbender. Words are vectors.
 
-    Learns to rotate high-dimensional semantic embeddings (e.g., from BERT)
-    such that distinct topics align with orthogonal geometric basis blades (grades).
+    Aligns semantic concepts with geometric grades.
     """
 
     def __init__(self, algebra):
-        """Initializes the network.
-
-        Args:
-            algebra: The algebra instance.
-        """
+        """Sets up the network."""
         super().__init__()
         self.rotor = RotorLayer(algebra, channels=1)
         self.selector = BladeSelector(algebra, channels=1)
@@ -44,10 +39,9 @@ class SemanticNetwork(nn.Module):
         return self.selector(x_rot)
 
 class SemanticTask(BaseTask):
-    """Task for disentangling semantic topics into geometric grades.
+    """Semantic Disentanglement. Tech is vector, Nature is bivector.
 
-    For example, aligning "Technology" words with vectors (Grade 1) and
-    "Nature" words with bivectors (Grade 2).
+    Forces meanings into orthogonal subspaces.
     """
 
     def __init__(self, cfg):
@@ -55,23 +49,15 @@ class SemanticTask(BaseTask):
         super().__init__(cfg)
 
     def setup_algebra(self):
-        """Sets up Cl(6, 0)."""
+        """High-dim Euclidean."""
         return CliffordAlgebra(p=self.embedding_dim, q=0, device=self.device)
 
     def setup_model(self):
-        """Sets up the SemanticNetwork."""
+        """The Unbender."""
         return SemanticNetwork(self.algebra)
 
     def setup_criterion(self):
-        """Sets up SubspaceLoss.
-
-        We want the output to be pure Grade 1 (Vector) for Topic A,
-        and pure Grade 2 (Bivector) for Topic B.
-        However, SubspaceLoss takes a static target.
-        For this demo, we'll assume we want to align ALL topics to Grade 1 (Vectors),
-        effectively 'flattening' the semantic space to a vector space.
-        """
-        # Target: Vectors
+        """Subspace Loss. Flatten to vectors."""
         target = []
         for i in range(self.algebra.dim):
             if bin(i).count('1') == 1:
@@ -79,7 +65,7 @@ class SemanticTask(BaseTask):
         return SubspaceLoss(self.algebra, target_indices=target)
 
     def get_data(self):
-        """Loads BERT embeddings for two distinct topics."""
+        """Fetches BERT embeddings. Adds noise."""
         tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
         bert = BertModel.from_pretrained('bert-base-uncased')
         
@@ -95,7 +81,6 @@ class SemanticTask(BaseTask):
             inputs = tokenizer(words, return_tensors="pt", padding=True, truncation=True)
             with torch.no_grad():
                 outputs = bert(**inputs)
-            # [Batch, Hidden]
             emb = outputs.last_hidden_state[:, 0, :].numpy()
             all_embeddings.append(emb)
             labels.extend([topic] * len(words))
@@ -105,22 +90,17 @@ class SemanticTask(BaseTask):
         # PCA to 6D
         pca = PCA(n_components=self.embedding_dim)
         reduced = pca.fit_transform(all_embeddings)
-        # Normalize
         reduced = reduced / np.abs(reduced).max()
         
         # Embed into Multivectors
-        # We put them initially into mixed grades or just vectors?
-        # Let's put them into vectors but add noise to other grades to simulate "entanglement"
-        
         data = torch.zeros(len(labels), 1, self.algebra.dim)
         vector_indices = [1 << i for i in range(self.embedding_dim)]
         
         for i in range(self.embedding_dim):
             data[:, 0, vector_indices[i]] = torch.tensor(reduced[:, i])
             
-        # Add noise to bivectors (entanglement)
+        # Add noise to bivectors (simulate entanglement)
         noise = torch.randn_like(data) * 0.2
-        # Mask only bivectors
         mask = torch.zeros(self.algebra.dim, dtype=torch.bool)
         for i in range(self.algebra.dim):
             if bin(i).count('1') == 2:
@@ -131,14 +111,13 @@ class SemanticTask(BaseTask):
         return data.to(self.device)
 
     def train_step(self, data):
-        """Executes one training step."""
+        """Clean up the meaning."""
         self.optimizer.zero_grad()
         output = self.model(data)
         
-        # Minimize non-vector components
         loss = self.criterion(output)
         
-        # Calculate Grade Purity (Energy in Grade 1 / Total Energy)
+        # Calculate Grade Purity
         total_energy = (output**2).sum()
         
         vec_indices = [1 << i for i in range(self.embedding_dim)]
@@ -152,7 +131,7 @@ class SemanticTask(BaseTask):
         return loss.item(), {"Recon": loss.item(), "Purity": purity.item()}
 
     def evaluate(self, data):
-        """Evaluates final grade purity."""
+        """How pure is it?"""
         output = self.model(data)
         
         vec_indices = [1 << i for i in range(self.embedding_dim)]
@@ -163,7 +142,7 @@ class SemanticTask(BaseTask):
         print(f"Final Semantic Grade Purity: {purity.item():.4f}")
 
     def visualize(self, data):
-        """Visualizes the bivector map."""
+        """Heatmap of meaning."""
         output = self.model(data)
         viz = GeneralVisualizer(self.algebra)
         

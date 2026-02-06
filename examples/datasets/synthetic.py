@@ -16,29 +16,23 @@ from transformers import BertTokenizer, BertModel
 from sklearn.decomposition import PCA
 
 class Figure8Dataset(Dataset):
-    """Synthetic dataset generating a distorted Figure-8 manifold in 3D.
+    """Fake data. Figure-8 distorted by z=0.5xy.
 
-    Generates points on a 2D curve embedded in 3D, distorted by a non-linear Z term.
+    Tests if the model can flatten a manifold.
     """
 
     def __init__(self, algebra: CliffordAlgebra, num_samples=1000):
-        """Initializes the dataset.
-
-        Args:
-            algebra (CliffordAlgebra): Algebra instance for multivector construction.
-            num_samples (int, optional): Number of points. Defaults to 1000.
-        """
+        """Sets up the dataset."""
         self.algebra = algebra
         self.data = self._generate(num_samples)
 
     def _generate(self, n):
-        """Generates the data points."""
+        """Math generator."""
         t = torch.linspace(0, 2*np.pi, n)
         x = torch.sin(t)
         y = torch.sin(t) * torch.cos(t)
-        z = 0.5 * x * y  # Distorted manifold (z = 0.5xy)
+        z = 0.5 * x * y
         
-        # Convert to Multivector (vectors at indices 1, 2, 4 for 3D)
         # e1=1, e2=2, e3=4
         data = torch.zeros(n, 1, self.algebra.dim)
         data[..., 1] = x.unsqueeze(-1)
@@ -53,27 +47,20 @@ class Figure8Dataset(Dataset):
         return self.data[idx]
 
 class CrossModalDataset(Dataset):
-    """Synthetic Multi-Modal Dataset.
+    """Fake modalities. Text is real, Image is noise.
 
-    Generates pairs of (Text Embedding, Distorted Image Embedding).
-    Source A: Real BERT embeddings of sentences.
-    Source B: Source A rotated + noisy to simulate a different modality view.
+    A: Real BERT embeddings.
+    B: Rotated A + Noise.
     """
 
     def __init__(self, algebra: CliffordAlgebra, embedding_dim=6):
-        """Initializes the dataset.
-
-        Args:
-            algebra (CliffordAlgebra): Algebra instance.
-            embedding_dim (int, optional): Dimension of the embedding space. Defaults to 6.
-        """
+        """Sets up the dataset."""
         self.algebra = algebra
         self.embedding_dim = embedding_dim
         self.data_A, self.data_B = self._generate()
 
     def _generate(self):
-        """Generates synthetic multi-modal data."""
-        # Load BERT (using small model for demo speed)
+        """Downloads BERT, ruins the embeddings."""
         tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
         bert = BertModel.from_pretrained('bert-base-uncased')
         
@@ -89,31 +76,25 @@ class CrossModalDataset(Dataset):
             outputs = bert(**inputs)
         embeddings_A = outputs.last_hidden_state[:, 0, :].numpy()
         
-        # Project to lower dimension using PCA
         pca = PCA(n_components=self.embedding_dim)
         reduced_A = pca.fit_transform(embeddings_A)
         reduced_A = reduced_A / (np.abs(reduced_A).max() + 1e-6)
         
-        # Convert to Multivector A (Basis Vectors)
         vector_indices = [1 << i for i in range(self.embedding_dim)]
         data_A = torch.zeros(len(sentences), 1, self.algebra.dim)
         for i in range(self.embedding_dim):
             data_A[:, 0, vector_indices[i]] = torch.tensor(reduced_A[:, i])
             
-        # Generate Source B (Synthetic Image Modality)
-        # Apply a fixed rotation (Misalignment) + Noise
         phi = torch.tensor(0.78) # ~45 degrees
         B_dist = torch.zeros(1, self.algebra.dim)
-        B_dist[0, 3] = 1.0 # e1^e2 plane rotation
+        B_dist[0, 3] = 1.0 
         
         R_dist = self.algebra.exp(-0.5 * phi * B_dist)
         R_dist_rev = self.algebra.reverse(R_dist)
         
-        # Apply transformation R A R~
         data_B = self.algebra.geometric_product(R_dist.expand_as(data_A), data_A)
         data_B = self.algebra.geometric_product(data_B, R_dist_rev.expand_as(data_A))
         
-        # Add modality gap noise
         data_B = data_B + 0.1 * torch.randn_like(data_B)
         
         return data_A, data_B

@@ -12,7 +12,14 @@
 
 Provides a graphical interface to generate distorted manifold data,
 train a Geometric Algebra network live, and visualize the unbending process.
+
+Run from the project root:
+    streamlit run examples/demo.py
 """
+
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
 import torch

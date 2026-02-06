@@ -17,61 +17,49 @@ from tasks.base import BaseTask
 from core.visualizer import GeneralVisualizer
 
 class IdentityNetwork(nn.Module):
-    """Simple identity network with a learnable rotor.
-
-    Used to verify that the network can learn an identity mapping or simple
-    transformation on random noise.
-    """
+    """The null hypothesis. Does nothing."""
 
     def __init__(self, algebra):
-        """Initializes the network.
-
-        Args:
-            algebra: The algebra instance.
-        """
+        """Sets up the do-nothing network."""
         super().__init__()
         self.rotor = RotorLayer(algebra, channels=1)
 
     def forward(self, x):
-        """Forward pass."""
+        """Pass through."""
         return self.rotor(x)
 
 class SanityCheckTask(BaseTask):
-    """Sanity Check: Can the model learn the identity on random noise?
+    """Sanity Check. Is the algebra broken?
 
-    Verifies that gradients flow and the algebra backend is numerically stable
-    with unstructured input.
+    Can we learn f(x) = x? If not, we have big problems.
     """
 
     def __init__(self, cfg):
         super().__init__(cfg)
 
     def setup_algebra(self):
-        """Sets up Cl(3, 0)."""
+        """Standard 3D Euclidean."""
         return CliffordAlgebra(p=3, q=0, device=self.device)
 
     def setup_model(self):
-        """Sets up the IdentityNetwork."""
+        """Identity Net."""
         return IdentityNetwork(self.algebra)
 
     def setup_criterion(self):
-        """Sets up Geometric MSE Loss."""
+        """Geometric MSE."""
         return GeometricMSELoss(self.algebra)
 
     def get_data(self):
-        """Generates random noise (Input) and exact same noise (Target)."""
+        """Noise in, noise out."""
         n = 1000
-        # Random multivectors
         data = torch.randn(n, 1, self.algebra.dim, device=self.device)
         return data
 
     def train_step(self, data):
-        """Training step (Autoencoder task)."""
+        """Learn identity."""
         self.optimizer.zero_grad()
         output = self.model(data)
         
-        # Loss: reconstruction of self
-        # Rotor should learn to be Identity (or close to it)
         loss = self.criterion(output, data)
         loss.backward()
         self.optimizer.step()
@@ -79,15 +67,13 @@ class SanityCheckTask(BaseTask):
         return loss.item(), {}
 
     def evaluate(self, data):
-        """Evaluates reconstruction."""
+        """Did we learn nothing? (Which is the goal)."""
         output = self.model(data)
         loss = self.criterion(output, data).item()
         print(f"Final Sanity Loss: {loss:.6f}")
 
     def visualize(self, data):
-        """Visualizes PCA of noise (should be preserved)."""
-        output = self.model(data)
+        """Plots the noise. Riveting."""
         viz = GeneralVisualizer(self.algebra)
-        
         viz.plot_latent_projection(data, title="Input Noise")
         viz.save("sanity_noise_pca.png")

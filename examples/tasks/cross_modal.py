@@ -21,22 +21,17 @@ from functional.activation import GeometricGELU
 from functional.loss import GeometricMSELoss
 from tasks.base import BaseTask
 from core.visualizer import GeneralVisualizer
-from datasets.synthetic import CrossModalDataset
+from examples.datasets.synthetic import CrossModalDataset
 from torch.utils.data import DataLoader
 
 class ModalityEncoder(nn.Module):
-    """Encoder network for a single modality.
+    """Encodes a modality.
 
-    Projects data into a high-dimensional Clifford space and learns a
-    rotor-based transformation to align with a shared semantic space.
+    Projects to high-dim space and rotates it to align with the truth.
     """
 
     def __init__(self, algebra):
-        """Initializes the encoder.
-
-        Args:
-            algebra: The algebra instance.
-        """
+        """Sets up the encoder."""
         super().__init__()
         self.net = nn.Sequential(
             CliffordLinear(algebra, 1, 4),
@@ -51,56 +46,52 @@ class ModalityEncoder(nn.Module):
         return self.net(x)
 
 class CrossModalBinder(nn.Module):
-    """Dual-encoder network for cross-modal alignment.
+    """Dual-encoder. Making apples look like oranges.
 
-    Consists of two independent encoders (A and B) that map different modalities
-    to a shared geometric embedding space.
+    Two encoders, one shared space.
     """
 
     def __init__(self, algebra):
-        """Initializes the binder."""
+        """Sets up the binder."""
         super().__init__()
         self.algebra = algebra
-        
-        # Two independent encoders
         self.encoder_A = ModalityEncoder(algebra) # e.g. Text
         self.encoder_B = ModalityEncoder(algebra) # e.g. Image
         
     def forward(self, x_a, x_b):
-        """Encodes both modalities."""
+        """Encodes both."""
         z_a = self.encoder_A(x_a)
         z_b = self.encoder_B(x_b)
         return z_a, z_b
 
 class CrossModalTask(BaseTask):
-    """Task for aligning two disparate modalities (Text and Distorted Image).
+    """Cross-Modal Alignment. Fixing the tower of Babel.
 
-    Demonstrates how RotorLayers can find the optimal relative rotation between
-    misaligned semantic manifolds.
+    Aligns disparate modalities by finding the relative rotation.
     """
 
     def __init__(self, cfg):
         super().__init__(cfg)
 
     def setup_algebra(self):
-        """Sets up the algebra (p=embedding_dim, q=0)."""
+        """High dimensional Euclidean."""
         return CliffordAlgebra(p=self.cfg.algebra.p, q=self.cfg.algebra.q, device=self.device)
 
     def setup_model(self):
-        """Sets up the CrossModalBinder."""
+        """The Binder."""
         return CrossModalBinder(self.algebra)
 
     def setup_criterion(self):
-        """Sets up Geometric MSE Loss."""
+        """Geometric MSE."""
         return GeometricMSELoss(self.algebra)
 
     def get_data(self):
-        """Generates synthetic multi-modal data."""
+        """Synthetic multi-modal data."""
         dataset = CrossModalDataset(self.algebra, embedding_dim=self.cfg.dataset.embedding_dim)
         return DataLoader(dataset, batch_size=self.cfg.training.batch_size, shuffle=True)
 
     def train_step(self, data):
-        """Executes one training step."""
+        """Align them."""
         data_A, data_B = data
         data_A, data_B = data_A.to(self.device), data_B.to(self.device)
         
@@ -124,7 +115,7 @@ class CrossModalTask(BaseTask):
         return loss.item(), {"Align": loss_align.item(), "Norm": loss_norm.item()}
 
     def evaluate(self, data):
-        """Evaluates alignment quality and retrieval accuracy."""
+        """Did we solve translation?"""
         data_A, data_B = data
         data_A, data_B = data_A.to(self.device), data_B.to(self.device)
         
@@ -149,7 +140,7 @@ class CrossModalTask(BaseTask):
         print(f"Retrieval Accuracy: {accuracy*100:.2f}%")
 
     def visualize(self, data):
-        """Visualizes the alignment before and after training."""
+        """Plots the alignment."""
         data_A, data_B = data
         data_A, data_B = data_A.to(self.device), data_B.to(self.device)
         z_a, z_b = self.model(data_A, data_B)
