@@ -8,17 +8,19 @@
 # We believe Geometric Algebra is the future of AI, and we want 
 # the industry to build upon this "unbending" paradigm.
 
-"""Geometric Metric Utilities.
+"""Metric definitions. Where geometry meets measurement.
 
-Provides functions to compute geometric distances, norms, and inner products
-respecting the metric signature of the algebra.
+Provides distances, norms, and inner products that actually respect
+the metric signature, unlike standard linear algebra.
 """
 
 import torch
 from core.algebra import CliffordAlgebra
 
 def inner_product(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-    """Computes the scalar product (A . B) or <A B>_0.
+    """The scalar product. Projection onto reality.
+
+    Computes <A B>_0.
 
     Args:
         algebra (CliffordAlgebra): The algebra instance.
@@ -26,37 +28,17 @@ def inner_product(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) ->
         B (torch.Tensor): Second multivector [Batch, Dim].
 
     Returns:
-        torch.Tensor: Scalar part of the geometric product [Batch, 1].
+        torch.Tensor: Scalar part [Batch, 1].
     """
     # Optimized: A * B then extract grade 0
-    # Actually, <AB>_0 = sum(A_i * B_j * <e_i e_j>_0)
-    # <e_i e_j>_0 is non-zero only if i == j.
-    # e_i * e_i = +/- 1 based on signature.
-    
-    # We can compute this efficiently by element-wise mult with metric signature
-    # Get the sign of e_k * e_k
-    
-    # Access pre-computed metric diagonal if possible, or compute on fly
-    # e_i * e_i sign is on the diagonal of the cayley_signs?
-    # No, cayley_signs[i, i] is sign(e_i * e_i).
-    
-    # Extract diagonal signs
-    # indices: [0, 1, ..., dim-1]
-    # cayley_signs: [Dim, Dim]
-    # We want cayley_signs[k, k] for all k
-    
-    # However, cayley_signs is private/cached. We can recompute or expose it.
-    # Ideally, CliffordAlgebra should expose a metric_signature tensor.
-    
-    # Let's use algebra.geometric_product for correctness and generality first.
     prod = algebra.geometric_product(A, B)
     scalar_part = prod[..., 0:1] # Grade 0
     return scalar_part
 
 def induced_norm(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor:
-    """Computes the metric-induced norm ||A|| = sqrt(|<A ~A>_0|).
+    """The real magnitude. Respects spacetime signature.
 
-    This norm respects the indefinite signature (e.g. spacetime interval).
+    Computes ||A|| = sqrt(|<A ~A>_0|).
 
     Args:
         algebra (CliffordAlgebra): The algebra instance.
@@ -74,7 +56,7 @@ def induced_norm(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor:
     return torch.sqrt(torch.abs(sq_norm))
 
 def geometric_distance(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-    """Computes the distance between two multivectors induced by the algebra metric.
+    """Distance. Simple subtraction, fancy norm.
 
     dist(A, B) = ||A - B||.
 
@@ -90,9 +72,9 @@ def geometric_distance(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tenso
     return induced_norm(algebra, diff)
 
 def grade_purity(algebra: CliffordAlgebra, A: torch.Tensor, grade: int) -> torch.Tensor:
-    """Computes the energy ratio of a specific grade k.
+    """How pure is your grade? Checks coefficient energy.
 
-    Purity = ||<A>_k||^2 / ||A||^2
+    Purity = ||<A>_k||^2 / ||A||^2.
 
     Args:
         algebra (CliffordAlgebra): The algebra instance.
@@ -105,18 +87,16 @@ def grade_purity(algebra: CliffordAlgebra, A: torch.Tensor, grade: int) -> torch
     # Project to grade
     A_k = algebra.grade_projection(A, grade)
     
-    # Compute energies (using standard Euclidean norm for coefficient magnitude, 
-    # or induced norm? Purity usually refers to coefficient mass).
-    # Let's use standard squared norm of coefficients for stability.
+    # Compute energies (using standard squared norm of coefficients for stability)
     energy_k = (A_k ** 2).sum(dim=-1)
     energy_total = (A ** 2).sum(dim=-1) + 1e-9
     
     return energy_k / energy_total
 
 def mean_active_grade(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor:
-    """Computes the weighted mean grade of the multivector.
+    """Average grade. Where does the energy live?
 
-    Mean Grade = Sum(k * ||<A>_k||^2) / ||A||^2
+    Mean Grade = Sum(k * ||<A>_k||^2) / ||A||^2.
 
     Args:
         algebra (CliffordAlgebra): The algebra instance.

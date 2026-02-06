@@ -12,23 +12,22 @@ import torch
 from core.algebra import CliffordAlgebra
 
 class ConformalAlgebra:
-    """Helper for Conformal Geometric Algebra (CGA).
+    """Helper for CGA. For when 3D just isn't enough.
 
-    Implements embedding and reconstruction of Euclidean points into the Conformal
-    model Cl(p+1, 1).
+    Maps Euclidean R^n to Null Cone in R^{n+1, 1}.
 
     Attributes:
-        d (int): Dimension of the Euclidean space.
-        algebra (CliffordAlgebra): Underlying Clifford algebra Cl(d+1, 1).
-        e_o (torch.Tensor): Null basis vector representing origin.
-        e_inf (torch.Tensor): Null basis vector representing infinity.
+        d (int): Euclidean dimension.
+        algebra (CliffordAlgebra): The higher dimensional algebra.
+        e_o (torch.Tensor): Origin (null).
+        e_inf (torch.Tensor): Infinity (null).
     """
 
     def __init__(self, euclidean_dim: int = 3, device='cpu'):
-        """Initializes the CGA helper.
+        """Sets up the CGA stage.
 
         Args:
-            euclidean_dim (int): Euclidean dimension d.
+            euclidean_dim (int): Physical dimension d.
             device (str): Computation device.
         """
         self.d = euclidean_dim
@@ -37,11 +36,11 @@ class ConformalAlgebra:
         self.device = device
         
         # Basis indices
-        # e_i corresponds to bit i-1 (0-indexed). e+ is bit d, e- is bit d+1.
+        # e_i corresponds to bit i-1. e+ is bit d, e- is bit d+1.
         self.idx_ep = 1 << euclidean_dim
         self.idx_em = 1 << (euclidean_dim + 1)
         
-        # Construct e_o and e_inf constant multivectors
+        # Construct e_o and e_inf
         # e_inf = e_- + e_+
         # e_o = 0.5 * (e_- - e_+)
         self.e_o = torch.zeros(1, self.algebra.dim, device=device)
@@ -54,9 +53,9 @@ class ConformalAlgebra:
         self.e_o[0, self.idx_ep] = -0.5
 
     def to_cga(self, x: torch.Tensor) -> torch.Tensor:
-        """Embeds Euclidean points into Conformal points (null vectors).
+        """Embeds points into the null cone. Magic.
 
-        Mapping: P(x) = x + 0.5 * x^2 * e_inf + e_o
+        P(x) = x + 0.5 * x^2 * e_inf + e_o.
 
         Args:
             x (torch.Tensor): Euclidean points [Batch, d].
@@ -83,18 +82,17 @@ class ConformalAlgebra:
         return P
 
     def from_cga(self, P: torch.Tensor) -> torch.Tensor:
-        """Extracts Euclidean points from normalized Conformal points.
+        """Brings them back to reality.
 
-        Normalization: P -> P / (-P . e_inf)
+        Normalization: P -> P / (-P . e_inf).
 
         Args:
-            P (torch.Tensor): Conformal points [Batch, 2^n].
+            P (torch.Tensor): Conformal points.
 
         Returns:
-            torch.Tensor: Euclidean coordinates [Batch, d].
+            torch.Tensor: Euclidean coordinates.
         """
         # 1. Normalize P such that P inner e_inf = -1
-        # P . e_inf is the scalar part of the geometric product
         P_einf = self.algebra.geometric_product(P, self.e_inf)
         scale = -P_einf[..., 0:1] # Scalar part
         

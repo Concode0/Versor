@@ -14,8 +14,8 @@ import math
 class CliffordAlgebra:
     """A differentiable Clifford Algebra kernel.
 
-    Handles geometric product, grade projection, and rotor operations for arbitrary
-    metric signatures (p, q). Optimizes memory using blocked accumulation.
+    Handles geometric product, grade projection, and rotor operations.
+    Optimizes memory because $O(2^n)$ is painful enough already.
 
     Attributes:
         p (int): Positive signature dimensions.
@@ -27,12 +27,12 @@ class CliffordAlgebra:
     _CACHED_TABLES = {}
 
     def __init__(self, p: int, q: int = 0, device='cuda'):
-        """Initializes the Clifford Algebra kernel.
+        """Spawns the algebra.
 
         Args:
-            p (int): Number of dimensions with positive signature (+1).
-            q (int, optional): Number of dimensions with negative signature (-1). Defaults to 0.
-            device (str, optional): Device for tensor allocation. Defaults to 'cuda'.
+            p (int): Positive dimensions (+1).
+            q (int, optional): Negative dimensions (-1). Defaults to 0.
+            device (str, optional): Where the magic happens. Defaults to 'cuda'.
         """
         self.p, self.q = p, q
         self.n = p + q
@@ -47,12 +47,43 @@ class CliffordAlgebra:
         self.cayley_indices, self.cayley_signs, self.gp_signs = CliffordAlgebra._CACHED_TABLES[cache_key]
 
     @property
-    def is_euclidean(self) -> bool:
-        """Returns True if the metric is strictly Euclidean (q=0)."""
-        return self.q == 0
+    def num_grades(self) -> int:
+        """Counts the grades (n + 1). Groundbreaking."""
+        return self.n + 1
+
+    def embed_vector(self, vectors: torch.Tensor) -> torch.Tensor:
+        """Injects vectors into the Grade-1 subspace.
+
+        Args:
+            vectors (torch.Tensor): Raw vectors [..., n].
+
+        Returns:
+            torch.Tensor: Multivector coefficients [..., dim].
+        """
+        batch_shape = vectors.shape[:-1]
+        mv = torch.zeros(*batch_shape, self.dim, device=vectors.device, dtype=vectors.dtype)
+        for i in range(self.n):
+            mv[..., 1 << i] = vectors[..., i]
+        return mv
+
+    def get_grade_norms(self, mv: torch.Tensor) -> torch.Tensor:
+        """Calculates norms per grade. Useful for invariant features.
+
+        Args:
+            mv (torch.Tensor): Input multivector [..., dim].
+
+        Returns:
+            torch.Tensor: Grade norms [..., num_grades].
+        """
+        batch_shape = mv.shape[:-1]
+        res = torch.zeros(*batch_shape, self.num_grades, device=mv.device, dtype=mv.dtype)
+        for k in range(self.num_grades):
+            mv_k = self.grade_projection(mv, k)
+            res[..., k] = mv_k.norm(dim=-1)
+        return res
 
     def _generate_cayley_table(self):
-        """Generates the Cayley multiplication table for the algebra."""
+        """Precomputes the Cayley table. We only do this once."""
         indices = torch.arange(self.dim, device=self.device)
         
         # Result index = A XOR B
@@ -64,13 +95,13 @@ class CliffordAlgebra:
         return cayley_indices, cayley_signs, gp_signs
 
     def _compute_signs(self, indices: torch.Tensor) -> torch.Tensor:
-        """Computes sign changes due to basis reordering and metric contraction.
+        """Figures out the signs. Commutation and metric signature.
 
         Args:
-            indices (torch.Tensor): Tensor of basis indices.
+            indices (torch.Tensor): Basis indices.
 
         Returns:
-            torch.Tensor: A sign matrix where [i, j] is the sign of e_i * e_j.
+            torch.Tensor: Sign matrix.
         """
         # 1. Commutation Sign: Count swaps needed to reorder basis vectors
         # A bit-wise comparison counts inversions
@@ -117,16 +148,16 @@ class CliffordAlgebra:
         return commutator_sign * metric_sign
 
     def geometric_product(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-        """Computes the Geometric Product of two multivector tensors.
+        """Computes the Geometric Product. The reason we're all here.
 
-        Uses a blocked accumulation strategy to reduce memory usage compared to full broadcasting.
+        Uses blocked accumulation to save your VRAM.
 
         Args:
             A (torch.Tensor): Left operand [..., Dim].
             B (torch.Tensor): Right operand [..., Dim].
 
         Returns:
-            torch.Tensor: The geometric product AB [..., Dim].
+            torch.Tensor: The product AB [..., Dim].
         """
         try:
             batch_shape = torch.broadcast_shapes(A.shape[:-1], B.shape[:-1])
@@ -159,14 +190,14 @@ class CliffordAlgebra:
         return result
         
     def grade_projection(self, mv: torch.Tensor, grade: int) -> torch.Tensor:
-        """Projects a multivector onto a specific grade.
+        """Isolates a specific grade.
 
         Args:
-            mv (torch.Tensor): Input multivector [..., Dim].
-            grade (int): Target grade (0 to n).
+            mv (torch.Tensor): Multivector.
+            grade (int): Target grade.
 
         Returns:
-            torch.Tensor: Projected multivector where non-grade components are zero.
+            torch.Tensor: Projected multivector.
         """
         # Pre-computation of grade masks could be optimized
         mask = torch.zeros(self.dim, device=self.device, dtype=torch.bool)
@@ -184,9 +215,7 @@ class CliffordAlgebra:
         return result
 
     def reverse(self, mv: torch.Tensor) -> torch.Tensor:
-        """Computes the reversion (conjugate) of a multivector.
-
-        The reverse of a k-vector A is (-1)^(k(k-1)/2) A.
+        """Computes the reversion. The Clifford conjugate.
 
         Args:
             mv (torch.Tensor): Input multivector.
@@ -208,14 +237,13 @@ class CliffordAlgebra:
         return result
 
     def exp(self, mv: torch.Tensor, order: int = 12) -> torch.Tensor:
-        """Computes the exponential of a multivector using Scaling and Squaring.
+        """Exponentiates a bivector to generate a rotor.
 
-        Approximates exp(A) via Taylor series. Scales input A by 2^-k to ensure
-        fast convergence, then squares the result k times.
+        Uses Scaling and Squaring because Taylor series blow up otherwise.
 
         Args:
-            mv (torch.Tensor): Input multivector (usually a bivector).
-            order (int, optional): Taylor series order. Defaults to 12.
+            mv (torch.Tensor): Input bivector.
+            order (int, optional): Taylor order. Defaults to 12.
 
         Returns:
             torch.Tensor: exp(A).

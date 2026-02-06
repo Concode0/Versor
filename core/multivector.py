@@ -8,27 +8,25 @@
 # We believe Geometric Algebra is the future of AI, and we want 
 # the industry to build upon this "unbending" paradigm.
 
-"""Multivector Container Class.
+"""Wrapper for multivector tensors. Because raw tensors are ugly.
 
-Provides a high-level object-oriented wrapper around raw tensors
-to enable operator overloading (e.g., A * B for geometric product).
+Provides operator overloading so you can do A * B instead of
+algebra.geometric_product(A, B).
 """
 
 import torch
 from core.algebra import CliffordAlgebra
 
 class Multivector:
-    """Object-oriented wrapper for multivector tensors.
-
-    Allows natural mathematical syntax like A * B, A + B, ~A.
+    """Object-oriented wrapper. Makes math look like math.
 
     Attributes:
-        algebra (CliffordAlgebra): The underlying algebra kernel.
-        tensor (torch.Tensor): The raw coefficient tensor [..., Dim].
+        algebra (CliffordAlgebra): The backend.
+        tensor (torch.Tensor): The raw data [..., Dim].
     """
 
     def __init__(self, algebra: CliffordAlgebra, tensor: torch.Tensor):
-        """Initializes a Multivector.
+        """Wraps the tensor.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
@@ -39,17 +37,16 @@ class Multivector:
 
     @classmethod
     def from_vectors(cls, algebra: CliffordAlgebra, vectors: torch.Tensor):
-        """Creates a Multivector from dense vectors (Grade 1).
+        """Promotes vectors to multivectors (Grade 1).
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
             vectors (torch.Tensor): Vectors [Batch, n].
 
         Returns:
-            Multivector: Wrapper instance.
+            Multivector: The wrapper.
         """
         # Map vectors to multivector coefficients
-        # e1 is index 1 (1<<0), e2 is index 2 (1<<1), etc.
         batch_shape = vectors.shape[:-1]
         mv_tensor = torch.zeros(*batch_shape, algebra.dim, device=vectors.device, dtype=vectors.dtype)
         
@@ -62,29 +59,25 @@ class Multivector:
         return f"Multivector(shape={self.tensor.shape}, algebra=Cl({self.algebra.p},{self.algebra.q}))"
 
     def __add__(self, other):
-        """Element-wise addition."""
+        """Adds stuff. Standard."""
         if isinstance(other, Multivector):
             assert self.algebra.n == other.algebra.n, "Algebras must match"
             return Multivector(self.algebra, self.tensor + other.tensor)
         elif isinstance(other, (int, float, torch.Tensor)):
-            # Add to scalar part? Or broadcast add to tensor?
-            # Standard python behavior: add to all coefficients if tensor
-            # For scalar, strictly adding to scalar part is more geometric, 
-            # but standard pytorch add is elementwise.
-            # We follow Pytorch convention for Tensors.
+            # Broadcast add
             return Multivector(self.algebra, self.tensor + other)
         else:
             return NotImplemented
 
     def __sub__(self, other):
-        """Element-wise subtraction."""
+        """Subtracts stuff."""
         if isinstance(other, Multivector):
             return Multivector(self.algebra, self.tensor - other.tensor)
         else:
             return Multivector(self.algebra, self.tensor - other)
 
     def __mul__(self, other):
-        """Geometric Product (A * B)."""
+        """Geometric Product (A * B). The real deal."""
         if isinstance(other, Multivector):
             res = self.algebra.geometric_product(self.tensor, other.tensor)
             return Multivector(self.algebra, res)
@@ -94,18 +87,18 @@ class Multivector:
             return NotImplemented
 
     def __invert__(self):
-        """Reversion (~A)."""
+        """Reversion (~A). Flips the bits."""
         return Multivector(self.algebra, self.algebra.reverse(self.tensor))
 
     def norm(self):
-        """Metric-induced norm (sqrt(|<A ~A>|))."""
+        """The metric norm. Not your average Euclidean distance."""
         from core.metric import induced_norm
         return induced_norm(self.algebra, self.tensor)
 
     def exp(self):
-        """Exponential function."""
+        """Exponentiates. Rotors incoming."""
         return Multivector(self.algebra, self.algebra.exp(self.tensor))
 
     def grade(self, k: int):
-        """Projects to grade k."""
+        """Extracts grade k. Filtering."""
         return Multivector(self.algebra, self.algebra.grade_projection(self.tensor, k))

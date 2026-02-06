@@ -17,19 +17,13 @@ from sklearn.manifold import TSNE
 from core.algebra import CliffordAlgebra
 
 class GeneralVisualizer:
-    """Visualization toolkit for Clifford Algebra multivectors.
+    """Visualization toolkit. Because numbers are boring.
 
-    Provides 3D scatter plots, latent space projections (PCA/t-SNE), and energy
-    heatmaps for analyzing geometric features.
-
-    Attributes:
-        algebra (CliffordAlgebra): The algebra instance.
-        basis_names (list[str]): Names of basis blades (e.g., '1', 'e1', 'e12').
-        img_counter (int): Counter for saved image filenames.
+    Plots 3D projections, latent spaces, and energy heatmaps.
     """
 
     def __init__(self, algebra: CliffordAlgebra):
-        """Initializes the visualizer.
+        """Sets up the visualizer.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
@@ -42,7 +36,7 @@ class GeneralVisualizer:
         self.img_counter = 1
 
     def _generate_basis_names(self):
-        """Generates string names for all basis blades based on bit indices."""
+        """Generates names for basis blades. e1, e2, e12..."""
         names = []
         for i in range(self.algebra.dim):
             if i == 0:
@@ -61,10 +55,10 @@ class GeneralVisualizer:
         return names
 
     def save(self, filename=None):
-        """Saves the current matplotlib figure to disk.
+        """Dumps the plot to disk.
 
         Args:
-            filename (str, optional): Output filename. Defaults to viz_{counter}.png.
+            filename (str, optional): Output path. Defaults to auto-incrementing.
         """
         if filename is None:
             filename = f"viz_{self.img_counter}.png"
@@ -74,15 +68,15 @@ class GeneralVisualizer:
         plt.close()
 
     def plot_3d(self, data: torch.Tensor, dims=(1, 2, 4), title="3D Projection"):
-        """Creates a 3D scatter plot of selected multivector components.
+        """Scatter plot. Spinning colored dots.
 
         Args:
-            data (torch.Tensor): Multivector data [Batch, Dim].
-            dims (tuple, optional): Indices of components for X, Y, Z. Defaults to (1, 2, 4).
-            title (str, optional): Plot title.
+            data (torch.Tensor): Multivectors.
+            dims (tuple, optional): Components to map to X, Y, Z.
+            title (str, optional): Title.
 
         Returns:
-            matplotlib.figure.Figure: The generated figure.
+            matplotlib.figure.Figure: The figure.
         """
         if data.ndim > 2:
             data = data.reshape(-1, self.algebra.dim)
@@ -114,15 +108,15 @@ class GeneralVisualizer:
         return fig
 
     def plot_latent_projection(self, data: torch.Tensor, method='pca', title=None):
-        """Projects high-dimensional multivectors to 2D using dimensionality reduction.
+        """Squashes dimensions so we can comprehend them.
 
         Args:
             data (torch.Tensor): Input data.
             method (str): 'pca' or 'tsne'. Defaults to 'pca'.
-            title (str, optional): Plot title.
+            title (str, optional): Title.
 
         Returns:
-            matplotlib.figure.Figure: The generated figure.
+            matplotlib.figure.Figure: The figure.
         """
         if data.ndim > 2:
             data = data.reshape(-1, self.algebra.dim) # Flatten batch
@@ -132,11 +126,11 @@ class GeneralVisualizer:
         if method.lower() == 'pca':
             reducer = PCA(n_components=2)
             title = title or "Latent Space (PCA)"
-            xlabel, ylabel = "Principal Component 1", "Principal Component 2"
+            xlabel, ylabel = "PC 1", "PC 2"
         elif method.lower() == 'tsne':
             reducer = TSNE(n_components=2, perplexity=30, n_iter=1000)
             title = title or "Latent Space (t-SNE)"
-            xlabel, ylabel = "t-SNE Dimension 1", "t-SNE Dimension 2"
+            xlabel, ylabel = "t-SNE Dim 1", "t-SNE Dim 2"
         else:
             raise ValueError("Method must be 'pca' or 'tsne'")
             
@@ -150,14 +144,14 @@ class GeneralVisualizer:
         return plt.gcf()
 
     def plot_grade_heatmap(self, data: torch.Tensor, title="Grade Energy Distribution"):
-        """Visualizes the average energy (magnitude squared) per geometric grade.
+        """Heatmap. Where's the energy?
 
         Args:
             data (torch.Tensor): Input multivectors.
-            title (str): Plot title.
+            title (str): Title.
 
         Returns:
-            matplotlib.figure.Figure: The generated figure.
+            matplotlib.figure.Figure: The figure.
         """
         if data.ndim > 2:
             data = data.reshape(-1, self.algebra.dim)
@@ -186,14 +180,14 @@ class GeneralVisualizer:
         return plt.gcf()
 
     def plot_components_heatmap(self, data: torch.Tensor, title="Component Activation Heatmap"):
-        """Visualizes the magnitude of all basis components across samples.
+        """Shows which basis blades are actually doing work.
 
         Args:
             data (torch.Tensor): Input data.
-            title (str): Plot title.
+            title (str): Title.
 
         Returns:
-            matplotlib.figure.Figure: The generated figure.
+            matplotlib.figure.Figure: The figure.
         """
         if data.ndim > 2:
             data = data.reshape(-1, self.algebra.dim)
