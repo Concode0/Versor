@@ -101,6 +101,9 @@ streamlit run examples/demo.py
 uv run main.py task=multi_rotor_qm9 training.epochs=100
 ```
 
+> Note on Convergence & Efficiency: The current 7.3505 meV was achieved in just 100 epochs, and training was intentionally halted before reaching a plateau. 
+> We identified that the gradient descent in the current "Linear Algebra Cage" (standard matrix-based mixing) began to introduce infinitesimal manifold distortions that counteract the pure isometric unbending of the GBN.
+
 ### Motion Alignment (UCI-HAR)
 **Task**: Align high-dimensional motion data into a linearly separable latent space using geometric rotation.
 
