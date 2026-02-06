@@ -14,11 +14,10 @@ from core.algebra import CliffordAlgebra
 from layers.base import CliffordModule
 
 class SO3InvariantNet(CliffordModule):
-    """A Neural Network that is invariant to SO(3) rotations using Pure Geometric Invariants.
+    """Physics doesn't care about your frame. Pure invariants.
 
-    Instead of aligning to a canonical frame (which suffers from axis permutation and 
-    flip ambiguities), this network computes features that are rotationally invariant 
-    by definition using Geometric Products and Norms.
+    Computes features that are rotationally invariant by definition.
+    No more data augmentation needed.
     """
 
     def __init__(self, algebra: CliffordAlgebra, num_classes: int = 3):
@@ -26,8 +25,8 @@ class SO3InvariantNet(CliffordModule):
         
         # Features: 
         # 1. Point Norm (1)
-        # 2. Covariance Eigenvalues (3) - Global shape descriptors
-        # 3. Projection magnitudes (3) - Invariant scalars from Geometric Product
+        # 2. Covariance Eigenvalues (3)
+        # 3. Projection magnitudes (3)
         # Total: 7 features
         
         self.mlp1 = nn.Sequential(
@@ -44,7 +43,8 @@ class SO3InvariantNet(CliffordModule):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
+        """Center, Covariance, Invariants, PointNet. Standard recipe.
+
         Args:
             x: [Batch, N, 3] (Cartesian coordinates)
         """
@@ -62,26 +62,16 @@ class SO3InvariantNet(CliffordModule):
         norms = torch.norm(x_centered, dim=2, keepdim=True) # [B, N, 1]
         
         # 4. Geometric Product Invariants
-        # We use the principal axes 'evecs' as a robust reference frame.
-        # Although evecs have sign ambiguity, the magnitudes of dot/wedge products are invariant.
-        
         # Dot Products (Magnitudes) |x_i . u_k|
-        # proj: [B, N, 3]
         proj = torch.bmm(x_centered, evecs)
         abs_proj = torch.abs(proj) 
         
         # Wedge Product Magnitudes ||x_i ^ u_k||
-        # In 3D, ||x ^ u|| = ||x|| ||u|| sin(theta). Since ||u||=1, it's ||x|| sin(theta).
-        # This is sqrt(||x||^2 - (x.u)^2).
-        # These are also rotation and flip invariant.
-        
+        # sqrt(||x||^2 - (x.u)^2)
         wedge_sq = norms**2 - proj**2
         abs_wedge = torch.sqrt(torch.clamp(wedge_sq, min=1e-8)) # [B, N, 3]
         
         # 5. Assemble Pure Invariant Features
-        # Using global eigenvalues (3) and local magnitudes (1 norm + 3 projections)
-        # Or alternatively: Global (3 evals) + Local (1 norm + 3 abs_proj) = 7
-        
         global_feats = evals.unsqueeze(1).expand(-1, N, -1) # [B, N, 3]
         
         # Combined: [B, N, 7]

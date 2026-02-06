@@ -15,20 +15,23 @@ from layers.linear import CliffordLinear
 from layers.rotor import RotorLayer
 
 class RotorTCN(nn.Module):
+    """Convolution in time, Rotation in space.
+
+    Standard TCN, but with Clifford features.
+    """
+
     def __init__(self, algebra: CliffordAlgebra, in_channels: int, hidden_channels: int, kernel_size: int = 3, dilation: int = 1):
-        """
-        Temporal Convolutional Network where the 'conv' is a Clifford Linear operation across time?
-        Or simply applying Rotor Layers per timestep with TCN mixing?
-        
-        Let's implement a simple 1D Conv over time but with Clifford Features.
-        Input: [Batch, Time, Channels, Dim]
+        """Sets up the Rotor TCN.
+
+        Args:
+            algebra (CliffordAlgebra): The algebra instance.
+            in_channels (int): Input features.
+            hidden_channels (int): Hidden features.
+            kernel_size (int): Conv kernel.
+            dilation (int): Dilation factor.
         """
         super().__init__()
         self.algebra = algebra
-        
-        # We treat Time as part of the Batch or spatial dim for the Linear layer?
-        # CliffordLinear expects [Batch, In_C, Dim].
-        # We need to process temporal context.
         
         # Simplified: Frame-wise Rotor Layer + 1D Conv on Coefficients
         self.rotor = RotorLayer(algebra, in_channels)
@@ -50,8 +53,10 @@ class RotorTCN(nn.Module):
         self.out_rotor = RotorLayer(algebra, hidden_channels)
 
     def forward(self, x: torch.Tensor):
-        """
-        x: [Batch, Time, Channels, Dim]
+        """Apply rotor per frame, then convolve.
+
+        Args:
+            x: [Batch, Time, Channels, Dim]
         """
         b, t, c, d = x.shape
         
@@ -68,11 +73,9 @@ class RotorTCN(nn.Module):
         y_tcn = self.tcn(x_in_tcn)
         
         # Rearrange back to [B, T, H_C, D]
-        # Note: T might change if padding/stride varies, but here it's kept same.
         y_tcn = y_tcn.transpose(1, 2) # [B, T, Hidden*D]
         
         # We need to reshape carefully.
-        # Assuming Hidden_Dim is divisible by D
         h_c = self.hidden_dim // d
         y_out = y_tcn.view(b, t, h_c, d)
         
