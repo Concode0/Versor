@@ -13,67 +13,35 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class GeometricGELU(nn.Module):
-    """Magnitude-based geometric activation function.
+    """Geometric GELU. Scales magnitude, keeps direction.
 
-    Preserves the directional orientation of the multivector but scales its
-    magnitude non-linearly using GELU. This ensures the operation is equivariant
-    to global rotations.
-
-    Formula: x' = x * (GELU(|x| + b) / |x|)
-
-    Attributes:
-        bias (nn.Parameter): Learnable scalar bias added to the magnitude.
+    Non-linearity without rotation.
+    x' = x * (GELU(|x| + b) / |x|)
     """
 
     def __init__(self, algebra, channels: int = 1):
-        """Initializes Geometric GELU.
-
-        Args:
-            algebra: The algebra instance.
-            channels (int, optional): Number of feature channels. Defaults to 1.
-        """
+        """Sets up the activation."""
         super().__init__()
         self.algebra = algebra
         self.bias = nn.Parameter(torch.zeros(channels))
 
     def forward(self, x: torch.Tensor):
-        """Applies the activation.
-
-        Args:
-            x (torch.Tensor): Input multivectors.
-
-        Returns:
-            torch.Tensor: Scaled multivectors.
-        """
-        # Compute magnitude (approximated by Euclidean norm of coefficients)
-        norm = x.norm(dim=-1, keepdim=True) # [Batch, C, 1]
+        """Activates."""
+        norm = x.norm(dim=-1, keepdim=True)
         
-        # Apply GELU to the biased norm
-        # Avoid division by zero with eps
         eps = 1e-6
         scale = F.gelu(norm + self.bias.view(1, -1, 1)) / (norm + eps)
         
         return x * scale
 
 class GradeSwish(nn.Module):
-    """Grade-specific gating mechanism.
+    """Grade Swish. Gates by grade.
 
-    Applies a learned gating factor per geometric grade (scalar, vector, bivector...).
-    x_k' = x_k * Sigmoid(w_k * |x_k| + b_k)
-
-    Attributes:
-        grade_weights (nn.Parameter): Weights per grade.
-        grade_biases (nn.Parameter): Biases per grade.
-        grade_masks (torch.Tensor): Precomputed masks for grade extraction.
+    Each grade gets its own gate.
     """
 
     def __init__(self, algebra, channels: int = 1):
-        """Initializes Grade Swish.
-
-        Args:
-            algebra: The algebra instance.
-            channels (int, optional): Unused but kept for API consistency. Defaults to 1.
-        """
+        """Sets up the gates."""
         super().__init__()
         self.algebra = algebra
         self.n_grades = algebra.n + 1
@@ -84,7 +52,7 @@ class GradeSwish(nn.Module):
         self.register_buffer('grade_masks', self._build_masks())
 
     def _build_masks(self):
-        """Precomputes boolean masks for each grade."""
+        """Precomputes masks."""
         masks = torch.zeros(self.n_grades, self.algebra.dim, dtype=torch.bool)
         for i in range(self.algebra.dim):
             grade = bin(i).count('1')
@@ -92,14 +60,7 @@ class GradeSwish(nn.Module):
         return masks
 
     def forward(self, x: torch.Tensor):
-        """Applies grade-specific gating.
-
-        Args:
-            x (torch.Tensor): Input multivectors.
-
-        Returns:
-            torch.Tensor: Gated multivectors.
-        """
+        """Gates the grades."""
         output = torch.zeros_like(x)
         
         for k in range(self.n_grades):
@@ -107,10 +68,7 @@ class GradeSwish(nn.Module):
             if not mask.any():
                 continue
                 
-            # Extract k-vector part
             x_k = x[..., mask]
-            
-            # Compute norm of this grade
             norm_k = x_k.norm(dim=-1, keepdim=True)
             
             w = self.grade_weights[k]
