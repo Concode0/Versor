@@ -218,17 +218,6 @@ Versor/
 └── main.py             # CLI entry point
 ```
 
-## Roadmap
-
-- [ ] Native CUDA Kernels for $Cl(3,0)$ and $Cl(1,3)$
-- [ ] JIT Compilation with metric-aware operation graph optimization
-- [ ] Geometric Transformer (GAT): Fully geometric attention mechanism
-- [ ] Multi-head & Dynamic Rotors: Input-dependent rotation axes
-- [x] **Automatic Metric Search**: Self-optimizing signature ($p, q$)
-- [x] **Automatic Bivector Pruning**: Geometric sparsity-driven compression
-- [x] **CliffordGraphConv**: Geometric signal processing on graphs (QM9)
-- [x] **Multi-Rotor GBN**: Spectral decomposition with overlapping rotors
-
 ## Documentation
 
 *   [**Philosophy**](docs/philosophy.md): Why Geometric Algebra? The "unbending" paradigm.
