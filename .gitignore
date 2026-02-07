@@ -17,7 +17,6 @@ PATENT_*.md
 .venv
 
 # Training artifacts
-*.pt
 *.ckpt
 train_log_*.txt
 
