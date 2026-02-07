@@ -13,6 +13,7 @@ import torch.nn as nn
 from core.algebra import CliffordAlgebra
 from layers.linear import CliffordLinear
 from layers.multi_rotor import MultiRotorLayer
+from layers.normalization import CliffordLayerNorm
 from functional.activation import GeometricGELU
 
 class MultiRotorModel(nn.Module):
@@ -81,3 +82,96 @@ class MultiRotorModel(nn.Module):
         inv_flat = invariants.view(invariants.size(0), -1)
         
         return self.readout(inv_flat)
+
+
+class MultiRotorClassifier(nn.Module):
+    """Multi-Rotor Classifier. Preserves direction for discrimination.
+
+    Unlike MultiRotorModel which extracts grade norms (magnitudes only),
+    this reads out from grade-1 vector components directly, preserving
+    the directional information that rotors learn to align.
+
+    For classification, directions ARE the signal — not just magnitudes.
+    """
+
+    def __init__(self, algebra: CliffordAlgebra, in_channels: int,
+                 hidden_channels: int, num_classes: int,
+                 num_layers: int = 2, num_rotors: int = 8):
+        super().__init__()
+        self.algebra = algebra
+        self.vector_indices = [1 << i for i in range(algebra.n)]
+
+        self.input_linear = CliffordLinear(algebra, in_channels, hidden_channels)
+
+        self.layers = nn.ModuleList()
+        for _ in range(num_layers):
+            self.layers.append(MultiRotorLayer(algebra, hidden_channels, num_rotors))
+            self.layers.append(GeometricGELU(algebra, hidden_channels))
+
+        # Readout from vector components: hidden_channels * n → num_classes
+        self.readout = nn.Sequential(
+            nn.Linear(hidden_channels * algebra.n, hidden_channels),
+            nn.SiLU(),
+            nn.Linear(hidden_channels, num_classes)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Project, Transform, Extract Vectors, Classify.
+
+        Args:
+            x (torch.Tensor): Input [Batch, In_Channels, Dim].
+
+        Returns:
+            torch.Tensor: Logits [Batch, num_classes].
+        """
+        h = self.input_linear(x)
+
+        for layer in self.layers:
+            h = layer(h)
+
+        # Extract grade-1 vector components (direction, not just magnitude)
+        vectors = h[..., self.vector_indices]  # [B, C, n]
+        flat = vectors.reshape(vectors.size(0), -1)  # [B, C*n]
+
+        return self.readout(flat)
+
+
+class MultiRotorEncoder(nn.Module):
+    """Multi-Rotor Encoder. Stays in geometric space.
+
+    Like MultiRotorModel but outputs multivectors instead of scalars.
+    Used for cross-modal alignment where embeddings must remain geometric.
+    """
+
+    def __init__(self, algebra: CliffordAlgebra, in_channels: int,
+                 hidden_channels: int, out_channels: int,
+                 num_layers: int = 2, num_rotors: int = 8):
+        super().__init__()
+        self.algebra = algebra
+
+        self.input_linear = CliffordLinear(algebra, in_channels, hidden_channels)
+
+        self.layers = nn.ModuleList()
+        for _ in range(num_layers):
+            self.layers.append(MultiRotorLayer(algebra, hidden_channels, num_rotors))
+            self.layers.append(GeometricGELU(algebra, hidden_channels))
+
+        self.output_linear = CliffordLinear(algebra, hidden_channels, out_channels)
+        self.norm = CliffordLayerNorm(algebra, channels=out_channels)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Encode into aligned multivector space.
+
+        Args:
+            x (torch.Tensor): Input [Batch, In_Channels, Dim].
+
+        Returns:
+            torch.Tensor: Encoded multivectors [Batch, Out_Channels, Dim].
+        """
+        h = self.input_linear(x)
+
+        for layer in self.layers:
+            h = layer(h)
+
+        h = self.output_linear(h)
+        return self.norm(h)
