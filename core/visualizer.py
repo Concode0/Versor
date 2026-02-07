@@ -173,7 +173,7 @@ class GeneralVisualizer:
             grade_labels.append(f"Grade {k}")
             
         plt.figure(figsize=(10, 6))
-        sns.barplot(x=grade_labels, y=energy_per_grade, palette="viridis")
+        sns.barplot(x=grade_labels, y=energy_per_grade, hue=grade_labels, palette="viridis", legend=False)
         plt.title(title)
         plt.ylabel("Average Energy")
         plt.yscale('log') # Use log scale for dynamic range
