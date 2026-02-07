@@ -21,7 +21,7 @@
 
 ## Core Idea
 
-Rotors ( $R = \exp(-B/2)$ ) perform pure geometric rotations via the sandwich product ($x \to RxR\tilde{}$), preserving manifold structure where standard weight matrices may inadvertently deform it.
+Rotors ( $R = \exp(-B/2)$ ) perform pure geometric rotations via the sandwich product ($x \to R x \tilde{R}$), preserving manifold structure where standard weight matrices may inadvertently deform it.
 
 ## Key Features
 
