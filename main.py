@@ -18,7 +18,6 @@ from omegaconf import DictConfig, OmegaConf
 from tasks.motion import MotionAlignmentTask
 from tasks.qm9 import QM9Task
 from tasks.multi_rotor_qm9 import MultiRotorQM9Task
-from tasks.cross_modal import CrossModalTask
 from tasks.semantic import SemanticTask
 
 EXAMPLE_TASKS = {'manifold', 'hyperbolic', 'sanity'}
@@ -36,7 +35,6 @@ def main(cfg: DictConfig):
         'motion': MotionAlignmentTask,
         'qm9': QM9Task,
         'multi_rotor_qm9': MultiRotorQM9Task,
-        'crossmodal': CrossModalTask,
         'semantic': SemanticTask,
     }
 
