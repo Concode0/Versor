@@ -5,8 +5,15 @@ algebra:
   q: 0
   device: "cpu"
 dataset:
-  name: "bert_embeddings"
+  name: "20newsgroups"
   embedding_dim: 6
-  topics:
-    tech: ["computer", "software", "algorithm", "network", "database"]
-    nature: ["tree", "flower", "river", "mountain", "forest"]
+  max_samples: null
+  cache_dir: "./data/newsgroups"
+model:
+  in_channels: 8
+  hidden_dim: 16
+training:
+  epochs: 200
+  lr: 0.01
+  batch_size: 64
+  seed: 42
