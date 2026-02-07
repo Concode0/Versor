@@ -77,7 +77,7 @@ mv = mv.unsqueeze(1)                # [Batch, 1, 2^n] for layers
 ```
 
 ### What does RotorLayer actually learn?
-It learns bivector weights $B$ — one scalar per rotation plane. In $Cl(3,0)$, there are 3 planes ($e_{12}, e_{13}, e_{23}$), so each channel learns 3 parameters. The rotor $R = \exp(-B/2)$ is computed from these weights, and the sandwich product $RxR\tilde{}$ is applied.
+It learns bivector weights $B$ — one scalar per rotation plane. In $Cl(3,0)$, there are 3 planes ($e_{12}, e_{13}, e_{23}$), so each channel learns 3 parameters. The rotor $R = \exp(-B/2)$ is computed from these weights, and the sandwich product $Rx\tilde{R}$ is applied.
 
 ### What is MultiRotorLayer?
 A single rotor rotates in one plane. `MultiRotorLayer` uses $K$ rotors in parallel with learned mixing weights. Think of it as multi-head attention but for geometric rotations — each "head" rotates in a different plane, and the outputs are combined by weighted superposition.
@@ -144,7 +144,7 @@ The geometric product has complexity $O(2^{2n})$ — it's a full bilinear produc
 It brute-forces all $(p, q)$ signatures with $p + q = D$ and evaluates a geometric stress metric on your data. Useful when you don't know whether your data is better modeled by Euclidean, hyperbolic, or mixed geometry.
 
 ### What does "Lipschitz by construction" mean?
-The rotor sandwich product $RxR\tilde{}$ is an isometry — it preserves norms exactly ($\|x'\| = \|x\|$), giving a Lipschitz constant of exactly 1. Standard networks must use spectral normalization or gradient penalties to approximate this property. In a GBN, it's guaranteed by the algebra. This directly improves robustness to input perturbations: the motion task shows only a small accuracy drop under noise (see README benchmarks).
+The rotor sandwich product $Rx\tilde{R}$ is an isometry — it preserves norms exactly ($\|x'\| = \|x\|$), giving a Lipschitz constant of exactly 1. Standard networks must use spectral normalization or gradient penalties to approximate this property. In a GBN, it's guaranteed by the algebra. This directly improves robustness to input perturbations: the motion task shows only a small accuracy drop under noise (see README benchmarks).
 
 ## Troubleshooting
 

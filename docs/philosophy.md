@@ -14,7 +14,7 @@ The result: parameters that could be learning structure are instead compensating
 
 Versor takes a different approach. Instead of general linear transformations, we use **Rotors** — elements of Clifford Algebra that perform pure geometric rotations:
 
-$$x' = RxR\tilde{ }$$
+$$x' = R x \tilde{R}$$
 
 where $R = \exp(-B/2)$ is generated from a bivector $B$ (a rotation plane).
 
@@ -42,7 +42,7 @@ Rotors compose by multiplication: $R_{total} = R_2 R_1$. This means stacking Rot
 ### Multi-Rotor Decomposition
 A single rotor rotates in one plane. The `MultiRotorLayer` learns $K$ overlapping rotors and mixes them:
 
-$$x' = \sum_k w_k R_k x R_k\tilde{ }$$
+$$x' = \sum_k w_k R_k x \tilde{R_k}$$
 
 This is analogous to a Fourier decomposition — complex transformations are expressed as a superposition of simple rotations, each parameterized by $O(n^2)$ bivector components instead of $O(2^n)$ general multivector entries.
 

@@ -11,7 +11,8 @@ $$e_i e_j + e_j e_i = 2 g_{ij}$$
 where $g$ is the metric tensor with signature $(p, q)$:
 
 $$e_i^2 = \begin{cases}
-+1 & i \leq p \\-1 & i > p
++1 & i \leq p \\
+-1 & i > p
 \end{cases}$$
 
 For distinct basis vectors: $e_i e_j = -e_j e_i$ (they anti-commute).
@@ -83,10 +84,10 @@ In Versor, the `RotorLayer` learns bivector weights $B$ (not necessarily unit) a
 
 A rotor transforms a multivector via the **sandwich product**:
 
-$$x' = Rx\tilde{R}$$
+$$x' = R x \tilde{R}$$
 
 Properties:
-- **Grade-preserving**: If $x$ is grade-$k$, so is $x$'
+- **Grade-preserving**: If $x$ is grade-$k$, so is $x'$
 - **Isometric**: $|x'| = |x|$ (norm is preserved)
 - **Composable**: $R_2(R_1 x \tilde{R}_1)\tilde{R}_2 = (R_2 R_1) x \widetilde{(R_2 R_1)}$
 - **Smooth**: Continuous in the bivector parameters
