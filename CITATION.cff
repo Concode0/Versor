@@ -3,7 +3,20 @@ message: "If you use this software, please cite it as below."
 authors:
   - family-names: "Kim"
     given-names: "Eunkyum"
+    email: "nemonanconcode@gmail.com"
 title: "Versor: Universal Geometric Algebra Neural Network"
 version: 1.0.0
 date-released: 2026-02-04
-url: "https://github.com/nemonanconcode/versor"
+url: "https://github.com/Concode0/versor"
+repository-code: "https://github.com/Concode0/versor"
+keywords:
+  - "geometric algebra"
+  - "clifford algebra"
+  - "deep learning"
+  - "rotor"
+  - "unbending"
+  - "manifold alignment"
+identifiers:
+  - type: other
+    value: "KR Patent Application 10-2026-0023023"
+    description: "Geometric Blade Network (GBN) Architecture Patent"
