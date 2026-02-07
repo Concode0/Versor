@@ -12,7 +12,6 @@ import torch
 import unittest
 import math
 from core.algebra import CliffordAlgebra
-from core.metric import EuclideanMetric, SpacetimeMetric
 
 class TestCliffordAlgebra(unittest.TestCase):
     def setUp(self):
