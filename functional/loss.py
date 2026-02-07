@@ -28,7 +28,7 @@ class GeometricMSELoss(nn.Module):
         return F.mse_loss(pred, target, reduction='mean')
 
 class SubspaceLoss(nn.Module):
-    """Subspace Loss. Stay in your lane.
+    """Subspace Loss. Enforces grade constraints.
 
     Penalizes energy in forbidden grades.
     """

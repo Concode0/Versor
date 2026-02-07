@@ -25,7 +25,7 @@ class Figure8Dataset(Dataset):
         self.data = self._generate(num_samples)
 
     def _generate(self, n):
-        """Math generator."""
+        """Generates the synthetic manifold data."""
         t = torch.linspace(0, 2*np.pi, n)
         x = torch.sin(t)
         y = torch.sin(t) * torch.cos(t)

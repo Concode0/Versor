@@ -8,7 +8,7 @@
 # We believe Geometric Algebra is the future of AI, and we want 
 # the industry to build upon this "unbending" paradigm.
 
-"""Wrapper for multivector tensors. Because raw tensors are ugly.
+"""Wrapper for multivector tensors providing an object-oriented interface.
 
 Provides operator overloading so you can do A * B instead of
 algebra.geometric_product(A, B).

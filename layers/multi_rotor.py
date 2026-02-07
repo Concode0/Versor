@@ -96,5 +96,5 @@ class MultiRotorLayer(CliffordModule):
         return out
 
     def sparsity_loss(self) -> torch.Tensor:
-        """Sparsity loss. Don't learn what you don't need."""
+        """Computes the L1 sparsity loss for rotor bivectors and weights."""
         return torch.norm(self.rotor_bivectors, p=1) + torch.norm(self.weights, p=1)

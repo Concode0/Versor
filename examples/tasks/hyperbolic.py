@@ -18,7 +18,7 @@ from core.visualizer import GeneralVisualizer
 import matplotlib.pyplot as plt
 
 class HyperbolicNetwork(nn.Module):
-    """Lorentz Booster. Faster than light.
+    """Lorentz Booster. Learning hyperbolic transformations.
 
     Learns hyperbolic transformations in Cl(1, 1).
     """
@@ -33,9 +33,9 @@ class HyperbolicNetwork(nn.Module):
         return self.rotor(x)
 
 class HyperbolicTask(BaseTask):
-    """Time travel. Reversing the boost.
+    """Hyperbolic Geometry. Reversing the boost.
 
-    Recovers the original frame from a Lorentz-boosted nightmare.
+    Recovers the original frame from a Lorentz-boosted coordinate system.
     """
 
     def __init__(self, cfg):
@@ -88,7 +88,7 @@ class HyperbolicTask(BaseTask):
         return loss.item(), {}
 
     def evaluate(self, data):
-        """Did we break physics?"""
+        """Evaluates the reconstruction."""
         learned_rotor = self.model.rotor.bivector_weights
         print(f"True Phi: 1.5")
         print(f"Learned Rotor Weights: {learned_rotor.detach().cpu().numpy().flatten()}")

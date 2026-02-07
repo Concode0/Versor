@@ -17,9 +17,9 @@ from datasets.qm9 import get_qm9_loader, VersorQM9
 from models.molecule import MultiRotorQuantumNet
 
 class MultiRotorQM9Task(BaseTask):
-    """Molecular Prediction. But with Geometric FFT.
+    """Molecular Property Prediction using Geometric FFT.
 
-    Uses Multi-Rotor networks to approximate the physics.
+    Uses Multi-Rotor networks to approximate physical properties.
     """
 
     def __init__(self, cfg):
@@ -28,7 +28,7 @@ class MultiRotorQM9Task(BaseTask):
         super().__init__(cfg)
 
     def setup_algebra(self):
-        """Optimized for molecules."""
+        """Configured for molecular data."""
         return CliffordAlgebra(p=3, q=0, device=self.device)
 
     def setup_model(self):
@@ -82,7 +82,7 @@ class MultiRotorQM9Task(BaseTask):
         return loss.item(), {"MSE": loss.item(), "MAE": mae.item()}
 
     def evaluate(self, val_loader):
-        """Validating."""
+        """Performs validation."""
         self.model.eval()
         total_mae = 0
         count = 0
@@ -103,7 +103,7 @@ class MultiRotorQM9Task(BaseTask):
         return avg_mae
 
     def benchmark_inference(self, val_loader):
-        """Timing it. Speed matters."""
+        """Benchmarks inference speed."""
         self.model.eval()
         batch = next(iter(val_loader))
         
@@ -136,7 +136,7 @@ class MultiRotorQM9Task(BaseTask):
         return avg_time
 
     def visualize(self, val_loader):
-        """Scatter plot. Truth vs Prediction."""
+        """Visualizes predicted vs. actual values."""
         self.model.eval()
         batch = next(iter(val_loader))
         batch = batch.to(self.device)
@@ -170,7 +170,7 @@ class MultiRotorQM9Task(BaseTask):
             print("Matplotlib not found.")
 
     def run(self):
-        """The main loop."""
+        """Executes the main training loop."""
         print(f">>> Starting Task: {self.cfg.name}")
         train_loader, val_loader = self.get_data()
         

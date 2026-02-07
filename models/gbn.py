@@ -17,9 +17,9 @@ from layers.projection import BladeSelector
 from functional.activation import GeometricGELU
 
 class GeometricBladeNetwork(nn.Module):
-    """The GBN. The reference implementation. Simple but effective.
+    """The Geometric Blade Network (GBN). Reference implementation.
 
-    Stacks Linear and Rotor layers to prove a point.
+    Stacks Linear and Rotor layers to demonstrate geometric learning.
     """
 
     def __init__(self, algebra: CliffordAlgebra, in_channels: int, hidden_channels: int, out_channels: int, layers: int = 2):

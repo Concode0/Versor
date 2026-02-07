@@ -14,10 +14,9 @@ from core.algebra import CliffordAlgebra
 from layers.base import CliffordModule
 
 class BladeSelector(CliffordModule):
-    """Blade Selector. Filters the noise.
+    """Blade Selector. Filters insignificant components.
 
-    Learns which geometric grades actually matter.
-    Suppresses the rest.
+    Learns to weigh geometric grades, suppressing less relevant ones.
 
     Attributes:
         weights (nn.Parameter): Soft gates [Channels, Dim].
@@ -37,7 +36,7 @@ class BladeSelector(CliffordModule):
         self.reset_parameters()
 
     def reset_parameters(self):
-        """Defaults to pass-through (all ones)."""
+        """Initializes weights to one (pass-through)."""
         nn.init.ones_(self.weights)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

@@ -15,9 +15,9 @@ from layers.base import CliffordModule
 from layers.linear import CliffordLinear
 
 class CliffordGraphConv(CliffordModule):
-    """Geometric Graph Conv. Neighbors talk in multivectors.
+    """Geometric Graph Conv. Performs message passing using multivector features.
 
-    Aggregates geometric features. Because topology matters.
+    Aggregates features based on graph topology.
     H' = Aggregate(H) * W + Bias.
 
     Attributes:
@@ -36,7 +36,7 @@ class CliffordGraphConv(CliffordModule):
         self.linear = CliffordLinear(algebra, in_channels, out_channels)
         
     def forward(self, x: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
-        """Aggregates and transforms. The usual GNN stuff, but geometric.
+        """Aggregates and transforms node features using geometric operations.
 
         Args:
             x (torch.Tensor): Node features.

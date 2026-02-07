@@ -16,7 +16,7 @@ from datasets.qm9 import get_qm9_loader, VersorQM9
 from models.molecule import MoleculeGNN
 
 class QM9Task(BaseTask):
-    """Predicting molecules. Standard GNN stuff."""
+    """Predicting molecules. Standard Graph Neural Network implementation."""
 
     def __init__(self, cfg):
         self.target_name = cfg.dataset.get('target', 'U0')

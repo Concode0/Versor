@@ -8,7 +8,7 @@
 # We believe Geometric Algebra is the future of AI, and we want 
 # the industry to build upon this "unbending" paradigm.
 
-"""Automated metric search. Because guessing (p, q) is for chumps.
+"""Automated metric search for optimal geometric signatures.
 
 Algorithms to discover the geometric signature that doesn't break your topology.
 """
@@ -22,7 +22,7 @@ from core.metric import induced_norm
 class MetricSearch:
     """Finds the optimal signature (p, q).
 
-    It calculates distortion. If the distortion is low, the manifold is happy.
+    It calculates distortion. If the distortion is low, the manifold is preserved.
     """
 
     def __init__(self, device: str = 'cpu'):
@@ -36,7 +36,7 @@ class MetricSearch:
         return torch.norm(diff, dim=-1)
 
     def evaluate_signature(self, data: torch.Tensor, p: int, q: int) -> float:
-        """Measures how much the algebra hates your data.
+        """Measures the geometric distortion introduced by the algebra.
 
         Stress = || D_euc - D_geo(p,q) ||_F / || D_euc ||_F.
 

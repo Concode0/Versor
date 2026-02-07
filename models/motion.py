@@ -15,7 +15,7 @@ from layers.rotor import RotorLayer
 from layers.linear import CliffordLinear
 
 class MotionManifoldNetwork(nn.Module):
-    """Unbends motion. Disentangles walking from running.
+    """Geometric Motion Network. Disentangles motion patterns.
 
     Projects raw features into GA space, aligns them with a rotor,
     and then classifies based on the resulting vector part.
@@ -43,7 +43,7 @@ class MotionManifoldNetwork(nn.Module):
         self.classifier = nn.Linear(algebra.n, num_classes)
 
     def forward(self, x):
-        """Project, Rotate, Classify.
+        """Projects input, applies geometric alignment, and classifies.
 
         Args:
             x: [Batch, Input_Dim]

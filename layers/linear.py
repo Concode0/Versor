@@ -17,7 +17,7 @@ class CliffordLinear(CliffordModule):
     """Fully connected layer. Mixing channels, preserving geometry.
 
     Learns a linear transformation. We use scalar weights to mix channels
-    because full multivector weights would explode your VRAM.
+    as full multivector weights would significantly increase VRAM usage.
 
     Attributes:
         in_channels (int): Input features.

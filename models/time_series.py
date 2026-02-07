@@ -15,7 +15,7 @@ from layers.linear import CliffordLinear
 from layers.rotor import RotorLayer
 
 class RotorTCN(nn.Module):
-    """Convolution in time, Rotation in space.
+    """Applies convolution in time and rotation in geometric space.
 
     Standard TCN, but with Clifford features.
     """
@@ -49,7 +49,7 @@ class RotorTCN(nn.Module):
             padding=(kernel_size-1)*dilation // 2
         )
         
-        # Output projection back to GA structure?
+        # Project output back to GA structure.
         self.out_rotor = RotorLayer(algebra, hidden_channels)
 
     def forward(self, x: torch.Tensor):

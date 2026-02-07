@@ -25,7 +25,7 @@ EXAMPLE_TASKS = {'manifold', 'hyperbolic', 'sanity'}
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig):
-    """The Boss. Delegates the work.
+    """Entry point for task execution. Delegates to specific task handlers.
 
     Args:
         cfg (DictConfig): The plan.

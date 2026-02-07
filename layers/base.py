@@ -14,7 +14,7 @@ from core.algebra import CliffordAlgebra
 class CliffordModule(nn.Module):
     """Base class. The foundation.
 
-    Keeps track of the algebra configuration so you don't have to.
+    Manages the algebra configuration.
     """
 
     def __init__(self, algebra: CliffordAlgebra):
@@ -37,5 +37,5 @@ class CliffordModule(nn.Module):
         return self._algebra
     
     def forward(self, x):
-        """Does the math."""
+        """Performs the forward pass computation."""
         raise NotImplementedError

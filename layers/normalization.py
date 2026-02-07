@@ -14,10 +14,10 @@ from core.algebra import CliffordAlgebra
 from layers.base import CliffordModule
 
 class CliffordLayerNorm(CliffordModule):
-    """Geometric LayerNorm. Keeps things stable.
+    """Geometric LayerNorm. Provides stability during training.
 
     Normalizes energy (magnitude) to 1, but respects the geometric direction.
-    Learns a scalar scale and bias because we're not savages.
+    Learns a scalar scale and bias to allow for learnable affine transformations.
 
     Attributes:
         weight (nn.Parameter): Scale.

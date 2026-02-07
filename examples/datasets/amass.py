@@ -32,7 +32,7 @@ class AMASSDataset(Dataset):
         self.data, self.labels = self._generate_synthetic_motion()
 
     def _generate_synthetic_motion(self):
-        """Generates wiggly lines."""
+        """Generates synthetic motion trajectories."""
         feature_dim = 45 
         data = []
         labels = []

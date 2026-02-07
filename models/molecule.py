@@ -23,7 +23,7 @@ class GeometricInvariantBlock(CliffordModule):
     """Rotation Invariant Block. Physics doesn't care about your coordinate system.
 
     Uses relative positions and geometric products to compute features
-    that don't change when you spin the universe.
+    remain invariant under global rotations.
     """
     def __init__(self, algebra: CliffordAlgebra, hidden_dim: int):
         super().__init__(algebra)

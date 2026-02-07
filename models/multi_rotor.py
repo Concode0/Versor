@@ -17,10 +17,9 @@ from layers.normalization import CliffordLayerNorm
 from functional.activation import GeometricGELU
 
 class MultiRotorModel(nn.Module):
-    """Geometric FFT Engine. Breaking the curse.
+    """Geometric FFT Engine. Efficiently approximates complex manifolds.
 
-    Uses overlapping rotors to approximate complex manifolds without
-    exponential parameter explosion.
+    Uses overlapping rotors to approximate complex manifolds efficiently.
 
     Attributes:
         algebra (CliffordAlgebra): The algebra.
@@ -91,7 +90,7 @@ class MultiRotorClassifier(nn.Module):
     this reads out from grade-1 vector components directly, preserving
     the directional information that rotors learn to align.
 
-    For classification, directions ARE the signal — not just magnitudes.
+    For classification, directional information is preserved alongside magnitudes.
     """
 
     def __init__(self, algebra: CliffordAlgebra, in_channels: int,

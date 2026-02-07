@@ -16,7 +16,7 @@ from torch_geometric.data import Data
 import torch_geometric.transforms as T
 
 class VersorQM9(QM9):
-    """QM9 Wrapper. Normalizes targets so gradients don't explode.
+    """QM9 Wrapper. Normalizes targets to ensure gradient stability.
     """
     
     def __init__(self, root, target_idx=7, transform=None, pre_transform=None):

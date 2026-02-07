@@ -14,7 +14,7 @@ import numpy as np
 from core.algebra import CliffordAlgebra
 
 class CrossModalDataset(Dataset):
-    """Fake modalities. Text is real, Image is noise.
+    """Synthetic cross-modal dataset.
 
     A: Real BERT embeddings.
     B: Rotated A + Noise.
@@ -27,7 +27,7 @@ class CrossModalDataset(Dataset):
         self.data_A, self.data_B = self._generate()
 
     def _generate(self):
-        """Downloads BERT, ruins the embeddings."""
+        """Downloads BERT, applies geometric distortions to the embeddings."""
         from transformers import BertTokenizer, BertModel
         from sklearn.decomposition import PCA
 

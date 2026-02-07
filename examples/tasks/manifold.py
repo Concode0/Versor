@@ -37,7 +37,7 @@ class ManifoldNetwork(nn.Module):
         return self.selector(x_rot)
 
 class ManifoldTask(BaseTask):
-    """Manifold Unbending. Flattening the universe.
+    """Manifold Unbending. Flattening the manifold.
 
     Restores a distorted 3D manifold to its planar truth.
     """

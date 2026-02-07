@@ -59,7 +59,7 @@ class CrossModalBinder(nn.Module):
     """Dual single-rotor encoders. Finding the relative rotation.
 
     Each modality gets its own rotor that learns to align
-    into a shared geometric space. The rotation IS the alignment.
+    into a shared geometric space. The rotation defines the alignment.
     """
 
     def __init__(self, algebra, in_channels=8, hidden_channels=16):

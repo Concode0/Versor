@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 from core.visualizer import GeneralVisualizer
 
 class MotionAlignmentTask(BaseTask):
-    """Motion Alignment. Walking isn't running.
+    """Motion Alignment Task. Distinguishes between different motion types.
 
     Aligns complex motion data into linearly separable latent space.
     """
@@ -179,7 +179,7 @@ class MotionAlignmentTask(BaseTask):
         return metrics
 
     def run(self):
-        """Captures history. For the GIF."""
+        """Captures training history for visualization."""
         from tqdm import tqdm
 
         print(f">>> Starting Task: motion")
@@ -238,7 +238,7 @@ class MotionAlignmentTask(BaseTask):
                 self.create_animation()
 
     def create_animation(self):
-        """Makes the GIF."""
+        """Generates a training progression animation."""
         try:
             import matplotlib.pyplot as plt
             from sklearn.decomposition import PCA
@@ -307,7 +307,7 @@ class MotionAlignmentTask(BaseTask):
             print(">>> Install imageio with: pip install imageio")
 
     def visualize(self, data):
-        """Shows the space and the rotors."""
+        """Visualizes the latent space and rotor weights."""
         loader = self.get_data()
         batch = next(iter(loader))
         inputs, labels = batch

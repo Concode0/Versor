@@ -17,7 +17,7 @@ from sklearn.manifold import TSNE
 from core.algebra import CliffordAlgebra
 
 class GeneralVisualizer:
-    """Visualization toolkit. Because numbers are boring.
+    """Visualization toolkit. Visualization tools for geometric algebra.
 
     Plots 3D projections, latent spaces, and energy heatmaps.
     """
@@ -108,7 +108,7 @@ class GeneralVisualizer:
         return fig
 
     def plot_latent_projection(self, data: torch.Tensor, method='pca', title=None):
-        """Squashes dimensions so we can comprehend them.
+        """Dimensionality reduction for visualization.
 
         Args:
             data (torch.Tensor): Input data.

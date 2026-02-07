@@ -32,7 +32,7 @@ class CliffordAlgebra:
         Args:
             p (int): Positive dimensions (+1).
             q (int, optional): Negative dimensions (-1). Defaults to 0.
-            device (str, optional): Where the magic happens. Defaults to 'cuda'.
+            device (str, optional): The device on which computations are performed. Defaults to 'cuda'.
         """
         self.p, self.q = p, q
         self.n = p + q
@@ -48,7 +48,7 @@ class CliffordAlgebra:
 
     @property
     def num_grades(self) -> int:
-        """Counts the grades (n + 1). Groundbreaking."""
+        """Counts the number of grades (n + 1)."""
         return self.n + 1
 
     def embed_vector(self, vectors: torch.Tensor) -> torch.Tensor:
@@ -148,9 +148,9 @@ class CliffordAlgebra:
         return commutator_sign * metric_sign
 
     def geometric_product(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-        """Computes the Geometric Product. The reason we're all here.
+        """Computes the Geometric Product.
 
-        Uses blocked accumulation to save your VRAM.
+        Uses blocked accumulation to optimize VRAM usage.
 
         Args:
             A (torch.Tensor): Left operand [..., Dim].

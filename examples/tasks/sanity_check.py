@@ -17,10 +17,10 @@ from tasks.base import BaseTask
 from core.visualizer import GeneralVisualizer
 
 class IdentityNetwork(nn.Module):
-    """The null hypothesis. Does nothing."""
+    """The identity network. Verifies pass-through capability."""
 
     def __init__(self, algebra):
-        """Sets up the do-nothing network."""
+        """Sets up the network."""
         super().__init__()
         self.rotor = RotorLayer(algebra, channels=1)
 
@@ -29,9 +29,9 @@ class IdentityNetwork(nn.Module):
         return self.rotor(x)
 
 class SanityCheckTask(BaseTask):
-    """Sanity Check. Is the algebra broken?
+    """Sanity Check. Verifies algebraic consistency.
 
-    Can we learn f(x) = x? If not, we have big problems.
+    Tests if the model can learn the identity function f(x) = x.
     """
 
     def __init__(self, cfg):
@@ -50,7 +50,7 @@ class SanityCheckTask(BaseTask):
         return GeometricMSELoss(self.algebra)
 
     def get_data(self):
-        """Noise in, noise out."""
+        """Random noise input."""
         n = 1000
         data = torch.randn(n, 1, self.algebra.dim, device=self.device)
         return data
@@ -67,13 +67,13 @@ class SanityCheckTask(BaseTask):
         return loss.item(), {}
 
     def evaluate(self, data):
-        """Did we learn nothing? (Which is the goal)."""
+        """Evaluates identity learning."""
         output = self.model(data)
         loss = self.criterion(output, data).item()
         print(f"Final Sanity Loss: {loss:.6f}")
 
     def visualize(self, data):
-        """Plots the noise. Riveting."""
+        """Plots the input distribution."""
         viz = GeneralVisualizer(self.algebra)
         viz.plot_latent_projection(data, title="Input Noise")
         viz.save("sanity_noise_pca.png")

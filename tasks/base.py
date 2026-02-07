@@ -19,7 +19,7 @@ class BaseTask(ABC):
     """The Template. Every task follows this ritual.
 
     Setup -> Load -> Train -> Eval -> Visualize.
-    Don't deviate.
+    Follows the standard lifecycle.
 
     Attributes:
         cfg (DictConfig): Config.

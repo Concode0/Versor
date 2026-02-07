@@ -12,7 +12,7 @@ import torch
 from core.algebra import CliffordAlgebra
 
 class ConformalAlgebra:
-    """Helper for CGA. For when 3D just isn't enough.
+    """Helper for CGA. Handles Conformal Geometric Algebra operations.
 
     Maps Euclidean R^n to Null Cone in R^{n+1, 1}.
 
@@ -53,7 +53,7 @@ class ConformalAlgebra:
         self.e_o[0, self.idx_ep] = -0.5
 
     def to_cga(self, x: torch.Tensor) -> torch.Tensor:
-        """Embeds points into the null cone. Magic.
+        """Embeds Euclidean points into the conformal null cone.
 
         P(x) = x + 0.5 * x^2 * e_inf + e_o.
 
@@ -82,7 +82,7 @@ class ConformalAlgebra:
         return P
 
     def from_cga(self, P: torch.Tensor) -> torch.Tensor:
-        """Brings them back to reality.
+        """Projects conformal points back to Euclidean space.
 
         Normalization: P -> P / (-P . e_inf).
 

@@ -18,7 +18,7 @@ import torch
 from core.algebra import CliffordAlgebra
 
 def inner_product(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-    """The scalar product. Projection onto reality.
+    """The scalar product. Projection onto the scalar part.
 
     Computes <A B>_0.
 
@@ -56,7 +56,7 @@ def induced_norm(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor:
     return torch.sqrt(torch.abs(sq_norm))
 
 def geometric_distance(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-    """Distance. Simple subtraction, fancy norm.
+    """Computes geometric distance.
 
     dist(A, B) = ||A - B||.
 
@@ -72,7 +72,7 @@ def geometric_distance(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tenso
     return induced_norm(algebra, diff)
 
 def grade_purity(algebra: CliffordAlgebra, A: torch.Tensor, grade: int) -> torch.Tensor:
-    """How pure is your grade? Checks coefficient energy.
+    """Checks the purity of the grade by examining coefficient energy.
 
     Purity = ||<A>_k||^2 / ||A||^2.
 
@@ -94,7 +94,7 @@ def grade_purity(algebra: CliffordAlgebra, A: torch.Tensor, grade: int) -> torch
     return energy_k / energy_total
 
 def mean_active_grade(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor:
-    """Average grade. Where does the energy live?
+    """Average grade. Identifies the grade where the majority of the energy resides.
 
     Mean Grade = Sum(k * ||<A>_k||^2) / ||A||^2.
 

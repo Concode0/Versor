@@ -23,7 +23,7 @@ from torch.utils.data import DataLoader
 
 
 class SemanticAutoEncoder(nn.Module):
-    """Semantic Unbender. Autoencoder with geometric disentanglement.
+    """Semantic Autoencoder. Performs geometric disentanglement.
 
     Encoder: CliffordLinear → GeometricGELU → CliffordLinear → RotorLayer
     Selector: BladeSelector (soft per-blade gate)
@@ -63,8 +63,8 @@ class SemanticAutoEncoder(nn.Module):
 class SemanticTask(BaseTask):
     """Semantic Disentanglement on 20 Newsgroups.
 
-    Tests whether a rotor can geometrically unbend the semantic manifold:
-    push meaning into grade-1 (vector) subspace while reconstructing faithfully.
+    Evaluates the ability of a rotor to geometrically disentangle the semantic manifold:
+    project semantic information into the grade-1 (vector) subspace while maintaining faithful reconstruction.
 
     Metrics: grade purity, reconstruction loss, noise robustness.
     """
