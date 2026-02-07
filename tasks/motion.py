@@ -207,9 +207,10 @@ class MotionAlignmentTask(BaseTask):
             else:
                 loss, logs = self.train_step(dataloader)
 
-            self.scheduler.step()
+            step_loss = avg_loss if is_loader else loss
+            self.scheduler.step(step_loss)
 
-            current_lr = self.scheduler.get_last_lr()[0]
+            current_lr = self.optimizer.param_groups[0]['lr']
             logs['LR'] = current_lr
 
             desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])
