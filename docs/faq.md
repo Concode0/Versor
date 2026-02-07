@@ -105,9 +105,6 @@ It brute-forces all $(p, q)$ signatures with $p + q = D$ and evaluates a geometr
 
 ## Troubleshooting
 
-### `ImportError: cannot import name 'EuclideanMetric' from 'core.metric'`
-This is a known issue in `tests/test_core.py`. The `EuclideanMetric` class was removed during refactoring. The test file needs updating.
-
 ### `RuntimeError: Shapes ... are not broadcastable`
 Check your tensor shapes. Multivectors should be `[Batch, Channels, 2^n]`. Common mistakes:
 - Missing channel dimension (use `x.unsqueeze(1)`)

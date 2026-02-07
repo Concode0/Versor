@@ -201,6 +201,6 @@ $$\|R x \tilde{R}\| = \|x\|$$
 
 This means the rotor transformation naturally has a Lipschitz constant of **exactly 1**.
 
-Unlike standard neural networks, which must use spectral normalization, weight clipping, or gradient penalties to *force* Lipschitz constraints (often approximately), Versor's layers satisfy this property **by construction**.
+Unlike standard neural networks, which must use spectral normalization, weight clipping, or gradient penalties to *force* Lipschitz constraints (often approximately), Versor's RotorLayer satisfy this property **by construction** and GeometricGELU and CliffordLayerNorm only control Radial Direction's Scale.
 
 **Note on Current Implementation:** While rotor operations are strictly isometric, the current `CliffordLinear` layer uses standard scalar weight matrices for channel mixing, which do not inherently guarantee 1-Lipschitz continuity. Our roadmap includes replacing these with compositions of irreducible rotors to achieve end-to-end geometric Lipschitz guarantees.
