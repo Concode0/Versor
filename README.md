@@ -15,6 +15,7 @@
 | **QM9** (Molecular) | MAE | **7.64 meV** | Trained **< 1 hour** on single 4090 |
 | **QM9** (Inference) | Latency | **5.8 ms / molecule** | Real-time on **CPU (M4)** |
 | **Motion** (UCI-HAR) | Accuracy | **~100%** | Grade Purity 0.9957 |
+| **Semantic** (BERT) | Purity | **100%** | $Cl(6,0)$ Geometric disentanglement |
 | **Architecture** | Params | **Lightweight** | $O(n)$ scaling via Cayley caching |
 
 **Versor** is a PyTorch framework for **Geometric Algebra Deep Learning**. It provides the building blocks for the **Geometric Blade Network (GBN)** and **Multi-Rotor GBN** — model architectures that go beyond unconstrained linear transformations, using pure, manifold-aligned geometric rotations via Clifford Algebra and Rotors.
