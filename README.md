@@ -1,21 +1,48 @@
 # Versor: A PyTorch Framework for Geometric Algebra Deep Learning
 
-> **"Standard Deep Learning warps the manifold. Versor unbends it."**
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/) [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 
-**Versor** is a PyTorch framework for **Geometric Algebra Deep Learning**. It provides the building blocks for the **Geometric Blade Network (GBN)** and **Multi-Rotor GBN** — model architectures that replace distorted linear transformations with pure, manifold-aligned geometric rotations using Clifford Algebra and Rotors.
+> **"There is a ceiling above standard Deep Learning that no one saw. Versor opens the door above it."**
+
+![Manifold Unbending Demo](/demo_manifold_comp.gif)
+
+## ⚡️ At a Glance
+
+**Versor** replaces standard matrix multiplications with **Geometric Algebra (Rotor)** operations to preserve the topological structure of data.
+
+| Benchmark | Metric | Performance | Note |
+| :--- | :--- | :--- | :--- |
+| **QM9** (Molecular) | MAE | **7.64 meV** | Trained **< 1 hour** on single 4090 |
+| **QM9** (Inference) | Latency | **5.8 ms / molecule** | Real-time on **CPU (M4)** |
+| **Motion** (UCI-HAR) | Accuracy | **~100%** | Grade Purity 0.9957 |
+| **Architecture** | Params | **Lightweight** | $O(n)$ scaling via Cayley caching |
+
+**Versor** is a PyTorch framework for **Geometric Algebra Deep Learning**. It provides the building blocks for the **Geometric Blade Network (GBN)** and **Multi-Rotor GBN** — model architectures that go beyond unconstrained linear transformations, using pure, manifold-aligned geometric rotations via Clifford Algebra and Rotors.
 
 ## Core Idea
 
-Rotors ($R = \exp(-B/2)$) perform pure geometric rotations via the sandwich product ($x \to RxR\tilde{}$), preserving manifold structure instead of distorting it like standard weight matrices.
+Rotors ( $R = \exp(-B/2)$ ) perform pure geometric rotations via the sandwich product ($x \to RxR\tilde{}$), preserving manifold structure where standard weight matrices may inadvertently deform it.
 
 ## Key Features
 
 *   **Metric-Agnostic Kernel**: Supports Euclidean $Cl(p, 0)$, Minkowski/Hyperbolic $Cl(p, q)$, and Projective algebras out of the box.
 *   **Geometric Layers**: `RotorLayer`, `MultiRotorLayer`, `CliffordLinear`, `CliffordGraphConv`, `CliffordLayerNorm`.
-*   **Model Architectures**: `GeometricBladeNetwork`, `MultiRotorModel`, `MoleculeGNN`, `MotionManifoldNetwork`.
+*   **GBN Architectures**: `GeometricBladeNetwork` (single-rotor GBN), `MultiRotorModel` (multi-rotor GBN), `MoleculeGNN` / `MultiRotorQuantumNet` (graph GBN), `MotionManifoldNetwork` (alignment GBN).
 *   **Novel Activations**: `GeometricGELU` (magnitude-based), `GradeSwish` (per-grade gating).
 *   **Automatic Metric Search**: Finds optimal $(p, q)$ signature based on data topology.
 *   **Geometric Sparsity**: `prune_bivectors` for compression of geometric layers.
+
+## Why Versor?
+
+### 1. Inherently Explainable AI (White-Box by Design)
+Standard deep learning models are black boxes of millions of uninterpretable scalars. In Versor, every learnable parameter is a **Bivector**, which has a direct geometric meaning (a specific plane of rotation). This transparency offers a path to **Interpretability by Design**, where the model's internal reasoning can be visualized as clear geometric transformations rather than abstract weights.
+
+### 2. A Grand Unified Theory for AI Architectures
+Computer Vision, NLP, and Physics-ML currently rely on fragmented architectures. Versor’s **Metric-Agnostic Kernel** unifies these domains under a single mathematical framework. By simply changing the signature $(p, q)$, the same engine processes:
+* **3D Euclidean Geometry** (Robotics, Molecules)
+* **Minkowski Spacetime** (Relativistic Physics)
+* **High-Dimensional Manifolds** (LLM Latent Spaces)
+This represents a step toward a **General Geometric Intelligence** that transcends specific domains.
 
 ## Installation
 
@@ -69,7 +96,6 @@ Versor uses **Hydra** for configuration management:
 # Run a task
 uv run main.py task=qm9 training.epochs=100
 uv run main.py task=motion training.epochs=100
-uv run main.py task=crossmodal training.epochs=200
 uv run main.py task=semantic training.epochs=200
 
 # Override parameters
@@ -95,7 +121,8 @@ streamlit run examples/demo.py
 | **Network** | MultiRotorQuantumNet |
 | **Num Rotors** | 12 |
 | **Validation MAE** | **7.6468** |
-| **Avg Inference Time** | **5.8439 ms / molecule** |
+| **Avg Inference Time (CPU)** | **5.8439 ms / molecule** |
+| **Training Time** | **< 1 hour** on Single 4090 |
 
 ![QM9 predictions](assets/multi_rotor_qm9_prediction.png)
 
@@ -107,8 +134,8 @@ uv run main.py task=multi_rotor_qm9 training.epochs=100
 uv run main.py task=multi_rotor_qm9 training.epochs=0 checkpoint=multi_rotor_qm9_best.pt
 ```
 
-> Note on Convergence & Efficiency: The current 7.3505 meV was achieved in just 100 epochs, and training was intentionally halted before reaching a plateau.
-> We identified that the gradient descent in the current "Linear Algebra Cage" (standard matrix-based mixing) began to introduce infinitesimal manifold distortions that counteract the pure isometric unbending of the GBN.
+> Note on Convergence & Efficiency: The current 7.6468 meV was achieved in just 100 epochs, and training was intentionally halted before reaching a plateau.
+> We identified that gradient descent through standard matrix-based mixing introduces infinitesimal manifold deformations that counteract the pure isometric unbending of the GBN — a limitation we aim to resolve by replacing CliffordLinear with pure rotor compositions.
 
 ### Motion Alignment (UCI-HAR)
 **Task**: Align high-dimensional motion data into a linearly separable latent space using geometric rotation.
@@ -126,32 +153,24 @@ uv run main.py task=multi_rotor_qm9 training.epochs=0 checkpoint=multi_rotor_qm9
 uv run main.py task=motion training.epochs=100
 ```
 
-### Cross-Modal Alignment
-**Task**: Align embeddings from two modalities (BERT text + rotated/noisy synthetic) into a shared geometric space using dual rotor encoders.
+### Semantic Disentanglement (20 Newsgroups)
+**Task**: Test whether a rotor can geometrically "unbend" the semantic manifold — pushing meaning into the grade-1 (vector) subspace while reconstructing faithfully.
 
 | Metric | Value |
 |--------|-------|
 | **Algebra** | $Cl(6, 0)$ (6D Euclidean) |
-| **Network** | CrossModalBinder (Dual RotorLayer Encoders) |
-| **Similarity Gap** | **0.86 ~ 1.02** (matched vs unmatched cosine sim) |
-| **Retrieval Accuracy** | **100.00%** (stable across seeds) |
+| **Dataset** | 20 Newsgroups (full corpus) |
+| **Network** | SemanticAutoEncoder (Encoder → BladeSelector → Decoder, each with RotorLayer) |
+| **Input** | BERT [CLS] → PCA(48) → 8-channel multivectors |
+| **Grade Purity** | **100%** (all energy in grade-1 vectors) |
+| **Reconstruction Loss** | **~0.0** |
+| **Noise Robustness** | 0.003 @ 5%, 0.024 @ 10%, 0.148 @ 20% |
 
 ```bash
-uv run main.py task=crossmodal training.epochs=1000
+uv run main.py task=semantic training.epochs=200
 ```
 
-### Semantic Disentanglement
-**Task**: Rotate BERT word embeddings so that semantic concepts align with orthogonal geometric grades (vectors vs bivectors).
-
-| Metric | Value |
-|--------|-------|
-| **Algebra** | $Cl(6, 0)$ (6D Euclidean) |
-| **Network** | SemanticNetwork (RotorLayer + BladeSelector) |
-| **Grade Purity** | **99.12%%** |
-
-```bash
-uv run main.py task=semantic training.epochs=1000
-```
+> First run downloads BERT model + 20 Newsgroups and caches embeddings to `data/newsgroups/`.
 
 ## Examples (Synthetic/Demo Tasks)
 
@@ -186,9 +205,9 @@ Versor/
 ├── core/               # Math kernel (CliffordAlgebra, metric, visualizer)
 ├── layers/             # Neural layers (Rotor, MultiRotor, Linear, GNN, Norm)
 ├── functional/         # Activations (GeometricGELU, GradeSwish) & losses
-├── models/             # Model architectures (GBN, MultiRotor, Molecule, Motion)
-├── tasks/              # Task runners (QM9, Motion, CrossModal, Semantic)
-├── datasets/           # Data loaders (QM9, HAR, CrossModal)
+├── models/             # GBN architectures (single-rotor, multi-rotor, graph, motion)
+├── tasks/              # Task runners (QM9, Motion, Semantic)
+├── datasets/           # Data loaders (QM9, HAR, Newsgroups)
 ├── conf/               # Hydra configs for main tasks
 ├── docs/               # Documentation (philosophy, tutorial, math, FAQ)
 ├── examples/           # Synthetic demos and interactive Streamlit app
@@ -216,6 +235,7 @@ Versor/
 *   [**Tutorial**](docs/tutorial.md): Step-by-step guide to building with Versor.
 *   [**Mathematics**](docs/mathematical.md): Clifford Algebra, Rotors, Metric Signatures.
 *   [**FAQ**](docs/faq.md): Common questions and troubleshooting.
+*   [**Milestone**](docs/milestone.md): Roadmap — completed and upcoming work.
 
 ## License & Intellectual Property
 
@@ -232,14 +252,16 @@ By releasing this under Apache 2.0, we provide a **perpetual, royalty-free paten
   author = {Kim, Eunkyum},
   title = {Versor: Universal Geometric Algebra Neural Network},
   url = {https://github.com/Concode0/versor},
+  version = {0.1.0},
   year = {2026},
   month = {2},
-  note = {ROK Patent Application 10-2026-0023023}
+  license = {Apache-2.0},
+  note = {ROK Patent Application 10-2026-0023023 (Geometric Blade Networks)}
 }
 ```
 
 ## Technical Note: Current State of CliffordLinear
-While Versor achieves SOTA-level efficiency, the current implementation of CliffordLinear still utilizes standard scalar weight matrices for channel mixing. We identify this as a lingering vestige of the "Linear Algebra Cage." > Current Limitation: These linear mappings can introduce unconstrained scaling and manifold warping, which slightly deviates from the pure isometric unbending provided by our RotorLayers.
+Unlike standard neural networks, which must use spectral normalization, weight clipping, or gradient penalties to force Lipschitz constraints (often approximately), Versor's RotorLayers satisfy this property by construction, while GeometricGELU and CliffordLayerNorm explicitly decouple and control only the Radial Scale, preserving angular integrity.
 
 Active Development: We are currently transitioning to a Pure Geometric Update paradigm. This involves:
 

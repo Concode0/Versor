@@ -269,9 +269,9 @@ Don't know the right $(p, q)$? Let Versor find it:
 from core.search import MetricSearch
 
 data = torch.randn(100, 6)  # 6D data
-searcher = MetricSearch(total_dim=6)
-best_p, best_q, stress = searcher.search(data)
-print(f"Optimal signature: Cl({best_p}, {best_q}), stress={stress:.4f}")
+searcher = MetricSearch(device='cpu')
+best_p, best_q = searcher.search(data)
+print(f"Optimal signature: Cl({best_p}, {best_q})")
 ```
 
 This brute-forces all $(p, q)$ with $p + q = D$ and picks the signature that minimizes a geometric stress metric.

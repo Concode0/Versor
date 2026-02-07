@@ -6,7 +6,7 @@
 Geometric Algebra (Clifford Algebra) is a mathematical framework that unifies vectors, complex numbers, quaternions, and more into a single algebraic system. It provides a coordinate-free way to express rotations, reflections, and projections in any dimension and any metric signature.
 
 ### How is this different from regular PyTorch?
-Standard PyTorch layers operate on flat vectors with matrix multiplication. Versor layers operate on **multivectors** — structured geometric objects with scalar, vector, bivector, and higher-grade components. The key difference: `RotorLayer` performs pure rotations (isometries) that cannot warp the data manifold, while `nn.Linear` applies unconstrained linear maps that can stretch, shear, and distort.
+Standard PyTorch layers operate on flat vectors with matrix multiplication. Versor layers operate on **multivectors** — structured geometric objects with scalar, vector, bivector, and higher-grade components. The key difference: `RotorLayer` performs pure rotations (isometries) that preserve manifold structure by construction, while `nn.Linear` applies unconstrained linear maps that may inadvertently stretch, shear, or deform the geometry.
 
 ### Do I need to understand Clifford Algebra to use Versor?
 For basic usage, no. Think of it as: your data gets embedded into a richer representation (multivectors), and the network learns rotations to align it. The algebra handles the math internally. For advanced usage (custom losses, new layers), reading `docs/mathematical.md` will help.
@@ -68,8 +68,7 @@ It computes `x * GELU(|x| + bias) / |x|`. The magnitude is scaled non-linearly v
 **Main tasks** (via `main.py`):
 - `qm9` / `multi_rotor_qm9` — Molecular property prediction (graph-based)
 - `motion` — UCI-HAR motion alignment with rotor-based latent space
-- `crossmodal` — Dual-encoder cross-modal alignment (BERT embeddings)
-- `semantic` — Semantic disentanglement by grade (BERT word embeddings)
+- `semantic` — Semantic disentanglement autoencoder (BERT → grade purity)
 
 **Example tasks** (via `examples/main.py`):
 - `manifold` — Flatten a figure-8 manifold
@@ -110,8 +109,8 @@ Check your tensor shapes. Multivectors should be `[Batch, Channels, 2^n]`. Commo
 - Missing channel dimension (use `x.unsqueeze(1)`)
 - Wrong algebra dimension (check `algebra.dim`)
 
-### `crossmodal` or `semantic` task fails with ImportError
-These tasks require optional dependencies (`transformers`, `scikit-learn`). Install them:
+### `semantic` task fails with ImportError
+This task requires optional dependencies (`transformers`, `scikit-learn`). Install them:
 ```bash
 uv sync --extra examples
 ```
