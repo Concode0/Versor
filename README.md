@@ -12,7 +12,7 @@
 
 | Benchmark | Metric | Performance | Note |
 | :--- | :--- | :--- | :--- |
-| **QM9** (Molecular) | MAE | **7.64 meV** | Trained **< 1 hour** on single 4090 |
+| **QM9** (Molecular) | MAE | **14.42 meV** | Trained **< 1 hour** on single 4090 |
 | **QM9** (Inference) | Latency | **5.8 ms / molecule** | Real-time on **CPU (M4)** |
 | **Motion** (UCI-HAR) | Accuracy | **~100%** | Grade Purity 0.9957 |
 | **Semantic** (BERT) | Purity | **100%** | $Cl(6,0)$ Geometric disentanglement |
@@ -121,7 +121,7 @@ streamlit run examples/demo.py
 | **Algebra** | $Cl(3, 0)$ (3D Euclidean) |
 | **Network** | MultiRotorQuantumNet |
 | **Num Rotors** | 12 |
-| **Validation MAE** | **7.6468** |
+| **Validation MAE** | **14.4254** |
 | **Avg Inference Time (CPU)** | **5.8439 ms / molecule** |
 | **Training Time** | **< 1 hour** on Single 4090 |
 
@@ -135,7 +135,7 @@ uv run main.py task=multi_rotor_qm9 training.epochs=100
 uv run main.py task=multi_rotor_qm9 training.epochs=0 checkpoint=multi_rotor_qm9_best.pt
 ```
 
-> Note on Convergence & Efficiency: The current 7.6468 meV was achieved in just 100 epochs, and training was intentionally halted before reaching a plateau.
+> Note on Convergence & Efficiency: The current 14.4254 meV was achieved in just 100 epochs, and training was intentionally halted before reaching a plateau.
 > We identified that gradient descent through standard matrix-based mixing introduces infinitesimal manifold deformations that counteract the pure isometric unbending of the GBN — a limitation we aim to resolve by replacing CliffordLinear with pure rotor compositions.
 
 ### Motion Alignment (UCI-HAR)
