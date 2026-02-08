@@ -230,11 +230,74 @@ class CliffordAlgebra:
             while temp > 0:
                 if temp & 1: k += 1
                 temp >>= 1
-            
+
             sign = (-1) ** (k * (k - 1) // 2)
             if sign == -1:
                 result[..., i] = -result[..., i]
         return result
+
+    def wedge(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        """Computes the wedge (outer) product: A ∧ B = (AB - BA)/2.
+
+        The wedge product is antisymmetric and grade-raising.
+
+        Reference:
+            Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
+            from Irreducibles." arXiv:2507.11688v1 [cs.LG]
+
+        Args:
+            A (torch.Tensor): Left operand [..., dim].
+            B (torch.Tensor): Right operand [..., dim].
+
+        Returns:
+            torch.Tensor: Wedge product A ∧ B [..., dim].
+        """
+        AB = self.geometric_product(A, B)
+        BA = self.geometric_product(B, A)
+        return (AB - BA) / 2.0
+
+    def right_contraction(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        """Computes the right contraction: A ⌋ B.
+
+        For a bivector b and vector v, this extracts the grade-1 component
+        of the geometric product. This is the core operation in GA power iteration.
+
+        Reference:
+            Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
+            from Irreducibles." arXiv:2507.11688v1 [cs.LG], Algorithm 2
+
+        Args:
+            A (torch.Tensor): Left operand [..., dim].
+            B (torch.Tensor): Right operand [..., dim].
+
+        Returns:
+            torch.Tensor: Right contraction A ⌋ B [..., dim].
+        """
+        # Right contraction of A into B
+        # For bivector-vector contraction, we extract grade-1 component
+        AB = self.geometric_product(A, B)
+        return self.grade_projection(AB, 1)
+
+    def inner_product(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        """Computes the inner product: A · B = (AB + BA)/2.
+
+        The inner product is symmetric and grade-lowering. Useful for computing
+        norms and scalar parts of multivectors.
+
+        Reference:
+            Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
+            from Irreducibles." arXiv:2507.11688v1 [cs.LG]
+
+        Args:
+            A (torch.Tensor): Left operand [..., dim].
+            B (torch.Tensor): Right operand [..., dim].
+
+        Returns:
+            torch.Tensor: Inner product A · B [..., dim].
+        """
+        AB = self.geometric_product(A, B)
+        BA = self.geometric_product(B, A)
+        return (AB + BA) / 2.0
 
     def exp(self, mv: torch.Tensor, order: int = 12) -> torch.Tensor:
         """Exponentiates a bivector to generate a rotor.
@@ -275,5 +338,33 @@ class CliffordAlgebra:
         if max_k > 0:
             for _ in range(int(max_k)):
                 res = self.geometric_product(res, res)
-            
+
         return res
+
+    def exp_decomposed(self, mv: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Exponentiates a bivector using optional decomposition.
+
+        This method provides an alternative to the standard exp() that decomposes
+        the bivector into simple components before exponentiating. This can be
+        more parameter-efficient and interpretable for certain applications.
+
+        Reference:
+            Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
+            from Irreducibles." arXiv:2507.11688v1 [cs.LG]
+
+        Args:
+            mv (torch.Tensor): Input bivector [..., dim].
+            **kwargs: Additional arguments passed to core.decomposition.exp_decomposed.
+                use_decomposition (bool): If True, use decomposition. Default True.
+                k (int, optional): Number of simple components.
+                threshold (float): Convergence threshold. Default 1e-6.
+                max_iterations (int): Max iterations. Default 100.
+
+        Returns:
+            torch.Tensor: Rotor exp(mv) [..., dim].
+        """
+        from core.decomposition import exp_decomposed
+        # Set default to actually use decomposition
+        if 'use_decomposition' not in kwargs:
+            kwargs['use_decomposition'] = True
+        return exp_decomposed(self, mv, **kwargs)
