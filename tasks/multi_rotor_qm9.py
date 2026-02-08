@@ -43,7 +43,7 @@ class MultiRotorQM9Task(BaseTask):
         return nn.MSELoss()
 
     def get_data(self):
-        train_loader, val_loader, _, mean, std = get_qm9_loaders(
+        train_loader, val_loader, test_loader, mean, std = get_qm9_loaders(
             root=self.data_root, 
             target=self.target_name, 
             batch_size=self.cfg.training.batch_size,
@@ -51,7 +51,7 @@ class MultiRotorQM9Task(BaseTask):
         )
         self.t_mean = torch.tensor(mean, device=self.device)
         self.t_std = torch.tensor(std, device=self.device)
-        return train_loader, val_loader
+        return train_loader, val_loader, test_loader
 
     def train_step(self, batch):
         batch = batch.to(self.device)
@@ -91,7 +91,7 @@ class MultiRotorQM9Task(BaseTask):
                 count += targets.size(0)
         
         avg_mae = total_mae / count
-        print(f">>> Multi-Rotor QM9 Validation: MAE = {avg_mae:.4f}")
+        # print(f">>> Multi-Rotor QM9 Validation: MAE = {avg_mae:.4f}")
         return avg_mae
 
     def benchmark_inference(self, val_loader):
@@ -164,13 +164,13 @@ class MultiRotorQM9Task(BaseTask):
     def run(self):
         """Executes the main training loop."""
         print(f">>> Starting Task: {self.cfg.name}")
-        train_loader, val_loader = self.get_data()
+        train_loader, val_loader, test_loader = self.get_data()
         
         if self.epochs == 0:
             print(">>> Epochs set to 0. Skipping training and running evaluation...")
-            self.evaluate(val_loader)
-            self.benchmark_inference(val_loader)
-            self.visualize(val_loader)
+            self.evaluate(test_loader)
+            self.benchmark_inference(test_loader)
+            self.visualize(test_loader)
             return
 
         from tqdm import tqdm
@@ -207,5 +207,12 @@ class MultiRotorQM9Task(BaseTask):
             pbar.set_description(desc)
 
         print(f">>> Training Complete. Best Val MAE: {best_val_mae:.4f}")
-        self.save_checkpoint(f"{self.cfg.name}_final.pt")
-        self.visualize(val_loader)
+        
+        # Load best model for final test
+        print(">>> Loading best model for Test Set evaluation...")
+        self.load_checkpoint(f"{self.cfg.name}_best.pt")
+        
+        test_mae = self.evaluate(test_loader)
+        print(f">>> FINAL TEST MAE: {test_mae:.4f}")
+        
+        self.visualize(test_loader)

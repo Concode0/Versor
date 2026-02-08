@@ -45,7 +45,7 @@ class QM9Task(BaseTask):
         return nn.MSELoss()
 
     def get_data(self):
-        train_loader, val_loader, _, mean, std = get_qm9_loaders(
+        train_loader, val_loader, test_loader, mean, std = get_qm9_loaders(
             root=self.data_root, 
             target=self.target_name, 
             batch_size=self.cfg.training.batch_size,
@@ -53,7 +53,7 @@ class QM9Task(BaseTask):
         )
         self.t_mean = torch.tensor(mean, device=self.device)
         self.t_std = torch.tensor(std, device=self.device)
-        return train_loader, val_loader
+        return train_loader, val_loader, test_loader
 
     def train_step(self, batch):
         batch = batch.to(self.device)
@@ -97,7 +97,8 @@ class QM9Task(BaseTask):
                 count += targets.size(0)
         
         avg_mae = total_mae / count
-        print(f">>> QM9 Evaluation: MAE = {avg_mae:.4f}")
+        # Don't print here to keep output clean during loops, or print conditionally.
+        # But for now, let's keep it simple.
         return avg_mae
 
     def visualize(self, val_loader):
@@ -137,7 +138,7 @@ class QM9Task(BaseTask):
     def run(self):
         """Runs train and val."""
         print(f">>> Starting Task: {self.cfg.name}")
-        train_loader, val_loader = self.get_data()
+        train_loader, val_loader, test_loader = self.get_data()
         
         from tqdm import tqdm
         pbar = tqdm(range(self.epochs))
@@ -173,5 +174,12 @@ class QM9Task(BaseTask):
             pbar.set_description(desc)
 
         print(f">>> Training Complete. Best Val MAE: {best_val_mae:.4f}")
-        self.save_checkpoint(f"{self.cfg.name}_final.pt")
-        self.visualize(val_loader)
+        
+        # Load best model for final test
+        print(">>> Loading best model for Test Set evaluation...")
+        self.load_checkpoint(f"{self.cfg.name}_best.pt")
+        
+        test_mae = self.evaluate(test_loader)
+        print(f">>> FINAL TEST MAE: {test_mae:.4f}")
+        
+        self.visualize(test_loader)
