@@ -22,19 +22,33 @@ class MultiRotorLayer(CliffordModule):
     Attributes:
         channels (int): Input features.
         num_rotors (int): Number of overlapping rotors.
+        use_decomposition (bool): If True, use power iteration decomposition.
+        decomp_k (int, optional): Number of simple components for decomposition.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, channels: int, num_rotors: int = 8):
+    def __init__(
+        self,
+        algebra: CliffordAlgebra,
+        channels: int,
+        num_rotors: int = 8,
+        use_decomposition: bool = False,
+        decomp_k: int = None
+    ):
         """Sets up the Multi-Rotor engine.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
             channels (int): Input features.
             num_rotors (int): Parallel heads.
+            use_decomposition (bool): If True, use bivector decomposition.
+                Reference: Pence et al. (2025), arXiv:2507.11688v1
+            decomp_k (int, optional): Number of simple components for decomposition.
         """
         super().__init__(algebra)
         self.channels = channels
         self.num_rotors = num_rotors
+        self.use_decomposition = use_decomposition
+        self.decomp_k = decomp_k
         
         self.bivector_indices = self._get_bivector_indices()
         self.num_bivectors = len(self.bivector_indices)
@@ -75,8 +89,13 @@ class MultiRotorLayer(CliffordModule):
         B = torch.zeros(self.num_rotors, self.algebra.dim, device=x.device, dtype=x.dtype)
         indices = self.bivector_indices.unsqueeze(0).expand(self.num_rotors, -1)
         B.scatter_(1, indices, self.rotor_bivectors)
-        
-        R = self.algebra.exp(-0.5 * B) # [K, D]
+
+        if self.use_decomposition:
+            R = self.algebra.exp_decomposed(
+                -0.5 * B, use_decomposition=True, k=self.decomp_k
+            )
+        else:
+            R = self.algebra.exp(-0.5 * B)  # [K, D]
         R_rev = self.algebra.reverse(R)
         
         # 2. Sandwich Product

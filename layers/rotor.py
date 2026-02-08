@@ -22,17 +22,30 @@ class RotorLayer(CliffordModule):
     Attributes:
         channels (int): Number of rotors.
         bivector_weights (nn.Parameter): Learnable B coefficients.
+        use_decomposition (bool): If True, use power iteration decomposition.
+        decomp_k (int, optional): Number of simple components for decomposition.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, channels: int):
+    def __init__(
+        self,
+        algebra: CliffordAlgebra,
+        channels: int,
+        use_decomposition: bool = False,
+        decomp_k: int = None
+    ):
         """Sets up the Rotor Layer.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
             channels (int): Number of features.
+            use_decomposition (bool): If True, use bivector decomposition.
+                Reference: Pence et al. (2025), arXiv:2507.11688v1
+            decomp_k (int, optional): Number of simple components for decomposition.
         """
         super().__init__(algebra)
         self.channels = channels
+        self.use_decomposition = use_decomposition
+        self.decomp_k = decomp_k
         
         self.bivector_indices = self._get_bivector_indices()
         self.num_bivectors = len(self.bivector_indices)
@@ -70,12 +83,17 @@ class RotorLayer(CliffordModule):
         """
         # 1. Construct Bivector B
         B = torch.zeros(self.channels, self.algebra.dim, device=x.device, dtype=x.dtype)
-        
+
         indices = self.bivector_indices.unsqueeze(0).expand(self.channels, -1)
         B.scatter_(1, indices, self.bivector_weights)
-        
+
         # 2. Compute Rotor R = exp(-B/2)
-        R = self.algebra.exp(-0.5 * B)
+        if self.use_decomposition:
+            R = self.algebra.exp_decomposed(
+                -0.5 * B, use_decomposition=True, k=self.decomp_k
+            )
+        else:
+            R = self.algebra.exp(-0.5 * B)
         
         # 3. Reverse R
         R_rev = self.algebra.reverse(R)
