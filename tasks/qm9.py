@@ -97,8 +97,7 @@ class QM9Task(BaseTask):
                 count += targets.size(0)
         
         avg_mae = total_mae / count
-        # Don't print here to keep output clean during loops, or print conditionally.
-        # But for now, let's keep it simple.
+        
         return avg_mae
 
     def visualize(self, val_loader):
