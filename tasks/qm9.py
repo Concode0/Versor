@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
 from tasks.base import BaseTask
-from datasets.qm9 import get_qm9_loader, VersorQM9
+from datasets.qm9 import get_qm9_loaders, VersorQM9
 from models.molecule import MoleculeGNN
 
 class QM9Task(BaseTask):
@@ -45,18 +45,10 @@ class QM9Task(BaseTask):
         return nn.MSELoss()
 
     def get_data(self):
-        train_loader, mean, std = get_qm9_loader(
+        train_loader, val_loader, _, mean, std = get_qm9_loaders(
             root=self.data_root, 
             target=self.target_name, 
             batch_size=self.cfg.training.batch_size,
-            split='train',
-            max_samples=self.cfg.dataset.samples
-        )
-        val_loader, _, _ = get_qm9_loader(
-            root=self.data_root, 
-            target=self.target_name, 
-            batch_size=self.cfg.training.batch_size,
-            split='val',
             max_samples=self.cfg.dataset.samples
         )
         self.t_mean = torch.tensor(mean, device=self.device)
