@@ -41,12 +41,51 @@ class BaseTask(ABC):
         self.algebra = self.setup_algebra()
         self.model = self.setup_model().to(self.device)
         self.criterion = self.setup_criterion()
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=cfg.training.lr)
+        self.optimizer = self._setup_optimizer()
         self.epochs = cfg.training.epochs
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=5)
 
         if cfg.get('checkpoint'):
             self.load_checkpoint(cfg.checkpoint)
+
+    def _setup_optimizer(self):
+        """Sets up optimizer based on config.
+
+        Default: RiemannianAdam (true manifold optimization on Spin(n))
+
+        Supports:
+        - 'riemannian_adam': Adam with exponential retraction (Riemannian, DEFAULT)
+        - 'exponential_sgd': SGD with exponential retraction (Riemannian)
+        - 'adamw': Standard AdamW (Euclidean, for ablation experiments only)
+
+        Returns:
+            Configured optimizer instance.
+        """
+        opt_type = self.cfg.training.get('optimizer_type', 'riemannian_adam')
+        lr = self.cfg.training.lr
+
+        if opt_type == 'exponential_sgd':
+            from optimizers.riemannian import ExponentialSGD
+            return ExponentialSGD(
+                self.model.parameters(),
+                lr=lr,
+                momentum=self.cfg.training.get('momentum', 0.9),
+                algebra=self.algebra,
+                max_bivector_norm=self.cfg.training.get('max_bivector_norm', 10.0)
+            )
+        elif opt_type == 'riemannian_adam':
+            from optimizers.riemannian import RiemannianAdam
+            return RiemannianAdam(
+                self.model.parameters(),
+                lr=lr,
+                betas=self.cfg.training.get('betas', (0.9, 0.999)),
+                algebra=self.algebra,
+                max_bivector_norm=self.cfg.training.get('max_bivector_norm', 10.0)
+            )
+        else:
+            # Euclidean AdamW (for ablation experiments only)
+            # Note: Treats Spin(n) as flat space, theoretically incorrect for rotor parameters
+            return optim.AdamW(self.model.parameters(), lr=lr)
 
     @abstractmethod
     def setup_algebra(self):
