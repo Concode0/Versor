@@ -48,6 +48,9 @@ class MetricSearch:
         Returns:
             float: Distortion score. Lower is better.
         """
+        # Move data to the correct device
+        data = data.to(self.device)
+
         N, D = data.shape
         if p + q != D:
             raise ValueError(f"Signature (p={p}, q={q}) must sum to data dimension {D}")
