@@ -85,10 +85,25 @@ class NewsgroupsClassificationDataset(Dataset):
         embeddings = np.concatenate(embeddings, axis=0)
 
         # PCA reduction to in_channels * embedding_dim components
-        pca = PCA(n_components=self.n_components)
-        reduced = pca.fit_transform(embeddings)
+        import pickle
+        pca_cache_path = os.path.join(self.cache_dir, f'pca_{self.n_components}_ch{self.in_channels}.pkl')
+
+        if self.split == 'train':
+            pca = PCA(n_components=self.n_components)
+            reduced = pca.fit_transform(embeddings)
+            print(f"    PCA explained variance: {pca.explained_variance_ratio_.sum():.2%}")
+            with open(pca_cache_path, 'wb') as f:
+                pickle.dump(pca, f)
+            print(f"    Saved PCA model to {pca_cache_path}")
+        else:
+            if not os.path.exists(pca_cache_path):
+                raise FileNotFoundError(f"PCA model not found at {pca_cache_path}. Run with split='train' first to fit PCA.")
+            print(f"    Loading PCA model from {pca_cache_path}...")
+            with open(pca_cache_path, 'rb') as f:
+                pca = pickle.load(f)
+            reduced = pca.transform(embeddings)
+
         reduced = reduced / (np.abs(reduced).max() + 1e-6)
-        print(f"    PCA explained variance: {pca.explained_variance_ratio_.sum():.2%}")
 
         # Embed into multivectors: each channel gets embedding_dim components
         vector_indices = [1 << i for i in range(self.embedding_dim)]

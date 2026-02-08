@@ -22,14 +22,6 @@ class VersorQM9(QM9):
     def __init__(self, root, target_idx=7, transform=None, pre_transform=None):
         super().__init__(root, transform, pre_transform)
         self.target_idx = target_idx
-        
-        if hasattr(self, '_data'):
-            y = self._data.y
-        else:
-            y = self.data.y
-            
-        self.mean = y[:, target_idx].mean().item()
-        self.std = y[:, target_idx].std().item()
 
     def get(self, idx):
         data = super().get(idx)
@@ -37,8 +29,12 @@ class VersorQM9(QM9):
         data.pos = data.pos - data.pos.mean(dim=0, keepdim=True)
         return data
 
-def get_qm9_loader(root, target='U0', batch_size=32, split='train', max_samples=None):
-    """Loads QM9. Splits it. Batches it."""
+def get_qm9_loaders(root, target='U0', batch_size=32, max_samples=None):
+    """Loads QM9. Splits it deterministically. Batches it.
+    
+    Returns:
+        train_loader, val_loader, test_loader, train_mean, train_std
+    """
     # 0:mu, 7:u0
     target_map = {'mu': 0, 'U0': 7}
     target_idx = target_map.get(target, 7)
@@ -46,7 +42,10 @@ def get_qm9_loader(root, target='U0', batch_size=32, split='train', max_samples=
     dataset = VersorQM9(root=root, target_idx=target_idx)
     
     N = len(dataset)
-    indices = torch.randperm(N)
+    # Deterministic split
+    g = torch.Generator()
+    g.manual_seed(42)
+    indices = torch.randperm(N, generator=g)
     
     if max_samples is not None and max_samples < N:
         indices = indices[:max_samples]
@@ -55,11 +54,23 @@ def get_qm9_loader(root, target='U0', batch_size=32, split='train', max_samples=
     train_size = int(0.8 * N)
     test_size = int(0.1 * N)
     
-    if split == 'train':
-        ds = dataset[indices[:train_size]]
-    elif split == 'val':
-        ds = dataset[indices[train_size:train_size+test_size]]
+    train_idx = indices[:train_size]
+    val_idx = indices[train_size:train_size+test_size]
+    test_idx = indices[train_size+test_size:]
+    
+    # Compute stats ONLY on training set
+    # Accessing internal data structure for efficiency
+    if hasattr(dataset, '_data'):
+        y = dataset._data.y
     else:
-        ds = dataset[indices[train_size+test_size:]]
+        y = dataset.data.y
         
-    return DataLoader(ds, batch_size=batch_size, shuffle=(split=='train')), dataset.mean, dataset.std
+    train_y = y[train_idx, target_idx]
+    mean = train_y.mean().item()
+    std = train_y.std().item()
+    
+    train_loader = DataLoader(dataset[train_idx], batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(dataset[val_idx], batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(dataset[test_idx], batch_size=batch_size, shuffle=False)
+        
+    return train_loader, val_loader, test_loader, mean, std
