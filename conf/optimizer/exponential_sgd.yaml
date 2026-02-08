@@ -1,0 +1,10 @@
+# @package _global_
+# Exponential SGD optimizer configuration
+
+training:
+  optimizer_type: "exponential_sgd"
+  lr: 0.01
+  momentum: 0.9
+  max_bivector_norm: 10.0
+
+# Usage: python main.py task=qm9 optimizer=exponential_sgd

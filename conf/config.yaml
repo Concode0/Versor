@@ -9,8 +9,13 @@ algebra:
 
 training:
   epochs: 100
-  lr: 0.01
+  lr: 0.001  # Lower LR for Riemannian optimizers
   batch_size: 32
   seed: 42
+  optimizer_type: "riemannian_adam"  # Default: Riemannian optimization on Spin(n)
+                                     # Options: "riemannian_adam", "exponential_sgd", "adamw" (for ablation)
+  momentum: 0.9  # For SGD variants
+  betas: [0.9, 0.999]  # For Adam variants
+  max_bivector_norm: 10.0  # Numerical stability for Riemannian optimizers
 
 checkpoint: null

@@ -1,0 +1,10 @@
+# @package _global_
+# Riemannian Adam optimizer configuration
+
+training:
+  optimizer_type: "riemannian_adam"
+  lr: 0.001
+  betas: [0.9, 0.999]
+  max_bivector_norm: 10.0
+
+# Usage: python main.py task=qm9 optimizer=riemannian_adam
