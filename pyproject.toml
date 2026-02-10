@@ -32,6 +32,22 @@ examples = [
 graph = [
     "torch-geometric>=2.6.1",
 ]
+pdbbind = [
+    "biopython>=1.79",
+    "rdkit>=2022.9.1",
+]
+weather = [
+    "xarray>=2023.1.0",
+    "netCDF4>=1.6.0",
+    "dask>=2023.1.0",
+]
+cad = [
+    "trimesh>=3.20.0",
+    "open3d>=0.17.0",
+]
 all = [
     "versor[viz,demo,examples,graph]",
+]
+all_tasks = [
+    "versor[graph,pdbbind,weather,cad]",
 ]

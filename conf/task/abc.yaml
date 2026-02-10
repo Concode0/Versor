@@ -1,0 +1,29 @@
+# @package _global_
+name: "abc"
+algebra:
+  p: 4
+  q: 1                          # Conformal signature Cl(4,1)
+  device: "cpu"
+dataset:
+  name: "abc"
+  task: "reconstruction"        # Options: reconstruction, primitive
+  num_points: 2048
+  augment: true
+model:
+  latent_dim: 128               # Latent parametric representation
+  hidden_dim: 64
+  num_rotors: 16
+  use_decomposition: true
+  decomp_k: 10
+  use_rotor_backend: true
+training:
+  epochs: 100
+  lr: 0.001
+  batch_size: 32
+  optimizer_type: "riemannian_adam"
+  max_bivector_norm: 10.0
+  loss_weights:
+    reconstruction: 1.0
+    sparsity: 0.01
+    grade_reg: 0.01          # Hermitian grade spectrum regularization
+  target_spectrum: [0.1, 0.25, 0.3, 0.2, 0.1, 0.05]  # Vector+bivector for conformal Cl(4,1)

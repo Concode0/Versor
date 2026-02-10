@@ -19,6 +19,10 @@ from tasks.motion import MotionAlignmentTask
 from tasks.qm9 import QM9Task
 from tasks.multi_rotor_qm9 import MultiRotorQM9Task
 from tasks.semantic import SemanticTask
+from tasks.md17 import MD17Task
+from tasks.pdbbind import PDBBindTask
+from tasks.weatherbench import WeatherBenchTask
+from tasks.abc import ABCTask
 
 EXAMPLE_TASKS = {'manifold', 'hyperbolic', 'sanity'}
 
@@ -36,6 +40,10 @@ def main(cfg: DictConfig):
         'qm9': QM9Task,
         'multi_rotor_qm9': MultiRotorQM9Task,
         'semantic': SemanticTask,
+        'md17': MD17Task,
+        'pdbbind': PDBBindTask,
+        'weatherbench': WeatherBenchTask,
+        'abc': ABCTask,
     }
 
     if task_name in EXAMPLE_TASKS:

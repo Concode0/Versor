@@ -14,5 +14,5 @@ model:
   num_rotors: 12
 training:
   epochs: 500
-  lr: 0.01
+  lr: 0.001  # Adjusted for Riemannian optimization
   batch_size: 2048

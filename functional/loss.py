@@ -101,3 +101,144 @@ class BivectorRegularization(nn.Module):
         target_part = self.algebra.grade_projection(x, self.grade)
         residual = x - target_part
         return (residual ** 2).sum(dim=-1).mean()
+
+
+class HermitianGradeRegularization(nn.Module):
+    """Regularizes grade spectrum toward a target distribution using Hermitian norm.
+
+    Computes the KL-divergence-like loss between the actual grade energy
+    distribution and a target spectrum. Encourages the model to distribute
+    energy across grades in a physically meaningful way.
+    """
+
+    def __init__(self, algebra, target_spectrum=None):
+        """Initialize grade regularization.
+
+        Args:
+            algebra: CliffordAlgebra instance.
+            target_spectrum: [n+1] tensor of desired relative grade energies.
+                If None, defaults to uniform distribution.
+        """
+        super().__init__()
+        self.algebra = algebra
+        n_grades = algebra.n + 1
+        if target_spectrum is None:
+            target = torch.ones(n_grades) / n_grades
+        else:
+            target = torch.tensor(target_spectrum, dtype=torch.float32)
+            target = target / (target.sum() + 1e-8)
+        self.register_buffer('target', target)
+
+    def forward(self, features):
+        """Compute grade regularization loss.
+
+        Args:
+            features: Multivector features [..., Channels, Dim].
+
+        Returns:
+            Scalar loss (MSE between actual and target grade distribution).
+        """
+        from core.metric import hermitian_grade_spectrum
+
+        # Flatten all dims except last (Dim) for spectrum computation
+        original_shape = features.shape
+        flat = features.reshape(-1, original_shape[-1])
+
+        spectrum = hermitian_grade_spectrum(self.algebra, flat)  # [N, n+1]
+        # Normalize to distribution
+        total = spectrum.sum(dim=-1, keepdim=True) + 1e-8
+        dist = spectrum / total  # [N, n+1]
+
+        # Mean distribution across batch
+        mean_dist = dist.mean(dim=0)  # [n+1]
+
+        # MSE from target spectrum
+        return F.mse_loss(mean_dist, self.target)
+
+
+class ChamferDistance(nn.Module):
+    """Symmetric Chamfer distance between two point clouds.
+
+    CD(P, Q) = (1/|P|) sum_p min_q ||p-q||^2 + (1/|Q|) sum_q min_p ||q-p||^2
+
+    Standard metric for 3D point cloud reconstruction and generation.
+    """
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """Compute Chamfer distance.
+
+        Args:
+            pred: Predicted point cloud [B, M, 3].
+            target: Target point cloud [B, N, 3].
+
+        Returns:
+            Chamfer distance (scalar).
+        """
+        diff = pred.unsqueeze(2) - target.unsqueeze(1)
+        dist_sq = (diff ** 2).sum(dim=-1)
+        min_dist_pred = dist_sq.min(dim=2)[0].mean(dim=1)
+        min_dist_target = dist_sq.min(dim=1)[0].mean(dim=1)
+        return (min_dist_pred + min_dist_target).mean()
+
+
+class ConservativeLoss(nn.Module):
+    """Enforces F = -grad(E) conservative force constraint.
+
+    Physics: forces should be the negative gradient of energy
+    with respect to atomic positions. Used in molecular dynamics tasks.
+    """
+
+    def forward(self, energy: torch.Tensor, force_pred: torch.Tensor,
+                pos: torch.Tensor) -> torch.Tensor:
+        """Compute conservative force loss.
+
+        Args:
+            energy: Predicted energy (scalar, requires grad graph).
+            force_pred: Predicted forces [N, 3].
+            pos: Atom positions [N, 3] (must have requires_grad=True).
+
+        Returns:
+            MSE between predicted forces and -grad(E).
+        """
+        force_from_energy = -torch.autograd.grad(
+            energy.sum(), pos,
+            create_graph=True, retain_graph=True
+        )[0]
+        return F.mse_loss(force_pred, force_from_energy)
+
+
+class PhysicsInformedLoss(nn.Module):
+    """Physics-informed loss combining MSE with conservation penalty.
+
+    Enforces that global weighted mean of each variable is approximately
+    conserved between forecast and target. Used in weather forecasting.
+    """
+
+    def __init__(self, physics_weight: float = 0.1):
+        super().__init__()
+        self.physics_weight = physics_weight
+
+    def forward(self, forecast: torch.Tensor, target: torch.Tensor,
+                lat_weights: torch.Tensor = None) -> torch.Tensor:
+        """Compute physics-informed loss.
+
+        Args:
+            forecast: Predicted state [B, H, W, C].
+            target: Target state [B, H, W, C].
+            lat_weights: Latitude area weights [H].
+
+        Returns:
+            Combined MSE + conservation penalty.
+        """
+        mse_loss = F.mse_loss(forecast, target)
+
+        if lat_weights is not None and forecast.dim() == 4:
+            w = lat_weights.view(1, -1, 1, 1).to(forecast.device)
+            forecast_mean = (forecast * w).sum(dim=[1, 2]) / w.sum()
+            target_mean = (target * w).sum(dim=[1, 2]) / w.sum()
+        else:
+            forecast_mean = forecast.mean(dim=list(range(1, forecast.dim() - 1)))
+            target_mean = target.mean(dim=list(range(1, target.dim() - 1)))
+
+        conservation_loss = F.mse_loss(forecast_mean, target_mean)
+        return mse_loss + self.physics_weight * conservation_loss

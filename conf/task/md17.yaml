@@ -1,0 +1,31 @@
+# @package _global_
+name: "md17"
+algebra:
+  p: 3
+  q: 0
+  device: "cpu"
+dataset:
+  name: "md17"
+  molecule: "aspirin"  # Options: aspirin, benzene, ethanol, malonaldehyde, naphthalene, salicylic acid, toluene, uracil
+  samples: 50000  # Limit dataset size for faster training (null for full dataset)
+model:
+  hidden_dim: 32
+  layers: 4
+  num_rotors: 12
+  max_z: 100  # Maximum atomic number
+  use_decomposition: true    # Enable bivector decomposition
+  decomp_k: 10              # Number of simple components
+  use_rotor_backend: true   # Use RotorGadget for parameter efficiency
+training:
+  epochs: 100
+  lr: 0.001  # Adjusted for Riemannian optimization
+  batch_size: 32
+  optimizer_type: "riemannian_adam"  # Options: riemannian_adam, exponential_sgd, adamw
+  loss_weights:
+    energy: 1.0
+    force: 10.0  # Force loss weight (typically higher to balance gradients)
+    sparsity: 0.01           # Regularize rotor complexity
+    conservative: 0.1        # Enforce F = -grad(E) physics constraint
+    grade_reg: 0.01          # Hermitian grade spectrum regularization
+  target_spectrum: [0.4, 0.4, 0.15, 0.05]  # Scalar + vector dominant for Cl(3,0)
+  max_bivector_norm: 10.0  # For Riemannian optimizer clipping
