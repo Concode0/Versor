@@ -250,11 +250,6 @@ By releasing this under Apache 2.0, we provide a **perpetual, royalty-free paten
 }
 ```
 
-## Technical Note: Current State of CliffordLinear
-Unlike standard neural networks, which must use spectral normalization, weight clipping, or gradient penalties to force Lipschitz constraints (often approximately), Versor's RotorLayers satisfy this property by construction, while GeometricGELU and CliffordLayerNorm explicitly decouple and control only the Radial Scale, preserving angular integrity.
-
-Active Development: We are currently transitioning to a Pure Geometric Update paradigm. This involves:
-
-Replacing matrix-based mixing with a Composition of Irreducible Rotors.
-
-Moving all weight updates from Euclidean space to the Bivector Manifold (Lie Algebra).
+## Reference:
+    Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
+    from Irreducibles." arXiv:2507.11688v1 [cs.LG]
