@@ -27,9 +27,13 @@ Rotors ( $R = \exp(-B/2)$ ) perform pure geometric rotations via the sandwich pr
 ## Key Features
 
 *   **Metric-Agnostic Kernel**: Supports Euclidean $Cl(p, 0)$, Minkowski/Hyperbolic $Cl(p, q)$, and Projective algebras out of the box.
-*   **Geometric Layers**: `RotorLayer`, `MultiRotorLayer`, `CliffordLinear`, `CliffordGraphConv`, `CliffordLayerNorm`.
+*   **Geometric Layers**: `RotorLayer`, `MultiRotorLayer`, `CliffordLinear`, `RotorGadget`, `CliffordGraphConv`, `CliffordLayerNorm`.
+*   **Parameter-Efficient Transformations**: `RotorGadget` layer uses rotor compositions instead of dense matrices — **60-88% parameter reduction**.
 *   **GBN Architectures**: `GeometricBladeNetwork` (single-rotor GBN), `MultiRotorModel` (multi-rotor GBN), `MoleculeGNN` / `MultiRotorQuantumNet` (graph GBN), `MotionManifoldNetwork` (alignment GBN).
 *   **Novel Activations**: `GeometricGELU` (magnitude-based), `GradeSwish` (per-grade gating).
+*   **Bivector Decomposition**: Power iteration method for efficient rotor computation (Pence et al., 2025).
+*   **Input Shuffle**: Built-in regularization via channel shuffling (fixed/random modes).
+*   **Hermitian Metrics**: Signed inner product `<bar{A}B>_0` for algebraically proper measurement in any signature. `HermitianGradeRegularization` for grade spectrum control.
 *   **Automatic Metric Search**: Finds optimal $(p, q)$ signature based on data topology.
 *   **Geometric Sparsity**: `prune_bivectors` for compression of geometric layers.
 
@@ -203,18 +207,17 @@ uv run main.py task=qm9 algebra.p=4 training.lr=0.001
 
 ```
 Versor/
-├── core/               # Math kernel (CliffordAlgebra, metric, visualizer)
-├── layers/             # Neural layers (Rotor, MultiRotor, Linear, GNN, Norm)
-├── functional/         # Activations (GeometricGELU, GradeSwish) & losses
-├── models/             # GBN architectures (single-rotor, multi-rotor, graph, motion)
-├── tasks/              # Task runners (QM9, Motion, Semantic)
-├── datasets/           # Data loaders (QM9, HAR, Newsgroups)
+├── core/               # Math kernel (CliffordAlgebra, metric, CGA, decomposition)
+├── layers/             # Neural layers (Rotor, MultiRotor, Linear, RotorGadget, GNN, Norm)
+├── functional/         # Activations & losses (GeometricGELU, HermitianGradeReg, ChamferDist)
+├── models/             # GBN architectures (GBN, MoleculeGNN, ForceNet, PDBbind, Weather, CAD)
+├── optimizers/         # Riemannian optimizers (RiemannianAdam, ExponentialSGD)
+├── tasks/              # Task runners (QM9, Motion, Semantic, MD17, PDBbind, WeatherBench, ABC)
+├── datasets/           # Data loaders (QM9, HAR, Newsgroups, MD17, PDBbind, WeatherBench, ABC)
 ├── conf/               # Hydra configs for main tasks
-├── docs/               # Documentation (philosophy, tutorial, math, FAQ)
+├── scripts/            # Data download scripts
+├── docs/               # Documentation (philosophy, tutorial, math, FAQ, milestone)
 ├── examples/           # Synthetic demos and interactive Streamlit app
-│   ├── tasks/          # Manifold, Hyperbolic, Sanity
-│   ├── datasets/       # Synthetic data generators
-│   └── conf/           # Hydra configs for example tasks
 ├── tests/              # Unit & property tests
 └── main.py             # CLI entry point
 ```
@@ -250,11 +253,51 @@ By releasing this under Apache 2.0, we provide a **perpetual, royalty-free paten
 }
 ```
 
-## Technical Note: Current State of CliffordLinear
+## Recent Developments: Pure Geometric Transformations
+
 Unlike standard neural networks, which must use spectral normalization, weight clipping, or gradient penalties to force Lipschitz constraints (often approximately), Versor's RotorLayers satisfy this property by construction, while GeometricGELU and CliffordLayerNorm explicitly decouple and control only the Radial Scale, preserving angular integrity.
 
-Active Development: We are currently transitioning to a Pure Geometric Update paradigm. This involves:
+### RotorGadget: Composition of Irreducible Rotors (2025)
 
-Replacing matrix-based mixing with a Composition of Irreducible Rotors.
+We have now implemented **RotorGadget** ([Pence et al., 2025](https://arxiv.org/abs/2507.11688)), which replaces matrix-based mixing with **pure rotor compositions**:
 
-Moving all weight updates from Euclidean space to the Bivector Manifold (Lie Algebra).
+- **Parameter reduction**: 60-88% fewer parameters than traditional linear layers
+- **Geometric preservation**: Uses rotor sandwich products `r·x·s†` instead of scalar weight matrices
+- **Bivector decomposition**: Optional power iteration method for efficient computation
+- **Input shuffle**: Built-in regularization via channel permutation (none/fixed/random modes)
+- **Drop-in replacement**: `CliffordLinear(backend='rotor')` for easy adoption
+
+This addresses the limitation mentioned in our QM9 benchmarks where gradient descent through standard matrix-based mixing introduces infinitesimal manifold deformations. By using pure rotor compositions, we maintain strict geometric structure throughout the network.
+
+**Riemannian Optimization** (Default)
+
+Versor uses **true manifold optimization** on the Spin group by default. The pure geometric vision is complete:
+
+- [x] Forward pass: Pure geometric operations (rotor sandwiches, RotorGadget)
+- [x] Backward pass: Riemannian optimization (RiemannianAdam, ExponentialSGD)
+- [x] Geodesic updates in Lie algebra (bivector space) with numerical stability
+- [x] **Default optimizer**: RiemannianAdam (Euclidean AdamW available for ablation experiments)
+
+Usage (automatic with default config):
+```python
+from optimizers.riemannian import RiemannianAdam
+
+optimizer = RiemannianAdam(
+    model.parameters(),
+    lr=0.001,
+    algebra=algebra,
+    max_bivector_norm=10.0
+)
+```
+
+All tasks use Riemannian optimization by default:
+```bash
+uv run main.py task=qm9  # Uses RiemannianAdam by default
+
+# For ablation experiments with Euclidean optimization:
+uv run main.py task=qm9 training.optimizer_type=adamw training.lr=0.01
+```
+
+This represents optimization **directly on the Spin(n) manifold** — respecting the curved geometry of rotations rather than treating parameter space as flat Euclidean.
+
+See `docs/tutorial.md` (Section 6: Riemannian Optimization) for detailed usage and theory.

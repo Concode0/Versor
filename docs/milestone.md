@@ -6,7 +6,13 @@ While the core engine is operational, the vision for a universal Geometric Compu
 
 ## Completed
 
+- **Hermitian Metrics**: Algebraically proper signed inner product $\langle \bar{A}B \rangle_0$ for mixed-signature algebras. `HermitianGradeRegularization` for grade spectrum control. Integrated into all new tasks.
+- **Four New Tasks**: MD17 (molecular dynamics, $Cl(3,0)$), PDBbind (protein-ligand binding, $Cl(3,0)$), WeatherBench (spacetime forecasting, $Cl(2,1)$), ABC (CAD reconstruction, $Cl(4,1)$). All use full Versor layer stack, RiemannianAdam, bivector decomposition, and RotorGadget backend.
+- **Data Download Scripts**: `scripts/download_{md17,pdbbind,weatherbench,abc}.sh` for dataset acquisition. Synthetic data generators included for development.
+- **Riemannian Optimization** (Default): ExponentialSGD and RiemannianAdam optimizers with geodesic updates on the Spin(n) manifold. **Now the default optimizer for all tasks**. Updates respect Lie algebra structure with numerical stability via bivector norm clipping. Completes the pure-geometric vision: geometric operations in forward pass + manifold optimization in backward pass. Euclidean AdamW retained only for ablation experiments.
 - **Multi-Rotor GBN**: Spectral decomposition with $K$ overlapping rotors (`MultiRotorLayer`), weighted superposition approximating complex manifold transformations.
+- **RotorGadget (Pence et al., 2025)**: Parameter-efficient rotor-based linear transformations. Replaces dense matrices with rotor compositions, achieving **60-88% parameter reduction**. Includes input shuffle for regularization.
+- **Bivector Decomposition**: Power iteration method for decomposing arbitrary bivectors into simple components. Enables efficient rotor computation via closed-form exponentials.
 - **Automatic Metric Search**: Brute-force search over all $(p, q)$ signatures to find the optimal metric for a given dataset (`MetricSearch`).
 - **Automatic Bivector Pruning**: Geometric sparsity via `prune_bivectors()` — zeroes out rotation planes below a threshold for model compression.
 - **CliffordGraphConv**: Geometric message passing on graphs, enabling molecular property prediction (QM9 benchmark: 7.64 meV MAE).
@@ -15,7 +21,7 @@ While the core engine is operational, the vision for a universal Geometric Compu
 
 ## In Progress
 
-### 1. Core Architecture Evolution
+### 1. Additional Architecture Evolution
 - **Real-time Adaptive Rotors (Online SGD)**: Online learning framework for time-series data (e.g., Finance) where rotors adapt dynamically to streaming inputs.
 - **Multi-head & Dynamic Rotors**: Input-dependent rotation axes to enable a fully geometric attention mechanism.
 - **Geometric Transformer (GAT)**: Integration of "Geometric Attention" where Q, K, V interactions are defined by Clifford blade products.

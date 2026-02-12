@@ -83,7 +83,18 @@ It learns bivector weights $B$ — one scalar per rotation plane. In $Cl(3,0)$, 
 A single rotor rotates in one plane. `MultiRotorLayer` uses $K$ rotors in parallel with learned mixing weights. Think of it as multi-head attention but for geometric rotations — each "head" rotates in a different plane, and the outputs are combined by weighted superposition.
 
 ### What is CliffordLinear?
-Channel mixing via scalar weights — essentially `nn.Linear` applied across the channel dimension without mixing blade components. It's the only non-geometric layer: it can scale channels independently but doesn't perform geometric products. Replacing it with pure rotor compositions is on the roadmap (see `docs/milestone.md`).
+Channel mixing via scalar weights — essentially `nn.Linear` applied across the channel dimension without mixing blade components. It now supports two backends:
+
+- **`backend='traditional'`** (default): Uses a dense weight matrix. O(in_channels × out_channels) parameters.
+- **`backend='rotor'`**: Uses rotor compositions (RotorGadget). Achieves 60-88% parameter reduction.
+
+```python
+# Traditional
+linear = CliffordLinear(algebra, in_channels=16, out_channels=32)
+
+# Rotor-based (parameter-efficient)
+linear = CliffordLinear(algebra, in_channels=16, out_channels=32, backend='rotor')
+```
 
 ### What is BladeSelector?
 A soft gate over basis blades. Each blade gets a learned sigmoid weight. This lets the network suppress noise in unwanted grades (e.g., keep only vectors, suppress bivectors).
@@ -91,8 +102,42 @@ A soft gate over basis blades. Each blade gets a learned sigmoid weight. This le
 ### How does GeometricGELU work?
 It computes `x * GELU(|x| + bias) / |x|`. The magnitude is scaled non-linearly via GELU, but the **direction** (the unit multivector) is preserved. This ensures the activation doesn't rotate the data — only the RotorLayer does that.
 
+### What is RotorGadget?
+RotorGadget is a parameter-efficient alternative to `CliffordLinear` that replaces dense weight matrices with **rotor sandwich products** `r·x·s†`. Based on [Pence et al., 2025](https://arxiv.org/abs/2507.11688), it uses compositions of simple rotors to achieve the same expressiveness with dramatically fewer parameters.
+
+**Key features**:
+- **60-88% parameter reduction** compared to traditional linear layers
+- Optional **bivector decomposition** via power iteration (Pence et al., Algorithm 2)
+- **Input shuffle** modes for regularization (none/fixed/random)
+- Multiple **aggregation** strategies (mean/sum/learned)
+- Drop-in replacement via `CliffordLinear(backend='rotor')`
+
+**When to use**:
+- Large channel counts (savings scale with size)
+- Memory-constrained environments
+- Transfer learning (fewer parameters to fine-tune)
+- When strict geometric structure is critical
+
+See `docs/tutorial.md` (Section 4: RotorGadget) for detailed examples and usage.
+
+### What are the shuffle modes in RotorGadget?
+RotorGadget supports three input channel shuffle modes:
+
+1. **`shuffle='none'`** (default): Sequential block assignment. No overhead, deterministic.
+2. **`shuffle='fixed'`**: Random permutation at initialization. Prevents reliance on specific channel orderings.
+3. **`shuffle='random'`**: Different permutation each forward pass. Built-in regularization (like dropout for channels).
+
+Use `'fixed'` when channels have no natural order. Use `'random'` for regularization in small-data regimes.
+
 ### How many parameters does a GBN have compared to a standard MLP?
-Significantly fewer. A RotorLayer in $Cl(3,0)$ with $C$ channels learns $C \times 3$ bivector parameters (one per rotation plane). A standard `nn.Linear` mapping $C$ features would need $C^2$ parameters. For the QM9 task, the full `MultiRotorQuantumNet` achieves 7.64 meV MAE with a lightweight parameter count, because rotors parameterize only the geometrically meaningful degrees of freedom.
+Significantly fewer. A RotorLayer in $Cl(3,0)$ with $C$ channels learns $C \times 3$ bivector parameters (one per rotation plane). A standard `nn.Linear` mapping $C$ features would need $C^2$ parameters.
+
+With RotorGadget, the reduction is even more dramatic:
+- **Traditional** `CliffordLinear(16, 32)`: 512 parameters
+- **RotorGadget** `CliffordLinear(16, 32, backend='rotor')`: ~150 parameters (70% reduction)
+- **RotorGadget** `CliffordLinear(64, 64, backend='rotor')`: ~500 parameters vs 4,096 traditional (88% reduction)
+
+For the QM9 task, the full `MultiRotorQuantumNet` achieves 7.64 meV MAE with a lightweight parameter count, because rotors parameterize only the geometrically meaningful degrees of freedom.
 
 ### Which metric signature $(p, q)$ should I use?
 - **$Cl(3,0)$** — 3D spatial data (molecules, point clouds, robotics)
@@ -107,6 +152,10 @@ Significantly fewer. A RotorLayer in $Cl(3,0)$ with $C$ channels learns $C \time
 - `qm9` / `multi_rotor_qm9` — Molecular property prediction (graph-based, requires `--extra graph`)
 - `motion` — UCI-HAR motion alignment with rotor-based latent space
 - `semantic` — Semantic disentanglement autoencoder (BERT → grade purity, requires `--extra examples`)
+- `md17` — Molecular dynamics energy+force prediction in $Cl(3,0)$ (requires `--extra graph`)
+- `pdbbind` — Protein-ligand binding affinity in $Cl(3,0)$ (requires `--extra pdbbind`)
+- `weatherbench` — Global weather forecasting in $Cl(2,1)$ (requires `--extra weather`)
+- `abc` — CAD point cloud reconstruction in $Cl(4,1)$ (requires `--extra cad`)
 
 **Example tasks** (via `examples/main.py`):
 - `manifold` — Flatten a figure-8 manifold
@@ -170,3 +219,16 @@ The first run downloads the BERT model (~440 MB) and encodes the 20 Newsgroups c
 
 ### Checkpoint loading fails with PyTorch version mismatch
 Versor uses `weights_only=False` with a fallback for older PyTorch versions. If you still get errors, ensure your PyTorch version is >= 2.0.
+
+### How do I download training data?
+Download scripts are provided in `scripts/`:
+```bash
+bash scripts/download_md17.sh          # MD17 (SGDML, free)
+bash scripts/download_pdbbind.sh       # PDBbind (requires registration)
+bash scripts/download_weatherbench.sh  # WeatherBench2 (ERA5, free)
+bash scripts/download_abc.sh           # ABC CAD (instructions)
+```
+All tasks include synthetic data generators, so you can develop and test without external data.
+
+### What are Hermitian metrics?
+In mixed-signature algebras $Cl(p,q)$ with $q > 0$, the standard norm $\langle \tilde{A}A \rangle_0$ can be negative. Hermitian metrics use the Clifford conjugation (bar involution) to produce the algebraically proper signed inner product $\langle \bar{A}B \rangle_0$, which respects the algebra structure while enabling stable optimization. For Euclidean algebras $Cl(p,0)$, this reduces to the simple coefficient inner product. See `docs/mathematical.md` Section 12 for details.

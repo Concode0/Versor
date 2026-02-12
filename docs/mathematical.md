@@ -205,3 +205,163 @@ This means the rotor transformation naturally has a Lipschitz constant of **exac
 Unlike standard neural networks, which must use spectral normalization, weight clipping, or gradient penalties to *force* Lipschitz constraints (often approximately), Versor's RotorLayer satisfy this property **by construction** and GeometricGELU and CliffordLayerNorm only control Radial Direction's Scale.
 
 **Note on Current Implementation:** While rotor operations are strictly isometric, the current `CliffordLinear` layer uses standard scalar weight matrices for channel mixing, which do not inherently guarantee 1-Lipschitz continuity. Our roadmap includes replacing these with compositions of irreducible rotors to achieve end-to-end geometric Lipschitz guarantees.
+
+## 11. Riemannian Optimization on the Spin Group (Default)
+
+Versor uses **Riemannian optimization by default**. Standard gradient descent treats parameter space as **flat Euclidean** space: $\theta_{\text{new}} = \theta_{\text{old}} - \eta \nabla \theta$. This ignores the **curved geometry** of the parameter manifold. For rotations, the natural manifold is the **Spin group** Spin$(n)$, which is a non-flat Riemannian manifold.
+
+### The Spin Group and Lie Algebra
+
+The **Spin group** Spin$(n)$ is the set of all unit rotors:
+
+$$\text{Spin}(n) = \{ R \in \text{Cl}(n,0) \mid R\tilde{R} = 1 \}$$
+
+This is a **curved manifold**, not a flat vector space. The associated **Lie algebra** is:
+
+$$\mathfrak{so}(n) = \{ B \in \text{Cl}(n,0) \mid \text{grade}(B) = 2 \}$$
+
+The Lie algebra $\mathfrak{so}(n)$ is the **tangent space** at the identity element of Spin$(n)$. Critically, $\mathfrak{so}(n)$ is **isomorphic to the bivector space** — the space of all grade-2 multivectors.
+
+### Exponential Map
+
+The **exponential map** connects the Lie algebra to the group:
+
+$$\exp: \mathfrak{so}(n) \to \text{Spin}(n), \quad B \mapsto \exp(B)$$
+
+In Versor, we compute $R = \exp(-B/2)$ using the **scaling-and-squaring** method (see Section 3). The exponential map is a **geodesic retraction**: it maps a tangent vector (bivector) to a point on the manifold (rotor) by following a geodesic (shortest path on the curved surface).
+
+### Why Bivector Parameterization is Natural
+
+Versor's layers parameterize rotors **indirectly** via bivectors:
+
+$$B \in \mathfrak{so}(n) \quad \xrightarrow{\exp(-B/2)} \quad R \in \text{Spin}(n)$$
+
+Since $B$ lives in the **Lie algebra** (a vector space), gradients $\nabla_B$ are automatically tangent vectors. This makes bivector parameterization the **natural choice** for Riemannian optimization.
+
+### Riemannian Gradient Descent
+
+A Riemannian gradient update on Spin$(n)$ follows:
+
+$$R_{\text{new}} = R_{\text{old}} \cdot \exp(-\eta \nabla_B)$$
+
+where $\nabla_B$ is the gradient in the Lie algebra. For bivector parameters, this becomes:
+
+$$B_{\text{new}} = B_{\text{old}} - \eta \nabla_B$$
+
+$$R_{\text{new}} = \exp(-B_{\text{new}}/2) = \exp(-(B_{\text{old}} - \eta \nabla_B)/2)$$
+
+For small learning rates $\eta$, this approximates:
+
+$$R_{\text{new}} \approx \exp(-B_{\text{old}}/2) \cdot \exp(\eta \nabla_B / 2) = R_{\text{old}} \cdot \exp(\eta \nabla_B / 2)$$
+
+So **Euclidean updates in bivector space + exponential map in forward pass = Riemannian updates on Spin**$(n)$.
+
+### Numerical Stability: Bivector Norm Clipping
+
+Large bivector norms cause numerical issues in $\exp(-B/2)$:
+
+- Scaling-and-squaring requires $k \sim \log_2(\|B\|)$ squarings
+- Very large $k$ leads to compounding numerical errors, NaN, or overflow
+
+To prevent this, Versor's Riemannian optimizers **clip bivector norms** after each update:
+
+$$B \leftarrow B \cdot \min\left(1, \frac{\|B\|_{\max}}{\|B\|}\right)$$
+
+where $\|B\|_{\max}$ (default: 10.0) is a user-specified maximum norm. This ensures $\|B\| \leq \|B\|_{\max}$, keeping the exponential map numerically stable.
+
+Geometrically, this limits how far a single gradient step can move on the manifold, preventing "teleportation" across the curved surface.
+
+### Implementation: ExponentialSGD and RiemannianAdam
+
+Versor implements two Riemannian optimizers:
+
+**ExponentialSGD**: SGD with momentum in the Lie algebra
+```python
+from optimizers.riemannian import ExponentialSGD
+
+optimizer = ExponentialSGD(
+    model.parameters(),
+    lr=0.01,
+    momentum=0.9,
+    algebra=algebra,
+    max_bivector_norm=10.0
+)
+```
+
+**RiemannianAdam**: Adam with momentum accumulation in the Lie algebra
+```python
+from optimizers.riemannian import RiemannianAdam
+
+optimizer = RiemannianAdam(
+    model.parameters(),
+    lr=0.001,
+    betas=(0.9, 0.999),
+    algebra=algebra,
+    max_bivector_norm=10.0
+)
+```
+
+Both optimizers:
+1. Compute gradients $\nabla_B$ in the bivector (Lie algebra) space
+2. Update bivector parameters: $B \leftarrow B - \eta \nabla_B$ (with momentum/adaptive scaling)
+3. Clip bivector norms for numerical stability
+4. Forward pass applies exponential map: $R = \exp(-B/2)$
+
+This completes the Riemannian update on Spin$(n)$.
+
+### Why Momentum Lives in the Lie Algebra
+
+For momentum-based methods (SGD with momentum, Adam), the momentum buffers naturally live in the **Lie algebra** $\mathfrak{so}(n)$, not on the manifold Spin$(n)$. This is because:
+
+1. The Lie algebra is a **vector space** — we can add and scale bivectors
+2. Momentum is a linear combination of past gradients: $m_t = \beta m_{t-1} + (1-\beta) \nabla_B$
+3. The manifold Spin$(n)$ is non-linear — adding rotors doesn't make sense
+
+Full Riemannian Adam (with **parallel transport**) would transport momentum vectors along geodesics on the manifold. However, for bivector parameterization, this is unnecessary: momentum already lives in the tangent space where gradients are computed, so no transport is needed.
+
+### Comparison to Euclidean Optimization
+
+| Aspect | Euclidean (AdamW) | Riemannian (RiemannianAdam, Default) |
+|--------|-------------------|--------------------------------------|
+| **Status in Versor** | Ablation experiments only | **Default optimizer** |
+| Parameter Space | Flat $\mathbb{R}^n$ | Curved Spin$(n)$ manifold |
+| Update Rule | $\theta \leftarrow \theta - \eta \nabla\theta$ | $B \leftarrow B - \eta \nabla_B$, $R = \exp(-B/2)$ |
+| Geometry | Ignores curvature | Respects geodesics |
+| Stability | Clipping, normalization | Bivector norm clipping |
+| Learning Rate | Typically 0.01 | Typically 0.001 |
+| Theoretical | Approximate (incorrect for rotors) | Exact (first-order) |
+
+Riemannian optimization is the **theoretically correct** approach for rotor parameters and is now the default in Versor.
+
+### When to Use Riemannian Optimization
+
+**Riemannian Optimizers (Default, Recommended)**:
+- ✅ Training rotor-heavy architectures (RotorLayer, MultiRotorLayer, RotorGadget)
+- ✅ Large rotations expected (bivector norms $\gg 0.1$)
+- ✅ Theoretical correctness (true geometric optimization on Spin(n))
+- ✅ Numerical stability with bivector norm clipping
+- ✅ **All Versor tasks use this by default**
+
+**Euclidean Optimizers (AdamW) - For Ablation Only**:
+- ⚠️ Baseline comparison / ablation studies
+- ⚠️ Reproducing legacy results
+- ⚠️ Model has predominantly scalar parameters (non-rotor layers)
+- ⚠️ Note: Treats Spin(n) as flat space, theoretically incorrect for rotor parameters
+
+### References
+
+1. **Absil, P.-A., Mahony, R., & Sepulchre, R.** (2008). *Optimization Algorithms on Matrix Manifolds*. Princeton University Press.
+2. **Boumal, N.** (2023). *An Introduction to Optimization on Smooth Manifolds*. Cambridge University Press.
+3. **Sola, J., Deray, J., & Atchuthan, D.** (2018). "A Micro Lie Theory for State Estimation in Robotics." arXiv:1812.01537
+
+## 12. Hermitian Metrics for Mixed-Signature Algebras
+
+In mixed-signature algebras $Cl(p,q)$ with $q > 0$, the standard trace form $\langle \tilde{A}B \rangle_0$ can be negative, breaking gradient-based optimization. The **Hermitian inner product** resolves this by using the Clifford conjugation (bar involution):
+
+$$\langle A, B \rangle_H = \langle \bar{A} B \rangle_0 = \sum_I s_I \cdot a_I \cdot b_I$$
+
+where $s_I = \text{conj\_sign}_I \cdot \text{metric\_sign}_I$ is a precomputed sign per basis element combining the Clifford conjugation sign $(-1)^k(-1)^{k(k-1)/2}$ with the metric sign $(-1)^{k(k-1)/2} \prod_{j \in I} g_{jj}$.
+
+For **Euclidean** algebras $Cl(p,0)$, all signs are $+1$ and this reduces to the simple coefficient inner product $\sum a_I b_I$. For mixed signatures like $Cl(2,1)$ (spacetime) or $Cl(4,1)$ (conformal), the signs encode the algebraic structure properly.
+
+The **Hermitian norm** $\|A\|_H = \sqrt{|\langle A, A \rangle_H|}$ and **Hermitian grade spectrum** $\{|\langle A_k, A_k \rangle_H|\}_{k=0}^n$ provide stable, algebraically meaningful measurements for optimization in any signature. The `HermitianGradeRegularization` loss uses this spectrum to guide grade energy distribution toward physically meaningful targets.
