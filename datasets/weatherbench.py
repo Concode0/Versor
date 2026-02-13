@@ -144,15 +144,151 @@ class WeatherBenchDataset(Dataset):
         self._load_data()
 
     def _load_data(self):
-        """Load data from NetCDF or generate synthetic data."""
-        data_path = os.path.join(self.root, f'weatherbench_{self.resolution}_{self.split}.pt')
+        """Load data: cached .pt > NetCDF via xarray > synthetic fallback."""
+        cache_path = os.path.join(self.root, f'weatherbench_{self.resolution}_{self.split}.pt')
 
-        if os.path.exists(data_path):
-            self.data_list = torch.load(data_path, weights_only=False)
+        # 1. Try cached .pt
+        if os.path.exists(cache_path):
+            self.data_list = torch.load(cache_path, weights_only=False)
+            print(f">>> WeatherBench: loaded {len(self.data_list)} samples from {cache_path}")
             return
 
-        print(f">>> WeatherBench data not found at {data_path}, generating synthetic data")
+        # 2. Try loading from NetCDF files
+        loaded = self._load_from_netcdf()
+        if loaded:
+            # Cache the processed data
+            os.makedirs(self.root, exist_ok=True)
+            torch.save(self.data_list, cache_path)
+            print(f">>> WeatherBench: cached {len(self.data_list)} samples to {cache_path}")
+            return
+
+        # 3. Fallback: synthetic data
+        print(f">>> WeatherBench data not found, generating synthetic data")
         self._generate_synthetic_data()
+
+    def _load_from_netcdf(self):
+        """Load ERA5 reanalysis data from NetCDF files via xarray.
+
+        Expected file patterns:
+            {root}/{variable}_{resolution}.nc  (e.g. geopotential_5.625deg.nc)
+            or {root}/{variable}/              (directory with yearly files)
+
+        Standard year splits:
+            train: 1979-2015
+            val:   2016
+            test:  2017-2018
+
+        Returns:
+            True if data was loaded successfully, False otherwise.
+        """
+        try:
+            import xarray as xr
+        except ImportError:
+            return False
+
+        # Variable name mapping
+        var_to_file = {
+            'z500': ['geopotential_500', 'geopotential', 'z500', 'z'],
+            't850': ['temperature_850', 'temperature', 't850', 't'],
+            'u10': ['u_component_of_wind_10', 'u10', '10m_u_component_of_wind'],
+            'v10': ['v_component_of_wind_10', 'v10', '10m_v_component_of_wind'],
+            'q': ['specific_humidity', 'q'],
+        }
+
+        # Try to find and load each variable
+        datasets = {}
+        for var in self.variables:
+            ds = None
+            candidates = var_to_file.get(var, [var])
+            for name in candidates:
+                # Try single file
+                for ext in ['.nc', '.zarr']:
+                    path = os.path.join(self.root, self.resolution, f'{name}{ext}')
+                    if os.path.exists(path):
+                        try:
+                            ds = xr.open_dataset(path)
+                            break
+                        except Exception:
+                            continue
+                if ds is not None:
+                    break
+                # Try directory
+                var_dir = os.path.join(self.root, self.resolution, name)
+                if os.path.isdir(var_dir):
+                    try:
+                        ds = xr.open_mfdataset(os.path.join(var_dir, '*.nc'),
+                                               combine='by_coords')
+                        break
+                    except Exception:
+                        continue
+            if ds is None:
+                return False
+            datasets[var] = ds
+
+        # Define year-based splits
+        split_years = {
+            'train': list(range(1979, 2016)),
+            'val': [2016],
+            'test': [2017, 2018],
+        }
+        years = split_years.get(self.split, split_years['train'])
+
+        # Extract data for each variable
+        steps_ahead = self.lead_time  # in hours
+
+        # Get the first variable to determine time axis
+        first_var = self.variables[0]
+        first_ds = datasets[first_var]
+        data_var_name = list(first_ds.data_vars)[0]
+
+        # Select years
+        time_idx = first_ds.time.dt.year.isin(years)
+        times = first_ds.time[time_idx].values
+
+        # Create time pairs (t, t+lead_time)
+        lead_td = np.timedelta64(self.lead_time, 'h')
+
+        for t_idx in range(len(times) - 1):
+            t = times[t_idx]
+            t_plus = t + lead_td
+
+            # Check if t_plus exists in the dataset
+            if t_plus > times[-1]:
+                break
+
+            state_t = torch.zeros(self.H, self.W, self.num_variables)
+            state_t_plus = torch.zeros(self.H, self.W, self.num_variables)
+
+            valid = True
+            for v_idx, var in enumerate(self.variables):
+                ds = datasets[var]
+                dv = list(ds.data_vars)[0]
+                try:
+                    val_t = ds[dv].sel(time=t, method='nearest').values
+                    val_tp = ds[dv].sel(time=t_plus, method='nearest').values
+                    # Coarsen to target resolution if needed
+                    if val_t.shape != (self.H, self.W):
+                        # Simple area averaging
+                        from scipy.ndimage import zoom
+                        val_t = zoom(val_t, (self.H / val_t.shape[0], self.W / val_t.shape[1]))
+                        val_tp = zoom(val_tp, (self.H / val_tp.shape[0], self.W / val_tp.shape[1]))
+                    state_t[:, :, v_idx] = torch.tensor(val_t[:self.H, :self.W], dtype=torch.float32)
+                    state_t_plus[:, :, v_idx] = torch.tensor(val_tp[:self.H, :self.W], dtype=torch.float32)
+                except Exception:
+                    valid = False
+                    break
+
+            if valid:
+                self.data_list.append({
+                    'state_t': state_t,
+                    'state_t_plus': state_t_plus,
+                })
+
+        # Clean up
+        for ds in datasets.values():
+            ds.close()
+
+        return len(self.data_list) > 0
 
     def _generate_synthetic_data(self, num_samples=200):
         """Generate synthetic weather data for development.

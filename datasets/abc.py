@@ -46,15 +46,218 @@ class ABCDataset(Dataset):
         self._load_data()
 
     def _load_data(self):
-        """Load pre-processed data or generate synthetic samples."""
-        data_path = os.path.join(self.root, f'abc_{self.task}_{self.split}.pt')
+        """Load data: cached .pt > raw mesh files > synthetic fallback."""
+        cache_path = os.path.join(self.root, f'abc_{self.task}_{self.split}.pt')
 
-        if os.path.exists(data_path):
-            self.data_list = torch.load(data_path, weights_only=False)
+        # 1. Try cached .pt
+        if os.path.exists(cache_path):
+            self.data_list = torch.load(cache_path, weights_only=False)
+            print(f">>> ABC: loaded {len(self.data_list)} samples from {cache_path}")
             return
 
-        print(f">>> ABC data not found at {data_path}, generating synthetic data")
+        # 2. Try loading raw mesh files
+        loaded = self._load_from_meshes()
+        if loaded:
+            os.makedirs(self.root, exist_ok=True)
+            torch.save(self.data_list, cache_path)
+            print(f">>> ABC: cached {len(self.data_list)} samples to {cache_path}")
+            return
+
+        # 3. Fallback: synthetic data
+        print(f">>> ABC data not found at {cache_path}, generating synthetic data")
         self._generate_synthetic_data()
+
+    def _load_from_meshes(self):
+        """Load point clouds from OBJ/OFF mesh files in root directory.
+
+        Expected directory structure:
+            root/
+              train/ or meshes/
+                *.obj or *.off or *.ply
+
+        Samples point clouds from mesh surfaces via random face sampling.
+
+        Returns:
+            True if data was loaded successfully, False otherwise.
+        """
+        import glob as glob_mod
+
+        # Find mesh directory
+        mesh_dir = None
+        for subdir in [self.split, 'meshes', 'train' if self.split == 'train' else self.split, '']:
+            candidate = os.path.join(self.root, subdir) if subdir else self.root
+            mesh_files = (glob_mod.glob(os.path.join(candidate, '*.obj')) +
+                         glob_mod.glob(os.path.join(candidate, '*.off')) +
+                         glob_mod.glob(os.path.join(candidate, '*.ply')))
+            if mesh_files:
+                mesh_dir = candidate
+                break
+
+        if mesh_dir is None:
+            return False
+
+        mesh_files = sorted(
+            glob_mod.glob(os.path.join(mesh_dir, '*.obj')) +
+            glob_mod.glob(os.path.join(mesh_dir, '*.off')) +
+            glob_mod.glob(os.path.join(mesh_dir, '*.ply'))
+        )
+
+        if not mesh_files:
+            return False
+
+        # Split files deterministically
+        rng = np.random.RandomState(42)
+        indices = rng.permutation(len(mesh_files))
+        n = len(mesh_files)
+        train_end = int(0.8 * n)
+        val_end = int(0.9 * n)
+
+        if self.split == 'train':
+            file_indices = indices[:train_end]
+        elif self.split == 'val':
+            file_indices = indices[train_end:val_end]
+        else:
+            file_indices = indices[val_end:]
+
+        print(f">>> Processing {len(file_indices)} ABC mesh files ({self.split})...")
+
+        for idx in file_indices:
+            mesh_path = mesh_files[idx]
+            try:
+                vertices, faces = self._load_mesh(mesh_path)
+                if vertices is None or len(vertices) < 10:
+                    continue
+
+                # Sample point cloud from mesh surface
+                points = self._sample_from_mesh(vertices, faces, self.num_points)
+                points = torch.tensor(points, dtype=torch.float32)
+
+                # Center and normalize
+                points = points - points.mean(dim=0, keepdim=True)
+                scale = points.abs().max() + 1e-6
+                points = points / scale
+
+                normals = self._estimate_normals(points)
+
+                sample = {
+                    'points': points,
+                    'normals': normals,
+                    'target_points': points.clone(),
+                }
+
+                if self.task == 'primitive':
+                    sample['primitive_type'] = 0
+                    sample['primitive_params'] = torch.zeros(13)
+
+                self.data_list.append(sample)
+            except Exception as e:
+                continue
+
+        return len(self.data_list) > 0
+
+    @staticmethod
+    def _load_mesh(path):
+        """Load mesh vertices and faces from OBJ or OFF file."""
+        ext = os.path.splitext(path)[1].lower()
+
+        if ext == '.obj':
+            return ABCDataset._load_obj(path)
+        elif ext == '.off':
+            return ABCDataset._load_off(path)
+        else:
+            return None, None
+
+    @staticmethod
+    def _load_obj(path):
+        """Parse OBJ file for vertices and faces."""
+        vertices = []
+        faces = []
+        with open(path, 'r') as f:
+            for line in f:
+                parts = line.strip().split()
+                if not parts:
+                    continue
+                if parts[0] == 'v' and len(parts) >= 4:
+                    vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
+                elif parts[0] == 'f':
+                    # Handle vertex/texture/normal indices
+                    face_verts = []
+                    for p in parts[1:]:
+                        v_idx = int(p.split('/')[0]) - 1  # OBJ is 1-indexed
+                        face_verts.append(v_idx)
+                    if len(face_verts) >= 3:
+                        faces.append(face_verts[:3])
+        if not vertices:
+            return None, None
+        return np.array(vertices, dtype=np.float32), faces
+
+    @staticmethod
+    def _load_off(path):
+        """Parse OFF file for vertices and faces."""
+        with open(path, 'r') as f:
+            header = f.readline().strip()
+            if header == 'OFF':
+                counts = f.readline().strip().split()
+            elif header.startswith('OFF'):
+                counts = header[3:].strip().split()
+            else:
+                return None, None
+
+            n_verts, n_faces = int(counts[0]), int(counts[1])
+
+            vertices = []
+            for _ in range(n_verts):
+                parts = f.readline().strip().split()
+                vertices.append([float(parts[0]), float(parts[1]), float(parts[2])])
+
+            faces = []
+            for _ in range(n_faces):
+                parts = f.readline().strip().split()
+                n = int(parts[0])
+                face = [int(parts[i+1]) for i in range(min(n, 3))]
+                if len(face) == 3:
+                    faces.append(face)
+
+        if not vertices:
+            return None, None
+        return np.array(vertices, dtype=np.float32), faces
+
+    @staticmethod
+    def _sample_from_mesh(vertices, faces, num_points):
+        """Sample points uniformly from mesh surface via face area weighting."""
+        if not faces:
+            # No faces: sample from vertices directly
+            if len(vertices) >= num_points:
+                idx = np.random.choice(len(vertices), num_points, replace=False)
+            else:
+                idx = np.random.choice(len(vertices), num_points, replace=True)
+            return vertices[idx]
+
+        # Compute face areas for weighted sampling
+        v = vertices
+        face_arr = np.array(faces)
+        v0 = v[face_arr[:, 0]]
+        v1 = v[face_arr[:, 1]]
+        v2 = v[face_arr[:, 2]]
+        areas = 0.5 * np.linalg.norm(np.cross(v1 - v0, v2 - v0), axis=1)
+        areas = np.maximum(areas, 1e-10)
+        probs = areas / areas.sum()
+
+        # Sample faces proportional to area
+        sampled_faces = np.random.choice(len(faces), num_points, p=probs)
+
+        # Random barycentric coordinates
+        r1 = np.sqrt(np.random.rand(num_points))
+        r2 = np.random.rand(num_points)
+        w0 = 1 - r1
+        w1 = r1 * (1 - r2)
+        w2 = r1 * r2
+
+        points = (w0[:, None] * v[face_arr[sampled_faces, 0]] +
+                  w1[:, None] * v[face_arr[sampled_faces, 1]] +
+                  w2[:, None] * v[face_arr[sampled_faces, 2]])
+
+        return points.astype(np.float32)
 
     def _generate_synthetic_data(self, num_samples=500):
         """Generate synthetic CAD-like point clouds for development.
