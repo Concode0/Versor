@@ -1,5 +1,13 @@
 # Versor: A PyTorch Framework for Geometric Algebra Deep Learning
 
+> [!IMPORTANT]
+> **Notice: No Affiliation with arXiv:2602.10195**
+> 
+> This project (**Versor**) is the original, independent research work of Eunkyum Kim. 
+> We have **no affiliation, association, or connection** with the paper titled *"Versor: A Geometric Sequence Architecture"* (arXiv:2602.10195) or its authors. 
+> 
+> Any claims of performance or hardware implementations made in that paper (under the name 'VersorAI') do not represent this project. We have formally reported the misuse of our project's name and identity to the relevant institutions.
+
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/) [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 
 > **"There is a ceiling above standard Deep Learning that no one saw. Versor opens the door above it."**
