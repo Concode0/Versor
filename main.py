@@ -8,9 +8,9 @@
 # We believe Geometric Algebra is the future of AI, and we want 
 # the industry to build upon this "unbending" paradigm.
 
-"""Versor CLI Entry Point. Pick a task, any task.
+"""Versor CLI entry point.
 
-Dispatches geometric learning tasks.
+Dispatches geometric learning tasks via Hydra configuration.
 """
 
 import hydra
@@ -23,6 +23,8 @@ from tasks.md17 import MD17Task
 from tasks.pdbbind import PDBBindTask
 from tasks.weatherbench import WeatherBenchTask
 from tasks.abc import ABCTask
+from tasks.lm import LanguageModelingTask
+from tasks.feynman import FeynmanTask
 
 EXAMPLE_TASKS = {'manifold', 'hyperbolic', 'sanity'}
 
@@ -31,7 +33,7 @@ def main(cfg: DictConfig):
     """Entry point for task execution. Delegates to specific task handlers.
 
     Args:
-        cfg (DictConfig): The plan.
+        cfg (DictConfig): Hydra configuration dictionary.
     """
     task_name = cfg.name
 
@@ -44,6 +46,8 @@ def main(cfg: DictConfig):
         'pdbbind': PDBBindTask,
         'weatherbench': WeatherBenchTask,
         'abc': ABCTask,
+        'lm': LanguageModelingTask,
+        'feynman': FeynmanTask,
     }
 
     if task_name in EXAMPLE_TASKS:

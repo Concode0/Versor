@@ -1,0 +1,29 @@
+# @package _global_
+name: "lm"
+algebra:
+  p: 3
+  q: 1                          # Cl(3,1) — Minkowski spacetime
+  device: "mps"
+dataset:
+  data_path: "./data/text"
+  tokenizer: "char"
+  seq_len: 128
+model:
+  channels: 4
+  num_layers: 2
+  num_heads: 2
+  max_seq_len: 128
+  ffn_mult: 2
+  num_rotors: 2                 # K parallel rotors in the geometric toolbox
+  use_decomposition: true
+  use_rotor_backend: true
+training:
+  epochs: 100
+  lr: 0.001
+  batch_size: 8
+  optimizer_type: "riemannian_adam"
+  max_bivector_norm: 10.0
+  dropout: 0.0
+  loss_weights:
+    lm: 1.0
+    grade_reg: 0.0              # Set > 0 to penalise non-scalar hidden energy
