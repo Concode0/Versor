@@ -23,7 +23,7 @@ from torch.utils.data import DataLoader
 
 
 class SemanticAutoEncoder(nn.Module):
-    """Semantic Autoencoder. Performs geometric disentanglement.
+    """Semantic autoencoder with geometric disentanglement.
 
     Encoder: CliffordLinear → GeometricGELU → CliffordLinear → RotorLayer
     Selector: BladeSelector (soft per-blade gate)

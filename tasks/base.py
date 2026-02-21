@@ -16,18 +16,17 @@ from tqdm import tqdm
 from omegaconf import DictConfig
 
 class BaseTask(ABC):
-    """The Template. Every task follows this ritual.
+    """Abstract base class for all training tasks.
 
-    Setup -> Load -> Train -> Eval -> Visualize.
-    Follows the standard lifecycle.
+    Lifecycle: setup_algebra → setup_model → setup_criterion → get_data → train → evaluate → visualize.
 
     Attributes:
-        cfg (DictConfig): Config.
-        device (str): Device.
-        algebra (CliffordAlgebra): Math kernel.
-        model (nn.Module): The brain.
-        criterion (nn.Module): The judge.
-        optimizer (optim.Optimizer): The teacher.
+        cfg (DictConfig): Hydra configuration.
+        device (str): Computation device.
+        algebra (CliffordAlgebra): Clifford algebra kernel.
+        model (nn.Module): Neural network model.
+        criterion (nn.Module): Loss function.
+        optimizer (optim.Optimizer): Parameter optimizer.
     """
 
     def __init__(self, cfg: DictConfig):
@@ -89,22 +88,22 @@ class BaseTask(ABC):
 
     @abstractmethod
     def setup_algebra(self):
-        """Spawns the algebra."""
+        """Initialize the Clifford algebra."""
         pass
 
     @abstractmethod
     def setup_model(self):
-        """Builds the net."""
+        """Construct the neural network model."""
         pass
 
     @abstractmethod
     def setup_criterion(self):
-        """Defines the loss."""
+        """Define the loss function."""
         pass
 
     @abstractmethod
     def get_data(self):
-        """Fetches data."""
+        """Load and return the dataset."""
         pass
 
     @abstractmethod
@@ -114,16 +113,16 @@ class BaseTask(ABC):
 
     @abstractmethod
     def evaluate(self, data):
-        """How bad is it?"""
+        """Evaluate the model and return metrics."""
         pass
 
     @abstractmethod
     def visualize(self, data):
-        """Draws pretty pictures."""
+        """Generate visualizations of model outputs."""
         pass
 
     def save_checkpoint(self, path: str):
-        """Dumps state to disk."""
+        """Save model, optimizer, and scheduler state to disk."""
         checkpoint = {
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
@@ -134,7 +133,7 @@ class BaseTask(ABC):
         print(f">>> Checkpoint saved to {path}")
 
     def load_checkpoint(self, path: str):
-        """Resurrects state from disk."""
+        """Restore model, optimizer, and scheduler state from disk."""
         try:
             checkpoint = torch.load(path, map_location=self.device, weights_only=False)
         except TypeError:
@@ -146,7 +145,7 @@ class BaseTask(ABC):
         print(f">>> Checkpoint loaded from {path}")
 
     def run(self):
-        """Runs the show."""
+        """Execute the full training loop."""
         print(f">>> Starting Task: {self.cfg.name}")
         dataloader = self.get_data()
         

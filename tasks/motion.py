@@ -61,7 +61,7 @@ class MotionAlignmentTask(BaseTask):
         return DataLoader(dataset, batch_size=self.cfg.training.batch_size, shuffle=True)
 
     def train_step(self, batch):
-        """Learn to separate."""
+        """Perform one training step."""
         data, labels = batch
         data, labels = data.to(self.device), labels.to(self.device)
         
@@ -87,7 +87,7 @@ class MotionAlignmentTask(BaseTask):
         }
 
     def evaluate(self, data=None, noise_std=0.1):
-        """Test with noise. Robustness check."""
+        """Evaluate on clean and noise-perturbed data."""
         self.model.eval()
 
         if data is None:

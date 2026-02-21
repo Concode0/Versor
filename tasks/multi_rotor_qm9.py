@@ -91,7 +91,6 @@ class MultiRotorQM9Task(BaseTask):
                 count += targets.size(0)
         
         avg_mae = total_mae / count
-        # print(f">>> Multi-Rotor QM9 Validation: MAE = {avg_mae:.4f}")
         return avg_mae
 
     def benchmark_inference(self, val_loader):

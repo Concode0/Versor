@@ -24,7 +24,7 @@ class QM9Task(BaseTask):
         super().__init__(cfg)
 
     def setup_algebra(self):
-        """Optimized algebra. Let the data decide."""
+        """Select optimal algebra signature via metric search."""
         # 1. Sample Data
         dataset = VersorQM9(root=self.data_root)
         sample = dataset[0].pos
@@ -101,7 +101,7 @@ class QM9Task(BaseTask):
         return avg_mae
 
     def visualize(self, val_loader):
-        """Scatter plot. Truth vs Prediction."""
+        """Plot predicted vs. actual target values."""
         self.model.eval()
         batch = next(iter(val_loader))
         batch = batch.to(self.device)
@@ -135,7 +135,7 @@ class QM9Task(BaseTask):
             print("Matplotlib not found.")
 
     def run(self):
-        """Runs train and val."""
+        """Execute train/val/test loop with best checkpoint."""
         print(f">>> Starting Task: {self.cfg.name}")
         train_loader, val_loader, test_loader = self.get_data()
         
