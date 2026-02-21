@@ -18,8 +18,14 @@ PATENT_*.md
 
 # Training artifacts
 *.ckpt
+*.pt
 train_log_*.txt
 
 # Visualization outputs (root-level)
 /*.png
 /*.gif
+lorentz_plots/
+zeta_plots/
+
+# Reference PDFs
+*.pdf

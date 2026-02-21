@@ -51,3 +51,7 @@ all = [
 all_tasks = [
     "versor[graph,pdbbind,weather,cad]",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
