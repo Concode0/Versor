@@ -12,10 +12,9 @@ import torch
 import math
 
 class CliffordAlgebra:
-    """A differentiable Clifford Algebra kernel.
+    """Differentiable Clifford algebra kernel with memory-optimized blocked accumulation.
 
     Handles geometric product, grade projection, and rotor operations.
-    Optimizes memory because $O(2^n)$ is painful enough already.
 
     Attributes:
         p (int): Positive signature dimensions.
@@ -27,7 +26,7 @@ class CliffordAlgebra:
     _CACHED_TABLES = {}
 
     def __init__(self, p: int, q: int = 0, device='cuda'):
-        """Spawns the algebra.
+        """Initialize the algebra and cache the Cayley table.
 
         Args:
             p (int): Positive dimensions (+1).
@@ -43,8 +42,14 @@ class CliffordAlgebra:
         cache_key = (p, q, str(device))
         if cache_key not in CliffordAlgebra._CACHED_TABLES:
             CliffordAlgebra._CACHED_TABLES[cache_key] = self._generate_cayley_table()
-            
-        self.cayley_indices, self.cayley_signs, self.gp_signs = CliffordAlgebra._CACHED_TABLES[cache_key]
+
+        (
+            self.cayley_indices,
+            self.cayley_signs,
+            self.gp_signs,
+            self.grade_masks,
+            self.rev_signs,
+        ) = CliffordAlgebra._CACHED_TABLES[cache_key]
 
     @property
     def num_grades(self) -> int:
@@ -83,19 +88,35 @@ class CliffordAlgebra:
         return res
 
     def _generate_cayley_table(self):
-        """Precomputes the Cayley table. We only do this once."""
+        """Precompute the Cayley table, grade masks, and reversion signs."""
         indices = torch.arange(self.dim, device=self.device)
-        
+
         # Result index = A XOR B
         cayley_indices = indices.unsqueeze(0) ^ indices.unsqueeze(1)
-        cayley_signs = self._compute_signs(indices) 
-        
+        cayley_signs = self._compute_signs(indices)
+
         # Precompute signs for geometric_product accumulation
         gp_signs = torch.gather(cayley_signs, 1, cayley_indices)
-        return cayley_indices, cayley_signs, gp_signs
+
+        # Grade masks: one bool tensor per grade (cached to avoid per-call Python loop)
+        grade_masks = []
+        for k in range(self.n + 1):
+            mask = torch.tensor(
+                [bin(i).count('1') == k for i in range(self.dim)],
+                dtype=torch.bool, device=self.device,
+            )
+            grade_masks.append(mask)
+
+        # Reverse signs: blade i gets sign (-1)^(k(k-1)/2) where k = grade(i)
+        rev_signs = torch.zeros(self.dim, dtype=cayley_signs.dtype, device=self.device)
+        for i in range(self.dim):
+            k = bin(i).count('1')
+            rev_signs[i] = (-1) ** (k * (k - 1) // 2)
+
+        return cayley_indices, cayley_signs, gp_signs, grade_masks, rev_signs
 
     def _compute_signs(self, indices: torch.Tensor) -> torch.Tensor:
-        """Figures out the signs. Commutation and metric signature.
+        """Compute the sign matrix from commutation parity and metric signature.
 
         Args:
             indices (torch.Tensor): Basis indices.
@@ -199,17 +220,7 @@ class CliffordAlgebra:
         Returns:
             torch.Tensor: Projected multivector.
         """
-        # Pre-computation of grade masks could be optimized
-        mask = torch.zeros(self.dim, device=self.device, dtype=torch.bool)
-        for i in range(self.dim):
-            cnt = 0
-            temp = i
-            while temp > 0:
-                if temp & 1: cnt += 1
-                temp >>= 1
-            if cnt == grade:
-                mask[i] = True
-                
+        mask = self.grade_masks[grade].to(mv.device)
         result = torch.zeros_like(mv)
         result[..., mask] = mv[..., mask]
         return result
@@ -223,18 +234,7 @@ class CliffordAlgebra:
         Returns:
             torch.Tensor: Reversed multivector.
         """
-        result = mv.clone()
-        for i in range(self.dim):
-            k = 0
-            temp = i
-            while temp > 0:
-                if temp & 1: k += 1
-                temp >>= 1
-
-            sign = (-1) ** (k * (k - 1) // 2)
-            if sign == -1:
-                result[..., i] = -result[..., i]
-        return result
+        return mv * self.rev_signs.to(dtype=mv.dtype, device=mv.device)
 
     def wedge(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         """Computes the wedge (outer) product: A ∧ B = (AB - BA)/2.
@@ -302,7 +302,7 @@ class CliffordAlgebra:
     def exp(self, mv: torch.Tensor, order: int = 12) -> torch.Tensor:
         """Exponentiates a bivector to generate a rotor.
 
-        Uses Scaling and Squaring because Taylor series blow up otherwise.
+        Uses scaling and squaring to ensure numerical stability.
 
         Args:
             mv (torch.Tensor): Input bivector.

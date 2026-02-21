@@ -55,7 +55,7 @@ class GeneralVisualizer:
         return names
 
     def save(self, filename=None):
-        """Dumps the plot to disk.
+        """Save the current figure to disk.
 
         Args:
             filename (str, optional): Output path. Defaults to auto-incrementing.
@@ -68,7 +68,7 @@ class GeneralVisualizer:
         plt.close()
 
     def plot_3d(self, data: torch.Tensor, dims=(1, 2, 4), title="3D Projection"):
-        """Scatter plot. Spinning colored dots.
+        """Plot a 3D scatter projection of multivector components.
 
         Args:
             data (torch.Tensor): Multivectors.
@@ -144,7 +144,7 @@ class GeneralVisualizer:
         return plt.gcf()
 
     def plot_grade_heatmap(self, data: torch.Tensor, title="Grade Energy Distribution"):
-        """Heatmap. Where's the energy?
+        """Plot per-grade energy distribution.
 
         Args:
             data (torch.Tensor): Input multivectors.
@@ -180,7 +180,7 @@ class GeneralVisualizer:
         return plt.gcf()
 
     def plot_components_heatmap(self, data: torch.Tensor, title="Component Activation Heatmap"):
-        """Shows which basis blades are actually doing work.
+        """Plot basis blade activation magnitudes.
 
         Args:
             data (torch.Tensor): Input data.

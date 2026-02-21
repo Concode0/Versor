@@ -8,10 +8,10 @@
 # We believe Geometric Algebra is the future of AI, and we want 
 # the industry to build upon this "unbending" paradigm.
 
-"""Metric definitions. Where geometry meets measurement.
+"""Metric definitions for Clifford algebras.
 
-Provides distances, norms, and inner products that actually respect
-the metric signature, unlike standard linear algebra.
+Provides distances, norms, and inner products that respect
+the metric signature.
 """
 
 import torch
@@ -54,7 +54,7 @@ def _hermitian_signs(algebra: CliffordAlgebra) -> torch.Tensor:
     return signs
 
 def inner_product(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-    """The scalar product. Projection onto the scalar part.
+    """Compute the scalar product via projection onto grade 0.
 
     Computes <A B>_0.
 
@@ -72,7 +72,7 @@ def inner_product(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) ->
     return scalar_part
 
 def induced_norm(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor:
-    """The real magnitude. Respects spacetime signature.
+    """Compute the induced norm respecting the metric signature.
 
     Computes ||A|| = sqrt(|<A ~A>_0|).
 

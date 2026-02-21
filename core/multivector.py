@@ -8,17 +8,13 @@
 # We believe Geometric Algebra is the future of AI, and we want 
 # the industry to build upon this "unbending" paradigm.
 
-"""Wrapper for multivector tensors providing an object-oriented interface.
-
-Provides operator overloading so you can do A * B instead of
-algebra.geometric_product(A, B).
-"""
+"""Object-oriented multivector wrapper with operator overloading."""
 
 import torch
 from core.algebra import CliffordAlgebra
 
 class Multivector:
-    """Object-oriented wrapper. Makes math look like math.
+    """Object-oriented multivector wrapper with operator overloading.
 
     Attributes:
         algebra (CliffordAlgebra): The backend.
@@ -59,7 +55,7 @@ class Multivector:
         return f"Multivector(shape={self.tensor.shape}, algebra=Cl({self.algebra.p},{self.algebra.q}))"
 
     def __add__(self, other):
-        """Adds stuff. Standard."""
+        """Compute the multivector sum."""
         if isinstance(other, Multivector):
             assert self.algebra.n == other.algebra.n, "Algebras must match"
             return Multivector(self.algebra, self.tensor + other.tensor)
@@ -70,14 +66,14 @@ class Multivector:
             return NotImplemented
 
     def __sub__(self, other):
-        """Subtracts stuff."""
+        """Compute the multivector difference."""
         if isinstance(other, Multivector):
             return Multivector(self.algebra, self.tensor - other.tensor)
         else:
             return Multivector(self.algebra, self.tensor - other)
 
     def __mul__(self, other):
-        """Geometric Product (A * B). The real deal."""
+        """Compute the geometric product A * B."""
         if isinstance(other, Multivector):
             res = self.algebra.geometric_product(self.tensor, other.tensor)
             return Multivector(self.algebra, res)
@@ -87,18 +83,18 @@ class Multivector:
             return NotImplemented
 
     def __invert__(self):
-        """Reversion (~A). Flips the bits."""
+        """Compute the reversion ~A."""
         return Multivector(self.algebra, self.algebra.reverse(self.tensor))
 
     def norm(self):
-        """The metric norm. Not your average Euclidean distance."""
+        """Compute the induced metric norm."""
         from core.metric import induced_norm
         return induced_norm(self.algebra, self.tensor)
 
     def exp(self):
-        """Exponentiates. Rotors incoming."""
+        """Exponentiate via the algebra exp map."""
         return Multivector(self.algebra, self.algebra.exp(self.tensor))
 
     def grade(self, k: int):
-        """Extracts grade k. Filtering."""
+        """Extract the grade-k component."""
         return Multivector(self.algebra, self.algebra.grade_projection(self.tensor, k))
