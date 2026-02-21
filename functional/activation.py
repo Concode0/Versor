@@ -13,20 +13,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class GeometricGELU(nn.Module):
-    """Geometric GELU. Scales magnitude, keeps direction.
+    """Geometric GELU activation: x' = x * GELU(||x|| + b) / ||x||.
 
-    Non-linearity without rotation.
-    x' = x * (GELU(|x| + b) / |x|)
+    Scales magnitude while preserving direction.
     """
 
     def __init__(self, algebra, channels: int = 1):
-        """Sets up the activation."""
+        """Initialize the activation with learnable bias."""
         super().__init__()
         self.algebra = algebra
         self.bias = nn.Parameter(torch.zeros(channels))
 
     def forward(self, x: torch.Tensor):
-        """Activates."""
+        """Apply geometric GELU activation."""
         norm = x.norm(dim=-1, keepdim=True)
         
         eps = 1e-6
@@ -35,13 +34,13 @@ class GeometricGELU(nn.Module):
         return x * scale
 
 class GradeSwish(nn.Module):
-    """Grade Swish. Gates by grade.
+    """Per-grade gated activation.
 
-    Each grade gets its own gate.
+    Each grade receives an independent sigmoid gate.
     """
 
     def __init__(self, algebra, channels: int = 1):
-        """Sets up the gates."""
+        """Initialize per-grade gate parameters."""
         super().__init__()
         self.algebra = algebra
         self.n_grades = algebra.n + 1
@@ -60,7 +59,7 @@ class GradeSwish(nn.Module):
         return masks
 
     def forward(self, x: torch.Tensor):
-        """Gates the grades."""
+        """Apply per-grade gating."""
         output = torch.zeros_like(x)
         
         for k in range(self.n_grades):

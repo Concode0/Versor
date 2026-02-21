@@ -15,13 +15,13 @@ from layers.linear import CliffordLinear
 from layers.rotor import RotorLayer
 
 class RotorTCN(nn.Module):
-    """Applies convolution in time and rotation in geometric space.
+    """Temporal convolutional network with Clifford algebra features.
 
-    Standard TCN, but with Clifford features.
+    Applies rotor transformations per frame and 1D convolution along time.
     """
 
     def __init__(self, algebra: CliffordAlgebra, in_channels: int, hidden_channels: int, kernel_size: int = 3, dilation: int = 1):
-        """Sets up the Rotor TCN.
+        """Initialize the Rotor TCN.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.

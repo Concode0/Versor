@@ -95,13 +95,13 @@ class CliffordLinear(CliffordModule):
             )
 
     def reset_parameters(self):
-        """Random initialization. Standard stuff."""
+        """Initialize weights with Xavier uniform and zero bias."""
         if self.backend == 'traditional':
             nn.init.xavier_uniform_(self.weight)
             nn.init.zeros_(self.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Mixes the channels.
+        """Apply channel-mixing linear transformation.
 
         Args:
             x (torch.Tensor): Input [Batch, In, Dim].

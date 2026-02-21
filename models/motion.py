@@ -15,7 +15,7 @@ from layers.rotor import RotorLayer
 from layers.linear import CliffordLinear
 
 class MotionManifoldNetwork(nn.Module):
-    """Geometric Motion Network. Disentangles motion patterns.
+    """Geometric motion network for activity classification.
 
     Projects raw features into GA space, aligns them with a rotor,
     and then classifies based on the resulting vector part.

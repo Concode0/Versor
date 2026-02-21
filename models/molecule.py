@@ -20,10 +20,10 @@ from layers.multi_rotor import MultiRotorLayer
 from functional.activation import GeometricGELU
 
 class GeometricInvariantBlock(CliffordModule):
-    """Rotation Invariant Block. Physics doesn't care about your coordinate system.
+    """Rotation-invariant message passing block.
 
     Uses relative positions and geometric products to compute features
-    remain invariant under global rotations.
+    invariant under global rotations.
     """
     def __init__(self, algebra: CliffordAlgebra, hidden_dim: int):
         super().__init__(algebra)
@@ -69,9 +69,9 @@ class GeometricInvariantBlock(CliffordModule):
         return h + out_msg
 
 class MoleculeGNN(CliffordModule):
-    """Pure Geometric GNN. Atoms in space.
+    """Geometric GNN for molecular property prediction.
 
-    Standard MPNN, but with multivectors.
+    Message passing neural network with multivector features.
     """
     def __init__(self, algebra: CliffordAlgebra, hidden_dim: int, num_layers: int = 4):
         super().__init__(algebra)
@@ -103,9 +103,9 @@ class MoleculeGNN(CliffordModule):
         return self.readout(graph_repr).squeeze(-1)
 
 class MultiRotorInteractionBlock(CliffordModule):
-    """Multi-Rotor Block. Geometric FFT in action.
+    """Multi-rotor interaction block.
 
-    Uses superposition to handle complex interactions.
+    Uses rotor superposition for geometric message passing.
     """
     def __init__(self, algebra: CliffordAlgebra, hidden_dim: int, num_rotors: int = 8):
         super().__init__(algebra)
@@ -140,8 +140,7 @@ class MultiRotorInteractionBlock(CliffordModule):
         # Interaction via Geometric Product
         psi = self.algebra.geometric_product(h_j, r_ij_mv.unsqueeze(1)) # [E, Hidden, Dim]
         
-        # Apply Multi-Rotor Superposition (Geometric FFT)
-        # This "unbends" the interaction manifold
+        # Apply multi-rotor superposition
         phi = self.multi_rotor(psi)
         
         # Extract Invariants (Dimensionless Structure)
@@ -158,9 +157,9 @@ class MultiRotorInteractionBlock(CliffordModule):
         return h + out_msg
 
 class MultiRotorQuantumNet(CliffordModule):
-    """Multi-Rotor Quantum Net. Unbending molecules.
+    """Multi-rotor molecular property prediction network.
 
-    The flagship model for molecular property prediction.
+    Graph neural network with multi-rotor interaction blocks.
     """
     def __init__(self, algebra: CliffordAlgebra, hidden_dim: int, num_layers: int = 4, num_rotors: int = 8):
         super().__init__(algebra)

@@ -14,10 +14,9 @@ from core.algebra import CliffordAlgebra
 from layers.base import CliffordModule
 
 class MultiRotorLayer(CliffordModule):
-    """Geometric FFT. The Multi-Rotor Engine.
+    """Multi-rotor layer with weighted superposition: x' = sum_k w_k R_k x R~_k.
 
-    Spectral decomposition. Because one rotor isn't enough.
-    Replaces rigid rotations with a flexible superposition.
+    Replaces rigid single-rotor rotations with a flexible superposition.
 
     Attributes:
         channels (int): Input features.
@@ -34,7 +33,7 @@ class MultiRotorLayer(CliffordModule):
         use_decomposition: bool = False,
         decomp_k: int = None
     ):
-        """Sets up the Multi-Rotor engine.
+        """Initialize the multi-rotor layer.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
@@ -71,12 +70,12 @@ class MultiRotorLayer(CliffordModule):
         return torch.tensor(indices, device=self.algebra.device, dtype=torch.long)
 
     def reset_parameters(self):
-        """Random init. Small rotations, uniform weights."""
+        """Initialize with small rotations and uniform weights."""
         nn.init.normal_(self.rotor_bivectors, std=0.01)
         nn.init.xavier_uniform_(self.weights)
 
     def forward(self, x: torch.Tensor, return_invariants: bool = False) -> torch.Tensor:
-        """Unbends the manifold.
+        """Apply weighted multi-rotor transformation.
 
         Args:
             x (torch.Tensor): Input [Batch, Channels, Dim].

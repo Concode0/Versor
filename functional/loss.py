@@ -19,7 +19,7 @@ class GeometricMSELoss(nn.Module):
     """
 
     def __init__(self, algebra=None):
-        """Sets up the loss."""
+        """Initialize the geometric MSE loss."""
         super().__init__()
         self.algebra = algebra
 
@@ -34,7 +34,7 @@ class SubspaceLoss(nn.Module):
     """
 
     def __init__(self, algebra, target_indices: list = None, exclude_indices: list = None):
-        """Sets up the penalties."""
+        """Initialize grade constraint penalties."""
         super().__init__()
         self.algebra = algebra
         
@@ -56,13 +56,13 @@ class SubspaceLoss(nn.Module):
         return loss
 
 class IsometryLoss(nn.Module):
-    """Isometry Loss. Don't warp the space.
+    """Isometry loss enforcing metric norm preservation.
 
     Ensures transformations preserve the metric norm.
     """
 
     def __init__(self, algebra):
-        """Sets up the isometry check."""
+        """Initialize isometry loss with metric diagonal."""
         super().__init__()
         self.algebra = algebra
         self.metric_diag = self._compute_metric_diagonal()
@@ -85,13 +85,13 @@ class IsometryLoss(nn.Module):
         return F.mse_loss(pred_norm, target_norm)
 
 class BivectorRegularization(nn.Module):
-    """Bivector Regularization. Be a rotation.
+    """Bivector regularization enforcing grade-2 purity.
 
-    Forces multivectors to be pure bivectors (Grade 2).
+    Penalizes energy outside the target grade (default: grade 2).
     """
 
     def __init__(self, algebra, grade=2):
-        """Sets up the reg."""
+        """Initialize bivector regularization."""
         super().__init__()
         self.algebra = algebra
         self.grade = grade

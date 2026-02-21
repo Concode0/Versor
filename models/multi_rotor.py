@@ -16,9 +16,9 @@ from layers.multi_rotor import MultiRotorLayer
 from functional.activation import GeometricGELU
 
 class MultiRotorModel(nn.Module):
-    """Geometric FFT Engine. Efficiently approximates complex manifolds.
+    """Multi-rotor model for geometric representation learning.
 
-    Uses overlapping rotors to approximate complex manifolds efficiently.
+    Uses overlapping rotors to approximate complex manifolds.
 
     Attributes:
         algebra (CliffordAlgebra): The algebra.
@@ -27,7 +27,7 @@ class MultiRotorModel(nn.Module):
     """
 
     def __init__(self, algebra: CliffordAlgebra, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 2, num_rotors: int = 8):
-        """Sets up the Multi-Rotor model.
+        """Initialize the multi-rotor model.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
@@ -58,7 +58,7 @@ class MultiRotorModel(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Project, Transform, Invariants, Readout.
+        """Apply projection, multi-rotor transformation, and invariant readout.
 
         Args:
             x (torch.Tensor): Input [Batch, In_Channels, Dim].

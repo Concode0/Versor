@@ -14,10 +14,10 @@ from core.algebra import CliffordAlgebra
 from layers.base import CliffordModule
 
 class RotorLayer(CliffordModule):
-    """Learnable Rotor. The heart of the GBN.
+    """Learnable rotor layer for sandwich-product transformation.
 
-    Learns R = exp(-B/2). Rotates without distorting.
-    Preserves origin, lengths, and angles. Pure isometry.
+    Learns R = exp(-B/2) and applies the isometry x' = RxR~.
+    Preserves origin, lengths, and angles.
 
     Attributes:
         channels (int): Number of rotors.
@@ -33,7 +33,7 @@ class RotorLayer(CliffordModule):
         use_decomposition: bool = False,
         decomp_k: int = None
     ):
-        """Sets up the Rotor Layer.
+        """Initialize the rotor layer.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
@@ -69,11 +69,11 @@ class RotorLayer(CliffordModule):
         return torch.tensor(indices, device=self.algebra.device, dtype=torch.long)
 
     def reset_parameters(self):
-        """Starts with near-identity rotations."""
+        """Initialize with near-identity rotations."""
         nn.init.normal_(self.bivector_weights, std=0.01)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Spins the multivector. Sandwich product style.
+        """Apply the sandwich product x' = RxR~.
 
         Args:
             x (torch.Tensor): Input [Batch, Channels, Dim].
@@ -111,7 +111,7 @@ class RotorLayer(CliffordModule):
         return res
 
     def prune_bivectors(self, threshold: float = 1e-4) -> int:
-        """Trims the fat. Removes useless rotation planes.
+        """Zero out bivector weights below the threshold.
 
         Args:
             threshold (float): Cutoff magnitude.
@@ -126,8 +126,5 @@ class RotorLayer(CliffordModule):
         return num_pruned
 
     def sparsity_loss(self) -> torch.Tensor:
-        """Penalizes complexity. Keep it simple.
-
-        L1 norm on bivectors.
-        """
+        """Compute L1 sparsity regularization on bivector weights."""
         return torch.norm(self.bivector_weights, p=1)

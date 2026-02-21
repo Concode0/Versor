@@ -12,7 +12,7 @@ import torch.nn as nn
 from core.algebra import CliffordAlgebra
 
 class CliffordModule(nn.Module):
-    """Base class. The foundation.
+    """Base module for Clifford algebra layers.
 
     Manages the algebra configuration.
     """
@@ -31,7 +31,7 @@ class CliffordModule(nn.Module):
 
     @property
     def algebra(self) -> CliffordAlgebra:
-        """Gets the algebra. Spawns it if missing."""
+        """Return the algebra instance, reconstructing if necessary."""
         if self._algebra is None:
             self._algebra = CliffordAlgebra(self.p, self.q)
         return self._algebra
