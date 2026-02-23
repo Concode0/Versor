@@ -1287,6 +1287,7 @@ def get_feynman_loaders(
     cache_dir: str = "./data/feynman",
     seed: int = 42,
     num_workers: int = 2,
+    pin_memory: bool = False,
 ) -> tuple:
     """Build train / val / test DataLoaders for one Feynman equation.
 
@@ -1325,10 +1326,13 @@ def get_feynman_loaders(
     test_ds  = FeynmanDataset(_norm_x(test_x),  _norm_y(test_y))
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-                              drop_last=False, num_workers=num_workers)
+                              drop_last=False, num_workers=num_workers,
+                              pin_memory=pin_memory)
     val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False,
-                              drop_last=False, num_workers=num_workers)
+                              drop_last=False, num_workers=num_workers,
+                              pin_memory=pin_memory)
     test_loader  = DataLoader(test_ds,  batch_size=batch_size, shuffle=False,
-                              drop_last=False, num_workers=num_workers)
+                              drop_last=False, num_workers=num_workers,
+                              pin_memory=pin_memory)
 
     return train_loader, val_loader, test_loader, x_mean, x_std, y_mean, y_std

@@ -222,6 +222,7 @@ def get_text_loaders(
     tokenizer: str = 'char',
     train_ratio: float = 0.9,
     num_workers: int = 2,
+    pin_memory: bool = False,
 ) -> Tuple[DataLoader, DataLoader, int]:
     """Creates train and validation DataLoaders for text.
 
@@ -245,9 +246,11 @@ def get_text_loaders(
 
     train_loader = DataLoader(
         train_ds, batch_size=batch_size, shuffle=True,
-        num_workers=num_workers, drop_last=True,    )
+        num_workers=num_workers, drop_last=True,
+        pin_memory=pin_memory)
     val_loader = DataLoader(
         val_ds, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, drop_last=False,    )
+        num_workers=num_workers, drop_last=False,
+        pin_memory=pin_memory)
 
     return train_loader, val_loader, train_ds.vocab_size

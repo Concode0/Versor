@@ -29,7 +29,7 @@ class VersorQM9(QM9):
         data.pos = data.pos - data.pos.mean(dim=0, keepdim=True)
         return data
 
-def get_qm9_loaders(root, target='U0', batch_size=32, max_samples=None):
+def get_qm9_loaders(root, target='U0', batch_size=32, max_samples=None, pin_memory: bool = False):
     """Loads QM9. Splits it deterministically. Batches it.
     
     Returns:
@@ -69,8 +69,8 @@ def get_qm9_loaders(root, target='U0', batch_size=32, max_samples=None):
     mean = train_y.mean().item()
     std = train_y.std().item()
     
-    train_loader = DataLoader(dataset[train_idx], batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(dataset[val_idx], batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(dataset[test_idx], batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(dataset[train_idx], batch_size=batch_size, shuffle=True, pin_memory=pin_memory)
+    val_loader = DataLoader(dataset[val_idx], batch_size=batch_size, shuffle=False, pin_memory=pin_memory)
+    test_loader = DataLoader(dataset[test_idx], batch_size=batch_size, shuffle=False, pin_memory=pin_memory)
         
     return train_loader, val_loader, test_loader, mean, std

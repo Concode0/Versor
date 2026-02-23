@@ -695,7 +695,8 @@ def get_pdbbind_loaders(root: str, version: str = 'refined',
                          pocket_cutoff: float = 10.0,
                          max_protein_atoms: int = 1000,
                          max_ligand_atoms: int = 100,
-                         num_workers: int = 2):
+                         num_workers: int = 2,
+                         pin_memory: bool = False):
     """Load PDBbind dataset with train/val/test splits.
 
     Uses real data when available, synthetic fallback otherwise.
@@ -720,13 +721,13 @@ def get_pdbbind_loaders(root: str, version: str = 'refined',
 
     train_loader = DataLoader(datasets['train'], batch_size=batch_size,
                               shuffle=True,  collate_fn=collate_pdbbind,
-                              num_workers=num_workers)
+                              num_workers=num_workers, pin_memory=pin_memory)
     val_loader   = DataLoader(datasets['val'],   batch_size=batch_size,
                               shuffle=False, collate_fn=collate_pdbbind,
-                              num_workers=num_workers)
+                              num_workers=num_workers, pin_memory=pin_memory)
     test_loader  = DataLoader(datasets['test'],  batch_size=batch_size,
                               shuffle=False, collate_fn=collate_pdbbind,
-                              num_workers=num_workers)
+                              num_workers=num_workers, pin_memory=pin_memory)
 
     print(f">>> PDBbind {version}: "
           f"{len(datasets['train'])}/{len(datasets['val'])}/{len(datasets['test'])} "

@@ -573,7 +573,8 @@ def get_weatherbench_loaders(root: str, resolution: str = '5.625deg',
                              lead_time: int = 72, batch_size: int = 4,
                              max_samples: Optional[int] = None,
                              years: Optional[List[int]] = None,
-                             num_workers: int = 2):
+                             num_workers: int = 2,
+                             pin_memory: bool = False):
     """Load WeatherBench dataset with train/val/test splits.
 
     Tries real data (NetCDF → zarr → GCS) and falls back to synthetic.
@@ -603,13 +604,13 @@ def get_weatherbench_loaders(root: str, resolution: str = '5.625deg',
 
     train_loader = DataLoader(datasets['train'], batch_size=batch_size,
                               shuffle=True,  collate_fn=collate_weatherbench,
-                              num_workers=num_workers)
+                              num_workers=num_workers, pin_memory=pin_memory)
     val_loader   = DataLoader(datasets['val'],   batch_size=batch_size,
                               shuffle=False, collate_fn=collate_weatherbench,
-                              num_workers=num_workers)
+                              num_workers=num_workers, pin_memory=pin_memory)
     test_loader  = DataLoader(datasets['test'],  batch_size=batch_size,
                               shuffle=False, collate_fn=collate_weatherbench,
-                              num_workers=num_workers)
+                              num_workers=num_workers, pin_memory=pin_memory)
 
     print(f">>> WeatherBench {resolution}: grid={H}×{W}, "
           f"vars={datasets['train'].num_variables}, lead={lead_time}h")
