@@ -17,5 +17,9 @@ training:
   betas: [0.9, 0.999]
   max_bivector_norm: 10.0
   num_workers: 2  # DataLoader workers (0 to disable multiprocessing)
+  pin_memory: null        # null = auto (true for CUDA)
+  compile: false          # torch.compile() wrapper
+  amp: false              # Automatic mixed precision (CUDA only)
+  cudnn_benchmark: null   # null = auto (true for CUDA)
 
 checkpoint: null
