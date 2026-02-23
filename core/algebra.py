@@ -171,7 +171,7 @@ class CliffordAlgebra:
     def geometric_product(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         """Computes the Geometric Product.
 
-        Uses blocked accumulation to optimize VRAM usage.
+        Uses vectorized gather + broadcast multiply + sum. No Python loops.
 
         Args:
             A (torch.Tensor): Left operand [..., Dim].
@@ -180,36 +180,42 @@ class CliffordAlgebra:
         Returns:
             torch.Tensor: The product AB [..., Dim].
         """
-        try:
-            batch_shape = torch.broadcast_shapes(A.shape[:-1], B.shape[:-1])
-        except RuntimeError:
-            raise RuntimeError(f"Shapes {A.shape} and {B.shape} are not broadcastable")
-
         D = self.dim
-        result = torch.zeros(*batch_shape, D, device=A.device, dtype=A.dtype)
-        A_expanded = A.unsqueeze(-1) # [..., D, 1]
+
+        # Gather B coefficients according to Cayley table: B_gathered[..., i, k] = B[..., cayley[i,k]]
+        # cayley_indices: [D, D], B: [..., D]
+        idx = self.cayley_indices  # [D, D]
+        if idx.device != A.device:
+            self.ensure_device(A.device)
+            idx = self.cayley_indices
+
+        # Expand B for gather: [..., D] -> [..., D, D] via advanced indexing
+        B_gathered = B[..., idx]  # [..., D, D]
+
+        # result[..., k] = sum_i A[..., i] * B[..., cayley[i,k]] * signs[i,k]
+        # = sum_i (A[..., i, None] * B_gathered[..., i, :] * signs[i, :])  summed over i
+        return (A.unsqueeze(-1) * B_gathered * self.gp_signs).sum(dim=-2)
         
-        # Block size for vectorization vs memory trade-off
-        BLOCK_SIZE = 32
-        
-        for k_start in range(0, D, BLOCK_SIZE):
-            k_end = min(k_start + BLOCK_SIZE, D)
-            
-            # Gather relevant columns from B based on Cayley table
-            idx_chunk = self.cayley_indices[:, k_start:k_end]
-            B_gathered = B[..., idx_chunk]
-            
-            signs_chunk = self.gp_signs[:, k_start:k_end] # [D, Chunk]
-            
-            # Compute term: A_i * B_j * Sign
-            term = A_expanded * B_gathered * signs_chunk
-            
-            # Sum over inner dimension to get result coefficients
-            chunk_res = term.sum(dim=-2)
-            result[..., k_start:k_end] = chunk_res
-            
-        return result
-        
+    def ensure_device(self, device) -> None:
+        """Move cached tables to the given device if not already there.
+
+        Call once when device is known (e.g. in layer forward) to avoid
+        per-call .to() overhead in grade_projection / reverse / exp.
+        """
+        if self.cayley_indices.device == device:
+            return
+        self.cayley_indices = self.cayley_indices.to(device)
+        self.cayley_signs = self.cayley_signs.to(device)
+        self.gp_signs = self.gp_signs.to(device)
+        self.grade_masks = [m.to(device) for m in self.grade_masks]
+        self.rev_signs = self.rev_signs.to(device)
+        # Update cache so other instances sharing this key also benefit
+        cache_key = (self.p, self.q, str(self.device))
+        CliffordAlgebra._CACHED_TABLES[cache_key] = (
+            self.cayley_indices, self.cayley_signs, self.gp_signs,
+            self.grade_masks, self.rev_signs,
+        )
+
     def grade_projection(self, mv: torch.Tensor, grade: int) -> torch.Tensor:
         """Isolates a specific grade.
 
@@ -220,7 +226,9 @@ class CliffordAlgebra:
         Returns:
             torch.Tensor: Projected multivector.
         """
-        mask = self.grade_masks[grade].to(mv.device)
+        mask = self.grade_masks[grade]
+        if mask.device != mv.device:
+            mask = mask.to(mv.device)
         result = torch.zeros_like(mv)
         result[..., mask] = mv[..., mask]
         return result
@@ -234,7 +242,10 @@ class CliffordAlgebra:
         Returns:
             torch.Tensor: Reversed multivector.
         """
-        return mv * self.rev_signs.to(dtype=mv.dtype, device=mv.device)
+        rev = self.rev_signs
+        if rev.device != mv.device or rev.dtype != mv.dtype:
+            rev = rev.to(dtype=mv.dtype, device=mv.device)
+        return mv * rev
 
     def wedge(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         """Computes the wedge (outer) product: A ∧ B = (AB - BA)/2.
@@ -313,7 +324,10 @@ class CliffordAlgebra:
         Returns:
             torch.Tensor: exp(mv).
         """
-        return self._exp_bivector_closed(mv)
+        if self.q == 0:
+                return self._exp_bivector_closed(mv)
+        else:
+            return self._exp_taylor(mv, order=order)
 
     def _exp_bivector_closed(self, B: torch.Tensor) -> torch.Tensor:
         """Closed-form exponential for bivectors: exp(B) = cos|B| + sin|B|/|B| · B.
@@ -328,7 +342,9 @@ class CliffordAlgebra:
             torch.Tensor: Rotor exp(B) [..., dim].
         """
         # Extract bivector coefficients only (grade-2 components)
-        bv_mask = self.grade_masks[2].to(B.device)
+        bv_mask = self.grade_masks[2]
+        if bv_mask.device != B.device:
+            bv_mask = bv_mask.to(B.device)
         bv_coeffs = B[..., bv_mask]  # [..., num_bivectors]
 
         # Compute bivector norm: |B| = sqrt(sum of squared bivector coefficients)
