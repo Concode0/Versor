@@ -17,6 +17,9 @@ from tasks.base import BaseTask
 from datasets.abc import get_abc_loaders
 from models.cad_net import CADAutoEncoder
 from functional.loss import ChamferDistance, HermitianGradeRegularization
+from log import get_logger
+
+logger = get_logger(__name__)
 
 
 class ABCTask(BaseTask):
@@ -153,7 +156,7 @@ class ABCTask(BaseTask):
 
     def visualize(self, val_loader):
         if self.task_type != 'reconstruction':
-            print(">>> Visualization only supported for reconstruction task")
+            logger.info("Visualization only supported for reconstruction task")
             return
 
         self.model.eval()
@@ -184,13 +187,13 @@ class ABCTask(BaseTask):
             plt.suptitle("ABC CAD Reconstruction")
             plt.tight_layout()
             plt.savefig("abc_reconstruction.png")
-            print(">>> Saved visualization to abc_reconstruction.png")
+            logger.info("Saved visualization to abc_reconstruction.png")
             plt.close()
         except ImportError:
-            print("Matplotlib not found. Skipping visualization.")
+            logger.warning("Matplotlib not found. Skipping visualization.")
 
     def run(self):
-        print(f">>> Starting Task: ABC Dataset ({self.task_type}, {self.num_points} points)")
+        logger.info(f"Starting Task: ABC Dataset ({self.task_type}, {self.num_points} points)")
         train_loader, val_loader, test_loader = self.get_data()
 
         from tqdm import tqdm
@@ -224,10 +227,10 @@ class ABCTask(BaseTask):
             desc = f"Loss: {avg_loss:.6f} | {metric_name}: {avg_metric:.6f} | Val_{metric_name}: {val_score:.6f}"
             pbar.set_description(desc)
 
-        print(f">>> Training Complete. Best Val {metric_name}: {best_val:.6f}")
+        logger.info(f"Training Complete. Best Val {metric_name}: {best_val:.6f}")
         self.load_checkpoint(f"{self.cfg.name}_best.pt")
 
         test_metrics = self.evaluate(test_loader)
-        print(f">>> FINAL TEST {metric_name}: {test_metrics[metric_name]:.6f}")
+        logger.info(f"FINAL TEST {metric_name}: {test_metrics[metric_name]:.6f}")
 
         self.visualize(test_loader)

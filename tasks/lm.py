@@ -18,6 +18,9 @@ from core.algebra import CliffordAlgebra
 from models.ga_transformer import GALanguageModel
 from datasets.text import get_text_loaders
 from tasks.base import BaseTask
+from log import get_logger
+
+logger = get_logger(__name__)
 
 
 class LanguageModelingTask(BaseTask):
@@ -145,7 +148,7 @@ class LanguageModelingTask(BaseTask):
 
         avg_loss = total_loss / max(total_tokens, 1)
         perplexity = math.exp(min(avg_loss, 20.0))  # cap to avoid overflow
-        print(f">>> Val Loss: {avg_loss:.4f} | Perplexity: {perplexity:.2f}")
+        logger.info(f"Val Loss: {avg_loss:.4f} | Perplexity: {perplexity:.2f}")
         return perplexity
 
     def generate(self, seed: str = "The ", length: int = 200,
@@ -204,17 +207,17 @@ class LanguageModelingTask(BaseTask):
             val_loader: Unused; kept for API compatibility with BaseTask.
         """
         if self._train_dataset is None:
-            print(">>> Dataset not available for text generation.")
+            logger.warning("Dataset not available for text generation.")
             return
 
         for temp in [0.0, 0.5, 0.8, 1.0]:
             label = "greedy" if temp == 0 else f"T={temp}"
             text = self.generate(temperature=temp, top_k=50)
-            print(f">>> [{label}]: {text[:200]}\n")
+            logger.info(f"[{label}]: {text[:200]}")
 
     def run(self):
         """Train/val loop with checkpoint saving and text generation."""
-        print(f">>> Starting Task: {self.cfg.name}")
+        logger.info(f"Starting Task: {self.cfg.name}")
         train_loader, val_loader = self.get_data()
 
         pbar = tqdm(range(self.epochs))
@@ -243,7 +246,7 @@ class LanguageModelingTask(BaseTask):
                 f"Loss: {avg_loss:.4f} | PPL: {ppl:.2f} | LR: {lr:.6f}"
             )
 
-        print(f">>> Training Complete. Best Val Perplexity: {best_ppl:.2f}")
+        logger.info(f"Training Complete. Best Val Perplexity: {best_ppl:.2f}")
 
         self.model.eval()
         with torch.no_grad():
@@ -252,4 +255,4 @@ class LanguageModelingTask(BaseTask):
             top_k = gen_cfg.get('top_k', 50)
             length = gen_cfg.get('length', 200)
             text = self.generate(temperature=temp, top_k=top_k, length=length)
-            print(f">>> Generated (T={temp}, top_k={top_k}):\n{text}\n")
+            logger.info(f"Generated (T={temp}, top_k={top_k}):\n{text}")

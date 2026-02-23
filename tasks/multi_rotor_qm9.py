@@ -15,6 +15,9 @@ from core.algebra import CliffordAlgebra
 from tasks.base import BaseTask
 from datasets.qm9 import get_qm9_loaders, VersorQM9
 from models.molecule import MultiRotorQuantumNet
+from log import get_logger
+
+logger = get_logger(__name__)
 
 class MultiRotorQM9Task(BaseTask):
     """Molecular Property Prediction using Geometric FFT.
@@ -105,7 +108,7 @@ class MultiRotorQM9Task(BaseTask):
         edge_index = batch.edge_index[:, mask].to(self.device)
         b = torch.zeros(z.size(0), dtype=torch.long, device=self.device)
 
-        print(f">>> Benchmarking Inference for 1 molecule (N_atoms={z.size(0)})...")
+        logger.info(f"Benchmarking Inference for 1 molecule (N_atoms={z.size(0)})...")
         
         for _ in range(10):
             _ = self.model(z, pos, b, edge_index)
@@ -123,7 +126,7 @@ class MultiRotorQM9Task(BaseTask):
         end = time.perf_counter()
         
         avg_time = (end - start) / iters
-        print(f">>> Average Inference Time: {avg_time*1000:.4f} ms per molecule")
+        logger.info(f"Average Inference Time: {avg_time*1000:.4f} ms per molecule")
         return avg_time
 
     def visualize(self, val_loader):
@@ -155,18 +158,18 @@ class MultiRotorQM9Task(BaseTask):
             plt.grid(True)
             plt.legend()
             plt.savefig("multi_rotor_qm9_prediction.png")
-            print(">>> Saved visualization to multi_rotor_qm9_prediction.png")
+            logger.info("Saved visualization to multi_rotor_qm9_prediction.png")
             plt.close()
         except ImportError:
-            print("Matplotlib not found.")
+            logger.warning("Matplotlib not found.")
 
     def run(self):
         """Executes the main training loop."""
-        print(f">>> Starting Task: {self.cfg.name}")
+        logger.info(f"Starting Task: {self.cfg.name}")
         train_loader, val_loader, test_loader = self.get_data()
         
         if self.epochs == 0:
-            print(">>> Epochs set to 0. Skipping training and running evaluation...")
+            logger.info("Epochs set to 0. Skipping training and running evaluation...")
             self.evaluate(test_loader)
             self.benchmark_inference(test_loader)
             self.visualize(test_loader)
@@ -205,13 +208,13 @@ class MultiRotorQM9Task(BaseTask):
             desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])
             pbar.set_description(desc)
 
-        print(f">>> Training Complete. Best Val MAE: {best_val_mae:.4f}")
+        logger.info(f"Training Complete. Best Val MAE: {best_val_mae:.4f}")
         
         # Load best model for final test
-        print(">>> Loading best model for Test Set evaluation...")
+        logger.info("Loading best model for Test Set evaluation...")
         self.load_checkpoint(f"{self.cfg.name}_best.pt")
         
         test_mae = self.evaluate(test_loader)
-        print(f">>> FINAL TEST MAE: {test_mae:.4f}")
+        logger.info(f"FINAL TEST MAE: {test_mae:.4f}")
         
         self.visualize(test_loader)

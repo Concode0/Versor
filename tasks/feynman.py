@@ -25,6 +25,9 @@ from datasets.feynman import FEYNMAN_EQUATIONS, get_feynman_loaders
 from models.feynman_net import FeynmanGBN
 from layers.multi_rotor import MultiRotorLayer
 from experiments.orthogonality import StrictOrthogonality, OrthogonalitySettings
+from log import get_logger
+
+logger = get_logger(__name__)
 
 
 class FeynmanTask(BaseTask):
@@ -218,7 +221,7 @@ class FeynmanTask(BaseTask):
         ss_tot = ((targets - targets.mean()) ** 2).sum().item()
         r2 = 1.0 - ss_res / (ss_tot + 1e-8)
 
-        print(f"  MAE (orig units): {mae:.6f}  |  R²: {r2:.4f}")
+        logger.info(f"MAE (orig units): {mae:.6f}  |  R²: {r2:.4f}")
 
         # Periodic ortho diagnostics
         if (self.ortho is not None
@@ -226,7 +229,7 @@ class FeynmanTask(BaseTask):
             x_b, _ = next(iter(loader))
             with torch.no_grad():
                 self.model(x_b.to(self.device))   # populates _last_hidden
-            print(self.ortho.format_diagnostics(self.model._last_hidden))
+            logger.debug(self.ortho.format_diagnostics(self.model._last_hidden))
 
         return mae, r2
 
@@ -265,24 +268,24 @@ class FeynmanTask(BaseTask):
         eq_desc = FEYNMAN_EQUATIONS[self.equation]["desc"]
         bar_width = 20
 
-        print("\n" + "=" * 64)
-        print("=== SYMBOLIC HINTS ===")
-        print(f"Equation : {self.equation}  [{eq_desc}]")
-        print("=" * 64)
+        logger.info("\n" + "=" * 64)
+        logger.info("=== SYMBOLIC HINTS ===")
+        logger.info(f"Equation : {self.equation}  [{eq_desc}]")
+        logger.info("=" * 64)
 
         # -- 1. Variable importance --
         imp    = self.variable_importance(x_b)           # [k]
         total  = imp.sum().item() + 1e-12
         imp_pct = (imp / total * 100).numpy()
-        print("\nVariable Importance  (|∂ŷ/∂xᵢ|):")
+        logger.info("\nVariable Importance  (|∂ŷ/∂xᵢ|):")
         for i, pct in enumerate(imp_pct):
             filled = int(bar_width * pct / 100)
             bar = "█" * filled + "░" * (bar_width - filled)
-            print(f"  x{i + 1}: [{bar}] {pct:.1f}%")
+            logger.info(f"  x{i + 1}: [{bar}] {pct:.1f}%")
 
         # -- 2. Active rotation planes --
         analysis = self.model.get_rotor_analysis()
-        print("\nActive Rotation Planes  (threshold > 0.05):")
+        logger.info("\nActive Rotation Planes  (threshold > 0.05):")
         for info in analysis:
             pairs   = sorted(zip(info["rotor_activity"], info["dominant_planes"]),
                              reverse=True)
@@ -291,27 +294,27 @@ class FeynmanTask(BaseTask):
                 desc = ", ".join(f"{p}({a:.3f})" for a, p in active[:5])
             else:
                 desc = "(all below threshold)"
-            print(f"  Layer {info['layer']}: {desc}")
+            logger.info(f"  Layer {info['layer']}: {desc}")
 
         # -- 3. Top-5 output blade decomposition --
         blade_weights = self.model.get_output_blade_weights(self.algebra)
         top5 = sorted(blade_weights.items(), key=lambda kv: abs(kv[1]), reverse=True)[:5]
         max_bw = max(abs(w) for _, w in top5) + 1e-12
-        print("\nOutput Blade Decomposition  (top-5):")
+        logger.info("\nOutput Blade Decomposition  (top-5):")
         for name, w in top5:
             sign   = "+" if w >= 0 else "-"
             filled = int(bar_width * abs(w) / max_bw)
             bar    = "█" * filled + "░" * (bar_width - filled)
-            print(f"  {name:6s}: {sign}[{bar}] {w:+.4f}")
+            logger.info(f"  {name:6s}: {sign}[{bar}] {w:+.4f}")
 
         # -- 4. Ortho diagnostics --
         if self.ortho is not None:
-            print("\nOrthogonality Report:")
+            logger.info("\nOrthogonality Report:")
             with torch.no_grad():
                 self.model(x_b)   # refresh _last_hidden
-            print(self.ortho.format_diagnostics(self.model._last_hidden))
+            logger.debug(self.ortho.format_diagnostics(self.model._last_hidden))
 
-        print("=" * 64 + "\n")
+        logger.info("=" * 64 + "\n")
 
     # ------------------------------------------------------------------
     # Visualization — 6-panel figure
@@ -515,11 +518,11 @@ class FeynmanTask(BaseTask):
             plt.tight_layout()
             fname = f"feynman_{self.equation.replace('.', '_')}_analysis.png"
             plt.savefig(fname, dpi=120, bbox_inches="tight")
-            print(f">>> Saved analysis to {fname}")
+            logger.info(f"Saved analysis to {fname}")
             plt.close()
 
         except ImportError:
-            print("Matplotlib not found. Skipping visualization.")
+            logger.warning("Matplotlib not found. Skipping visualization.")
 
     # ------------------------------------------------------------------
     # Custom run loop
@@ -528,7 +531,7 @@ class FeynmanTask(BaseTask):
     def run(self):
         """Full training / validation / test loop with checkpoint saving."""
         eq_desc = FEYNMAN_EQUATIONS[self.equation]["desc"]
-        print(f">>> Starting FeynmanTask: {self.equation}  [{eq_desc}]")
+        logger.info(f"Starting FeynmanTask: {self.equation}  [{eq_desc}]")
 
         train_loader, val_loader, test_loader = self.get_data()
 
@@ -576,14 +579,14 @@ class FeynmanTask(BaseTask):
                 desc += f" | Ortho: {avg_ortho:.5f}"
             pbar.set_description(desc)
 
-        print(f">>> Training complete. Best val MAE: {best_val_mae:.6f}")
+        logger.info(f"Training complete. Best val MAE: {best_val_mae:.6f}")
 
         # ---- Final test ----
-        print(">>> Loading best checkpoint for test evaluation...")
+        logger.info("Loading best checkpoint for test evaluation...")
         self.load_checkpoint(ckpt_path)
         self.model.eval()
         test_mae, test_r2 = self.evaluate(test_loader)
-        print(f">>> TEST  MAE: {test_mae:.6f}  |  R²: {test_r2:.4f}")
+        logger.info(f"TEST  MAE: {test_mae:.6f}  |  R²: {test_r2:.4f}")
 
         self.symbolic_summary(test_loader)
         self.visualize(test_loader)

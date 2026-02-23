@@ -16,6 +16,9 @@ from datasets.har import HARDataset
 from models.motion import MotionManifoldNetwork
 from torch.utils.data import DataLoader
 from core.visualizer import GeneralVisualizer
+from log import get_logger
+
+logger = get_logger(__name__)
 
 class MotionAlignmentTask(BaseTask):
     """Motion Alignment Task. Distinguishes between different motion types.
@@ -161,7 +164,7 @@ class MotionAlignmentTask(BaseTask):
             "Purity": total_purity / num_batches
         }
 
-        print(f"Evaluation (Clean) - Loss: {metrics['Loss']:.4f}, Acc: {metrics['Acc']:.4f}, Purity: {metrics['Purity']:.4f}")
+        logger.info(f"Evaluation (Clean) - Loss: {metrics['Loss']:.4f}, Acc: {metrics['Acc']:.4f}, Purity: {metrics['Purity']:.4f}")
 
         if noise_std > 0:
             metrics_noisy = {
@@ -169,10 +172,10 @@ class MotionAlignmentTask(BaseTask):
                 "Acc_Noisy": total_acc_noisy / num_batches,
                 "Purity_Noisy": total_purity_noisy / num_batches
             }
-            print(f"Evaluation (Noisy σ={noise_std}) - Loss: {metrics_noisy['Loss_Noisy']:.4f}, Acc: {metrics_noisy['Acc_Noisy']:.4f}, Purity: {metrics_noisy['Purity_Noisy']:.4f}")
+            logger.info(f"Evaluation (Noisy σ={noise_std}) - Loss: {metrics_noisy['Loss_Noisy']:.4f}, Acc: {metrics_noisy['Acc_Noisy']:.4f}, Purity: {metrics_noisy['Purity_Noisy']:.4f}")
 
             acc_drop = (metrics['Acc'] - metrics_noisy['Acc_Noisy']) * 100
-            print(f"Robustness - Accuracy drop: {acc_drop:.2f}%")
+            logger.info(f"Robustness - Accuracy drop: {acc_drop:.2f}%")
 
             metrics.update(metrics_noisy)
 
@@ -182,7 +185,7 @@ class MotionAlignmentTask(BaseTask):
         """Captures training history for visualization."""
         from tqdm import tqdm
 
-        print(f">>> Starting Task: motion")
+        logger.info("Starting Task: motion")
         dataloader = self.get_data()
 
         snapshot_batch = next(iter(dataloader))
@@ -227,7 +230,7 @@ class MotionAlignmentTask(BaseTask):
                     })
                 self.model.train()
 
-        print(">>> Training Complete.")
+        logger.info("Training Complete.")
 
         self.model.eval()
         with torch.no_grad():
@@ -246,7 +249,7 @@ class MotionAlignmentTask(BaseTask):
             import imageio
             import numpy as np
 
-            print(">>> Creating animation of training progression...")
+            logger.info("Creating animation of training progression...")
 
             class_names = ['LAYING', 'SITTING', 'STANDING', 'WALKING', 'WALKING_DOWNSTAIRS', 'WALKING_UPSTAIRS']
             colors = plt.cm.tab10(np.linspace(0, 1, 6))
@@ -301,11 +304,11 @@ class MotionAlignmentTask(BaseTask):
             for temp_file in temp_files:
                 os.remove(temp_file)
 
-            print(f">>> Saved animation to {output_file}")
+            logger.info(f"Saved animation to {output_file}")
 
         except ImportError as e:
-            print(f">>> Could not create animation: {e}")
-            print(">>> Install imageio with: pip install imageio")
+            logger.warning(f"Could not create animation: {e}")
+            logger.warning("Install imageio with: pip install imageio")
 
     def visualize(self, data):
         """Visualizes the latent space and rotor weights."""
@@ -343,7 +346,7 @@ class MotionAlignmentTask(BaseTask):
             plt.ylabel(y_label)
             plt.grid(True, alpha=0.3)
             plt.savefig("motion_latent_space.png")
-            print(">>> Saved visualization to motion_latent_space.png")
+            logger.info("Saved visualization to motion_latent_space.png")
             plt.close()
             
             # 2. Bivector Map (Rotor Weights)
@@ -356,8 +359,8 @@ class MotionAlignmentTask(BaseTask):
             plt.xlabel("Bivector Basis Index")
             plt.ylabel("Channel")
             plt.savefig("motion_bivector_map.png")
-            print(">>> Saved visualization to motion_bivector_map.png")
+            logger.info("Saved visualization to motion_bivector_map.png")
             plt.close()
             
         except ImportError:
-            print("Matplotlib or Sklearn not found, skipping plot.")
+            logger.warning("Matplotlib or Sklearn not found, skipping plot.")

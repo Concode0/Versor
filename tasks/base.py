@@ -14,6 +14,10 @@ import torch.optim as optim
 from abc import ABC, abstractmethod
 from tqdm import tqdm
 from omegaconf import DictConfig
+from log import get_logger
+from core.device import DeviceConfig, resolve_device
+
+logger = get_logger(__name__)
 
 class BaseTask(ABC):
     """Abstract base class for all training tasks.
@@ -23,6 +27,7 @@ class BaseTask(ABC):
     Attributes:
         cfg (DictConfig): Hydra configuration.
         device (str): Computation device.
+        device_config (DeviceConfig): Full device/backend configuration.
         algebra (CliffordAlgebra): Clifford algebra kernel.
         model (nn.Module): Neural network model.
         criterion (nn.Module): Loss function.
@@ -36,13 +41,29 @@ class BaseTask(ABC):
             cfg (DictConfig): Hydra config.
         """
         self.cfg = cfg
-        self.device = self._resolve_device(cfg.algebra.get('device', 'auto'))
+
+        # Build DeviceConfig from Hydra config
+        self.device_config = DeviceConfig(
+            device=cfg.algebra.get('device', 'auto'),
+            pin_memory=cfg.training.get('pin_memory', None),
+            num_workers=cfg.training.get('num_workers', None),
+            compile_model=cfg.training.get('compile', False),
+            amp=cfg.training.get('amp', False),
+            cudnn_benchmark=cfg.training.get('cudnn_benchmark', None),
+        )
+        self.device = self.device_config.device
+        self.device_config.apply_backend_settings()
+
         self.algebra = self.setup_algebra()
         self.model = self.setup_model().to(self.device)
+        self.model = self.device_config.maybe_compile(self.model)
         self.criterion = self.setup_criterion()
         self.optimizer = self._setup_optimizer()
         self.epochs = cfg.training.epochs
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=5)
+
+        # AMP scaler (None when AMP is disabled)
+        self._scaler = self.device_config.get_scaler()
 
         if cfg.get('checkpoint'):
             self.load_checkpoint(cfg.checkpoint)
@@ -52,14 +73,11 @@ class BaseTask(ABC):
         """Resolve 'auto' device to best available accelerator.
 
         Priority: cuda > mps > cpu.
+
+        .. deprecated::
+            Use :func:`core.device.resolve_device` instead.
         """
-        if device != 'auto':
-            return device
-        if torch.cuda.is_available():
-            return 'cuda'
-        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            return 'mps'
-        return 'cpu'
+        return resolve_device(device)
 
     def _setup_optimizer(self):
         """Sets up optimizer based on config.
@@ -135,6 +153,21 @@ class BaseTask(ABC):
         """Generate visualizations of model outputs."""
         pass
 
+    def _backward(self, loss: torch.Tensor) -> None:
+        """Backward pass with optional AMP grad scaling."""
+        if self._scaler is not None:
+            self._scaler.scale(loss).backward()
+        else:
+            loss.backward()
+
+    def _optimizer_step(self) -> None:
+        """Optimizer step with optional AMP scaler unscaling."""
+        if self._scaler is not None:
+            self._scaler.step(self.optimizer)
+            self._scaler.update()
+        else:
+            self.optimizer.step()
+
     def save_checkpoint(self, path: str):
         """Save model, optimizer, and scheduler state to disk."""
         checkpoint = {
@@ -144,7 +177,7 @@ class BaseTask(ABC):
             'config': self.cfg
         }
         torch.save(checkpoint, path)
-        print(f">>> Checkpoint saved to {path}")
+        logger.info("Checkpoint saved to %s", path)
 
     def load_checkpoint(self, path: str):
         """Restore model, optimizer, and scheduler state from disk."""
@@ -156,11 +189,11 @@ class BaseTask(ABC):
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        print(f">>> Checkpoint loaded from {path}")
+        logger.info("Checkpoint loaded from %s", path)
 
     def run(self):
         """Execute the full training loop."""
-        print(f">>> Starting Task: {self.cfg.name}")
+        logger.info("Starting Task: %s", self.cfg.name)
         dataloader = self.get_data()
         
         # Training Loop
@@ -188,7 +221,7 @@ class BaseTask(ABC):
             desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])
             pbar.set_description(desc)
 
-        print(">>> Training Complete.")
+        logger.info("Training Complete.")
         
         self.model.eval()
         with torch.no_grad():

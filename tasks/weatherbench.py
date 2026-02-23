@@ -17,6 +17,9 @@ from tasks.base import BaseTask
 from datasets.weatherbench import get_weatherbench_loaders
 from models.weather_gbn import WeatherGBN
 from functional.loss import PhysicsInformedLoss, HermitianGradeRegularization
+from log import get_logger
+
+logger = get_logger(__name__)
 
 
 class WeatherBenchTask(BaseTask):
@@ -203,13 +206,13 @@ class WeatherBenchTask(BaseTask):
             plt.suptitle(f"WeatherBench {self.lead_time}h Forecast")
             plt.tight_layout()
             plt.savefig("weatherbench_forecast.png")
-            print(">>> Saved visualization to weatherbench_forecast.png")
+            logger.info("Saved visualization to weatherbench_forecast.png")
             plt.close()
         except ImportError:
-            print("Matplotlib not found. Skipping visualization.")
+            logger.warning("Matplotlib not found. Skipping visualization.")
 
     def run(self):
-        print(f">>> Starting Task: WeatherBench ({self.lead_time}h forecast)")
+        logger.info(f"Starting Task: WeatherBench ({self.lead_time}h forecast)")
         train_loader, val_loader, test_loader = self.get_data()
 
         from tqdm import tqdm
@@ -241,10 +244,10 @@ class WeatherBenchTask(BaseTask):
             desc = f"Loss: {avg_loss:.4f} | RMSE: {avg_rmse:.4f} | Val_RMSE: {val_metrics['RMSE']:.4f}"
             pbar.set_description(desc)
 
-        print(f">>> Training Complete. Best Val RMSE: {best_val_rmse:.4f}")
+        logger.info(f"Training Complete. Best Val RMSE: {best_val_rmse:.4f}")
         self.load_checkpoint(f"{self.cfg.name}_best.pt")
 
         test_metrics = self.evaluate(test_loader)
-        print(f">>> FINAL TEST RMSE: {test_metrics['RMSE']:.4f}")
+        logger.info(f"FINAL TEST RMSE: {test_metrics['RMSE']:.4f}")
 
         self.visualize(test_loader)

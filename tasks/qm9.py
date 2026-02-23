@@ -14,6 +14,9 @@ from core.algebra import CliffordAlgebra
 from tasks.base import BaseTask
 from datasets.qm9 import get_qm9_loaders, VersorQM9
 from models.molecule import MoleculeGNN
+from log import get_logger
+
+logger = get_logger(__name__)
 
 class QM9Task(BaseTask):
     """Predicting molecules. Standard Graph Neural Network implementation."""
@@ -34,7 +37,7 @@ class QM9Task(BaseTask):
         searcher = MetricSearch(device=self.device)
         best_p, best_q = searcher.search(sample)
         
-        print(f">>> QM9Task: Optimized Signature: Cl({best_p}, {best_q})")
+        logger.info("QM9Task: Optimized Signature: Cl(%d, %d)", best_p, best_q)
         
         return CliffordAlgebra(p=best_p, q=best_q, device=self.device)
 
@@ -129,14 +132,14 @@ class QM9Task(BaseTask):
             plt.grid(True)
             plt.legend()
             plt.savefig("qm9_prediction.png")
-            print(">>> Saved visualization to qm9_prediction.png")
+            logger.info("Saved visualization to qm9_prediction.png")
             plt.close()
         except ImportError:
-            print("Matplotlib not found.")
+            logger.warning("Matplotlib not found.")
 
     def run(self):
         """Execute train/val/test loop with best checkpoint."""
-        print(f">>> Starting Task: {self.cfg.name}")
+        logger.info(f"Starting Task: {self.cfg.name}")
         train_loader, val_loader, test_loader = self.get_data()
         
         from tqdm import tqdm
@@ -172,13 +175,13 @@ class QM9Task(BaseTask):
             desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])
             pbar.set_description(desc)
 
-        print(f">>> Training Complete. Best Val MAE: {best_val_mae:.4f}")
+        logger.info(f"Training Complete. Best Val MAE: {best_val_mae:.4f}")
         
         # Load best model for final test
-        print(">>> Loading best model for Test Set evaluation...")
+        logger.info("Loading best model for Test Set evaluation...")
         self.load_checkpoint(f"{self.cfg.name}_best.pt")
         
         test_mae = self.evaluate(test_loader)
-        print(f">>> FINAL TEST MAE: {test_mae:.4f}")
+        logger.info(f"FINAL TEST MAE: {test_mae:.4f}")
         
         self.visualize(test_loader)

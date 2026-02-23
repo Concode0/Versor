@@ -16,6 +16,9 @@ from tasks.base import BaseTask
 from datasets.md17 import get_md17_loaders
 from models.md17_forcenet import MD17ForceNet
 from functional.loss import ConservativeLoss, HermitianGradeRegularization
+from log import get_logger
+
+logger = get_logger(__name__)
 
 
 class MD17Task(BaseTask):
@@ -256,14 +259,14 @@ class MD17Task(BaseTask):
 
             plt.tight_layout()
             plt.savefig("md17_prediction.png")
-            print(">>> Saved visualization to md17_prediction.png")
+            logger.info("Saved visualization to md17_prediction.png")
             plt.close()
         except ImportError:
-            print("Matplotlib not found. Skipping visualization.")
+            logger.warning("Matplotlib not found. Skipping visualization.")
 
     def run(self):
         """Execute the main training loop."""
-        print(f">>> Starting Task: MD17 ({self.molecule})")
+        logger.info(f"Starting Task: MD17 ({self.molecule})")
         train_loader, val_loader, test_loader = self.get_data()
 
         from tqdm import tqdm
@@ -310,14 +313,14 @@ class MD17Task(BaseTask):
             desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])
             pbar.set_description(desc)
 
-        print(f">>> Training Complete. Best Val Metric: {best_val_metric:.4f}")
+        logger.info(f"Training Complete. Best Val Metric: {best_val_metric:.4f}")
 
         # Load best model for final test
-        print(">>> Loading best model for Test Set evaluation...")
+        logger.info("Loading best model for Test Set evaluation...")
         self.load_checkpoint(f"{self.cfg.name}_best.pt")
 
         test_metrics = self.evaluate(test_loader)
-        print(f">>> FINAL TEST Energy MAE: {test_metrics['Energy_MAE']:.4f}")
-        print(f">>> FINAL TEST Force MAE: {test_metrics['Force_MAE']:.4f}")
+        logger.info(f"FINAL TEST Energy MAE: {test_metrics['Energy_MAE']:.4f}")
+        logger.info(f"FINAL TEST Force MAE: {test_metrics['Force_MAE']:.4f}")
 
         self.visualize(test_loader)

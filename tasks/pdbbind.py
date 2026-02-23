@@ -16,6 +16,9 @@ from tasks.base import BaseTask
 from datasets.pdbbind import get_pdbbind_loaders
 from models.pdbbind_net import PDBBindNet
 from functional.loss import HermitianGradeRegularization
+from log import get_logger
+
+logger = get_logger(__name__)
 
 
 class PDBBindTask(BaseTask):
@@ -213,13 +216,13 @@ class PDBBindTask(BaseTask):
 
             plt.tight_layout()
             plt.savefig("pdbbind_prediction.png")
-            print(">>> Saved visualization to pdbbind_prediction.png")
+            logger.info("Saved visualization to pdbbind_prediction.png")
             plt.close()
         except ImportError:
-            print("Matplotlib not found. Skipping visualization.")
+            logger.warning("Matplotlib not found. Skipping visualization.")
 
     def run(self):
-        print(f">>> Starting Task: PDBbind")
+        logger.info("Starting Task: PDBbind")
         train_loader, val_loader, test_loader = self.get_data()
 
         from tqdm import tqdm
@@ -251,11 +254,11 @@ class PDBBindTask(BaseTask):
             desc = f"Loss: {avg_loss:.4f} | MAE: {avg_mae:.4f} | Val_MAE: {val_metrics['MAE']:.4f} | Val_R: {val_metrics['Pearson']:.4f}"
             pbar.set_description(desc)
 
-        print(f">>> Training Complete. Best Val MAE: {best_val_metric:.4f}")
+        logger.info(f"Training Complete. Best Val MAE: {best_val_metric:.4f}")
         self.load_checkpoint(f"{self.cfg.name}_best.pt")
 
         test_metrics = self.evaluate(test_loader)
-        print(f">>> FINAL TEST MAE: {test_metrics['MAE']:.4f}")
-        print(f">>> FINAL TEST Pearson: {test_metrics['Pearson']:.4f}")
+        logger.info(f"FINAL TEST MAE: {test_metrics['MAE']:.4f}")
+        logger.info(f"FINAL TEST Pearson: {test_metrics['Pearson']:.4f}")
 
         self.visualize(test_loader)

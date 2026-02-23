@@ -19,6 +19,9 @@ from omegaconf import DictConfig, OmegaConf
 
 from datasets.feynman import FEYNMAN_EQUATIONS, get_equations_by_tier
 from tasks.feynman import FeynmanTask
+from log import get_logger
+
+logger = get_logger(__name__)
 
 
 class FeynmanSweepTask:
@@ -56,10 +59,9 @@ class FeynmanSweepTask:
     def run(self):
         """Run each equation sequentially and collect results."""
         n_total = len(self.equations)
-        print(f">>> Feynman Sweep: {n_total} equations")
-        print(f"    Epochs per equation: {self.cfg.training.epochs}")
-        print(f"    Results dir: {self.results_dir}")
-        print()
+        logger.info(f"Feynman Sweep: {n_total} equations")
+        logger.info(f"Epochs per equation: {self.cfg.training.epochs}")
+        logger.info(f"Results dir: {self.results_dir}")
 
         results = []
         save_ckpt = self.cfg.get("sweep", {}).get("save_checkpoints", False)
@@ -68,11 +70,11 @@ class FeynmanSweepTask:
         for i, eq_id in enumerate(self.equations):
             spec = FEYNMAN_EQUATIONS.get(eq_id)
             if spec is None:
-                print(f"  [{i+1}/{n_total}] SKIP unknown equation: {eq_id}")
+                logger.warning(f"[{i+1}/{n_total}] SKIP unknown equation: {eq_id}")
                 continue
 
-            print(f"  [{i+1}/{n_total}] {eq_id} — {spec['desc']} "
-                  f"(tier {spec.get('tier', '?')}, {spec['n_vars']} vars)")
+            logger.info(f"[{i+1}/{n_total}] {eq_id} — {spec['desc']} "
+                        f"(tier {spec.get('tier', '?')}, {spec['n_vars']} vars)")
 
             eq_cfg = OmegaConf.create(OmegaConf.to_container(self.cfg, resolve=True))
             eq_cfg.dataset.equation = eq_id
@@ -113,7 +115,7 @@ class FeynmanSweepTask:
                     try:
                         task.visualize(test_loader)
                     except Exception as viz_err:
-                        print(f"    Visualization failed: {viz_err}")
+                        logger.warning(f"Visualization failed: {viz_err}")
 
                 wall_time = time.time() - t0
 
@@ -128,8 +130,8 @@ class FeynmanSweepTask:
                     "wall_time": wall_time,
                     "status": "ok",
                 })
-                print(f"    -> MAE={test_mae:.6f}  R²={test_r2:.4f}  "
-                      f"({wall_time:.1f}s)")
+                logger.info(f"MAE={test_mae:.6f}  R²={test_r2:.4f}  "
+                            f"({wall_time:.1f}s)")
 
             except Exception as e:
                 wall_time = time.time() - t0
@@ -144,9 +146,7 @@ class FeynmanSweepTask:
                     "wall_time": wall_time,
                     "status": f"error: {e}",
                 })
-                print(f"    -> FAILED: {e} ({wall_time:.1f}s)")
-
-            print()
+                logger.warning(f"FAILED: {e} ({wall_time:.1f}s)")
 
         self._save_results(results)
         self._print_summary(results)
@@ -166,7 +166,7 @@ class FeynmanSweepTask:
             writer.writeheader()
             for r in sorted(results, key=lambda x: (x["tier"], -x["test_r2"])):
                 writer.writerow(r)
-        print(f">>> Saved CSV: {csv_path}")
+        logger.info(f"Saved CSV: {csv_path}")
 
         # Markdown
         md_path = os.path.join(self.results_dir, "feynman_benchmark.md")
@@ -205,20 +205,20 @@ class FeynmanSweepTask:
                 f.write(f"- **R² >= 0.90**: {sum(1 for r in r2s if r >= 0.90)}/{len(ok)}\n")
                 f.write(f"- **Total wall time**: {total_time:.1f}s\n")
 
-        print(f">>> Saved Markdown: {md_path}")
+        logger.info(f"Saved Markdown: {md_path}")
 
     def _print_summary(self, results):
         """Print aggregate statistics to stdout."""
         ok = [r for r in results if r["status"] == "ok"]
         failed = len(results) - len(ok)
 
-        print("\n" + "=" * 64)
-        print("  FEYNMAN SWEEP SUMMARY")
-        print("=" * 64)
-        print(f"  Equations: {len(ok)} succeeded, {failed} failed, {len(results)} total")
+        logger.info("\n" + "=" * 64)
+        logger.info("  FEYNMAN SWEEP SUMMARY")
+        logger.info("=" * 64)
+        logger.info(f"  Equations: {len(ok)} succeeded, {failed} failed, {len(results)} total")
 
         if not ok:
-            print("  No successful runs.")
+            logger.info("  No successful runs.")
             return
 
         import statistics
@@ -226,22 +226,22 @@ class FeynmanSweepTask:
         r2s = [r["test_r2"] for r in ok]
         total_time = sum(r["wall_time"] for r in results)
 
-        print(f"  Mean MAE:   {statistics.mean(maes):.6f}")
-        print(f"  Median MAE: {statistics.median(maes):.6f}")
-        print(f"  Mean R²:    {statistics.mean(r2s):.4f}")
-        print(f"  Median R²:  {statistics.median(r2s):.4f}")
-        print(f"  R² >= 0.99: {sum(1 for r in r2s if r >= 0.99)}/{len(ok)}")
-        print(f"  R² >= 0.95: {sum(1 for r in r2s if r >= 0.95)}/{len(ok)}")
-        print(f"  R² >= 0.90: {sum(1 for r in r2s if r >= 0.90)}/{len(ok)}")
-        print(f"  Total time: {total_time:.1f}s")
+        logger.info(f"  Mean MAE:   {statistics.mean(maes):.6f}")
+        logger.info(f"  Median MAE: {statistics.median(maes):.6f}")
+        logger.info(f"  Mean R²:    {statistics.mean(r2s):.4f}")
+        logger.info(f"  Median R²:  {statistics.median(r2s):.4f}")
+        logger.info(f"  R² >= 0.99: {sum(1 for r in r2s if r >= 0.99)}/{len(ok)}")
+        logger.info(f"  R² >= 0.95: {sum(1 for r in r2s if r >= 0.95)}/{len(ok)}")
+        logger.info(f"  R² >= 0.90: {sum(1 for r in r2s if r >= 0.90)}/{len(ok)}")
+        logger.info(f"  Total time: {total_time:.1f}s")
 
         # Top 5 and Bottom 5
         by_r2 = sorted(ok, key=lambda x: x["test_r2"], reverse=True)
-        print("\n  Top 5 (by R²):")
+        logger.info("\n  Top 5 (by R²):")
         for r in by_r2[:5]:
-            print(f"    {r['equation']:12s} R²={r['test_r2']:.4f}  MAE={r['test_mae']:.6f}  [{r['desc']}]")
-        print("\n  Bottom 5 (by R²):")
+            logger.info(f"    {r['equation']:12s} R²={r['test_r2']:.4f}  MAE={r['test_mae']:.6f}  [{r['desc']}]")
+        logger.info("\n  Bottom 5 (by R²):")
         for r in by_r2[-5:]:
-            print(f"    {r['equation']:12s} R²={r['test_r2']:.4f}  MAE={r['test_mae']:.6f}  [{r['desc']}]")
+            logger.info(f"    {r['equation']:12s} R²={r['test_r2']:.4f}  MAE={r['test_mae']:.6f}  [{r['desc']}]")
 
-        print("=" * 64)
+        logger.info("=" * 64)

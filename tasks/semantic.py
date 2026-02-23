@@ -20,6 +20,9 @@ from functional.loss import GeometricMSELoss
 from datasets.newsgroups import NewsgroupsClassificationDataset
 from tasks.base import BaseTask
 from torch.utils.data import DataLoader
+from log import get_logger
+
+logger = get_logger(__name__)
 
 
 class SemanticAutoEncoder(nn.Module):
@@ -166,18 +169,18 @@ class SemanticTask(BaseTask):
         avg_recon = total_recon / n_batches
         avg_purity = total_purity / n_batches
 
-        print(f">>> Val Recon Loss: {avg_recon:.6f} | Grade Purity: {avg_purity:.4f}")
+        logger.info(f"Val Recon Loss: {avg_recon:.6f} | Grade Purity: {avg_purity:.4f}")
 
         # Noise robustness
         sample_data = next(iter(val_loader))[0].to(self.device)
         baseline_loss = self.criterion(self.model(sample_data)[0], sample_data).item()
-        print(f"    Noise Robustness (baseline): {baseline_loss:.6f}")
+        logger.info(f"Noise Robustness (baseline): {baseline_loss:.6f}")
 
         for noise_level in [0.05, 0.1, 0.2]:
             noisy = sample_data + torch.randn_like(sample_data) * noise_level
             denoised = self.model(noisy)[0]
             denoise_loss = self.criterion(denoised, sample_data).item()
-            print(f"    Noise {noise_level:.2f}: Denoising Loss = {denoise_loss:.6f}")
+            logger.info(f"Noise {noise_level:.2f}: Denoising Loss = {denoise_loss:.6f}")
 
         return avg_purity
 
@@ -185,7 +188,7 @@ class SemanticTask(BaseTask):
         try:
             import matplotlib.pyplot as plt
         except ImportError:
-            print(">>> matplotlib not found, skipping visualization.")
+            logger.warning("matplotlib not found, skipping visualization.")
             return
 
         from core.visualizer import GeneralVisualizer
@@ -241,11 +244,11 @@ class SemanticTask(BaseTask):
         plt.tight_layout()
         plt.savefig("semantic_bivector_map.png")
         plt.close()
-        print(">>> Saved semantic_bivector_map.png")
+        logger.info("Saved semantic_bivector_map.png")
 
     def run(self):
         """Train/val loop."""
-        print(f">>> Starting Task: {self.cfg.name}")
+        logger.info(f"Starting Task: {self.cfg.name}")
         train_loader, val_loader = self.get_data()
 
         from tqdm import tqdm
@@ -283,7 +286,7 @@ class SemanticTask(BaseTask):
             desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])
             pbar.set_description(desc)
 
-        print(f">>> Training Complete. Best Val Grade Purity: {best_purity:.4f}")
+        logger.info(f"Training Complete. Best Val Grade Purity: {best_purity:.4f}")
         self.save_checkpoint(f"{self.cfg.name}_final.pt")
 
         self.model.eval()
