@@ -266,7 +266,8 @@ class VersorMD17NPZ(Dataset):
 def get_md17_loaders(root: str, molecule: str = 'aspirin',
                      batch_size: int = 32,
                      max_samples: Optional[int] = None,
-                     radius: float = 5.0):
+                     radius: float = 5.0,
+                     num_workers: int = 2):
     """Load MD17 dataset with deterministic 80/10/10 train/val/test split.
 
     Automatically selects the best available loading strategy:
@@ -306,9 +307,12 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
         energy_mean, energy_std, force_mean, force_std = \
             _get_pyg_normalization_stats(dataset, train_idx)
 
-        train_loader = _PyGDataLoader(dataset[train_idx], batch_size=batch_size, shuffle=True)
-        val_loader   = _PyGDataLoader(dataset[val_idx],   batch_size=batch_size, shuffle=False)
-        test_loader  = _PyGDataLoader(dataset[test_idx],  batch_size=batch_size, shuffle=False)
+        train_loader = _PyGDataLoader(dataset[train_idx], batch_size=batch_size,
+                                       shuffle=True, num_workers=num_workers)
+        val_loader   = _PyGDataLoader(dataset[val_idx],   batch_size=batch_size,
+                                       shuffle=False, num_workers=num_workers)
+        test_loader  = _PyGDataLoader(dataset[test_idx],  batch_size=batch_size,
+                                       shuffle=False, num_workers=num_workers)
 
         print(f">>> MD17 ({molecule}) via PyG: "
               f"{train_size}/{val_size}/{len(test_idx)} train/val/test")
@@ -353,16 +357,16 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
     from torch.utils.data import Subset
     train_loader = _TorchDataLoader(
         Subset(dataset, train_idx.tolist()), batch_size=batch_size,
-        shuffle=True, collate_fn=_collate_graphs
-    )
+        shuffle=True, collate_fn=_collate_graphs,
+        num_workers=num_workers    )
     val_loader = _TorchDataLoader(
         Subset(dataset, val_idx.tolist()), batch_size=batch_size,
-        shuffle=False, collate_fn=_collate_graphs
-    )
+        shuffle=False, collate_fn=_collate_graphs,
+        num_workers=num_workers    )
     test_loader = _TorchDataLoader(
         Subset(dataset, test_idx.tolist()), batch_size=batch_size,
-        shuffle=False, collate_fn=_collate_graphs
-    )
+        shuffle=False, collate_fn=_collate_graphs,
+        num_workers=num_workers    )
 
     print(f">>> MD17 ({molecule}) via NPZ: "
           f"{train_size}/{val_size}/{len(test_idx)} train/val/test")
