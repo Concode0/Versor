@@ -58,23 +58,47 @@ class GradeSwish(nn.Module):
             masks[grade, i] = True
         return masks
 
+    def _build_grade_map(self):
+        """Precompute per-component grade index for vectorized forward."""
+        grade_map = torch.zeros(self.algebra.dim, dtype=torch.long)
+        for i in range(self.algebra.dim):
+            grade_map[i] = bin(i).count('1')
+        return grade_map
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+
     def forward(self, x: torch.Tensor):
         """Apply per-grade gating."""
-        output = torch.zeros_like(x)
-        
-        for k in range(self.n_grades):
-            mask = self.grade_masks[k]
-            if not mask.any():
-                continue
-                
-            x_k = x[..., mask]
-            norm_k = x_k.norm(dim=-1, keepdim=True)
-            
-            w = self.grade_weights[k]
-            b = self.grade_biases[k]
-            
-            gate = torch.sigmoid(w * norm_k + b)
-            
-            output[..., mask] = x_k * gate
-            
-        return output
+        # Build grade map buffer on first call or device change
+        if not hasattr(self, '_grade_map') or self._grade_map is None:
+            self.register_buffer('_grade_map', self._build_grade_map())
+        grade_map = self._grade_map
+        if grade_map.device != x.device:
+            grade_map = grade_map.to(x.device)
+            self._grade_map = grade_map
+
+        # Compute per-grade norms via scatter
+        # x: [..., D], grade_map: [D] -> group components by grade
+        D = self.algebra.dim
+        G = self.n_grades
+
+        # Square, scatter-add by grade, sqrt -> per-grade norms
+        x_sq = x * x  # [..., D]
+        # Expand grade_map to match x shape for scatter
+        batch_shape = x.shape[:-1]
+        grade_idx = grade_map.expand(*batch_shape, D)  # [..., D]
+
+        norm_sq = torch.zeros(*batch_shape, G, device=x.device, dtype=x.dtype)
+        norm_sq.scatter_add_(-1, grade_idx, x_sq)  # [..., G]
+        norms = torch.sqrt(norm_sq.clamp(min=1e-12))  # [..., G]
+
+        # Compute gates: sigmoid(w * norm + b) for each grade
+        gates = torch.sigmoid(
+            self.grade_weights * norms + self.grade_biases
+        )  # [..., G]
+
+        # Broadcast gate per component: lookup gate[grade_map[d]] for each d
+        per_component_gate = gates.gather(-1, grade_idx)  # [..., D]
+
+        return x * per_component_gate
