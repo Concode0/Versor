@@ -277,11 +277,13 @@ class MD17Task(BaseTask):
             total_e_mae = 0
             total_f_mae = 0
 
-            for batch in train_loader:
+            inner_pbar = tqdm(train_loader, desc=f"Epoch {epoch}", leave=False)
+            for batch in inner_pbar:
                 loss, logs = self.train_step(batch)
                 total_loss += loss
                 total_e_mae += logs['E_MAE']
                 total_f_mae += logs['F_MAE']
+                inner_pbar.set_postfix(E_MAE=f"{logs['E_MAE']:.4f}")
 
             avg_loss = total_loss / len(train_loader)
             avg_e_mae = total_e_mae / len(train_loader)

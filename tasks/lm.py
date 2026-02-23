@@ -148,35 +148,69 @@ class LanguageModelingTask(BaseTask):
         print(f">>> Val Loss: {avg_loss:.4f} | Perplexity: {perplexity:.2f}")
         return perplexity
 
-    def visualize(self, val_loader=None):
-        """Greedy-decodes 200 characters from the seed "The ".
+    def generate(self, seed: str = "The ", length: int = 200,
+                 temperature: float = 1.0, top_k: int = 0) -> str:
+        """Generate text from a seed string with temperature sampling.
 
         Args:
-            val_loader: Unused; kept for API compatibility with BaseTask.
+            seed: Starting text.
+            length: Number of characters to generate.
+            temperature: Sampling temperature (0 = greedy, <1 = sharper, >1 = more random).
+            top_k: If > 0, restrict sampling to top-k tokens.
+
+        Returns:
+            Generated text string.
         """
         dataset = self._train_dataset
         if dataset is None:
-            print(">>> Dataset not available for text generation.")
-            return
+            return ""
 
-        seed = "The "
         ids = [dataset.char_to_idx.get(c, 0) for c in seed]
         generated = list(ids)
         seq_len = self.cfg.dataset.seq_len
 
         self.model.eval()
         with torch.no_grad():
-            for _ in range(200):
+            for _ in range(length):
                 context = generated[-seq_len:]
                 x = torch.tensor(
                     [context], dtype=torch.long, device=self.device
-                )               # [1, T]
-                logits = self.model(x)            # [T, vocab]
-                next_id = logits[-1].argmax().item()
+                )
+                logits = self.model(x)  # [T, vocab]
+                next_logits = logits[-1]  # [vocab]
+
+                if temperature <= 0:
+                    # Greedy
+                    next_id = next_logits.argmax().item()
+                else:
+                    next_logits = next_logits / temperature
+
+                    if top_k > 0:
+                        # Zero out tokens outside top-k
+                        values, _ = torch.topk(next_logits, min(top_k, next_logits.size(-1)))
+                        next_logits[next_logits < values[-1]] = float('-inf')
+
+                    probs = torch.softmax(next_logits, dim=-1)
+                    next_id = torch.multinomial(probs, num_samples=1).item()
+
                 generated.append(next_id)
 
-        text = dataset.decode(generated)
-        print(f">>> Generated text:\n{text}\n")
+        return dataset.decode(generated)
+
+    def visualize(self, val_loader=None):
+        """Generate text samples at multiple temperatures.
+
+        Args:
+            val_loader: Unused; kept for API compatibility with BaseTask.
+        """
+        if self._train_dataset is None:
+            print(">>> Dataset not available for text generation.")
+            return
+
+        for temp in [0.0, 0.5, 0.8, 1.0]:
+            label = "greedy" if temp == 0 else f"T={temp}"
+            text = self.generate(temperature=temp, top_k=50)
+            print(f">>> [{label}]: {text[:200]}\n")
 
     def run(self):
         """Train/val loop with checkpoint saving and text generation."""
@@ -190,9 +224,11 @@ class LanguageModelingTask(BaseTask):
             self.model.train()
             total_loss = 0.0
 
-            for batch in train_loader:
+            inner_pbar = tqdm(train_loader, desc=f"Epoch {epoch}", leave=False)
+            for batch in inner_pbar:
                 loss_val, _ = self.train_step(batch)
                 total_loss += loss_val
+                inner_pbar.set_postfix(loss=f"{loss_val:.4f}")
 
             avg_loss = total_loss / max(len(train_loader), 1)
             ppl = self.evaluate(val_loader)
@@ -211,4 +247,9 @@ class LanguageModelingTask(BaseTask):
 
         self.model.eval()
         with torch.no_grad():
-            self.visualize()
+            gen_cfg = self.cfg.get('generation', {})
+            temp = gen_cfg.get('temperature', 0.8)
+            top_k = gen_cfg.get('top_k', 50)
+            length = gen_cfg.get('length', 200)
+            text = self.generate(temperature=temp, top_k=top_k, length=length)
+            print(f">>> Generated (T={temp}, top_k={top_k}):\n{text}\n")

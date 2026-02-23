@@ -36,7 +36,7 @@ class BaseTask(ABC):
             cfg (DictConfig): Hydra config.
         """
         self.cfg = cfg
-        self.device = cfg.algebra.device
+        self.device = self._resolve_device(cfg.algebra.get('device', 'auto'))
         self.algebra = self.setup_algebra()
         self.model = self.setup_model().to(self.device)
         self.criterion = self.setup_criterion()
@@ -46,6 +46,20 @@ class BaseTask(ABC):
 
         if cfg.get('checkpoint'):
             self.load_checkpoint(cfg.checkpoint)
+
+    @staticmethod
+    def _resolve_device(device: str) -> str:
+        """Resolve 'auto' device to best available accelerator.
+
+        Priority: cuda > mps > cpu.
+        """
+        if device != 'auto':
+            return device
+        if torch.cuda.is_available():
+            return 'cuda'
+        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            return 'mps'
+        return 'cpu'
 
     def _setup_optimizer(self):
         """Sets up optimizer based on config.
