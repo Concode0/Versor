@@ -216,7 +216,7 @@ def hermitian_inner_product(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.
     Returns:
         Scalar inner product [..., 1].
     """
-    signs = _hermitian_signs(algebra)
+    signs = _hermitian_signs(algebra).to(device=A.device, dtype=A.dtype)
     return (signs * A * B).sum(dim=-1, keepdim=True)
 
 
@@ -309,7 +309,7 @@ def hermitian_grade_spectrum(algebra: CliffordAlgebra, A: torch.Tensor) -> torch
     Returns:
         Grade energies [..., n+1]. Each entry >= 0.
     """
-    signs = _hermitian_signs(algebra)
+    signs = _hermitian_signs(algebra).to(device=A.device, dtype=A.dtype)
     spectrum = []
     for k in range(algebra.n + 1):
         A_k = algebra.grade_projection(A, k)

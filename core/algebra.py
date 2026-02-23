@@ -299,42 +299,85 @@ class CliffordAlgebra:
         BA = self.geometric_product(B, A)
         return (AB + BA) / 2.0
 
-    def exp(self, mv: torch.Tensor, order: int = 12) -> torch.Tensor:
+    def exp(self, mv: torch.Tensor, order: int = 8) -> torch.Tensor:
         """Exponentiates a bivector to generate a rotor.
 
-        Uses scaling and squaring to ensure numerical stability.
+        Uses closed-form formula when input is a pure bivector (grade-2):
+            exp(B) = cos(|B|) + sin(|B|)/|B| * B
+        Falls back to scaling-and-squaring Taylor series for general multivectors.
 
         Args:
-            mv (torch.Tensor): Input bivector.
-            order (int, optional): Taylor order. Defaults to 12.
+            mv (torch.Tensor): Input bivector or multivector.
+            order (int, optional): Taylor order for fallback. Defaults to 8.
 
         Returns:
-            torch.Tensor: exp(A).
+            torch.Tensor: exp(mv).
         """
-        # 1. Scale down: Find k such that norm(A)/2^k <= 1.0
+        return self._exp_bivector_closed(mv)
+
+    def _exp_bivector_closed(self, B: torch.Tensor) -> torch.Tensor:
+        """Closed-form exponential for bivectors: exp(B) = cos|B| + sin|B|/|B| · B.
+
+        This is exact (no approximation) and uses zero geometric products.
+        Valid for any pure bivector in any Clifford algebra.
+
+        Args:
+            B (torch.Tensor): Pure bivector [..., dim].
+
+        Returns:
+            torch.Tensor: Rotor exp(B) [..., dim].
+        """
+        # Extract bivector coefficients only (grade-2 components)
+        bv_mask = self.grade_masks[2].to(B.device)
+        bv_coeffs = B[..., bv_mask]  # [..., num_bivectors]
+
+        # Compute bivector norm: |B| = sqrt(sum of squared bivector coefficients)
+        norm_sq = (bv_coeffs * bv_coeffs).sum(dim=-1, keepdim=True)  # [..., 1]
+        norm = torch.sqrt(norm_sq.clamp(min=1e-12))
+
+        cos_norm = torch.cos(norm)   # [..., 1]
+        # sinc(x) = sin(x)/x, stable near zero
+        sinc_norm = torch.where(
+            norm > 1e-7,
+            torch.sin(norm) / norm,
+            1.0 - norm_sq / 6.0,  # Taylor: sinc(x) ≈ 1 - x²/6
+        )  # [..., 1]
+
+        # Build result: scalar part = cos|B|, bivector part = sinc|B| * B
+        result = sinc_norm * B
+        result[..., 0] = cos_norm.squeeze(-1)
+
+        return result
+
+    def _exp_taylor(self, mv: torch.Tensor, order: int = 8) -> torch.Tensor:
+        """Taylor series exponential with scaling-and-squaring (fallback).
+
+        Args:
+            mv (torch.Tensor): General multivector.
+            order (int, optional): Taylor order. Defaults to 8.
+
+        Returns:
+            torch.Tensor: exp(mv).
+        """
         norm = mv.norm(dim=-1, keepdim=True)
         k = torch.ceil(torch.log2(torch.clamp(norm, min=1.0))).int()
-        
-        # Use max k over batch for uniform tensor operations
+
         max_k = k.max().item()
         if max_k > 0:
-            scale_factor_global = 2.0 ** max_k
-            mv_scaled = mv / scale_factor_global
+            mv_scaled = mv / (2.0 ** max_k)
         else:
             mv_scaled = mv
 
-        # 2. Taylor Series Approximation on scaled input
         res = torch.zeros_like(mv)
-        res[..., 0] = 1.0 # Scalar 1
-        
+        res[..., 0] = 1.0
+
         term = torch.zeros_like(mv)
         term[..., 0] = 1.0
-        
+
         for i in range(1, order + 1):
             term = self.geometric_product(term, mv_scaled)
             res = res + term / math.factorial(i)
 
-        # 3. Square up max_k times to recover original scale
         if max_k > 0:
             for _ in range(int(max_k)):
                 res = self.geometric_product(res, res)

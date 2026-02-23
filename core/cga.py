@@ -66,17 +66,19 @@ class ConformalAlgebra:
         batch_size = x.shape[0]
         
         # 1. Embed vector part x
-        x_mv = torch.zeros(batch_size, self.algebra.dim, device=self.device)
+        x_mv = torch.zeros(batch_size, self.algebra.dim, device=x.device, dtype=x.dtype)
         for i in range(self.d):
             basis_idx = 1 << i
             x_mv[:, basis_idx] = x[:, i]
-            
+
         # 2. Compute x^2 (squared Euclidean norm)
         x_sq = (x ** 2).sum(dim=1, keepdim=True)
-        
+
         # 3. Assemble P
-        term2 = 0.5 * x_sq * self.e_inf
-        term3 = self.e_o.expand(batch_size, -1)
+        e_inf = self.e_inf.to(device=x.device, dtype=x.dtype)
+        e_o = self.e_o.to(device=x.device, dtype=x.dtype)
+        term2 = 0.5 * x_sq * e_inf
+        term3 = e_o.expand(batch_size, -1)
         
         P = x_mv + term2 + term3
         return P
@@ -93,13 +95,14 @@ class ConformalAlgebra:
             torch.Tensor: Euclidean coordinates.
         """
         # 1. Normalize P such that P inner e_inf = -1
-        P_einf = self.algebra.geometric_product(P, self.e_inf)
+        e_inf = self.e_inf.to(device=P.device, dtype=P.dtype)
+        P_einf = self.algebra.geometric_product(P, e_inf)
         scale = -P_einf[..., 0:1] # Scalar part
-        
+
         P_norm = P / (scale + 1e-6)
-        
+
         # 2. Extract vector components (indices 0 to d-1)
-        x = torch.zeros(P.shape[0], self.d, device=self.device)
+        x = torch.zeros(P.shape[0], self.d, device=P.device, dtype=P.dtype)
         for i in range(self.d):
             basis_idx = 1 << i
             x[:, i] = P_norm[:, basis_idx]
