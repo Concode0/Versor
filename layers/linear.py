@@ -109,6 +109,10 @@ class CliffordLinear(CliffordModule):
         Returns:
             torch.Tensor: Output [Batch, Out, Dim].
         """
+        from core.validation import check_multivector, check_channels
+        check_multivector(x, self.algebra, "CliffordLinear input")
+        check_channels(x, self.in_channels, "CliffordLinear input")
+
         if self.backend == 'traditional':
             # Traditional linear transformation
             # x: [Batch, In, Dim]

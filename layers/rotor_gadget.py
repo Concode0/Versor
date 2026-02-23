@@ -221,23 +221,27 @@ class RotorGadget(CliffordModule):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply rotor-based transformation.
 
+        Uses batched geometric products — all rotor pairs are applied in
+        parallel via a single pair of GP calls.
+
         Args:
             x: Input tensor of shape [Batch, In_Channels, Dim]
 
         Returns:
             Output tensor of shape [Batch, Out_Channels, Dim]
         """
-        batch_size = x.shape[0]
+        from core.validation import check_multivector, check_channels
+        check_multivector(x, self.algebra, "RotorGadget input")
+        check_channels(x, self.in_channels, "RotorGadget input")
+
+        self.algebra.ensure_device(x.device)
 
         # Apply input channel shuffle if enabled
         if self.shuffle == 'fixed':
-            # Use fixed permutation from initialization
             x = x[:, self.channel_permutation, :]
         elif self.shuffle == 'random':
-            # Generate random permutation for this forward pass
             perm = torch.randperm(self.in_channels, device=x.device)
             x = x[:, perm, :]
-        # else: shuffle == 'none', no permutation
 
         # Compute rotors (cached in eval mode)
         if not self.training and self._cached_rotors is not None:
@@ -247,40 +251,28 @@ class RotorGadget(CliffordModule):
             if not self.training:
                 self._cached_rotors = (R_left, R_right_rev)
 
-        # Apply rotor sandwich for each pair on its channel block
-        outputs = []
+        # Vectorized sandwich: apply each rotor pair to its channel block
+        # Build expanded rotor tensors [1, in_channels, dim] where each channel
+        # gets the rotor for its assigned pair
+        D = self.algebra.dim
+        R_left_expanded = torch.zeros(1, self.in_channels, D,
+                                       device=x.device, dtype=x.dtype)
+        R_right_expanded = torch.zeros(1, self.in_channels, D,
+                                        device=x.device, dtype=x.dtype)
 
         for i in range(self.num_rotor_pairs):
-            # Get input channels for this rotor pair
             in_start, in_end = self.in_indices[i]
-            x_i = x[:, in_start:in_end, :]  # [B, in_block, dim]
+            if in_end > in_start:
+                R_left_expanded[0, in_start:in_end] = R_left[i]
+                R_right_expanded[0, in_start:in_end] = R_right_rev[i]
 
-            if x_i.shape[1] == 0:
-                # No input channels for this pair (can happen if num_pairs > in_channels)
-                continue
-
-            # Expand rotors for batch and channel dimensions
-            r_left = R_left[i:i+1, :].unsqueeze(0)  # [1, 1, dim]
-            r_right_rev = R_right_rev[i:i+1, :].unsqueeze(0)  # [1, 1, dim]
-
-            # Apply sandwich product: r · x · r†
-            # First: r · x
-            temp = self.algebra.geometric_product(r_left, x_i)  # [B, in_block, dim]
-            # Then: (r · x) · r†
-            out_i = self.algebra.geometric_product(temp, r_right_rev)  # [B, in_block, dim]
-
-            outputs.append(out_i)
-
-        # Concatenate outputs from all rotor pairs
-        if len(outputs) == 0:
-            raise RuntimeError("No outputs generated from rotor pairs")
-
-        concat_out = torch.cat(outputs, dim=1)  # [B, total_channels, dim]
+        # Two batched GPs instead of 2*K sequential GPs
+        temp = self.algebra.geometric_product(R_left_expanded, x)
+        concat_out = self.algebra.geometric_product(temp, R_right_expanded)
 
         # Map to output channels
-        out = self._aggregate_to_output_channels(concat_out)  # [B, out_channels, dim]
+        out = self._aggregate_to_output_channels(concat_out)
 
-        # Add bias if present
         if self.bias is not None:
             out = out + self.bias.unsqueeze(0)
 

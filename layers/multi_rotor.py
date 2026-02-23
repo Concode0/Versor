@@ -98,6 +98,12 @@ class MultiRotorLayer(CliffordModule):
         Returns:
             torch.Tensor: Transformed output.
         """
+        from core.validation import check_multivector, check_channels
+        check_multivector(x, self.algebra, "MultiRotorLayer input")
+        check_channels(x, self.channels, "MultiRotorLayer input")
+
+        self.algebra.ensure_device(x.device)
+
         if not self.training and self._cached_R is not None:
             R, R_rev = self._cached_R, self._cached_R_rev
         else:

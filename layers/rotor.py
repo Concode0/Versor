@@ -91,6 +91,12 @@ class RotorLayer(CliffordModule):
         Returns:
             torch.Tensor: Rotated input.
         """
+        from core.validation import check_multivector, check_channels
+        check_multivector(x, self.algebra, "RotorLayer input")
+        check_channels(x, self.channels, "RotorLayer input")
+
+        self.algebra.ensure_device(x.device)
+
         if not self.training and self._cached_R is not None:
             R, R_rev = self._cached_R, self._cached_R_rev
         else:
