@@ -5,17 +5,17 @@ defaults:
 algebra:
   p: 3
   q: 0
-  device: "cpu"
+  device: "auto"  # Auto-detect: cuda > mps > cpu
 
 training:
   epochs: 100
-  lr: 0.001  # Lower LR for Riemannian optimizers
+  lr: 0.001
   batch_size: 32
   seed: 42
-  optimizer_type: "riemannian_adam"  # Default: Riemannian optimization on Spin(n)
-                                     # Options: "riemannian_adam", "exponential_sgd", "adamw" (for ablation)
-  momentum: 0.9  # For SGD variants
-  betas: [0.9, 0.999]  # For Adam variants
-  max_bivector_norm: 10.0  # Numerical stability for Riemannian optimizers
+  optimizer_type: "riemannian_adam"
+  momentum: 0.9
+  betas: [0.9, 0.999]
+  max_bivector_norm: 10.0
+  num_workers: 2  # DataLoader workers (0 to disable multiprocessing)
 
 checkpoint: null

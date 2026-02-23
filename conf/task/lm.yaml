@@ -3,7 +3,7 @@ name: "lm"
 algebra:
   p: 3
   q: 1                          # Cl(3,1) — Minkowski spacetime
-  device: "mps"
+  device: "auto"
 dataset:
   data_path: "./data/text"
   tokenizer: "char"
@@ -14,16 +14,20 @@ model:
   num_heads: 2
   max_seq_len: 128
   ffn_mult: 2
-  num_rotors: 2                 # K parallel rotors in the geometric toolbox
+  num_rotors: 2
   use_decomposition: true
   use_rotor_backend: true
 training:
   epochs: 100
   lr: 0.001
-  batch_size: 8
+  batch_size: 128
   optimizer_type: "riemannian_adam"
   max_bivector_norm: 10.0
   dropout: 0.0
   loss_weights:
     lm: 1.0
-    grade_reg: 0.0              # Set > 0 to penalise non-scalar hidden energy
+    grade_reg: 0.0
+generation:
+  temperature: 0.8              # Sampling temperature (0=greedy, 1=full, >1=more random)
+  top_k: 50                     # Top-k filtering (0=disabled)
+  length: 200                   # Characters to generate

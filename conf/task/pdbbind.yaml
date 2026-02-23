@@ -3,31 +3,31 @@ name: "pdbbind"
 algebra:
   p: 3
   q: 0
-  device: "cpu"
+  device: "auto"
 dataset:
   name: "pdbbind"
-  version: "refined"          # Options: refined (~5k), general (~20k)
-  cutoff: 10.0                # Angstrom cutoff for binding pocket
+  version: "refined"
+  cutoff: 10.0
   max_protein_atoms: 1000
   max_ligand_atoms: 100
 model:
   protein_hidden_dim: 64
   ligand_hidden_dim: 32
   interaction_dim: 64
-  layers: 4                   # Protein encoder layers
-  ligand_layers: 3            # Ligand encoder layers
+  layers: 4
+  ligand_layers: 3
   num_rotors: 8
-  use_decomposition: true     # Bivector decomposition
+  use_decomposition: true
   decomp_k: 10
-  use_rotor_backend: true     # RotorGadget backend
+  use_rotor_backend: true
 training:
   epochs: 100
   lr: 0.001
-  batch_size: 8               # Small due to large graphs
+  batch_size: 16
   optimizer_type: "riemannian_adam"
   max_bivector_norm: 10.0
   loss_weights:
     affinity: 1.0
     sparsity: 0.01
-    grade_reg: 0.01          # Hermitian grade spectrum regularization
-  target_spectrum: [0.25, 0.25, 0.25, 0.25]  # Balanced for Cl(3,0)
+    grade_reg: 0.01
+  target_spectrum: [0.25, 0.25, 0.25, 0.25]

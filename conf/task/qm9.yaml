@@ -3,15 +3,15 @@ name: "qm9"
 algebra:
   p: 3
   q: 0
-  device: "cpu"
+  device: "auto"
 dataset:
   name: "qm9"
   samples: null
-  target: "U0" # or "Mu"
+  target: "U0"
 model:
   hidden_dim: 16
   layers: 2
 training:
   epochs: 50
   lr: 0.001
-  batch_size: 32
+  batch_size: 64

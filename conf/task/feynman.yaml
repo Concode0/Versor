@@ -4,35 +4,35 @@ name: "feynman"
 algebra:
   p: 4
   q: 0
-  device: "cpu"
+  device: "auto"
 
 dataset:
   name: "feynman"
-  equation: "I.6.20"        # Default: Gaussian equation (3 vars)
+  equation: "I.6.20"
   n_samples: 10000
-  noise: 0.0                 # Gaussian noise std fraction (0 = noiseless)
+  noise: 0.0
   cache_dir: "./data/feynman"
 
 model:
   hidden_channels: 16
   num_layers: 3
   num_rotors: 8
-  embed_grade2: false        # Enable grade-2 pairwise embedding
-  use_decomposition: false   # Bivector decomposition in rotors
+  embed_grade2: false
+  use_decomposition: false
 
 training:
   epochs: 100
   lr: 0.001
-  batch_size: 64
+  batch_size: 128
   optimizer_type: "riemannian_adam"
   max_bivector_norm: 10.0
-  sparsity_weight: 0.01      # Weight for rotor L1 sparsity loss
+  sparsity_weight: 0.01
 
 orthogonality:
-  enabled: false             # true to activate grade-orthogonality enforcement
-  mode: "loss"               # "loss" = soft penalty | "project" = hard zero-out
+  enabled: false
+  mode: "loss"
   weight: 0.05
-  target_grades: null        # null = all grades | e.g. [0,1,2] for scalar+vector+bivector
-  monitor_interval: 10       # print ASCII diagnostics every N epochs
+  target_grades: null
+  monitor_interval: 10
   coupling_warn_threshold: 0.3
-  warmup_epochs: 10          # linear ramp from 0 -> weight over this many epochs
+  warmup_epochs: 10

@@ -3,7 +3,7 @@ name: "semantic"
 algebra:
   p: 6
   q: 0
-  device: "cpu"
+  device: "auto"
 dataset:
   name: "20newsgroups"
   embedding_dim: 6
@@ -14,6 +14,6 @@ model:
   hidden_dim: 16
 training:
   epochs: 10
-  lr: 0.001  # Adjusted for Riemannian optimization
-  batch_size: 64
+  lr: 0.001
+  batch_size: 128
   seed: 42

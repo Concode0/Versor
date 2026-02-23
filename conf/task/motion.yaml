@@ -3,7 +3,7 @@ name: "motion"
 algebra:
   p: 4
   q: 0
-  device: "cpu"
+  device: "auto"
 dataset:
   name: "amass"
   samples: 1000

@@ -3,16 +3,16 @@ name: "weatherbench"
 algebra:
   p: 2
   q: 1                          # Spacetime signature Cl(2,1)
-  device: "cpu"
+  device: "auto"
 dataset:
   name: "weatherbench"
-  resolution: "5.625deg"        # Options: 5.625deg (64x32), 2.8deg, 1.4deg
-  variables: ['z500', 't850']   # Geopotential 500hPa, Temperature 850hPa
-  lead_time: 72                 # 72-hour (3-day) forecast
+  resolution: "5.625deg"
+  variables: ['z500', 't850']
+  lead_time: 72
 model:
   spatial_hidden_dim: 64
   num_spatial_layers: 6
-  num_temporal_steps: 12        # 72h / 6h per step
+  num_temporal_steps: 12
   num_rotors: 16
   use_decomposition: true
   decomp_k: 10
@@ -20,12 +20,12 @@ model:
 training:
   epochs: 50
   lr: 0.001
-  batch_size: 4                 # Large spatial grids
+  batch_size: 8
   optimizer_type: "riemannian_adam"
   max_bivector_norm: 10.0
-  physics_weight: 0.1           # Energy conservation penalty
+  physics_weight: 0.1
   loss_weights:
     forecast: 1.0
     sparsity: 0.01
-    grade_reg: 0.01          # Hermitian grade spectrum regularization
-  target_spectrum: [0.15, 0.35, 0.35, 0.15]  # Vector+bivector for spacetime Cl(2,1)
+    grade_reg: 0.01
+  target_spectrum: [0.15, 0.35, 0.35, 0.15]
