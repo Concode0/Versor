@@ -51,7 +51,7 @@ class SubspaceLoss(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Penalizes deviations."""
-        penalty_components = x[..., self.penalty_mask]
+        penalty_components = x[..., self.penalty_mask.to(x.device)]
         loss = (penalty_components ** 2).sum(dim=-1).mean()
         return loss
 
@@ -76,8 +76,9 @@ class IsometryLoss(nn.Module):
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compares norms."""
-        pred_sq = (pred ** 2) * self.metric_diag
-        target_sq = (target ** 2) * self.metric_diag
+        metric_diag = self.metric_diag.to(pred.device)
+        pred_sq = (pred ** 2) * metric_diag
+        target_sq = (target ** 2) * metric_diag
         
         pred_norm = pred_sq.sum(dim=-1)
         target_norm = target_sq.sum(dim=-1)
@@ -153,7 +154,7 @@ class HermitianGradeRegularization(nn.Module):
         mean_dist = dist.mean(dim=0)  # [n+1]
 
         # MSE from target spectrum
-        return F.mse_loss(mean_dist, self.target)
+        return F.mse_loss(mean_dist, self.target.to(mean_dist.device))
 
 
 class ChamferDistance(nn.Module):
