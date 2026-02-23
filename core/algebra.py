@@ -33,11 +33,15 @@ class CliffordAlgebra:
             q (int, optional): Negative dimensions (-1). Defaults to 0.
             device (str, optional): The device on which computations are performed. Defaults to 'cuda'.
         """
+        assert p >= 0, f"p must be non-negative, got {p}"
+        assert q >= 0, f"q must be non-negative, got {q}"
+        assert p + q <= 12, f"p + q must be <= 12, got {p + q}"
+
         self.p, self.q = p, q
         self.n = p + q
         self.dim = 2 ** self.n
         self.device = device
-        
+
         # Cache Cayley tables to avoid recomputation
         cache_key = (p, q, str(device))
         if cache_key not in CliffordAlgebra._CACHED_TABLES:
@@ -49,6 +53,7 @@ class CliffordAlgebra:
             self.gp_signs,
             self.grade_masks,
             self.rev_signs,
+            self.bv_sq_scalar,
         ) = CliffordAlgebra._CACHED_TABLES[cache_key]
 
     @property
@@ -113,7 +118,30 @@ class CliffordAlgebra:
             k = bin(i).count('1')
             rev_signs[i] = (-1) ** (k * (k - 1) // 2)
 
-        return cayley_indices, cayley_signs, gp_signs, grade_masks, rev_signs
+        # Bivector squared scalars: for each basis bivector e_ab,
+        # (e_ab)^2 = -s_a * s_b where s_i = +1 if i < p, -1 if i >= p.
+        # Used by closed-form exp for arbitrary signature.
+        if self.n >= 2:
+            bv_mask = grade_masks[2]
+            bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+            bv_sq_scalar = torch.zeros(len(bv_indices), dtype=cayley_signs.dtype,
+                                       device=self.device)
+            for idx_pos, blade_idx in enumerate(bv_indices.tolist()):
+                bits = []
+                for bit in range(self.n):
+                    if blade_idx & (1 << bit):
+                        bits.append(bit)
+                if len(bits) == 2:
+                    a, b = bits
+                    s_a = 1.0 if a < self.p else -1.0
+                    s_b = 1.0 if b < self.p else -1.0
+                    bv_sq_scalar[idx_pos] = -s_a * s_b
+        else:
+            bv_sq_scalar = torch.zeros(0, dtype=cayley_signs.dtype,
+                                       device=self.device)
+
+        return (cayley_indices, cayley_signs, gp_signs, grade_masks,
+                rev_signs, bv_sq_scalar)
 
     def _compute_signs(self, indices: torch.Tensor) -> torch.Tensor:
         """Compute the sign matrix from commutation parity and metric signature.
@@ -180,10 +208,11 @@ class CliffordAlgebra:
         Returns:
             torch.Tensor: The product AB [..., Dim].
         """
-        D = self.dim
+        from core.validation import check_multivector
+        check_multivector(A, self, "geometric_product(A)")
+        check_multivector(B, self, "geometric_product(B)")
 
         # Gather B coefficients according to Cayley table: B_gathered[..., i, k] = B[..., cayley[i,k]]
-        # cayley_indices: [D, D], B: [..., D]
         idx = self.cayley_indices  # [D, D]
         if idx.device != A.device:
             self.ensure_device(A.device)
@@ -209,11 +238,12 @@ class CliffordAlgebra:
         self.gp_signs = self.gp_signs.to(device)
         self.grade_masks = [m.to(device) for m in self.grade_masks]
         self.rev_signs = self.rev_signs.to(device)
+        self.bv_sq_scalar = self.bv_sq_scalar.to(device)
         # Update cache so other instances sharing this key also benefit
         cache_key = (self.p, self.q, str(self.device))
         CliffordAlgebra._CACHED_TABLES[cache_key] = (
             self.cayley_indices, self.cayley_signs, self.gp_signs,
-            self.grade_masks, self.rev_signs,
+            self.grade_masks, self.rev_signs, self.bv_sq_scalar,
         )
 
     def grade_projection(self, mv: torch.Tensor, grade: int) -> torch.Tensor:
@@ -313,9 +343,16 @@ class CliffordAlgebra:
     def exp(self, mv: torch.Tensor, order: int = 8) -> torch.Tensor:
         """Exponentiates a bivector to generate a rotor.
 
-        Uses closed-form formula when input is a pure bivector (grade-2):
-            exp(B) = cos(|B|) + sin(|B|)/|B| * B
-        Falls back to scaling-and-squaring Taylor series for general multivectors.
+        Uses closed-form formula for pure bivectors in any signature:
+            - Euclidean (B² < 0): exp(B) = cos|B| + sin|B|/|B| · B
+            - Hyperbolic (B² > 0): exp(B) = cosh|B| + sinh|B|/|B| · B
+            - Null (B² ≈ 0): exp(B) ≈ 1 + B
+
+        For n <= 3 the closed form is always exact (no disjoint bivector
+        pairs exist, so B² is always scalar).  For n >= 4, disjoint pairs
+        like (e₁₂, e₃₄) produce grade-4 cross terms in B², making the
+        closed form approximate for non-simple bivectors.  Taylor series
+        is used as fallback in that case.
 
         Args:
             mv (torch.Tensor): Input bivector or multivector.
@@ -324,16 +361,26 @@ class CliffordAlgebra:
         Returns:
             torch.Tensor: exp(mv).
         """
-        if self.q == 0:
-                return self._exp_bivector_closed(mv)
+        if self.n <= 3:
+            # Exact: no disjoint bivector pairs → B² is always scalar
+            return self._exp_bivector_closed(mv)
         else:
+            # n >= 4: closed form is approximate for non-simple bivectors
             return self._exp_taylor(mv, order=order)
 
     def _exp_bivector_closed(self, B: torch.Tensor) -> torch.Tensor:
-        """Closed-form exponential for bivectors: exp(B) = cos|B| + sin|B|/|B| · B.
+        """Closed-form exponential for bivectors in arbitrary signature.
 
-        This is exact (no approximation) and uses zero geometric products.
-        Valid for any pure bivector in any Clifford algebra.
+        For a bivector B, computes B² (scalar part) using the metric:
+            B²_scalar = Σ_k b_k² · (e_k)²   where (e_ab)² = -s_a·s_b
+
+        Three regimes:
+            - B² < 0 (elliptic): exp(B) = cos(θ) + sin(θ)/θ · B,  θ = √(-B²)
+            - B² > 0 (hyperbolic): exp(B) = cosh(θ) + sinh(θ)/θ · B,  θ = √(B²)
+            - B² ≈ 0 (parabolic): exp(B) ≈ 1 + B
+
+        Uses zero geometric products. Exact for simple bivectors in any
+        Clifford algebra Cl(p,q).
 
         Args:
             B (torch.Tensor): Pure bivector [..., dim].
@@ -341,27 +388,54 @@ class CliffordAlgebra:
         Returns:
             torch.Tensor: Rotor exp(B) [..., dim].
         """
-        # Extract bivector coefficients only (grade-2 components)
         bv_mask = self.grade_masks[2]
         if bv_mask.device != B.device:
             bv_mask = bv_mask.to(B.device)
         bv_coeffs = B[..., bv_mask]  # [..., num_bivectors]
 
-        # Compute bivector norm: |B| = sqrt(sum of squared bivector coefficients)
-        norm_sq = (bv_coeffs * bv_coeffs).sum(dim=-1, keepdim=True)  # [..., 1]
-        norm = torch.sqrt(norm_sq.clamp(min=1e-12))
+        bv_sq = self.bv_sq_scalar
+        if bv_sq.device != B.device:
+            bv_sq = bv_sq.to(B.device)
 
-        cos_norm = torch.cos(norm)   # [..., 1]
-        # sinc(x) = sin(x)/x, stable near zero
-        sinc_norm = torch.where(
-            norm > 1e-7,
-            torch.sin(norm) / norm,
-            1.0 - norm_sq / 6.0,  # Taylor: sinc(x) ≈ 1 - x²/6
-        )  # [..., 1]
+        # Signed squared norm: α = Σ_k b_k² · (e_k)²
+        # α < 0 → elliptic (Euclidean-like), α > 0 → hyperbolic
+        alpha = (bv_coeffs * bv_coeffs * bv_sq).sum(dim=-1, keepdim=True)
 
-        # Build result: scalar part = cos|B|, bivector part = sinc|B| * B
-        result = sinc_norm * B
-        result[..., 0] = cos_norm.squeeze(-1)
+        abs_alpha = alpha.abs().clamp(min=1e-12)
+        theta = torch.sqrt(abs_alpha)  # [..., 1]
+
+        # Elliptic branch: cos(θ) and sin(θ)/θ
+        cos_theta = torch.cos(theta)
+        sinc_theta = torch.where(
+            theta > 1e-7,
+            torch.sin(theta) / theta,
+            1.0 - abs_alpha / 6.0,
+        )
+
+        # Hyperbolic branch: cosh(θ) and sinh(θ)/θ
+        cosh_theta = torch.cosh(theta)
+        sinhc_theta = torch.where(
+            theta > 1e-7,
+            torch.sinh(theta) / theta,
+            1.0 + abs_alpha / 6.0,
+        )
+
+        # Select branch based on sign of α
+        is_elliptic = alpha < -1e-12
+        is_hyperbolic = alpha > 1e-12
+        # Parabolic (null) falls through: scalar=1, coeff=1
+
+        scalar_part = torch.where(
+            is_elliptic, cos_theta,
+            torch.where(is_hyperbolic, cosh_theta, torch.ones_like(theta))
+        )
+        coeff_part = torch.where(
+            is_elliptic, sinc_theta,
+            torch.where(is_hyperbolic, sinhc_theta, torch.ones_like(theta))
+        )
+
+        result = coeff_part * B
+        result[..., 0] = scalar_part.squeeze(-1)
 
         return result
 
