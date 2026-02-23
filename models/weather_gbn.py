@@ -292,8 +292,8 @@ class WeatherGBN(CliffordModule):
 
     def total_sparsity_loss(self):
         """Collect sparsity loss from all rotor layers."""
-        loss = torch.tensor(0.0)
+        loss = 0
         for module in self.modules():
             if hasattr(module, 'sparsity_loss') and module is not self:
                 loss = loss + module.sparsity_loss()
-        return loss
+        return loss if isinstance(loss, torch.Tensor) else torch.tensor(0.0, device=next(self.parameters()).device)
