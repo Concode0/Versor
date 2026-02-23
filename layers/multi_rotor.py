@@ -48,44 +48,32 @@ class MultiRotorLayer(CliffordModule):
         self.num_rotors = num_rotors
         self.use_decomposition = use_decomposition
         self.decomp_k = decomp_k
-        
-        self.bivector_indices = self._get_bivector_indices()
+
+        # Use algebra's precomputed grade masks for bivector indices
+        bv_mask = algebra.grade_masks[2]
+        self.register_buffer('bivector_indices', bv_mask.nonzero(as_tuple=False).squeeze(-1))
         self.num_bivectors = len(self.bivector_indices)
-        
+
         # Overlapping rotors
         self.rotor_bivectors = nn.Parameter(torch.Tensor(num_rotors, self.num_bivectors))
-        
+
         # Mixing weights
         self.weights = nn.Parameter(torch.Tensor(channels, num_rotors))
-        
+
+        # Rotor cache for eval mode
+        self._cached_R = None
+        self._cached_R_rev = None
+
         self.reset_parameters()
-        
-    def _get_bivector_indices(self) -> torch.Tensor:
-        """Finds the bivectors."""
-        indices = []
-        for i in range(self.algebra.dim):
-            cnt = bin(i).count('1')
-            if cnt == 2:
-                indices.append(i)
-        return torch.tensor(indices, device=self.algebra.device, dtype=torch.long)
 
     def reset_parameters(self):
         """Initialize with small rotations and uniform weights."""
         nn.init.normal_(self.rotor_bivectors, std=0.01)
         nn.init.xavier_uniform_(self.weights)
 
-    def forward(self, x: torch.Tensor, return_invariants: bool = False) -> torch.Tensor:
-        """Apply weighted multi-rotor transformation.
-
-        Args:
-            x (torch.Tensor): Input [Batch, Channels, Dim].
-            return_invariants (bool): If True, returns grade norms.
-
-        Returns:
-            torch.Tensor: Transformed output.
-        """
-        # 1. Generate Rotors
-        B = torch.zeros(self.num_rotors, self.algebra.dim, device=x.device, dtype=x.dtype)
+    def _compute_rotors(self, device, dtype):
+        """Compute R and R~ from bivector weights."""
+        B = torch.zeros(self.num_rotors, self.algebra.dim, device=device, dtype=dtype)
         indices = self.bivector_indices.unsqueeze(0).expand(self.num_rotors, -1)
         B.scatter_(1, indices, self.rotor_bivectors)
 
@@ -96,22 +84,50 @@ class MultiRotorLayer(CliffordModule):
         else:
             R = self.algebra.exp(-0.5 * B)  # [K, D]
         R_rev = self.algebra.reverse(R)
-        
-        # 2. Sandwich Product
+        return R, R_rev
+
+    def forward(self, x: torch.Tensor, return_invariants: bool = False) -> torch.Tensor:
+        """Apply weighted multi-rotor transformation.
+
+        Caches rotors during eval mode for faster inference.
+
+        Args:
+            x (torch.Tensor): Input [Batch, Channels, Dim].
+            return_invariants (bool): If True, returns grade norms.
+
+        Returns:
+            torch.Tensor: Transformed output.
+        """
+        if not self.training and self._cached_R is not None:
+            R, R_rev = self._cached_R, self._cached_R_rev
+        else:
+            R, R_rev = self._compute_rotors(x.device, x.dtype)
+            if not self.training:
+                self._cached_R = R
+                self._cached_R_rev = R_rev
+
+        # Sandwich Product
         x_expanded = x.unsqueeze(2)
         R_expanded = R.view(1, 1, self.num_rotors, -1)
         R_rev_expanded = R_rev.view(1, 1, self.num_rotors, -1)
-        
+
         Rx = self.algebra.geometric_product(R_expanded, x_expanded)
         rotated_x = self.algebra.geometric_product(Rx, R_rev_expanded)
-        
-        # 3. Superposition
+
+        # Superposition
         out = torch.einsum('ck,bckd->bcd', self.weights, rotated_x)
-        
+
         if return_invariants:
             return self.algebra.get_grade_norms(out)
-            
+
         return out
+
+    def train(self, mode: bool = True):
+        """Override to invalidate rotor cache when switching to train mode."""
+        if mode:
+            self._cached_R = None
+            self._cached_R_rev = None
+        return super().train(mode)
 
     def sparsity_loss(self) -> torch.Tensor:
         """Computes the L1 sparsity loss for rotor bivectors and weights."""

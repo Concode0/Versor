@@ -80,8 +80,12 @@ class RotorGadget(CliffordModule):
         self.aggregation = aggregation
         self.shuffle = shuffle
 
-        # Get bivector indices (grade 2 elements)
-        self.bivector_indices = self._get_bivector_indices()
+        # Use algebra's precomputed grade masks for bivector indices
+        if algebra.num_grades > 2:
+            bv_mask = algebra.grade_masks[2]
+            self.register_buffer('bivector_indices', bv_mask.nonzero(as_tuple=False).squeeze(-1))
+        else:
+            self.register_buffer('bivector_indices', torch.tensor([], dtype=torch.long, device=algebra.device))
         self.num_bivectors = len(self.bivector_indices)
 
         if self.num_bivectors == 0:
@@ -118,6 +122,9 @@ class RotorGadget(CliffordModule):
             self.bias = nn.Parameter(torch.zeros(out_channels, algebra.dim))
         else:
             self.register_buffer('bias', None)
+
+        # Rotor cache for eval mode
+        self._cached_rotors = None
 
     def _setup_channel_routing(self):
         """Set up block diagonal channel routing with optional shuffle.
@@ -160,42 +167,21 @@ class RotorGadget(CliffordModule):
             # No shuffle - identity permutation
             self.register_buffer('channel_permutation', None)
 
-    def _get_bivector_indices(self) -> torch.Tensor:
-        """Finds the bivectors (Grade 2 elements).
-
-        Returns:
-            Tensor of indices for bivector components in the multivector.
-        """
-        indices = []
-        for i in range(self.algebra.dim):
-            # Count set bits to determine grade
-            cnt = 0
-            temp = i
-            while temp > 0:
-                if temp & 1:
-                    cnt += 1
-                temp >>= 1
-            if cnt == 2:  # Bivector has grade 2
-                indices.append(i)
-        return torch.tensor(indices, device=self.algebra.device, dtype=torch.long)
-
     def _bivector_to_multivector(self, bivector_coeffs: torch.Tensor) -> torch.Tensor:
-        """Convert bivector coefficients to full multivector representation.
+        """Convert bivector coefficients to full multivector via vectorized scatter.
 
         Args:
             bivector_coeffs: Tensor of shape [..., num_bivectors]
 
         Returns:
-            Multivector tensor of shape [..., algebra.dim] with coefficients
-            in bivector positions and zeros elsewhere
+            Multivector tensor of shape [..., algebra.dim]
         """
         batch_shape = bivector_coeffs.shape[:-1]
-        mv = torch.zeros(*batch_shape, self.algebra.dim, device=bivector_coeffs.device)
-
-        # Fill in bivector components
-        for i, idx in enumerate(self.bivector_indices):
-            mv[..., idx.item()] = bivector_coeffs[..., i]
-
+        mv = torch.zeros(*batch_shape, self.algebra.dim,
+                          device=bivector_coeffs.device, dtype=bivector_coeffs.dtype)
+        # Expand indices to match batch shape for scatter_
+        idx = self.bivector_indices.expand(*batch_shape, -1)
+        mv.scatter_(-1, idx, bivector_coeffs)
         return mv
 
     def _compute_rotors(self):
@@ -253,8 +239,13 @@ class RotorGadget(CliffordModule):
             x = x[:, perm, :]
         # else: shuffle == 'none', no permutation
 
-        # Compute rotors
-        R_left, R_right_rev = self._compute_rotors()  # [pairs, dim] each
+        # Compute rotors (cached in eval mode)
+        if not self.training and self._cached_rotors is not None:
+            R_left, R_right_rev = self._cached_rotors
+        else:
+            R_left, R_right_rev = self._compute_rotors()
+            if not self.training:
+                self._cached_rotors = (R_left, R_right_rev)
 
         # Apply rotor sandwich for each pair on its channel block
         outputs = []
@@ -357,6 +348,12 @@ class RotorGadget(CliffordModule):
                 out = x.repeat(1, repeats, 1)[:, :self.out_channels, :]
 
         return out
+
+    def train(self, mode: bool = True):
+        """Override to invalidate rotor cache when switching to train mode."""
+        if mode:
+            self._cached_rotors = None
+        return super().train(mode)
 
     def extra_repr(self) -> str:
         """String representation for debugging."""

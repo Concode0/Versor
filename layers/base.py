@@ -33,7 +33,15 @@ class CliffordModule(nn.Module):
     def algebra(self) -> CliffordAlgebra:
         """Return the algebra instance, reconstructing if necessary."""
         if self._algebra is None:
-            self._algebra = CliffordAlgebra(self.p, self.q)
+            # Detect device from module parameters/buffers
+            try:
+                device = next(self.parameters()).device
+            except StopIteration:
+                try:
+                    device = next(self.buffers()).device
+                except StopIteration:
+                    device = 'cpu'
+            self._algebra = CliffordAlgebra(self.p, self.q, device=str(device))
         return self._algebra
     
     def forward(self, x):
