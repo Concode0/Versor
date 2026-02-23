@@ -25,6 +25,7 @@ from tasks.weatherbench import WeatherBenchTask
 from tasks.abc import ABCTask
 from tasks.lm import LanguageModelingTask
 from tasks.feynman import FeynmanTask
+from tasks.feynman_sweep import FeynmanSweepTask
 
 EXAMPLE_TASKS = {'manifold', 'hyperbolic', 'sanity'}
 
@@ -48,6 +49,7 @@ def main(cfg: DictConfig):
         'abc': ABCTask,
         'lm': LanguageModelingTask,
         'feynman': FeynmanTask,
+        'feynman_sweep': FeynmanSweepTask,
     }
 
     if task_name in EXAMPLE_TASKS:

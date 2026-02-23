@@ -1,0 +1,43 @@
+# @package _global_
+name: "feynman_sweep"
+
+algebra:
+  p: 4
+  q: 0
+  device: "auto"
+
+dataset:
+  name: "feynman"
+  equations: "all"        # "all" | "tier1" / "tier2" / "tier3" / "tier4" | list of IDs
+  n_samples: 10000
+  noise: 0.0
+  cache_dir: "./data/feynman"
+
+model:
+  hidden_channels: 16
+  num_layers: 3
+  num_rotors: 8
+  embed_grade2: false
+  use_decomposition: false
+
+training:
+  epochs: 50
+  lr: 0.001
+  batch_size: 128
+  optimizer_type: "riemannian_adam"
+  max_bivector_norm: 10.0
+  sparsity_weight: 0.01
+
+sweep:
+  results_dir: "./results"
+  save_checkpoints: false
+  visualize: false
+
+orthogonality:
+  enabled: false
+  mode: "loss"
+  weight: 0.05
+  target_grades: null
+  monitor_interval: 10
+  coupling_warn_threshold: 0.3
+  warmup_epochs: 10

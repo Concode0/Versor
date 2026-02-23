@@ -9,7 +9,7 @@ import torch
 from omegaconf import OmegaConf
 
 from core.algebra import CliffordAlgebra
-from datasets.feynman import FEYNMAN_EQUATIONS, FeynmanDataset, get_feynman_loaders
+from datasets.feynman import FEYNMAN_EQUATIONS, FeynmanDataset, get_feynman_loaders, _generate_from_spec
 from models.feynman_net import (
     FeynmanMultiGradeEmbedding,
     FeynmanGBN,
@@ -73,7 +73,7 @@ def test_all_equations_generate():
     rng = np.random.default_rng(0)
     n = 100
     for eq_id, spec in FEYNMAN_EQUATIONS.items():
-        x, y = spec["fn"](n, rng)
+        x, y = _generate_from_spec(spec, n, rng)
         assert x.shape == (n, spec["n_vars"]), f"{eq_id}: wrong x shape"
         assert y.shape == (n,), f"{eq_id}: wrong y shape"
         assert np.isfinite(x).all(), f"{eq_id}: NaN/Inf in x"

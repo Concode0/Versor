@@ -120,6 +120,14 @@ def _constrain_arcsin_arg(variables, rng, n):
         variables["theta2"] = rng.uniform(0.1, 0.9, n)
 
 
+def _constrain_waveguide(variables, rng, n):
+    """Ensure omega^2/c^2 > pi^2/d^2 for real waveguide wave number."""
+    if all(k in variables for k in ("omega", "c", "d_val")):
+        # cutoff = pi*c/d; need omega > cutoff
+        cutoff = np.pi * variables["c"] / variables["d_val"]
+        variables["omega"] = cutoff * rng.uniform(1.1, 3.0, n)
+
+
 # ---------------------------------------------------------------------------
 # 100-equation registry (AI Feynman benchmark)
 # ---------------------------------------------------------------------------
@@ -871,6 +879,7 @@ FEYNMAN_EQUATIONS = {
         ],
         "output": "k", "desc": "Waveguide wave number",
         "n_vars": 3,
+        "sampling": {"constraints": [_constrain_waveguide]},
     },
     "II.27.16": {
         "n_vars": 3, "tier": 2,
@@ -1190,6 +1199,20 @@ FEYNMAN_EQUATIONS = {
 # ---------------------------------------------------------------------------
 for _key, _spec in FEYNMAN_EQUATIONS.items():
     _spec["n_vars"] = len(_spec["variables"])
+
+
+def get_equations_by_tier(tier=None):
+    """Return equation IDs filtered by tier.
+
+    Args:
+        tier: int (1-4) to filter by tier, or None to return all.
+
+    Returns:
+        List of equation ID strings.
+    """
+    if tier is None:
+        return list(FEYNMAN_EQUATIONS.keys())
+    return [k for k, v in FEYNMAN_EQUATIONS.items() if v.get("tier") == tier]
 
 
 # ---------------------------------------------------------------------------
