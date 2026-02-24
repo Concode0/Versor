@@ -76,11 +76,15 @@ class CliffordAlgebra:
             mv[..., 1 << i] = vectors[..., i]
         return mv
 
-    def get_grade_norms(self, mv: torch.Tensor) -> torch.Tensor:
+    def get_grade_norms(self, mv: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
         """Calculates norms per grade. Useful for invariant features.
+
+        Uses numerically stable norm: sqrt(sum(x²) + eps) to avoid
+        NaN gradients when grade components are zero.
 
         Args:
             mv (torch.Tensor): Input multivector [..., dim].
+            eps (float): Small constant for numerical stability.
 
         Returns:
             torch.Tensor: Grade norms [..., num_grades].
@@ -89,7 +93,7 @@ class CliffordAlgebra:
         res = torch.zeros(*batch_shape, self.num_grades, device=mv.device, dtype=mv.dtype)
         for k in range(self.num_grades):
             mv_k = self.grade_projection(mv, k)
-            res[..., k] = mv_k.norm(dim=-1)
+            res[..., k] = (mv_k.pow(2).sum(dim=-1) + eps).sqrt()
         return res
 
     def _generate_cayley_table(self):

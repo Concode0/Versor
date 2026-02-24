@@ -19,7 +19,7 @@ model:
 training:
   epochs: 100
   lr: 0.001
-  batch_size: 64=
+  batch_size: 64
   optimizer_type: "riemannian_adam"
   loss_weights:
     energy: 1.0
