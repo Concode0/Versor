@@ -45,6 +45,12 @@ class MD17InteractionBlock(CliffordModule):
             use_decomposition=use_decomposition, decomp_k=decomp_k
         )
 
+        self.edge_weight_net = nn.Sequential(
+            nn.Linear(hidden_dim * algebra.num_grades, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, num_rotors)
+        )
+
         # Invariant-based scalar gate: controls message strength per channel
         # Uses grade norms (invariant) to compute scalar attention weights,
         # while the full geometric multivector phi carries directional info.
@@ -67,6 +73,7 @@ class MD17InteractionBlock(CliffordModule):
             Updated node features [N, Hidden, Dim]
         """
         row, col = edge_index
+        N = h.size(0)
 
         # Relative vector r_ij
         r_ij = pos[row] - pos[col]
@@ -78,19 +85,31 @@ class MD17InteractionBlock(CliffordModule):
         h_t = self.act(h_t)
         h_j = h_t[col]  # [E, Hidden, Dim]
 
-        # Interaction via Geometric Product
-        psi = self.algebra.geometric_product(h_j, r_ij_mv.unsqueeze(1))  # [E, Hidden, Dim]
+        psi = self.algebra.geometric_product(h_j, r_ij_mv.unsqueeze(1)) # [E, Hidden, Dim]
 
-        # Apply Multi-Rotor Superposition
-        phi = self.multi_rotor(psi)
+        psi_inv = self.algebra.get_grade_norms(psi)
+        psi_inv_flat = psi_inv.reshape(psi_inv.size(0), -1)
+
+        edge_weights = self.edge_weight_net(psi_inv_flat)
+        edge_weights = torch.softmax(edge_weights, dim=-1)
+
+        R, R_rev = self.multi_rotor._compute_rotors(psi.device, psi.dtype)
+
+        psi_expanded = psi.unsqueeze(2) # [E, Hidden, 1, Dim]
+        R_expanded = R.view(1, 1, self.multi_rotor.num_rotors, -1) # [1, 1, K, Dim]
+        R_rev_expanded = R_rev.view(1, 1, self.multi_rotor.num_rotors, -1) # [1, 1, K, Dim]
+
+        R_psi = self.algebra.geometric_product(R_expanded, psi_expanded)
+        rotated_psi = self.algebra.geometric_product(R_psi, R_rev_expanded) # [E, Hidden, K, Dim]
+
+        phi_dynamic = torch.einsum('ek,ehkd->ehd', edge_weights, rotated_psi) # [E, Hidden, Dim]
 
         # Invariant gating: grade norms for scalar attention, phi for geometry
-        inv_features = self.algebra.get_grade_norms(phi)  # [E, Hidden, Num_Grades]
+        inv_features = self.algebra.get_grade_norms(phi_dynamic) # [E, Hidden, Num_Grades]
         inv_flat = inv_features.reshape(inv_features.size(0), -1)
-        gate = self.msg_gate(inv_flat)  # [E, Hidden] — scalar weights
+        gate = self.msg_gate(inv_flat) # [E, Hidden] — scalar weights
 
-        # Gate the full geometric message (preserves directional info from r_ij)
-        phi_gated = phi * gate.unsqueeze(-1)  # [E, Hidden, Dim]
+        phi_gated = phi_dynamic * gate.unsqueeze(-1) # [E, Hidden, Dim]
 
         out_msg = torch.zeros_like(h)
         out_msg.index_add_(0, row, phi_gated)
@@ -159,15 +178,8 @@ class MD17ForceNet(CliffordModule):
             nn.Linear(hidden_dim, 1)
         )
 
-        # Force head: extract grade-1 (vector) components directly
-        # In Cl(3,0), grade-1 has 3 basis vectors (e₁, e₂, e₃) = natural 3D forces
-        g1_idx = [i for i in range(algebra.dim) if bin(i).count('1') == 1]
-        self.register_buffer('g1_indices', torch.tensor(g1_idx, dtype=torch.long))
-        # Project hidden_dim grade-1 vectors → single 3D force per atom
-        self.force_proj = nn.Linear(hidden_dim * len(g1_idx), 3)
-
     def forward(self, z, pos, batch, edge_index):
-        """Forward pass predicting both energy and forces.
+        """Forward pass predicting both energy and forces via Autograd.
 
         Args:
             z: Atomic numbers [N]
@@ -179,6 +191,8 @@ class MD17ForceNet(CliffordModule):
             energy: Predicted energy per molecule [B]
             force: Predicted forces per atom [N, 3]
         """
+        pos.requires_grad_(True)
+
         # Initial scalar embedding
         h_scalar = self.atom_embedding(z)  # [N, Hidden]
         h = torch.zeros(z.size(0), h_scalar.size(1), self.algebra.dim, device=z.device)
@@ -201,11 +215,15 @@ class MD17ForceNet(CliffordModule):
         # Energy prediction (per-molecule scalar)
         graph_repr = global_add_pool(h_flat, batch)  # [B, Hidden * Dim]
         energy = self.energy_head(graph_repr).squeeze(-1)  # [B]
-
-        # Force prediction: extract grade-1 (vector) components
-        h_vec = h[:, :, self.g1_indices]  # [N, Hidden, 3] — grade-1 vectors
-        force = self.force_proj(h_vec.reshape(h.size(0), -1))  # [N, 3]
-
+        
+        force = -torch.autograd.grad(
+            outputs=energy,
+            inputs=pos,
+            grad_outputs=torch.ones_like(energy),
+            create_graph=True,
+            retain_graph=True
+        )[0]
+        
         return energy, force
 
     def get_latent_features(self):
