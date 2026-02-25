@@ -16,10 +16,10 @@ from typing import List, Optional
 class ExponentialSGD(Optimizer):
     """SGD with exponential map retraction for rotor parameters.
 
-    Instead of Euclidean update: θ ← θ - η∇θ
-    Uses manifold update: R ← R · exp(-η∇_B)
+    Instead of Euclidean update: theta <- theta - lr * grad_theta
+    Uses manifold update: R <- R . exp(lr * grad_B)
 
-    where ∇_B is the gradient in the Lie algebra (bivector space).
+    where grad_B is the gradient in the Lie algebra (bivector space).
 
     Since Versor parameterizes rotors via bivectors (the Lie algebra),
     Euclidean gradient updates in bivector space ARE geometrically meaningful.
@@ -237,8 +237,8 @@ class RiemannianAdam(Optimizer):
 def project_to_tangent_space(point, vector, algebra):
     """Project a vector to the tangent space at a point on Spin(n).
 
-    For rotors R ∈ Spin(n), the tangent space at R is:
-        T_R Spin(n) = { R · B | B is a bivector }
+    For rotors R in Spin(n), the tangent space at R is:
+        T_R Spin(n) = { R . B | B is a bivector }
 
     Args:
         point: Current point on manifold (rotor) [..., dim]
@@ -248,7 +248,7 @@ def project_to_tangent_space(point, vector, algebra):
     Returns:
         Projected vector in tangent space [..., dim]
     """
-    # Compute R̃ · vector
+    # Compute ~R . vector
     R_rev = algebra.reverse(point)
     tangent = algebra.geometric_product(R_rev, vector)
 
@@ -256,7 +256,7 @@ def project_to_tangent_space(point, vector, algebra):
     # This extracts only the grade-2 (bivector) components
     bivector = algebra.grade_projection(tangent, grade=2)
 
-    # Map back to tangent space: R · bivector
+    # Map back to tangent space: R . bivector
     return algebra.geometric_product(point, bivector)
 
 
@@ -264,7 +264,7 @@ def exponential_retraction(point, tangent_vector, algebra):
     """Exponential map: move from point along tangent vector on manifold.
 
     For Spin(n), the exponential map is:
-        Exp_R(R·B) = R · exp(B)
+        Exp_R(R.B) = R . exp(B)
 
     where B is a bivector in the Lie algebra.
 
@@ -284,5 +284,5 @@ def exponential_retraction(point, tangent_vector, algebra):
     # Exponential map
     update = algebra.exp(bivector)
 
-    # Apply update: R_new = R_old · exp(B)
+    # Apply update: R_new = R_old . exp(B)
     return algebra.geometric_product(point, update)

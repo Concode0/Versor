@@ -154,7 +154,7 @@ class TestLayers(unittest.TestCase):
         self.assertFalse(torch.isinf(layer.rotor_bivectors.grad).any())
 
     def test_rotor_layer_decomposition_rotor_property(self):
-        """Verify that decomposed rotors satisfy R × R̃ = 1."""
+        """Verify that decomposed rotors satisfy R * ~R = 1."""
         layer = RotorLayer(self.alg, 2, use_decomposition=True, decomp_k=2)
 
         # Construct bivector B
@@ -166,7 +166,7 @@ class TestLayers(unittest.TestCase):
         R = self.alg.exp_decomposed(-0.5 * B, use_decomposition=True, k=2)
         R_rev = self.alg.reverse(R)
 
-        # R × R̃ should be identity
+        # R * ~R should be identity
         for i in range(layer.channels):
             identity = self.alg.geometric_product(R[i:i+1], R_rev[i:i+1])
 

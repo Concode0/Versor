@@ -288,7 +288,7 @@ class LorentzNet(nn.Module):
         h = h.reshape(B, self.hidden_dim, self.algebra.dim)
         h = self.input_norm(h)  # bound magnitude before first block
 
-        # Residual blocks — Pre-LN: norm applied to residual stream BEFORE rotor.
+        # Residual blocks - Pre-LN: norm applied to residual stream BEFORE rotor.
         # This keeps the residual path clean (unnormalized) and prevents
         # float32 magnitude drift across deep layers.
         intermediates: List[torch.Tensor] = []
@@ -303,7 +303,7 @@ class LorentzNet(nn.Module):
             intermediates.append(h)
             self._intermediates.append(h.detach())
 
-        # Output — normalize the final residual stream, then select grades
+        # Output - normalize the final residual stream, then select grades
         h = self.output_norm(h)
         h = self.blade_selector(h)
         out = self.output_proj(h)   # [B, 1, algebra.dim]
@@ -698,12 +698,12 @@ def _save_plots(history: dict, debugger: LorentzDebugger,
     """Save diagnostic plots to disk.
 
     Plots:
-        1. training_curves.png   — Multi-metric training history.
-        2. minkowski_diagram.png — t vs x scatter with light cones.
-        3. grade_spectrum.png    — Bar chart of grade energies (even=green, odd=red).
-        4. rapidity_comparison.png — True vs predicted |rapidity| scatter.
-        5. interval_histogram.png  — Histogram of per-sample interval errors.
-        6. coupling_heatmap.png    — Cross-grade coupling matrix heatmap.
+        1. training_curves.png   - Multi-metric training history.
+        2. minkowski_diagram.png - t vs x scatter with light cones.
+        3. grade_spectrum.png    - Bar chart of grade energies (even=green, odd=red).
+        4. rapidity_comparison.png - True vs predicted |rapidity| scatter.
+        5. interval_histogram.png  - Histogram of per-sample interval errors.
+        6. coupling_heatmap.png    - Cross-grade coupling matrix heatmap.
     """
     try:
         import matplotlib
@@ -755,7 +755,7 @@ def _save_plots(history: dict, debugger: LorentzDebugger,
             ax.set_xlabel('Epoch'); ax.set_ylabel('Even ratio')
             ax.set_title('Grade Confinement'); ax.grid(True, alpha=0.3); ax.legend()
 
-        fig.suptitle('Lorentz Debugger — Training History', fontsize=12)
+        fig.suptitle('Lorentz Debugger - Training History', fontsize=12)
         fig.tight_layout()
         fig.savefig(os.path.join(output_dir, 'training_curves.png'), dpi=150,
                     bbox_inches='tight')
@@ -811,7 +811,7 @@ def _save_plots(history: dict, debugger: LorentzDebugger,
             ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1e-5,
                     f'{val:.3f}', ha='center', va='bottom', fontsize=8)
         ax.set_xlabel('Grade'); ax.set_ylabel('Mean Energy')
-        ax.set_title(f'Grade Spectrum — {label}\n(green=even, red=odd)')
+        ax.set_title(f'Grade Spectrum - {label}\n(green=even, red=odd)')
         ax.set_xticks(grades)
         ax.grid(True, alpha=0.2, axis='y')
 
@@ -958,7 +958,7 @@ def train(args):
     # Algebra: Cl(3,1), dim=16
     algebra = CliffordAlgebra(p=3, q=1, device=device)
     print(f"\n{'='*60}")
-    print(f" Lorentz Transformation Debugger — Cl(3,1)")
+    print(f" Lorentz Transformation Debugger - Cl(3,1)")
     print(f" Signature: (+,+,+,-)")
     print(f" Boost type: {args.boost_type}")
     print(f" Strict Orthogonality: {'ON' if args.strict_ortho else 'OFF'}"
@@ -1113,7 +1113,7 @@ def train(args):
 
             # Orthogonality diagnostics
             if args.strict_ortho and intermediates:
-                # Detach for diagnostics — no grad needed here
+                # Detach for diagnostics - no grad needed here
                 last_h = intermediates[-1].detach().reshape(-1, algebra.dim)
                 print(ortho.format_diagnostics(last_h))
 

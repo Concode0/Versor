@@ -8,7 +8,7 @@
 # We believe Geometric Algebra is the future of AI, and we want
 # the industry to build upon this "unbending" paradigm.
 
-"""Feynman Sweep Task — runs all (or filtered) equations and produces a benchmark report."""
+"""Feynman Sweep Task - runs all (or filtered) equations and produces a benchmark report."""
 
 import os
 import time
@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 class FeynmanSweepTask:
     """Orchestrates multiple FeynmanTask runs across equations.
 
-    NOT a BaseTask subclass — it creates and runs individual FeynmanTask instances.
+    NOT a BaseTask subclass - it creates and runs individual FeynmanTask instances.
 
     Config keys:
         dataset.equations: "all" | "tier1"-"tier4" | list of equation IDs
@@ -73,7 +73,7 @@ class FeynmanSweepTask:
                 logger.warning(f"[{i+1}/{n_total}] SKIP unknown equation: {eq_id}")
                 continue
 
-            logger.info(f"[{i+1}/{n_total}] {eq_id} — {spec['desc']} "
+            logger.info(f"[{i+1}/{n_total}] {eq_id} - {spec['desc']} "
                         f"(tier {spec.get('tier', '?')}, {spec['n_vars']} vars)")
 
             eq_cfg = OmegaConf.create(OmegaConf.to_container(self.cfg, resolve=True))
@@ -130,7 +130,7 @@ class FeynmanSweepTask:
                     "wall_time": wall_time,
                     "status": "ok",
                 })
-                logger.info(f"MAE={test_mae:.6f}  R²={test_r2:.4f}  "
+                logger.info(f"MAE={test_mae:.6f}  R**2={test_r2:.4f}  "
                             f"({wall_time:.1f}s)")
 
             except Exception as e:
@@ -176,11 +176,11 @@ class FeynmanSweepTask:
                     f"LR: {self.cfg.training.lr} | "
                     f"Algebra: Cl({self.cfg.algebra.p},{self.cfg.algebra.get('q', 0)})\n\n")
 
-            f.write("| Equation | Description | Vars | Tier | Test MAE | Test R² | Time (s) | Status |\n")
+            f.write("| Equation | Description | Vars | Tier | Test MAE | Test R**2 | Time (s) | Status |\n")
             f.write("|----------|-------------|------|------|----------|---------|----------|--------|\n")
             for r in sorted(results, key=lambda x: (x["tier"], x["equation"])):
-                mae_s = f"{r['test_mae']:.6f}" if r["status"] == "ok" else "—"
-                r2_s = f"{r['test_r2']:.4f}" if r["status"] == "ok" else "—"
+                mae_s = f"{r['test_mae']:.6f}" if r["status"] == "ok" else "-"
+                r2_s = f"{r['test_r2']:.4f}" if r["status"] == "ok" else "-"
                 t_s = f"{r['wall_time']:.1f}"
                 status = "ok" if r["status"] == "ok" else "FAIL"
                 f.write(f"| {r['equation']} | {r['desc']} | {r['n_vars']} | "
@@ -198,11 +198,11 @@ class FeynmanSweepTask:
                 f.write(f"- **Equations tested**: {len(ok)}/{len(results)}\n")
                 f.write(f"- **Mean MAE**: {statistics.mean(maes):.6f}\n")
                 f.write(f"- **Median MAE**: {statistics.median(maes):.6f}\n")
-                f.write(f"- **Mean R²**: {statistics.mean(r2s):.4f}\n")
-                f.write(f"- **Median R²**: {statistics.median(r2s):.4f}\n")
-                f.write(f"- **R² >= 0.99**: {sum(1 for r in r2s if r >= 0.99)}/{len(ok)}\n")
-                f.write(f"- **R² >= 0.95**: {sum(1 for r in r2s if r >= 0.95)}/{len(ok)}\n")
-                f.write(f"- **R² >= 0.90**: {sum(1 for r in r2s if r >= 0.90)}/{len(ok)}\n")
+                f.write(f"- **Mean R**2**: {statistics.mean(r2s):.4f}\n")
+                f.write(f"- **Median R**2**: {statistics.median(r2s):.4f}\n")
+                f.write(f"- **R**2 >= 0.99**: {sum(1 for r in r2s if r >= 0.99)}/{len(ok)}\n")
+                f.write(f"- **R**2 >= 0.95**: {sum(1 for r in r2s if r >= 0.95)}/{len(ok)}\n")
+                f.write(f"- **R**2 >= 0.90**: {sum(1 for r in r2s if r >= 0.90)}/{len(ok)}\n")
                 f.write(f"- **Total wall time**: {total_time:.1f}s\n")
 
         logger.info(f"Saved Markdown: {md_path}")
@@ -228,20 +228,20 @@ class FeynmanSweepTask:
 
         logger.info(f"  Mean MAE:   {statistics.mean(maes):.6f}")
         logger.info(f"  Median MAE: {statistics.median(maes):.6f}")
-        logger.info(f"  Mean R²:    {statistics.mean(r2s):.4f}")
-        logger.info(f"  Median R²:  {statistics.median(r2s):.4f}")
-        logger.info(f"  R² >= 0.99: {sum(1 for r in r2s if r >= 0.99)}/{len(ok)}")
-        logger.info(f"  R² >= 0.95: {sum(1 for r in r2s if r >= 0.95)}/{len(ok)}")
-        logger.info(f"  R² >= 0.90: {sum(1 for r in r2s if r >= 0.90)}/{len(ok)}")
+        logger.info(f"  Mean R**2:    {statistics.mean(r2s):.4f}")
+        logger.info(f"  Median R**2:  {statistics.median(r2s):.4f}")
+        logger.info(f"  R**2 >= 0.99: {sum(1 for r in r2s if r >= 0.99)}/{len(ok)}")
+        logger.info(f"  R**2 >= 0.95: {sum(1 for r in r2s if r >= 0.95)}/{len(ok)}")
+        logger.info(f"  R**2 >= 0.90: {sum(1 for r in r2s if r >= 0.90)}/{len(ok)}")
         logger.info(f"  Total time: {total_time:.1f}s")
 
         # Top 5 and Bottom 5
         by_r2 = sorted(ok, key=lambda x: x["test_r2"], reverse=True)
-        logger.info("\n  Top 5 (by R²):")
+        logger.info("\n  Top 5 (by R**2):")
         for r in by_r2[:5]:
-            logger.info(f"    {r['equation']:12s} R²={r['test_r2']:.4f}  MAE={r['test_mae']:.6f}  [{r['desc']}]")
-        logger.info("\n  Bottom 5 (by R²):")
+            logger.info(f"    {r['equation']:12s} R**2={r['test_r2']:.4f}  MAE={r['test_mae']:.6f}  [{r['desc']}]")
+        logger.info("\n  Bottom 5 (by R**2):")
         for r in by_r2[-5:]:
-            logger.info(f"    {r['equation']:12s} R²={r['test_r2']:.4f}  MAE={r['test_mae']:.6f}  [{r['desc']}]")
+            logger.info(f"    {r['equation']:12s} R**2={r['test_r2']:.4f}  MAE={r['test_mae']:.6f}  [{r['desc']}]")
 
         logger.info("=" * 64)

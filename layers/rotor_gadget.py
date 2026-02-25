@@ -21,17 +21,17 @@ class RotorGadget(CliffordModule):
     """Rotor-based linear transformation (Generalized Rotor Gadget).
 
     Replaces standard linear layers with parameter-efficient rotor-sandwich
-    transformations. Instead of using O(in_channels × out_channels) parameters,
-    this uses O(num_rotor_pairs × n(n-1)/2) parameters where n is the number
+    transformations. Instead of using O(in_channels x out_channels) parameters,
+    this uses O(num_rotor_pairs x n(n-1)/2) parameters where n is the number
     of basis vectors in the Clifford algebra.
 
     Architecture:
         1. Partition input channels into blocks
         2. For each rotor pair (i, j):
-           - Apply rotor sandwich: r_ij · x_i · s_ij†
+           - Apply rotor sandwich: r_ij . x_i . s_ij.H
         3. Pool/aggregate results to output channels
 
-    The transformation is: ψ(x) = r·x·s† where r, s are rotors (bivector exponentials).
+    The transformation is: psi(x) = r.x.s.H where r, s are rotors (bivector exponentials).
 
     Attributes:
         algebra: CliffordAlgebra instance
@@ -221,7 +221,7 @@ class RotorGadget(CliffordModule):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply rotor-based transformation.
 
-        Uses batched geometric products — all rotor pairs are applied in
+        Uses batched geometric products - all rotor pairs are applied in
         parallel via a single pair of GP calls.
 
         Args:

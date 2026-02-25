@@ -4,8 +4,8 @@ Provides structured logging under the ``versor`` hierarchy.
 All task/model output goes through :func:`get_logger` instead of ``print()``.
 
 Environment variables:
-    VERSOR_LOG_LEVEL  — DEBUG / INFO (default) / WARNING / ERROR
-    VERSOR_LOG_FILE   — optional path; appends plain-text log lines
+    VERSOR_LOG_LEVEL - DEBUG / INFO (default) / WARNING / ERROR
+    VERSOR_LOG_FILE - optional path; appends plain-text log lines
 """
 
 import logging

@@ -63,7 +63,7 @@ class FeynmanTask(BaseTask):
             )
         self.n_vars = FEYNMAN_EQUATIONS[self.equation]["n_vars"]
 
-        # Placeholders — filled in get_data()
+        # Placeholders - filled in get_data()
         self.x_mean = self.x_std = self.y_mean = self.y_std = None
 
         # Epoch counter (updated in run(), read by train_step/evaluate)
@@ -158,12 +158,12 @@ class FeynmanTask(BaseTask):
 
         self.optimizer.zero_grad()
 
-        pred_norm = self.model(x_norm)   # [B, 1] — also sets model._last_hidden
+        pred_norm = self.model(x_norm)   # [B, 1] - also sets model._last_hidden
 
         mse_loss = self.criterion(pred_norm, y_norm)
         sparsity = self.sparsity_weight * self.model.total_sparsity_loss()
 
-        # Orthogonality penalty (uses detached _last_hidden — monitoring metric)
+        # Orthogonality penalty (uses detached _last_hidden - monitoring metric)
         ortho_loss = torch.tensor(0.0, device=self.device)
         if self.ortho is not None and hasattr(self.model, "_last_hidden"):
             eff_w = self.ortho.anneal_weight(
@@ -189,7 +189,7 @@ class FeynmanTask(BaseTask):
         }
 
     def evaluate(self, loader) -> tuple:
-        """Compute MAE (original units) and R² on a loader.
+        """Compute MAE (original units) and R**2 on a loader.
 
         Also prints ASCII orthogonality diagnostics every
         ``ortho.settings.monitor_interval`` epochs (when ortho is enabled).
@@ -221,7 +221,7 @@ class FeynmanTask(BaseTask):
         ss_tot = ((targets - targets.mean()) ** 2).sum().item()
         r2 = 1.0 - ss_res / (ss_tot + 1e-8)
 
-        logger.info(f"MAE (orig units): {mae:.6f}  |  R²: {r2:.4f}")
+        logger.info(f"MAE (orig units): {mae:.6f}  |  R**2: {r2:.4f}")
 
         # Periodic ortho diagnostics
         if (self.ortho is not None
@@ -238,13 +238,13 @@ class FeynmanTask(BaseTask):
     # ------------------------------------------------------------------
 
     def variable_importance(self, x_sample: torch.Tensor) -> torch.Tensor:
-        """Gradient-based variable importance: mean |∂ŷ/∂xᵢ| across a batch.
+        """Gradient-based variable importance: mean |dy_hat / dx_i| across a batch.
 
         Args:
             x_sample: [B, k] normalised scalar inputs (CPU or device).
 
         Returns:
-            Tensor [k] — mean absolute gradient per input variable.
+            Tensor [k] - mean absolute gradient per input variable.
         """
         self.model.eval()
         x = x_sample.to(self.device).detach().requires_grad_(True)
@@ -277,7 +277,7 @@ class FeynmanTask(BaseTask):
         imp    = self.variable_importance(x_b)           # [k]
         total  = imp.sum().item() + 1e-12
         imp_pct = (imp / total * 100).numpy()
-        logger.info("\nVariable Importance  (|∂ŷ/∂xᵢ|):")
+        logger.info("\nVariable Importance  (|dy_hat / dx_i|):")
         for i, pct in enumerate(imp_pct):
             filled = int(bar_width * pct / 100)
             bar = "█" * filled + "░" * (bar_width - filled)
@@ -317,7 +317,7 @@ class FeynmanTask(BaseTask):
         logger.info("=" * 64 + "\n")
 
     # ------------------------------------------------------------------
-    # Visualization — 6-panel figure
+    # Visualization - 6-panel figure
     # ------------------------------------------------------------------
 
     def visualize(self, loader):
@@ -325,7 +325,7 @@ class FeynmanTask(BaseTask):
 
         Panels:
           [0,0] Pred vs Actual scatter
-          [0,1] Rotor activity heatmap  (rotors × layers)
+          [0,1] Rotor activity heatmap  (rotors x layers)
           [0,2] Grade energy spectrum
           [1,0] Variable importance horizontal bars
           [1,1] Cross-grade coupling heatmap
@@ -455,7 +455,7 @@ class FeynmanTask(BaseTask):
                 ax.barh(range(k_vars), imp_np, color="steelblue")
                 ax.set_yticks(range(k_vars))
                 ax.set_yticklabels([f"x{i + 1}" for i in range(k_vars)])
-                ax.set_xlabel("|∂ŷ/∂xᵢ|")
+                ax.set_xlabel("|dy_hat / dx_i|")
                 ax.set_title("Variable Importance")
                 ax.grid(True, alpha=0.3, axis="x")
             else:
@@ -586,7 +586,7 @@ class FeynmanTask(BaseTask):
         self.load_checkpoint(ckpt_path)
         self.model.eval()
         test_mae, test_r2 = self.evaluate(test_loader)
-        logger.info(f"TEST  MAE: {test_mae:.6f}  |  R²: {test_r2:.4f}")
+        logger.info(f"TEST  MAE: {test_mae:.6f}  |  R**2: {test_r2:.4f}")
 
         self.symbolic_summary(test_loader)
         self.visualize(test_loader)

@@ -34,10 +34,10 @@ def _blade_name(idx: int, n: int) -> str:
     """Return a human-readable blade name from a basis-blade index.
 
     Examples (n=4):
-        idx=0  → '1'      (scalar)
-        idx=1  → 'e1'     (grade-1)
-        idx=3  → 'e12'    (grade-2, binary 0011 → bits 0 and 1)
-        idx=15 → 'e1234'  (pseudoscalar)
+        idx=0  -> '1'      (scalar)
+        idx=1  -> 'e1'     (grade-1)
+        idx=3  -> 'e12'    (grade-2, binary 0011 -> bits 0 and 1)
+        idx=15 -> 'e1234'  (pseudoscalar)
     """
     if idx == 0:
         return "1"
@@ -72,8 +72,8 @@ class FeynmanMultiGradeEmbedding(CliffordModule):
         channels (int): Number of channels C.
         embed_grade2 (bool): Whether to populate grade-2 blades.
         grade0_bias (Parameter): [C] bias added to scalar component.
-        grade1_proj (Linear): k → C*n_g1.
-        grade2_proj (Linear | None): k*(k-1)/2 → C*n_g2  (opt-in).
+        grade1_proj (Linear): k -> C*n_g1.
+        grade2_proj (Linear | None): k*(k-1)/2 -> C*n_g2  (opt-in).
     """
 
     def __init__(
@@ -101,10 +101,10 @@ class FeynmanMultiGradeEmbedding(CliffordModule):
         # Grade-0: scalar bias per channel
         self.grade0_bias = nn.Parameter(torch.zeros(channels))
 
-        # Grade-1: project k inputs → C * n_g1
+        # Grade-1: project k inputs -> C * n_g1
         self.grade1_proj = nn.Linear(in_features, channels * self.n_g1, bias=False)
 
-        # Grade-2: project pairwise products → C * n_g2  (opt-in)
+        # Grade-2: project pairwise products -> C * n_g2  (opt-in)
         n_pairs = in_features * (in_features - 1) // 2
         if embed_grade2 and n_pairs > 0:
             self.grade2_proj = nn.Linear(n_pairs, channels * self.n_g2, bias=False)
@@ -155,7 +155,7 @@ class FeynmanMultiGradeEmbedding(CliffordModule):
 
 
 class _ResidualBlock(nn.Module):
-    """One residual block: Norm → Linear → GELU → MultiRotor → BladeSelector → skip."""
+    """One residual block: Norm -> Linear -> GELU -> MultiRotor -> BladeSelector -> skip."""
 
     def __init__(
         self,
@@ -188,13 +188,13 @@ class FeynmanGBN(CliffordModule):
     """Geometric Blade Network for Feynman symbolic regression.
 
     Architecture:
-        FeynmanMultiGradeEmbedding → N residual blocks → output head → scalar
+        FeynmanMultiGradeEmbedding -> N residual blocks -> output head -> scalar
 
-    Each residual block: CliffordLayerNorm → CliffordLinear → GeometricGELU
-                         → MultiRotorLayer → BladeSelector → +skip
+    Each residual block: CliffordLayerNorm -> CliffordLinear -> GeometricGELU
+                         -> MultiRotorLayer -> BladeSelector -> +skip
 
-    Output head: final norm → BladeSelector → CliffordLinear(C→1)
-                 → nn.Linear(dim→1)
+    Output head: final norm -> BladeSelector -> CliffordLinear(C->1)
+                 -> nn.Linear(dim->1)
 
     The sparsity loss on rotor bivectors + weights encourages parsimonious
     decompositions (few active rotation planes = simple symbolic structure).
@@ -264,12 +264,12 @@ class FeynmanGBN(CliffordModule):
 
         Returns:
             List of dicts (one per residual block), each containing:
-                layer           – block index
-                weights         – Tensor [C, K] raw mixing weights
-                bivectors       – Tensor [K, n_bv] raw bivector parameters
-                plane_names     – list[str] names for each of the n_bv bivectors
-                rotor_activity  – list[float] mean |weight| per rotor [K]
-                dominant_planes – list[str] dominant plane name per rotor [K]
+                layer           - block index
+                weights         - Tensor [C, K] raw mixing weights
+                bivectors       - Tensor [K, n_bv] raw bivector parameters
+                plane_names     - list[str] names for each of the n_bv bivectors
+                rotor_activity  - list[float] mean |weight| per rotor [K]
+                dominant_planes - list[str] dominant plane name per rotor [K]
         """
         plane_names = bivector_plane_names(self.algebra)
         results = []
@@ -289,7 +289,7 @@ class FeynmanGBN(CliffordModule):
         return results
 
     def get_output_blade_weights(self, algebra) -> dict:
-        """Map each basis-blade name → its weight in the final scalar projection.
+        """Map each basis-blade name -> its weight in the final scalar projection.
 
         Returns:
             dict {blade_name: weight_value}

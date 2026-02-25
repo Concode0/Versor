@@ -43,7 +43,7 @@ def _circle_data(N: int = 64, noise: float = 0.0) -> torch.Tensor:
 
 
 def _helix_data(N: int = 64) -> torch.Tensor:
-    """3D helix: uniform rotation plane → concentrated connection bivectors."""
+    """3D helix: uniform rotation plane -> concentrated connection bivectors."""
     t = torch.linspace(0, 4 * math.pi, N)
     x = torch.stack([t.cos(), t.sin(), t / (4 * math.pi)], dim=-1)
     return x
@@ -52,8 +52,8 @@ def _helix_data(N: int = 64) -> torch.Tensor:
 def _flat_2d_in_3d(N: int = 64) -> torch.Tensor:
     """2D circle embedded in 3D with z=0.
 
-    All connection bivectors are in the e₁₂ plane (grade-2 index 3 in Cl(3,0)).
-    Pairwise |cos| within every neighbourhood = 1.0 → coherence = 1.0.
+    All connection bivectors are in the e_12 plane (grade-2 index 3 in Cl(3,0)).
+    Pairwise |cos| within every neighbourhood = 1.0 -> coherence = 1.0.
     """
     theta = torch.linspace(0, 2 * math.pi, N + 1)[:-1]
     z = torch.zeros(N)
@@ -92,7 +92,7 @@ class TestGeodesicFlow:
         """Connection bivectors must have energy only in grade-2 components.
 
         Tests the raw per-edge bivectors (not the mean, which may cancel for
-        symmetric data).  In Cl(2,0) the only grade-2 blade is index 3 (e₁₂).
+        symmetric data).  In Cl(2,0) the only grade-2 blade is index 3 (e_12).
         """
         gf = GeodesicFlow(alg2, k=4)
         # Use two non-parallel grade-1 vectors that produce a non-zero bivector
@@ -106,7 +106,7 @@ class TestGeodesicFlow:
         other_energy = bv[:, :, non_g2_mask].abs().max().item()
         assert other_energy < 1e-5, f"Non-grade-2 energy should be ~0, got {other_energy}"
 
-        # Grade-2 component must have some energy (index 3 = e₁₂ in Cl(2,0))
+        # Grade-2 component must have some energy (index 3 = e_12 in Cl(2,0))
         g2_energy = bv[:, :, 3].abs().max().item()
         assert g2_energy > 0.0, "Connection bivectors should have grade-2 energy"
 
@@ -129,10 +129,10 @@ class TestGeodesicFlow:
     def test_structured_higher_coherence_than_noise(self, alg3):
         """Flat 2D circle in 3D should have coherence=1 vs lower-coherence random 3D.
 
-        In Cl(3,0) the bivector space has 3 planes (e₁₂, e₁₃, e₂₃).
+        In Cl(3,0) the bivector space has 3 planes (e_12, e_13, e_23).
 
         A flat circle in the z=0 plane forces ALL connection bivectors into
-        the single e₁₂ plane — pairwise |cos| = 1.0 exactly → coherence = 1.0.
+        the single e_12 plane - pairwise |cos| = 1.0 exactly -> coherence = 1.0.
 
         Pure random 3D data scatters connections across all three planes, giving
         coherence below 1.0.
@@ -152,14 +152,14 @@ class TestGeodesicFlow:
         assert coh_flat > coh_noise, (
             f"Flat-2D-in-3D coherence {coh_flat:.3f} should exceed noise {coh_noise:.3f}"
         )
-        # Flat data must be exactly 1.0 (all connections in e₁₂ plane)
+        # Flat data must be exactly 1.0 (all connections in e_12 plane)
         assert abs(coh_flat - 1.0) < 1e-4, f"Flat coherence should be 1.0, got {coh_flat:.5f}"
 
     def test_structured_lower_curvature_than_noise(self, alg3):
         """Flat 2D circle in 3D should have curvature=0 vs higher-curvature random 3D.
 
-        Since all connections of every point are in the e₁₂ plane, the cross-
-        neighbourhood comparison always gives |cos| = 1.0 → curvature = 0.0.
+        Since all connections of every point are in the e_12 plane, the cross-
+        neighbourhood comparison always gives |cos| = 1.0 -> curvature = 0.0.
         """
         torch.manual_seed(1)
         gf = GeodesicFlow(alg3, k=6)
@@ -271,7 +271,7 @@ class TestDimensionLifter:
         """Lifted multivectors must have shape [N, target_dim]."""
         lifter = DimensionLifter(device='cpu')
         data = torch.randn(20, 2)
-        alg = CliffordAlgebra(3, 0, device='cpu')   # 2D data → 3D algebra
+        alg = CliffordAlgebra(3, 0, device='cpu')   # 2D data -> 3D algebra
         mv = lifter.lift(data, alg, fill=1.0)
         assert mv.shape == (20, alg.dim)
 

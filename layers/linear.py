@@ -21,8 +21,8 @@ class CliffordLinear(CliffordModule):
     - Traditional scalar weight matrix (default, backward compatible)
     - Rotor-based transformation (new, parameter efficient via RotorGadget)
 
-    The traditional backend uses O(in_channels × out_channels) parameters,
-    while the rotor backend uses O(num_rotor_pairs × n(n-1)/2) parameters
+    The traditional backend uses O(in_channels x out_channels) parameters,
+    while the rotor backend uses O(num_rotor_pairs x n(n-1)/2) parameters
     where n is the number of basis vectors.
 
     Attributes:

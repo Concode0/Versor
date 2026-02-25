@@ -28,9 +28,9 @@ logger = get_logger(__name__)
 class SemanticAutoEncoder(nn.Module):
     """Semantic autoencoder with geometric disentanglement.
 
-    Encoder: CliffordLinear → GeometricGELU → CliffordLinear → RotorLayer
+    Encoder: CliffordLinear -> GeometricGELU -> CliffordLinear -> RotorLayer
     Selector: BladeSelector (soft per-blade gate)
-    Decoder: CliffordLinear → GeometricGELU → CliffordLinear → RotorLayer
+    Decoder: CliffordLinear -> GeometricGELU -> CliffordLinear -> RotorLayer
 
     The rotor learns to rotate semantic content into grade-1 (vector)
     subspace. BladeSelector suppresses higher-grade noise.

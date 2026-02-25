@@ -254,7 +254,7 @@ def test_convergence_synthetic_rotation_sgd(algebra):
     B_true[0, 0, 3] = 0.5  # Small rotation in e12 plane
     R_true = algebra.exp(-0.5 * B_true)
 
-    # Generate data: y = R_true · x · R̃_true
+    # Generate data: y = R_true . x . ~R_true
     x = torch.randn(100, 1, 8)
     R_true_rev = algebra.reverse(R_true)
     y_true = algebra.geometric_product(
@@ -361,7 +361,7 @@ def test_compare_sgd_convergence(algebra):
 # ============================================================================
 
 def test_rotor_manifold_membership_after_optimization(algebra):
-    """Verify rotors remain on manifold: R̃R ≈ 1 after optimization."""
+    """Verify rotors remain on manifold: ~RR ~= 1 after optimization."""
     layer = RotorLayer(algebra, channels=4)
     optimizer = RiemannianAdam(layer.parameters(), lr=0.01, algebra=algebra)
 
@@ -394,7 +394,7 @@ def test_rotor_manifold_membership_after_optimization(algebra):
 
 
 def test_isometry_preservation(algebra):
-    """Verify rotors preserve norms: ||R·x·R̃|| = ||x||."""
+    """Verify rotors preserve norms: ||R.x.~R|| = ||x||."""
     layer = RotorLayer(algebra, channels=4)
     optimizer = ExponentialSGD(layer.parameters(), lr=0.01, algebra=algebra)
 

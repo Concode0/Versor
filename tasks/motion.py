@@ -172,7 +172,7 @@ class MotionAlignmentTask(BaseTask):
                 "Acc_Noisy": total_acc_noisy / num_batches,
                 "Purity_Noisy": total_purity_noisy / num_batches
             }
-            logger.info(f"Evaluation (Noisy σ={noise_std}) - Loss: {metrics_noisy['Loss_Noisy']:.4f}, Acc: {metrics_noisy['Acc_Noisy']:.4f}, Purity: {metrics_noisy['Purity_Noisy']:.4f}")
+            logger.info(f"Evaluation (Noisy sigma={noise_std}) - Loss: {metrics_noisy['Loss_Noisy']:.4f}, Acc: {metrics_noisy['Acc_Noisy']:.4f}, Purity: {metrics_noisy['Purity_Noisy']:.4f}")
 
             acc_drop = (metrics['Acc'] - metrics_noisy['Acc_Noisy']) * 100
             logger.info(f"Robustness - Accuracy drop: {acc_drop:.2f}%")

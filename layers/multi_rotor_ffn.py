@@ -18,18 +18,18 @@ from functional.activation import GeometricGELU
 
 
 class MultiRotorFFN(CliffordModule):
-    """Embedded Geometric Toolbox — Feed-Forward Network via rotor superposition.
+    """Embedded Geometric Toolbox - Feed-Forward Network via rotor superposition.
 
-    Standard transformers use: Linear → GELU → Linear.
+    Standard transformers use: Linear -> GELU -> Linear.
     This replaces that with:
 
-        CliffordLinear(expand) → CliffordLayerNorm
-            → MultiRotorLayer(K rotors) → GeometricGELU
-            → CliffordLinear(contract) → BladeSelector
+        CliffordLinear(expand) -> CliffordLayerNorm
+            -> MultiRotorLayer(K rotors) -> GeometricGELU
+            -> CliffordLinear(contract) -> BladeSelector
 
-    The expand step lifts x into a ``ffn_mult × channels`` toolbox subspace.
+    The expand step lifts x into a ``ffn_mult x channels`` toolbox subspace.
     ``MultiRotorLayer`` applies K parallel rotors, each exploring a different
-    rotation plane — this IS the nonlinearity, not just a scalar gate.
+    rotation plane - this IS the nonlinearity, not just a scalar gate.
     The contract step projects back to the original channel count.
 
     Designed as a standalone module so it can be reused in other tasks
@@ -84,8 +84,8 @@ class MultiRotorFFN(CliffordModule):
         """
         h = self.expand(x)    # [B, ffn_channels, D]
         h = self.norm(h)      # [B, ffn_channels, D]
-        h = self.toolbox(h)   # [B, ffn_channels, D]  — K-rotor superposition
+        h = self.toolbox(h)   # [B, ffn_channels, D]  - K-rotor superposition
         h = self.act(h)       # [B, ffn_channels, D]
         h = self.contract(h)  # [B, channels, D]
-        h = self.gate(h)      # [B, channels, D]      — per-blade gating
+        h = self.gate(h)      # [B, channels, D]      - per-blade gating
         return h

@@ -2,7 +2,7 @@
 
 Tests cover:
 - Shape preservation
-- Rotor properties (unit norm, R × R̃ = 1)
+- Rotor properties (unit norm, R * ~R = 1)
 - Gradient flow
 - Integration with existing layers
 - Parameter efficiency
@@ -124,8 +124,8 @@ class TestRotorProperties:
         # Compute rotors
         R_left, R_right_rev = layer._compute_rotors()
 
-        # Check unit norm by computing R × R̃ = 1 (scalar component)
-        # For a unit rotor, the scalar part of R × R̃ should be 1
+        # Check unit norm by computing R * ~R = 1 (scalar component)
+        # For a unit rotor, the scalar part of R * ~R should be 1
         for i in range(layer.num_rotor_pairs):
             R = R_left[i:i+1, :]
             R_rev = algebra_3d.reverse(R)
@@ -134,7 +134,7 @@ class TestRotorProperties:
             # Scalar component should be ~1
             scalar_part = product[0, 0]
             assert torch.allclose(scalar_part, torch.tensor(1.0), atol=1e-4), \
-                f"Left rotor {i} scalar(R × R̃) = {scalar_part.item()}, expected 1.0"
+                f"Left rotor {i} scalar(R * ~R) = {scalar_part.item()}, expected 1.0"
 
             # Similar for right rotor
             R = algebra_3d.reverse(R_right_rev[i:i+1, :])
@@ -142,10 +142,10 @@ class TestRotorProperties:
             product = algebra_3d.geometric_product(R, R_rev)
             scalar_part = product[0, 0]
             assert torch.allclose(scalar_part, torch.tensor(1.0), atol=1e-4), \
-                f"Right rotor {i} scalar(R × R̃) = {scalar_part.item()}, expected 1.0"
+                f"Right rotor {i} scalar(R * ~R) = {scalar_part.item()}, expected 1.0"
 
     def test_rotor_inverse_property(self, algebra_3d):
-        """Verify that R × R̃ = 1 for all rotors."""
+        """Verify that R * ~R = 1 for all rotors."""
         layer = RotorGadget(
             algebra=algebra_3d,
             in_channels=4,
@@ -156,7 +156,7 @@ class TestRotorProperties:
         # Compute rotors
         R_left, R_right_rev = layer._compute_rotors()
 
-        # For left rotors: R × R̃ should be scalar 1
+        # For left rotors: R * ~R should be scalar 1
         for i in range(layer.num_rotor_pairs):
             R = R_left[i:i+1, :]
             R_rev = algebra_3d.reverse(R)
@@ -167,7 +167,7 @@ class TestRotorProperties:
             expected[0, 0] = 1.0  # Scalar component
 
             assert torch.allclose(product, expected, atol=1e-5), \
-                f"Left rotor {i} × reverse is not identity"
+                f"Left rotor {i} * reverse is not identity"
 
         # For right rotors
         for i in range(layer.num_rotor_pairs):
@@ -179,7 +179,7 @@ class TestRotorProperties:
             expected[0, 0] = 1.0
 
             assert torch.allclose(product, expected, atol=1e-5), \
-                f"Right rotor {i} × reverse is not identity"
+                f"Right rotor {i} * reverse is not identity"
 
 
 class TestGradientFlow:
@@ -452,7 +452,7 @@ class TestIntegration:
         """Test combination with RotorLayer."""
         from layers.rotor import RotorLayer
 
-        # Create a small network: Linear → Rotor
+        # Create a small network: Linear -> Rotor
         linear = RotorGadget(
             algebra=algebra_3d,
             in_channels=4,

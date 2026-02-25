@@ -149,7 +149,7 @@ class StrictOrthogonality(nn.Module):
         """
         parasitic = x[..., self.parasitic_mask]
         if parasitic.numel() == 0:
-            # No parasitic grades (target_grades covers everything) → zero loss.
+            # No parasitic grades (target_grades covers everything) -> zero loss.
             return x.new_zeros(())
         return (parasitic ** 2).mean()
 
@@ -190,7 +190,7 @@ class StrictOrthogonality(nn.Module):
                       total_epochs: int) -> float:
         """Compute linearly annealed weight for progressive enforcement.
 
-        The penalty ramps from 0 → settings.weight over the first
+        The penalty ramps from 0 -> settings.weight over the first
         ``warmup_epochs`` epochs, then stays constant.
 
         Args:
@@ -326,9 +326,9 @@ class StrictOrthogonality(nn.Module):
         Example output::
 
             Grade energies (ASCII bar):
-              G0 [######          ]  0.3842  ← target
+              G0 [######          ]  0.3842  <- target
               G1 [##              ]  0.0931
-              G2 [########        ]  0.4980  ← target
+              G2 [########        ]  0.4980  <- target
               G3 [#               ]  0.0247
             Parasitic ratio: 1.1780%
             Orthogonality satisfied: YES (tol=0.0001)
@@ -344,7 +344,7 @@ class StrictOrthogonality(nn.Module):
         for g, e in energies.items():
             filled = int(bar_width * e / max_e)
             bar = '#' * filled + ' ' * (bar_width - filled)
-            tag = '  ← target' if g in target_grades else ''
+            tag = '  <- target' if g in target_grades else ''
             lines.append(f"    G{g} [{bar}]  {e:.4f}{tag}")
 
         lines.append(f"  Parasitic ratio: {d['parasitic_ratio']:.4%}")
@@ -354,8 +354,7 @@ class StrictOrthogonality(nn.Module):
 
         if d['coupling_matrix'] is not None:
             max_off = d['coupling_max_off_diag']
-            warn = " ⚠" if max_off > self.settings.coupling_warn_threshold else ""
-            lines.append(f"  Coupling: max_off_diag={max_off:.4f}{warn}")
+            lines.append(f"  Coupling: max_off_diag={max_off:.4f}")
 
         return '\n'.join(lines)
 

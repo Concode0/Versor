@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 class BaseTask(ABC):
     """Abstract base class for all training tasks.
 
-    Lifecycle: setup_algebra → setup_model → setup_criterion → get_data → train → evaluate → visualize.
+    Lifecycle: setup_algebra -> setup_model -> setup_criterion -> get_data -> train -> evaluate -> visualize.
 
     Attributes:
         cfg (DictConfig): Hydra configuration.

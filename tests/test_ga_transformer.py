@@ -29,13 +29,13 @@ from datasets.text import TextDataset, get_text_loaders
 
 @pytest.fixture(scope="module")
 def algebra():
-    """Cl(3,1) — same algebra used by the LM task."""
+    """Cl(3,1) - same algebra used by the LM task."""
     return CliffordAlgebra(p=3, q=1, device='cpu')
 
 
 @pytest.fixture(scope="module")
 def small_algebra():
-    """Cl(2,0) — tiny algebra for cheap tests."""
+    """Cl(2,0) - tiny algebra for cheap tests."""
     return CliffordAlgebra(p=2, q=0, device='cpu')
 
 
@@ -142,7 +142,7 @@ class TestGeometricProductAttention:
 
         # Position 0..2 output should be identical (causal isolation)
         assert torch.allclose(out1[0, :3], out2[0, :3], atol=1e-4), \
-            "Future tokens leaked into past positions — causal mask broken"
+            "Future tokens leaked into past positions - causal mask broken"
 
     def test_gradient_flow(self, algebra):
         channels, heads, B, L = 8, 2, 2, 4
@@ -284,7 +284,7 @@ class TestGALanguageModel:
         assert hidden.shape == (B, L, channels, algebra.dim)
 
     def test_causal_property(self, algebra):
-        """Identical inputs at positions 0..3 with different future → same logits."""
+        """Identical inputs at positions 0..3 with different future -> same logits."""
         vocab, channels = 16, 8
         lm = GALanguageModel(
             algebra=algebra,
@@ -308,7 +308,7 @@ class TestGALanguageModel:
             logits2 = lm(ids_mod).reshape(B, L, vocab)
 
         assert torch.allclose(logits1[0, :5], logits2[0, :5], atol=1e-4), \
-            "Model is not causal — future tokens leaked into past logits"
+            "Model is not causal - future tokens leaked into past logits"
 
     def test_full_backward(self, small_lm):
         B, L, vocab = 2, 8, 32
@@ -319,7 +319,7 @@ class TestGALanguageModel:
         loss.backward()
         # Check at least some parameters have gradients
         grads = [p.grad for p in small_lm.parameters() if p.grad is not None]
-        assert len(grads) > 0, "No gradients computed — backward pass broken"
+        assert len(grads) > 0, "No gradients computed - backward pass broken"
 
 
 # ---------------------------------------------------------------------------

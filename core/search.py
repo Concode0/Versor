@@ -12,7 +12,7 @@
 
 Algorithms to discover the geometric signature that best preserves manifold topology.
 
-Also provides geodesic flow analysis and dimension lifting tests — tools to
+Also provides geodesic flow analysis and dimension lifting tests - tools to
 probe whether causal structure is visible in a dataset's multivector geometry.
 """
 
@@ -124,12 +124,12 @@ class GeodesicFlow:
     """Geodesic flow analysis in Clifford algebra.
 
     Interprets data points as grade-1 multivectors and computes the *flow
-    field* — a bivector at each point that encodes the direction of shortest
+    field* - a bivector at each point that encodes the direction of shortest
     algebraic paths to its k-nearest neighbours.
 
     The flow is computed as the mean of *connection bivectors*:
 
-        B_ij = <x_i · x̃_j>₂   (grade-2 part of the geometric product)
+        B_ij = <x_i . ~x_j>_2   (grade-2 part of the geometric product)
 
     This bivector encodes the rotational "turn" needed to map x_i toward
     x_j, analogous to the parallel transport connection on a Lie group.
@@ -137,9 +137,9 @@ class GeodesicFlow:
     The coherence and curvature of this field reveal whether the data has
     causal (directional) structure:
 
-    - **High coherence, low curvature** → the flow is smooth and aligned in
+    - **High coherence, low curvature** -> the flow is smooth and aligned in
       one direction.  Causality is visible.
-    - **Low coherence, high curvature** → the flow is fragmented and
+    - **Low coherence, high curvature** -> the flow is fragmented and
       collides with itself.  The signal is dominated by noise.
 
     Args:
@@ -159,7 +159,7 @@ class GeodesicFlow:
         """Embeds raw vectors into the grade-1 multivector subspace.
 
         Args:
-            data (torch.Tensor): ``[N, d]`` where d ≤ algebra.n.
+            data (torch.Tensor): ``[N, d]`` where d <= algebra.n.
 
         Returns:
             torch.Tensor: ``[N, algebra.dim]`` grade-1 multivectors.
@@ -204,7 +204,7 @@ class GeodesicFlow:
         The connection bivector from x_i to x_j encodes the rotational "turn"
         in the algebra needed to map one vector toward the other:
 
-            B_ij = unit( <x_i · x̃_j>₂ )
+            B_ij = unit( <x_i . ~x_j>_2 )
 
         Args:
             mv (torch.Tensor): ``[N, dim]`` grade-1 multivectors.
@@ -231,11 +231,11 @@ class GeodesicFlow:
         For each point x_i, aggregates the unit connection bivectors to its
         k-nearest neighbours:
 
-            B_i = mean_j { unit( <x_i · x̃_j>₂ ) }
+            B_i = mean_j { unit( <x_i . ~x_j>_2 ) }
 
         .. note::
             For perfectly symmetric data (e.g. a closed circle) the mean
-            cancels to zero — which is geometrically correct since there is
+            cancels to zero - which is geometrically correct since there is
             no preferred flow direction.  Use :meth:`coherence` to measure
             structure without this cancellation.
 
@@ -257,11 +257,11 @@ class GeodesicFlow:
 
         - **1.0**: all connections at every point are parallel or anti-parallel
           (maximally structured).
-        - **1/num_bivectors** (≈ baseline): connections point in random directions.
+        - **1/num_bivectors** (~= baseline): connections point in random directions.
 
         .. note::
-            In Cl(2,0) the grade-2 space is 1-dimensional (only e₁₂), so
-            coherence is trivially 1.0 for any data — use at least Cl(3,0)
+            In Cl(2,0) the grade-2 space is 1-dimensional (only e_12), so
+            coherence is trivially 1.0 for any data - use at least Cl(3,0)
             for meaningful discrimination.
 
         Args:
@@ -289,7 +289,7 @@ class GeodesicFlow:
         Computes the mean **dissimilarity** of connection bivectors between
         neighbouring pairs of points:
 
-            dissimilarity(i, j) = 1 − mean_abs_cos( {B_ia}, {B_jb} )
+            dissimilarity(i, j) = 1 - mean_abs_cos( {B_ia}, {B_jb} )
 
         where {B_ia} is the set of k unit connection bivectors at point i and
         {B_jb} at point j, and mean_abs_cos is the cross-set absolute cosine
@@ -317,7 +317,7 @@ class GeodesicFlow:
         # Flatten for efficient computation: compare point i's set against
         # point j's set for the first knn neighbour only (most representative)
         # Use first neighbour for a stable, fast estimate
-        bj = bj_all[:, 0]                                # [N, k, dim] — first neighbour's set
+        bj = bj_all[:, 0]                                # [N, k, dim] - first neighbour's set
         bj = bj.unsqueeze(1)                             # [N, 1, k, dim]
 
         cross_cos = (bi * bj).sum(dim=-1).abs()          # [N, k, k]
@@ -335,9 +335,9 @@ class GeodesicFlow:
 
         Uses the *Lie group exponential map* on the transition element:
 
-            T = a⁻¹ · b
-            log(T) ≈ <T - 1>₂     (grade-2 approximation for small angles)
-            γ(t) = a · exp(t · log(T))
+            T = a_inv . b
+            log(T) ~= <T - 1>_2     (grade-2 approximation for small angles)
+            gamma(t) = a . exp(t . log(T))
 
         Exact when a and b are close; a first-order approximation otherwise.
 
@@ -352,20 +352,20 @@ class GeodesicFlow:
         a = a.unsqueeze(0)  # [1, dim]
         b = b.unsqueeze(0)  # [1, dim]
 
-        # a⁻¹ = ã / <a · ã>₀
+        # a_inv = ~a / <a . ~a>_0
         a_rev = self.algebra.reverse(a)
         a_sq = (a * a_rev)[..., 0:1].clamp(min=1e-8)   # grade-0 scalar
         a_inv = a_rev / a_sq                            # [1, dim]
 
-        # Transition element T = a⁻¹ · b
+        # Transition element T = a_inv . b
         T = self.algebra.geometric_product(a_inv, b)    # [1, dim]
 
-        # Log approximation: grade-2 part of (T − 1)
+        # Log approximation: grade-2 part of (T - 1)
         T_shift = T.clone()
         T_shift[..., 0] -= 1.0
         log_T = self.algebra.grade_projection(T_shift, 2)  # [1, dim]
 
-        # Sample t ∈ [0, 1]
+        # Sample t in [0, 1]
         ts = torch.linspace(0.0, 1.0, steps, device=a.device, dtype=a.dtype)
 
         frames = []
@@ -383,9 +383,9 @@ class GeodesicFlow:
         human-readable verdict:
 
         - **Causal**: coherence > 0.5 and curvature < 0.5
-          → flow is smooth and aligned in one direction.
+          -> flow is smooth and aligned in one direction.
         - **Noisy**: otherwise
-          → flow is fragmented and collides with itself.
+          -> flow is fragmented and collides with itself.
 
         Args:
             data (torch.Tensor): ``[N, d]`` raw data.
@@ -403,9 +403,9 @@ class GeodesicFlow:
             'curvature': curv,
             'causal': is_causal,
             'label': (
-                'Causal — smooth, aligned flow (low curvature)'
+                'Causal - smooth, aligned flow (low curvature)'
                 if is_causal else
-                'Noisy — fragmented, colliding flow (high curvature)'
+                'Noisy - fragmented, colliding flow (high curvature)'
             ),
         }
 
@@ -422,9 +422,9 @@ class DimensionLifter:
 
     Lifting appends extra coordinates to the grade-1 embedding:
 
-    - **Positive lift** ``Cl(p, q) → Cl(p+1, q)``: adds a spacelike dimension.
+    - **Positive lift** ``Cl(p, q) -> Cl(p+1, q)``: adds a spacelike dimension.
       The extra coordinate is set to 1 (projective / homogeneous lift).
-    - **Null lift** ``Cl(p, q) → Cl(p, q+1)``: adds a timelike dimension.
+    - **Null lift** ``Cl(p, q) -> Cl(p, q+1)``: adds a timelike dimension.
       The extra coordinate is set to 0 (null vector lift for conformal-like embeddings).
 
     After lifting, geodesic flow coherence is re-measured.  An improvement
@@ -450,7 +450,7 @@ class DimensionLifter:
 
         Args:
             data (torch.Tensor): ``[N, d]`` source data.
-            target_algebra (CliffordAlgebra): Target algebra with n ≥ d.
+            target_algebra (CliffordAlgebra): Target algebra with n >= d.
             fill (float): Coordinate value for the new dimensions.
                 Use 1.0 for a projective (homogeneous) lift,
                 0.0 for a null-vector (conformal) lift.
@@ -551,7 +551,7 @@ class DimensionLifter:
             p, q = r['signature']
             coh = r['coherence']
             curv = r['curvature']
-            causal = '✓ Causal' if r['causal'] else '✗ Noisy'
+            causal = 'O Causal' if r['causal'] else 'X Noisy'
             lines.append(
                 f"  Cl({p},{q})  coherence={coh:+.3f}  curvature={curv:.3f}  {causal}"
             )

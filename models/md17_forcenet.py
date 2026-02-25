@@ -107,7 +107,7 @@ class MD17InteractionBlock(CliffordModule):
         # Invariant gating: grade norms for scalar attention, phi for geometry
         inv_features = self.algebra.get_grade_norms(phi_dynamic) # [E, Hidden, Num_Grades]
         inv_flat = inv_features.reshape(inv_features.size(0), -1)
-        gate = self.msg_gate(inv_flat) # [E, Hidden] — scalar weights
+        gate = self.msg_gate(inv_flat) # [E, Hidden] - scalar weights
 
         phi_gated = phi_dynamic * gate.unsqueeze(-1) # [E, Hidden, Dim]
 
@@ -121,8 +121,8 @@ class MD17ForceNet(CliffordModule):
     """Force prediction network for MD17.
 
     Dual-head architecture:
-    - Energy head: scalar projection → total energy
-    - Force head: vector projection → per-atom forces
+    - Energy head: scalar projection -> total energy
+    - Force head: vector projection -> per-atom forces
 
     Uses geometric algebra to maintain E(3) equivariance for forces.
     """
@@ -171,7 +171,7 @@ class MD17ForceNet(CliffordModule):
         self.blade_selector = BladeSelector(algebra, channels=hidden_dim)
         self.output_norm = CliffordLayerNorm(algebra, hidden_dim)
 
-        # Energy head: grade-0 (scalar) → global pool → energy
+        # Energy head: grade-0 (scalar) -> global pool -> energy
         self.energy_head = nn.Sequential(
             nn.Linear(hidden_dim * algebra.dim, hidden_dim),
             nn.SiLU(),

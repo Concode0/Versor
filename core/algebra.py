@@ -79,7 +79,7 @@ class CliffordAlgebra:
     def get_grade_norms(self, mv: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
         """Calculates norms per grade. Useful for invariant features.
 
-        Uses numerically stable norm: sqrt(sum(x²) + eps) to avoid
+        Uses numerically stable norm: sqrt(sum(x^2) + eps) to avoid
         NaN gradients when grade components are zero.
 
         Args:
@@ -282,7 +282,7 @@ class CliffordAlgebra:
         return mv * rev
 
     def wedge(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-        """Computes the wedge (outer) product: A ∧ B = (AB - BA)/2.
+        """Computes the wedge (outer) product: A ^ B = (AB - BA)/2.
 
         The wedge product is antisymmetric and grade-raising.
 
@@ -295,14 +295,14 @@ class CliffordAlgebra:
             B (torch.Tensor): Right operand [..., dim].
 
         Returns:
-            torch.Tensor: Wedge product A ∧ B [..., dim].
+            torch.Tensor: Wedge product A ^ B [..., dim].
         """
         AB = self.geometric_product(A, B)
         BA = self.geometric_product(B, A)
         return (AB - BA) / 2.0
 
     def right_contraction(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-        """Computes the right contraction: A ⌋ B.
+        """Computes the right contraction: A _| B.
 
         For a bivector b and vector v, this extracts the grade-1 component
         of the geometric product. This is the core operation in GA power iteration.
@@ -316,7 +316,7 @@ class CliffordAlgebra:
             B (torch.Tensor): Right operand [..., dim].
 
         Returns:
-            torch.Tensor: Right contraction A ⌋ B [..., dim].
+            torch.Tensor: Right contraction A _| B [..., dim].
         """
         # Right contraction of A into B
         # For bivector-vector contraction, we extract grade-1 component
@@ -324,7 +324,7 @@ class CliffordAlgebra:
         return self.grade_projection(AB, 1)
 
     def inner_product(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-        """Computes the inner product: A · B = (AB + BA)/2.
+        """Computes the inner product: A . B = (AB + BA)/2.
 
         The inner product is symmetric and grade-lowering. Useful for computing
         norms and scalar parts of multivectors.
@@ -338,7 +338,7 @@ class CliffordAlgebra:
             B (torch.Tensor): Right operand [..., dim].
 
         Returns:
-            torch.Tensor: Inner product A · B [..., dim].
+            torch.Tensor: Inner product A . B [..., dim].
         """
         AB = self.geometric_product(A, B)
         BA = self.geometric_product(B, A)
@@ -348,13 +348,13 @@ class CliffordAlgebra:
         """Exponentiates a bivector to generate a rotor.
 
         Uses closed-form formula for pure bivectors in any signature:
-            - Euclidean (B² < 0): exp(B) = cos|B| + sin|B|/|B| · B
-            - Hyperbolic (B² > 0): exp(B) = cosh|B| + sinh|B|/|B| · B
-            - Null (B² ≈ 0): exp(B) ≈ 1 + B
+            - Euclidean (B^2 < 0): exp(B) = cos|B| + sin|B|/|B| . B
+            - Hyperbolic (B^2 > 0): exp(B) = cosh|B| + sinh|B|/|B| . B
+            - Null (B^2 ~= 0): exp(B) ~= 1 + B
 
         For n <= 3 the closed form is always exact (no disjoint bivector
-        pairs exist, so B² is always scalar).  For n >= 4, disjoint pairs
-        like (e₁₂, e₃₄) produce grade-4 cross terms in B², making the
+        pairs exist, so B^2 is always scalar).  For n >= 4, disjoint pairs
+        like (e_12, e_34) produce grade-4 cross terms in B^2, making the
         closed form approximate for non-simple bivectors.  Taylor series
         is used as fallback in that case.
 
@@ -366,7 +366,7 @@ class CliffordAlgebra:
             torch.Tensor: exp(mv).
         """
         if self.n <= 3:
-            # Exact: no disjoint bivector pairs → B² is always scalar
+            # Exact: no disjoint bivector pairs -> B^2 is always scalar
             return self._exp_bivector_closed(mv)
         else:
             # n >= 4: closed form is approximate for non-simple bivectors
@@ -375,13 +375,13 @@ class CliffordAlgebra:
     def _exp_bivector_closed(self, B: torch.Tensor) -> torch.Tensor:
         """Closed-form exponential for bivectors in arbitrary signature.
 
-        For a bivector B, computes B² (scalar part) using the metric:
-            B²_scalar = Σ_k b_k² · (e_k)²   where (e_ab)² = -s_a·s_b
+        For a bivector B, computes B^2 (scalar part) using the metric:
+            B^2_scalar = Sum_k b_k^2 . (e_k)^2   where (e_ab)^2 = -s_a.s_b
 
         Three regimes:
-            - B² < 0 (elliptic): exp(B) = cos(θ) + sin(θ)/θ · B,  θ = √(-B²)
-            - B² > 0 (hyperbolic): exp(B) = cosh(θ) + sinh(θ)/θ · B,  θ = √(B²)
-            - B² ≈ 0 (parabolic): exp(B) ≈ 1 + B
+            - B^2 < 0 (elliptic): exp(B) = cos(theta) + sin(theta)/theta . B,  theta = Sqrt(-B^2)
+            - B^2 > 0 (hyperbolic): exp(B) = cosh(theta) + sinh(theta)/theta . B,  theta = Sqrt(B^2)
+            - B^2 ~= 0 (parabolic): exp(B) ~= 1 + B
 
         Uses zero geometric products. Exact for simple bivectors in any
         Clifford algebra Cl(p,q).
@@ -401,14 +401,14 @@ class CliffordAlgebra:
         if bv_sq.device != B.device:
             bv_sq = bv_sq.to(B.device)
 
-        # Signed squared norm: α = Σ_k b_k² · (e_k)²
-        # α < 0 → elliptic (Euclidean-like), α > 0 → hyperbolic
+        # Signed squared norm: alpha = Sum_k b_k^2 . (e_k)^2
+        # alpha < 0 -> elliptic (Euclidean-like), alpha > 0 -> hyperbolic
         alpha = (bv_coeffs * bv_coeffs * bv_sq).sum(dim=-1, keepdim=True)
 
         abs_alpha = alpha.abs().clamp(min=1e-12)
         theta = torch.sqrt(abs_alpha)  # [..., 1]
 
-        # Elliptic branch: cos(θ) and sin(θ)/θ
+        # Elliptic branch: cos(theta) and sin(theta)/theta
         cos_theta = torch.cos(theta)
         sinc_theta = torch.where(
             theta > 1e-7,
@@ -416,7 +416,7 @@ class CliffordAlgebra:
             1.0 - abs_alpha / 6.0,
         )
 
-        # Hyperbolic branch: cosh(θ) and sinh(θ)/θ
+        # Hyperbolic branch: cosh(theta) and sinh(theta)/theta
         cosh_theta = torch.cosh(theta)
         sinhc_theta = torch.where(
             theta > 1e-7,
@@ -424,7 +424,7 @@ class CliffordAlgebra:
             1.0 + abs_alpha / 6.0,
         )
 
-        # Select branch based on sign of α
+        # Select branch based on sign of alpha
         is_elliptic = alpha < -1e-12
         is_hyperbolic = alpha > 1e-12
         # Parabolic (null) falls through: scalar=1, coeff=1

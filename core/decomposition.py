@@ -43,10 +43,10 @@ def ga_power_iteration(
 
     Algorithm:
         1. Initialize random vector v
-        2. Iterate: v ← b ⌋ v, then normalize v
+        2. Iterate: v <- b _| v, then normalize v
         3. Converge when ||v - v_prev|| < threshold
-        4. Compute u = (b ⌋ v) / ||(b ⌋ v)||
-        5. Return simple bivector b_s = σ(u ∧ v) where σ = ||b||
+        4. Compute u = (b _| v) / ||(b _| v)||
+        5. Return simple bivector b_s = sigma(u ^ v) where sigma = ||b||
 
     Args:
         algebra: CliffordAlgebra instance.
@@ -79,7 +79,7 @@ def ga_power_iteration(
     for iteration in range(max_iterations):
         v_prev = v
 
-        # Apply bivector: v ← b ⌋ v
+        # Apply bivector: v <- b _| v
         # Note: Algorithm 2 line 4 shows single contraction per iteration
         v = algebra.right_contraction(b, v)
 
@@ -92,13 +92,13 @@ def ga_power_iteration(
         if (diff < threshold).all():
             break
 
-    # Compute u = (b ⌋ v) / ||(b ⌋ v)||
+    # Compute u = (b _| v) / ||(b _| v)||
     u = algebra.right_contraction(b, v)
     u_norm = u.norm(dim=-1, keepdim=True)
     u = u / (u_norm + 1e-10)
 
-    # Compute simple bivector: b_s = σ(u ∧ v)
-    # where σ = ||b|| is the bivector norm
+    # Compute simple bivector: b_s = sigma(u ^ v)
+    # where sigma = ||b|| is the bivector norm
     sigma = b.norm(dim=-1, keepdim=True)
     b_s = sigma * algebra.wedge(u, v)
 
@@ -125,7 +125,7 @@ def differentiable_invariant_decomposition(
     Algorithm:
         1. For i = 1 to k:
         2.   Find simple bivector b_i using power iteration
-        3.   Subtract from residual: b ← b - b_i
+        3.   Subtract from residual: b <- b - b_i
         4.   Stop if ||b|| < threshold
 
     Args:
@@ -177,7 +177,7 @@ def exp_simple_bivector(algebra, b: torch.Tensor) -> torch.Tensor:
     """Exponentiates a simple bivector using closed-form expression.
 
     For simple bivectors, we have the closed form:
-        exp(b) = cos(||b||) + sin(||b||)/||b|| × b
+        exp(b) = cos(||b||) + sin(||b||)/||b|| * b
 
     Reference:
         Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
@@ -196,7 +196,7 @@ def exp_simple_bivector(algebra, b: torch.Tensor) -> torch.Tensor:
     # Avoid division by zero
     b_norm_safe = torch.clamp(b_norm, min=1e-10)
 
-    # exp(b) = cos(||b||) + sin(||b||)/||b|| × b
+    # exp(b) = cos(||b||) + sin(||b||)/||b|| * b
     cos_term = torch.cos(b_norm)
     sin_term = torch.sin(b_norm) / b_norm_safe
 
@@ -229,9 +229,9 @@ def exp_decomposed(
         from Irreducibles." arXiv:2507.11688v1 [cs.LG]
 
     Algorithm:
-        1. Decompose: [b_1, b_2, ..., b_k] ← decomposition(b)
-        2. Exponentiate each: R_i ← exp(b_i) using closed form
-        3. Compose: R ← R_1 × R_2 × ... × R_k
+        1. Decompose: [b_1, b_2, ..., b_k] <- decomposition(b)
+        2. Exponentiate each: R_i <- exp(b_i) using closed form
+        3. Compose: R <- R_1 * R_2 * ... * R_k
 
     Args:
         algebra: CliffordAlgebra instance.
@@ -262,7 +262,7 @@ def exp_decomposed(
     # Exponentiate each component using closed form
     rotors = [exp_simple_bivector(algebra, b_i) for b_i in decomp]
 
-    # Compose rotors via geometric product: R = R_1 × R_2 × ... × R_k
+    # Compose rotors via geometric product: R = R_1 * R_2 * ... * R_k
     result = rotors[0]
     for R_i in rotors[1:]:
         result = algebra.geometric_product(result, R_i)

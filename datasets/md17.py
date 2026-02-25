@@ -13,7 +13,7 @@
 Loading priority:
     1. PyTorch Geometric (auto-downloads from official mirror)
     2. Raw .npz files in ``root/`` (manual download from sgdml.org)
-    3. Clear error with install instructions (no synthetic fallback —
+    3. Clear error with install instructions (no synthetic fallback -
        fake molecular dynamics data is meaningless for energy/force training)
 
 Install PyG:

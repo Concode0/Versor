@@ -314,7 +314,7 @@ class PDBBindNet(CliffordModule):
         1. ProteinEncoder: process pocket atoms
         2. LigandEncoder: process ligand atoms
         3. GeometricCrossAttention: rotor-mediated interactions
-        4. Affinity head: MLP → scalar prediction
+        4. Affinity head: MLP -> scalar prediction
     """
 
     def __init__(self, algebra, protein_hidden_dim=64, ligand_hidden_dim=32,

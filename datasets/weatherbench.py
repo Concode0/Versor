@@ -88,7 +88,7 @@ def _build_spherical_graph(H: int, W: int) -> torch.Tensor:
     singularity nodes at north and south poles to close the sphere topology.
 
     Without pole nodes, the top and bottom latitude rows are treated as flat
-    edges — a topological breach. On a real sphere, all meridians converge
+    edges - a topological breach. On a real sphere, all meridians converge
     at each pole. Virtual pole nodes fix this by connecting to every node
     in the adjacent row, enabling proper message flow across the poles.
 
@@ -187,7 +187,7 @@ class WeatherBenchDataset(Dataset):
         self._load_data()
 
     def _load_data(self):
-        """Load data: cached .pt → NetCDF → Zarr → synthetic fallback."""
+        """Load data: cached .pt -> NetCDF -> Zarr -> synthetic fallback."""
         cache_path = os.path.join(
             self.root, f'weatherbench_{self.resolution}_{self.split}.pt'
         )
@@ -205,7 +205,7 @@ class WeatherBenchDataset(Dataset):
                 os.makedirs(self.root, exist_ok=True)
                 torch.save(self.data_list, cache_path)
                 print(f">>> WeatherBench: cached {len(self.data_list)} "
-                      f"NetCDF samples → {cache_path}")
+                      f"NetCDF samples -> {cache_path}")
                 return
         else:
             print(">>> WeatherBench: xarray not installed, skipping NetCDF path "
@@ -217,7 +217,7 @@ class WeatherBenchDataset(Dataset):
                 os.makedirs(self.root, exist_ok=True)
                 torch.save(self.data_list, cache_path)
                 print(f">>> WeatherBench: cached {len(self.data_list)} "
-                      f"zarr samples → {cache_path}")
+                      f"zarr samples -> {cache_path}")
                 return
         else:
             print(">>> WeatherBench: zarr/fsspec not installed, skipping zarr path "
@@ -577,7 +577,7 @@ def get_weatherbench_loaders(root: str, resolution: str = '5.625deg',
                              pin_memory: bool = False):
     """Load WeatherBench dataset with train/val/test splits.
 
-    Tries real data (NetCDF → zarr → GCS) and falls back to synthetic.
+    Tries real data (NetCDF -> zarr -> GCS) and falls back to synthetic.
 
     Returns:
         train_loader, val_loader, test_loader, var_means, var_stds
@@ -612,7 +612,7 @@ def get_weatherbench_loaders(root: str, resolution: str = '5.625deg',
                               shuffle=False, collate_fn=collate_weatherbench,
                               num_workers=num_workers, pin_memory=pin_memory)
 
-    print(f">>> WeatherBench {resolution}: grid={H}×{W}, "
+    print(f">>> WeatherBench {resolution}: grid={H}x{W}, "
           f"vars={datasets['train'].num_variables}, lead={lead_time}h")
     print(f">>> {len(datasets['train'])}/{len(datasets['val'])}/"
           f"{len(datasets['test'])} train/val/test")

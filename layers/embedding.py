@@ -18,7 +18,7 @@ class MultivectorEmbedding(CliffordModule):
     """Token embedding as multivectors.
 
     Each token maps to a [channels, dim] multivector. Initializes
-    content in grade-1 (vector) subspace only — semantic content
+    content in grade-1 (vector) subspace only - semantic content
     starts as directed quantities before rotors act on them.
 
     Attributes:
@@ -86,7 +86,7 @@ class RotaryBivectorPE(CliffordModule):
     the GA analog of rotary positional embeddings (RoPE), but acting
     on the full multivector instead of scalar pairs.
 
-    Initialization: sinusoidal — B_pos[p, k] = p * 10000^(-2k/num_bv) * 0.01
+    Initialization: sinusoidal - B_pos[p, k] = p * 10000^(-2k/num_bv) * 0.01
     so that early training starts close to identity.
 
     Attributes:

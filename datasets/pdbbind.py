@@ -151,7 +151,7 @@ def _parse_sdf_ligand_rdkit(sdf_path: str,
 
     conf = mol.GetConformer() if mol.GetNumConformers() else None
     if conf is None:
-        # No 3D conformer — generate one
+        # No 3D conformer - generate one
         mol = Chem.AddHs(mol)
         AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
         mol = Chem.RemoveHs(mol)
@@ -230,7 +230,7 @@ def _parse_sdf_ligand(sdf_path: str,
                        ) -> Tuple[Optional[np.ndarray],
                                    Optional[np.ndarray],
                                    Optional[np.ndarray]]:
-    """Parse ligand file — uses RDKit if available, otherwise custom parser."""
+    """Parse ligand file - uses RDKit if available, otherwise custom parser."""
     if _HAS_RDKIT:
         try:
             return _parse_sdf_ligand_rdkit(sdf_path, max_atoms)
@@ -369,7 +369,7 @@ def _parse_pdb_pocket(pdb_path: str,
                        ) -> Tuple[Optional[np.ndarray],
                                    Optional[np.ndarray],
                                    Optional[np.ndarray]]:
-    """Parse protein pocket — uses Biopython if available, else custom."""
+    """Parse protein pocket - uses Biopython if available, else custom."""
     if _HAS_BIOPYTHON:
         try:
             return _parse_pdb_pocket_biopython(pdb_path, ligand_pos,
@@ -583,7 +583,7 @@ class PDBBindDataset(Dataset):
             if all_data is not None:
                 os.makedirs(self.root, exist_ok=True)
                 torch.save(all_data, all_cache)
-                print(f">>> PDBbind: cached {len(all_data)} complexes → {all_cache}")
+                print(f">>> PDBbind: cached {len(all_data)} complexes -> {all_cache}")
 
         if all_data is not None and len(all_data) > 0:
             rng = np.random.RandomState(42)

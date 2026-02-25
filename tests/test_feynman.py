@@ -267,10 +267,10 @@ def test_blade_names(algebra):
     # Scalar
     assert names[0] == "1", f"Scalar blade should be '1', got {names[0]!r}"
 
-    # e12: idx=3 (binary 0011 → bits 0 and 1 → basis vectors 1 and 2)
+    # e12: idx=3 (binary 0011 -> bits 0 and 1 -> basis vectors 1 and 2)
     assert names[3] == "e12", f"idx=3 should be 'e12', got {names[3]!r}"
 
-    # Pseudoscalar: idx=15 (binary 1111 → all four basis vectors)
+    # Pseudoscalar: idx=15 (binary 1111 -> all four basis vectors)
     assert names[15] == "e1234", f"idx=15 should be 'e1234', got {names[15]!r}"
 
     # Grade-1 blades have single basis vector

@@ -38,14 +38,14 @@ class DeviceConfig:
 
     Attributes:
         device: Resolved device string (``cuda``, ``mps``, ``cpu``).
-        pin_memory: Whether DataLoaders should pin memory.  ``None`` → auto
+        pin_memory: Whether DataLoaders should pin memory.  ``None`` -> auto
             (``True`` for CUDA).
-        num_workers: DataLoader worker count.  ``None`` → auto (4 for CUDA,
+        num_workers: DataLoader worker count.  ``None`` -> auto (4 for CUDA,
             2 otherwise).
         compile_model: Wrap the model with :func:`torch.compile`.
         amp: Enable automatic mixed precision (CUDA only).
         cudnn_benchmark: Set :attr:`torch.backends.cudnn.benchmark`.
-            ``None`` → auto (``True`` for CUDA).
+            ``None`` -> auto (``True`` for CUDA).
     """
 
     device: str = "auto"

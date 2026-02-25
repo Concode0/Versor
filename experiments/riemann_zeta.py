@@ -176,7 +176,7 @@ class ZetaDataset(Dataset):
 
         zeta_vals = compute_zeta_batch(sigma, t)
 
-        # Filter out NaN (near pole or numerical failure) — log the count
+        # Filter out NaN (near pole or numerical failure) - log the count
         valid_mask = ~np.isnan(zeta_vals[:, 0])
         n_nan = (~valid_mask).sum()
         if n_nan > 0:
@@ -287,7 +287,7 @@ class ZetaNet(nn.Module):
         h = h.reshape(B, self.hidden_dim, self.algebra.dim)
         h = self.input_norm(h)  # bound magnitude before first block
 
-        # Residual blocks — Pre-LN: norm applied to residual stream BEFORE rotor.
+        # Residual blocks - Pre-LN: norm applied to residual stream BEFORE rotor.
         # This keeps the residual path clean (unnormalized) and prevents
         # float32 magnitude drift across deep layers.
         intermediates: List[torch.Tensor] = []
@@ -302,7 +302,7 @@ class ZetaNet(nn.Module):
             intermediates.append(h)
             self._intermediates.append(h.detach())
 
-        # Output — normalize the final residual stream, then select grades
+        # Output - normalize the final residual stream, then select grades
         h = self.output_norm(h)
         h = self.blade_selector(h)
         out = self.output_proj(h)  # [B, 1, algebra.dim]
@@ -436,11 +436,11 @@ def _save_plots(history: dict, model: ZetaNet, test_ds: ZetaDataset,
     """Save diagnostic plots to disk.
 
     Plots generated:
-        1. convergence.png   — Training loss + test L2 + critical-line L2 over epochs.
-        2. error_scatter.png — Scatter of (sigma, t) colored by per-sample L2 error.
-        3. ortho_evolution.png — Parasitic ratio and coupling over epochs (if tracked).
-        4. critical_line.png   — True vs predicted Re(zeta) and Im(zeta) on sigma=0.5.
-        5. coupling_heatmap.png — Cross-grade coupling from ortho module.
+        1. convergence.png   - Training loss + test L2 + critical-line L2 over epochs.
+        2. error_scatter.png - Scatter of (sigma, t) colored by per-sample L2 error.
+        3. ortho_evolution.png - Parasitic ratio and coupling over epochs (if tracked).
+        4. critical_line.png   - True vs predicted Re(zeta) and Im(zeta) on sigma=0.5.
+        5. coupling_heatmap.png - Cross-grade coupling from ortho module.
 
     Args:
         history: Dict with lists 'epochs', 'train_loss', 'test_l2', 'crit_l2',
@@ -492,7 +492,7 @@ def _save_plots(history: dict, model: ZetaNet, test_ds: ZetaDataset,
                 ha='center', va='center', transform=ax.transAxes, fontsize=12)
         ax.set_title('Orthogonality Evolution')
 
-    fig.suptitle('Riemann Zeta — Cl(2,0) Reconstruction', fontsize=13)
+    fig.suptitle('Riemann Zeta - Cl(2,0) Reconstruction', fontsize=13)
     fig.tight_layout()
     fig.savefig(os.path.join(output_dir, 'convergence.png'), dpi=150,
                 bbox_inches='tight')
@@ -540,7 +540,7 @@ def _save_plots(history: dict, model: ZetaNet, test_ds: ZetaDataset,
     plt.close(fig)
 
     # ------------------------------------------------------------------ #
-    # 3. Critical line: sigma = 0.5 — true vs predicted Re/Im
+    # 3. Critical line: sigma = 0.5 - true vs predicted Re/Im
     # ------------------------------------------------------------------ #
     # Build small critical-line dataset
     t_crit = np.linspace(-20.0, 20.0, 200)
@@ -613,7 +613,7 @@ def train(args):
     # Algebra: Cl(2,0), dim=4, even subalgebra {1, e12} ~ C
     algebra = CliffordAlgebra(p=2, q=0, device=device)
     print(f"\n{'='*60}")
-    print(f" Riemann Zeta Reconstruction — Cl(2,0)")
+    print(f" Riemann Zeta Reconstruction - Cl(2,0)")
     print(f" Even subalgebra {{1, e_12}} ~ C")
     print(f" Strict Orthogonality: {'ON' if args.strict_ortho else 'OFF'}"
           f"{f' (weight={args.ortho_weight}, mode={args.ortho_mode})' if args.strict_ortho else ''}")
@@ -758,7 +758,7 @@ def train(args):
             # Orthogonality diagnostics
             p_ratio = 0.0
             if args.strict_ortho and intermediates:
-                # Detach for diagnostics — no grad needed here
+                # Detach for diagnostics - no grad needed here
                 last_h = intermediates[-1].detach().reshape(-1, algebra.dim)
                 p_ratio = ortho.parasitic_ratio(last_h)
                 print(ortho.format_diagnostics(last_h))

@@ -16,7 +16,7 @@ from core.algebra import CliffordAlgebra
 DEVICE = "cpu"
 
 
-# ── Helpers ────────────────────────────────────────────────────────────
+# == Helpers ============================================================
 
 def _make_bivector(algebra, coeffs):
     """Build a multivector with only grade-2 components from a dict/list."""
@@ -45,10 +45,10 @@ def _exp_taylor_reference(algebra, B, order=20):
     return algebra._exp_taylor(B, order=order)
 
 
-# ── Euclidean signatures ──────────────────────────────────────────────
+# == Euclidean signatures ==============================================
 
 class TestExpEuclidean:
-    """Closed-form exp for Cl(p, 0) — all bivectors square to -1."""
+    """Closed-form exp for Cl(p, 0) - all bivectors square to -1."""
 
     @pytest.fixture(params=[(2, 0), (3, 0), (4, 0), (6, 0)])
     def algebra(self, request):
@@ -91,7 +91,7 @@ class TestExpEuclidean:
         assert torch.allclose(R_closed, R_taylor, atol=1e-6)
 
     def test_cl20_rotation(self):
-        """Cl(2,0): exp(-θ/2 e12) rotates e1 → e2 for θ=π/2."""
+        """Cl(2,0): exp(-theta/2 e12) rotates e1 -> e2 for theta=pi/2."""
         alg = CliffordAlgebra(2, 0, device=DEVICE)
         B = torch.zeros(1, 4, dtype=torch.float64)
         B[0, 3] = 1.0  # e12
@@ -121,16 +121,16 @@ class TestExpEuclidean:
         assert abs(v_rot[0, 4].item() - 1.0) < 1e-7
 
 
-# ── Minkowski / mixed signatures ─────────────────────────────────────
+# == Minkowski / mixed signatures =====================================
 
 class TestExpMinkowski:
     """Closed-form exp for Cl(p, q) with q > 0."""
 
     def test_cl11_hyperbolic(self):
-        """Cl(1,1): e12 squares to +1 → hyperbolic rotation (boost)."""
+        """Cl(1,1): e12 squares to +1 -> hyperbolic rotation (boost)."""
         alg = CliffordAlgebra(1, 1, device=DEVICE)
-        # In Cl(1,1): e1²=+1, e2²=-1, so (e12)²= -e1²e2² = -1*(-1) = +1
-        # This means exp(φ e12) = cosh(φ) + sinh(φ) e12
+        # In Cl(1,1): e1**2=+1, e2**2=-1, so (e12)**2= -e1**2e2**2 = -1*(-1) = +1
+        # This means exp(phi e12) = cosh(phi) + sinh(phi) e12
         B = torch.zeros(1, 4, dtype=torch.float64)
         B[0, 3] = 1.0  # e12
 
@@ -145,10 +145,10 @@ class TestExpMinkowski:
     def test_cl21_mixed_bivectors(self):
         """Cl(2,1): has both elliptic and hyperbolic bivectors."""
         alg = CliffordAlgebra(2, 1, device=DEVICE)
-        # e1²=+1, e2²=+1, e3²=-1
-        # e12 = e1e2: (e12)² = -e1²e2² = -1 → elliptic
-        # e13 = e1e3: (e13)² = -e1²e3² = +1 → hyperbolic
-        # e23 = e2e3: (e23)² = -e2²e3² = +1 → hyperbolic
+        # e1**2=+1, e2**2=+1, e3**2=-1
+        # e12 = e1e2: (e12)**2 = -e1**2e2**2 = -1 -> elliptic
+        # e13 = e1e3: (e13)**2 = -e1**2e3**2 = +1 -> hyperbolic
+        # e23 = e2e3: (e23)**2 = -e2**2e3**2 = +1 -> hyperbolic
 
         # Test elliptic bivector e12 (index 3 = 0b011)
         B = torch.zeros(1, 8, dtype=torch.float64)
@@ -167,9 +167,9 @@ class TestExpMinkowski:
             f"Cl(2,1) hyperbolic: max diff {(R2 - R2_taylor).abs().max()}"
 
     def test_cl31_spacetime(self):
-        """Cl(3,1) Minkowski spacetime — used by GA-Transformer."""
+        """Cl(3,1) Minkowski spacetime - used by GA-Transformer."""
         alg = CliffordAlgebra(3, 1, device=DEVICE)
-        # e1²=e2²=e3²=+1, e4²=-1
+        # e1**2=e2**2=e3**2=+1, e4**2=-1
         # Spatial rotations (e_ij, i,j<4): elliptic (square to -1)
         # Boosts (e_i4, i<4): hyperbolic (square to +1)
 
@@ -187,7 +187,7 @@ class TestExpMinkowski:
                 f"Cl(3,1) bv_idx={bv_idx.item()}: max diff {(R - R_taylor).abs().max()}"
 
     def test_cl41_conformal_simple_bivectors(self):
-        """Cl(4,1) conformal GA — each basis bivector should match Taylor exactly."""
+        """Cl(4,1) conformal GA - each basis bivector should match Taylor exactly."""
         alg = CliffordAlgebra(4, 1, device=DEVICE)
         bv_mask = alg.grade_masks[2]
         bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
@@ -202,7 +202,7 @@ class TestExpMinkowski:
                 f"Cl(4,1) bv_idx={bv_idx.item()}: max diff {(R - R_taylor).abs().max()}"
 
     def test_cl41_conformal_general_bivector(self):
-        """Cl(4,1) general bivector — closed form is approximate for non-simple B."""
+        """Cl(4,1) general bivector - closed form is approximate for non-simple B."""
         alg = CliffordAlgebra(4, 1, device=DEVICE)
         torch.manual_seed(456)
         bv_mask = alg.grade_masks[2]
@@ -247,15 +247,15 @@ class TestExpMinkowski:
 
         v_boosted = alg.geometric_product(alg.geometric_product(R, v), R_rev)
 
-        # Minkowski interval: t² - x² should be preserved
+        # Minkowski interval: t**2 - x**2 should be preserved
         # Original: 4 - 1 = 3
-        # (note: e1²=+1, e2²=-1 in Cl(1,1))
+        # (note: e1**2=+1, e2**2=-1 in Cl(1,1))
         interval_orig = v[0, 1].item()**2 - v[0, 2].item()**2
         interval_boost = v_boosted[0, 1].item()**2 - v_boosted[0, 2].item()**2
         assert abs(interval_orig - interval_boost) < 1e-7
 
 
-# ── Batch and gradient tests ─────────────────────────────────────────
+# == Batch and gradient tests =========================================
 
 class TestExpBatchGrad:
     """Batch processing and gradient flow."""
@@ -317,7 +317,7 @@ class TestExpBatchGrad:
         assert torch.allclose(R, R_taylor, atol=1e-5)
 
 
-# ── Edge cases ────────────────────────────────────────────────────────
+# == Edge cases ========================================================
 
 class TestExpEdgeCases:
     """Boundary conditions and numerical stability."""
@@ -345,7 +345,7 @@ class TestExpEdgeCases:
         alg20 = CliffordAlgebra(2, 0, device=DEVICE)
         assert (alg20.bv_sq_scalar == -1).all()
 
-        # Cl(1,1): e12 squares to +1 (since e1²=+1, e2²=-1, -(+1)(-1)=+1)
+        # Cl(1,1): e12 squares to +1 (since e1**2=+1, e2**2=-1, -(+1)(-1)=+1)
         alg11 = CliffordAlgebra(1, 1, device=DEVICE)
         assert alg11.bv_sq_scalar[0].item() == 1.0
 
@@ -353,7 +353,7 @@ class TestExpEdgeCases:
         alg30 = CliffordAlgebra(3, 0, device=DEVICE)
         assert (alg30.bv_sq_scalar == -1).all()
 
-        # Cl(2,1): e12 → -1, e13 → +1, e23 → +1
+        # Cl(2,1): e12 -> -1, e13 -> +1, e23 -> +1
         alg21 = CliffordAlgebra(2, 1, device=DEVICE)
         bv_sq = alg21.bv_sq_scalar
         assert bv_sq[0].item() == -1.0  # e12: -(+1)(+1) = -1

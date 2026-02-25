@@ -42,7 +42,7 @@ class CliffordLayerNorm(CliffordModule):
         self.weight = nn.Parameter(torch.ones(channels))
         self.bias = nn.Parameter(torch.zeros(channels))
         # Learnable gate: how much of the original log-magnitude to push
-        # into the scalar part.  Zero-init → backward compatible at start.
+        # into the scalar part.  Zero-init -> backward compatible at start.
         self.norm_scale = nn.Parameter(torch.zeros(channels))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

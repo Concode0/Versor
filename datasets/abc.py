@@ -14,8 +14,8 @@ Point cloud autoencoding and primitive reconstruction from CAD meshes.
 
 Loading priority:
     1. Cached .pt files  (fastest)
-    2. Mesh files via trimesh  (OBJ / OFF / PLY / STL / …, rich format support)
-    3. Mesh files via custom parsers  (OBJ / OFF / PLY — pure Python)
+    2. Mesh files via trimesh  (OBJ / OFF / PLY / STL / ..., rich format support)
+    3. Mesh files via custom parsers  (OBJ / OFF / PLY - pure Python)
     4. Synthetic fallback  (geometric primitives, always available)
 
 Optional normal estimation:
@@ -57,7 +57,7 @@ except ImportError:
 
 
 # =====================================================================
-# Mesh loading — trimesh path (preferred)
+# Mesh loading - trimesh path (preferred)
 # =====================================================================
 
 def _load_mesh_trimesh(path: str
@@ -73,7 +73,7 @@ def _load_mesh_trimesh(path: str
     try:
         mesh = _trimesh.load(path, force='mesh', process=False)
         if not isinstance(mesh, _trimesh.Trimesh):
-            # Scene or other type — try to extract first mesh
+            # Scene or other type - try to extract first mesh
             if hasattr(mesh, 'geometry'):
                 geoms = list(mesh.geometry.values())
                 if geoms:
@@ -92,7 +92,7 @@ def _load_mesh_trimesh(path: str
 def _sample_trimesh(path: str, num_points: int) -> Optional[np.ndarray]:
     """Sample a point cloud from a mesh surface via trimesh.
 
-    Uses area-weighted face sampling with barycentric coordinates —
+    Uses area-weighted face sampling with barycentric coordinates -
     same algorithm as the manual path but implemented in C++ by trimesh.
 
     Returns:
@@ -118,7 +118,7 @@ def _sample_trimesh(path: str, num_points: int) -> Optional[np.ndarray]:
 
 
 # =====================================================================
-# Mesh loading — pure Python parsers (OBJ / OFF / PLY)
+# Mesh loading - pure Python parsers (OBJ / OFF / PLY)
 # =====================================================================
 
 def _load_obj(path: str) -> Tuple[Optional[np.ndarray], Optional[list]]:
@@ -185,7 +185,7 @@ def _load_ply(path: str) -> Tuple[Optional[np.ndarray], Optional[list]]:
     """Parse Stanford PLY file (ASCII and binary little-endian).
 
     Reads vertex x/y/z and (optionally) face vertex_indices.
-    Does not use any external library — struct module only.
+    Does not use any external library - struct module only.
     """
     try:
         with open(path, 'rb') as f:
@@ -375,7 +375,7 @@ def _estimate_normals_open3d(points: torch.Tensor) -> torch.Tensor:
 
 
 def _estimate_normals_torch(points: torch.Tensor, k: int = 8) -> torch.Tensor:
-    """Estimate normals via local KNN covariance (pure PyTorch, O(N·k·d²))."""
+    """Estimate normals via local KNN covariance (pure PyTorch, O(N.k.d**2))."""
     dist = torch.cdist(points, points)
     _, knn_idx = dist.topk(k + 1, largest=False)
     knn_idx = knn_idx[:, 1:]   # remove self
@@ -397,7 +397,7 @@ def _estimate_normals_torch(points: torch.Tensor, k: int = 8) -> torch.Tensor:
 
 
 def _estimate_normals(points: torch.Tensor) -> torch.Tensor:
-    """Estimate surface normals — uses open3d if available, else torch KNN."""
+    """Estimate surface normals - uses open3d if available, else torch KNN."""
     if _HAS_OPEN3D:
         try:
             return _estimate_normals_open3d(points)
@@ -415,13 +415,13 @@ class ABCDataset(Dataset):
 
     Loading priority:
         1. Cached .pt files
-        2. Mesh files via trimesh (OBJ/OFF/PLY/STL/…)
+        2. Mesh files via trimesh (OBJ/OFF/PLY/STL/...)
         3. Mesh files via custom pure-Python parsers (OBJ/OFF/PLY)
         4. Synthetic geometric primitives
 
     Two task modes:
         reconstruction: Reconstruct input point cloud (self-supervised)
-        primitive:      Predict primitive parameters (sphere/cylinder/box/…)
+        primitive:      Predict primitive parameters (sphere/cylinder/box/...)
     """
 
     def __init__(self, root: str, task: str = 'reconstruction',
@@ -455,7 +455,7 @@ class ABCDataset(Dataset):
         if self._load_from_meshes():
             os.makedirs(self.root, exist_ok=True)
             torch.save(self.data_list, cache_path)
-            print(f">>> ABC: cached {len(self.data_list)} samples → {cache_path}")
+            print(f">>> ABC: cached {len(self.data_list)} samples -> {cache_path}")
             return
 
         # 3. Synthetic fallback
@@ -506,7 +506,7 @@ class ABCDataset(Dataset):
             'test':  idx_all[val_end:],
         }[self.split]
 
-        print(f">>> ABC: processing {len(split_slice)} mesh files ({self.split}) …")
+        print(f">>> ABC: processing {len(split_slice)} mesh files ({self.split}) ...")
         n_ok = n_fail = 0
 
         for file_idx in split_slice:

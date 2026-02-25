@@ -17,7 +17,7 @@ from torch.utils.data import Dataset
 class NewsgroupsClassificationDataset(Dataset):
     """20 Newsgroups for semantic classification.
 
-    BERT [CLS] embeddings → PCA → multivectors.
+    BERT [CLS] embeddings -> PCA -> multivectors.
     Uses multiple channels to preserve discriminative information:
     PCA to (in_channels * embedding_dim) dims, split across channels.
     Disk-cached for speed after first run.
@@ -53,7 +53,7 @@ class NewsgroupsClassificationDataset(Dataset):
             return data, labels
 
         print(f">>> Computing BERT embeddings for 20 Newsgroups ({self.split})...")
-        print(f"    PCA: 768 → {self.n_components} ({self.in_channels} channels × {self.embedding_dim} dims)")
+        print(f"    PCA: 768 -> {self.n_components} ({self.in_channels} channels x {self.embedding_dim} dims)")
         from sklearn.datasets import fetch_20newsgroups
         from transformers import BertTokenizer, BertModel
         from sklearn.decomposition import PCA

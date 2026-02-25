@@ -42,7 +42,7 @@ class TestGeometricOperations:
     """Tests for new geometric operations in CliffordAlgebra."""
 
     def test_wedge_antisymmetry(self, algebra_3d):
-        """Test that wedge product is antisymmetric: a ∧ b = -(b ∧ a)."""
+        """Test that wedge product is antisymmetric: a ^ b = -(b ^ a)."""
         # Create two vectors
         v1_raw = torch.tensor([1.0, 0.0, 0.0])
         v2_raw = torch.tensor([0.0, 1.0, 0.0])
@@ -58,7 +58,7 @@ class TestGeometricOperations:
         assert torch.allclose(wedge_12, -wedge_21, atol=1e-6)
 
     def test_wedge_parallel_vectors(self, algebra_3d):
-        """Test that parallel vectors have zero wedge product: a ∧ a = 0."""
+        """Test that parallel vectors have zero wedge product: a ^ a = 0."""
         v_raw = torch.tensor([1.0, 2.0, 3.0])
         v = algebra_3d.embed_vector(v_raw)
 
@@ -69,7 +69,7 @@ class TestGeometricOperations:
 
     def test_wedge_orthogonal_vectors(self, algebra_3d):
         """Test wedge product of orthogonal vectors creates bivector."""
-        # e1 ∧ e2 should give e12 (basis bivector)
+        # e1 ^ e2 should give e12 (basis bivector)
         v1_raw = torch.tensor([1.0, 0.0, 0.0])
         v2_raw = torch.tensor([0.0, 1.0, 0.0])
 
@@ -103,7 +103,7 @@ class TestGeometricOperations:
         assert torch.allclose(result, grade1, atol=1e-6)
 
     def test_inner_product_symmetry(self, algebra_3d):
-        """Test that inner product is symmetric: A · B = B · A."""
+        """Test that inner product is symmetric: A . B = B . A."""
         v1_raw = torch.tensor([1.0, 2.0, 3.0])
         v2_raw = torch.tensor([4.0, 5.0, 6.0])
 
@@ -125,7 +125,7 @@ class TestGeometricOperations:
 
         inner = algebra_3d.inner_product(v1, v2)
 
-        # Should be grade-0 (scalar) for orthogonal vectors → 0
+        # Should be grade-0 (scalar) for orthogonal vectors -> 0
         grade0 = algebra_3d.grade_projection(inner, 0)
         assert torch.allclose(inner, grade0, atol=1e-6)
 
@@ -135,7 +135,7 @@ class TestPowerIteration:
 
     def test_simple_bivector_convergence(self, algebra_3d):
         """Test that power iteration converges for a simple bivector."""
-        # Create simple bivector: e1 ∧ e2
+        # Create simple bivector: e1 ^ e2
         v1_raw = torch.tensor([1.0, 0.0, 0.0])
         v2_raw = torch.tensor([0.0, 1.0, 0.0])
         v1 = algebra_3d.embed_vector(v1_raw)
@@ -185,7 +185,7 @@ class TestBivectorDecomposition:
 
     def test_decomposition_simple_bivector(self, algebra_3d):
         """Test decomposition of a simple bivector gives 1 component."""
-        # Simple bivector: e1 ∧ e2
+        # Simple bivector: e1 ^ e2
         v1_raw = torch.tensor([1.0, 0.0, 0.0])
         v2_raw = torch.tensor([0.0, 1.0, 0.0])
         v1 = algebra_3d.embed_vector(v1_raw)
@@ -206,7 +206,7 @@ class TestBivectorDecomposition:
     def test_decomposition_sum_of_two_bivectors(self, algebra_3d):
         """Test decomposition of sum of two orthogonal bivectors."""
         # Create two orthogonal simple bivectors
-        # b1 = e1 ∧ e2, b2 = e1 ∧ e3
+        # b1 = e1 ^ e2, b2 = e1 ^ e3
         v1_raw = torch.tensor([1.0, 0.0, 0.0])
         v2_raw = torch.tensor([0.0, 1.0, 0.0])
         v3_raw = torch.tensor([0.0, 0.0, 1.0])
@@ -279,8 +279,8 @@ class TestExponentialClosedForm:
     """Tests for closed-form exponential of simple bivectors."""
 
     def test_exp_simple_bivector_rotor_property(self, algebra_3d):
-        """Test that exp(b) satisfies rotor property: R × R̃ = 1."""
-        # Simple bivector: e1 ∧ e2
+        """Test that exp(b) satisfies rotor property: R * ~R = 1."""
+        # Simple bivector: e1 ^ e2
         v1_raw = torch.tensor([1.0, 0.0, 0.0])
         v2_raw = torch.tensor([0.0, 1.0, 0.0])
         v1 = algebra_3d.embed_vector(v1_raw)
@@ -290,7 +290,7 @@ class TestExponentialClosedForm:
         R = exp_simple_bivector(algebra_3d, b)
         R_rev = algebra_3d.reverse(R)
 
-        # R × R̃ should be identity (scalar 1)
+        # R * ~R should be identity (scalar 1)
         identity = algebra_3d.geometric_product(R, R_rev)
 
         expected_identity = torch.zeros_like(identity)
@@ -355,7 +355,7 @@ class TestExpDecomposed:
         R = exp_decomposed(algebra_3d, b, use_decomposition=True)
         R_rev = algebra_3d.reverse(R)
 
-        # R × R̃ should be identity
+        # R * ~R should be identity
         identity = algebra_3d.geometric_product(R, R_rev)
 
         expected_identity = torch.zeros_like(identity)

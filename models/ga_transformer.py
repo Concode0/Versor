@@ -23,8 +23,8 @@ class GATransformerBlock(nn.Module):
 
     Pre-norm architecture:
 
-        x → Norm → Attention → residual →
-          → Norm → MultiRotorFFN → residual → x'
+        x -> Norm -> Attention -> residual ->
+          -> Norm -> MultiRotorFFN -> residual -> x'
 
     The Norm layers are CliffordLayerNorm.
     The FFN is a MultiRotorFFN
@@ -91,7 +91,7 @@ class GATransformerBlock(nn.Module):
         """Runs one transformer block.
 
         Args:
-            x (torch.Tensor): ``[B, L, C, D]`` — batch of token sequences.
+            x (torch.Tensor): ``[B, L, C, D]`` - batch of token sequences.
 
         Returns:
             torch.Tensor: ``[B, L, C, D]``.
@@ -107,10 +107,10 @@ class GALanguageModel(nn.Module):
     """Geometric Algebra native language model.
 
     Architecture:
-        token_ids → MultivectorEmbedding → RotaryBivectorPE
-            → N × GATransformerBlock
-            → CliffordLayerNorm → BladeSelector
-            → grade-0 extraction → nn.Linear → logits
+        token_ids -> MultivectorEmbedding -> RotaryBivectorPE
+            -> N x GATransformerBlock
+            -> CliffordLayerNorm -> BladeSelector
+            -> grade-0 extraction -> nn.Linear -> logits
 
     The grade-0 (scalar) part of each token position is extracted before
     the final linear projection.  Scalars are invariants of rotor action
@@ -166,7 +166,7 @@ class GALanguageModel(nn.Module):
         ])
         self.out_norm = CliffordLayerNorm(algebra, channels)
         self.out_selector = BladeSelector(algebra, channels)
-        # Grade-0 scalars [channels] → logits [vocab_size]
+        # Grade-0 scalars [channels] -> logits [vocab_size]
         self.head = nn.Linear(channels, vocab_size)
 
     def forward(
@@ -174,7 +174,7 @@ class GALanguageModel(nn.Module):
         token_ids: torch.Tensor,
         return_hidden: bool = False,
     ):
-        """Forward pass: token ids → logits.
+        """Forward pass: token ids -> logits.
 
         Args:
             token_ids (torch.Tensor): ``[B, L]`` integer token indices.

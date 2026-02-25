@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 class LanguageModelingTask(BaseTask):
     """Character-level language modeling with a GA-native Transformer.
 
-    Uses Cl(3,1) — Minkowski spacetime algebra — so token embeddings
+    Uses Cl(3,1) - Minkowski spacetime algebra - so token embeddings
     are Lorentz-covariant multivectors. The FFN is the Embedded Geometric
     Toolbox (MultiRotorFFN), replacing the standard MLP nonlinearity with
     K parallel rotor superpositions.

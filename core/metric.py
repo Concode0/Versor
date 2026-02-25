@@ -152,9 +152,7 @@ def mean_active_grade(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor
     return weighted_sum / energy_total
 
 
-# ──────────────────────────────────────────────────────────────
 # Hermitian Metrics for Mixed-Signature Algebras
-# ──────────────────────────────────────────────────────────────
 #
 # In Cl(p,q) with q > 0, the standard norm <A~A>_0 can be negative
 # because basis blades involving negative-signature dimensions square
@@ -162,7 +160,7 @@ def mean_active_grade(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor
 #
 # The Hermitian inner product uses the algebraically proper formula:
 #
-#   <A, B>_H = <bar{A} B>_0 = Σ_I (conj_sign_I * metric_sign_I) * a_I * b_I
+#   <A, B>_H = <bar{A} B>_0 = Sum_I (conj_sign_I * metric_sign_I) * a_I * b_I
 #
 # where conj_sign_I is the Clifford conjugation sign and metric_sign_I
 # is the basis blade self-product sign. We precompute these signs once
@@ -171,13 +169,12 @@ def mean_active_grade(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor
 #
 # Additionally, we provide the Clifford conjugate (bar involution)
 # and the signature-aware trace form for algebraic computations.
-# ──────────────────────────────────────────────────────────────
 
 def clifford_conjugate(algebra: CliffordAlgebra, mv: torch.Tensor) -> torch.Tensor:
     """Clifford conjugation (bar involution).
 
     Combines reversion with grade involution:
-        Ā_k = (-1)^k * (-1)^{k(k-1)/2} * A_k
+        A_bar_k = (-1)^k * (-1)^{k(k-1)/2} * A_k
 
     This is the natural *-involution on Cl(p,q). Useful for
     algebraic computations (e.g., spinor norms, Lipschitz groups).
@@ -201,12 +198,12 @@ def clifford_conjugate(algebra: CliffordAlgebra, mv: torch.Tensor) -> torch.Tens
 def hermitian_inner_product(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     """Hermitian inner product on Cl(p,q): <bar{A} B>_0.
 
-    <A, B>_H = Σ_I (conj_sign_I * metric_sign_I) * a_I * b_I
+    <A, B>_H = Sum_I (conj_sign_I * metric_sign_I) * a_I * b_I
 
     Uses precomputed sign arrays so that the result equals the scalar
     part of the geometric product of the Clifford conjugate of A with B.
     For Euclidean algebras (q=0), all signs are +1 and this reduces to
-    the simple coefficient inner product Σ a_I b_I.
+    the simple coefficient inner product Sum a_I b_I.
 
     Args:
         algebra: The algebra instance.
@@ -279,7 +276,7 @@ def hermitian_angle(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) 
 def grade_hermitian_norm(algebra: CliffordAlgebra, A: torch.Tensor, grade: int) -> torch.Tensor:
     """Hermitian norm restricted to a single grade.
 
-    ||<A>_k||_H = sqrt(Σ_{I: |I|=k} a_I²)
+    ||<A>_k||_H = sqrt(Sum_{I: |I|=k} a_I**2)
 
     Measures the energy contribution of a specific grade
     in a signature-independent way.

@@ -1,4 +1,4 @@
-"""Versor — Geometric Algebra Deep Learning framework for PyTorch."""
+"""Versor - Geometric Algebra Deep Learning framework for PyTorch."""
 
 __version__ = "0.1.0"
 

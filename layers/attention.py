@@ -28,10 +28,10 @@ class GeometricProductAttention(CliffordModule):
 
     GA attention:
         product = Q_c * reverse(K_c)    (geometric product per head-channel)
-        score   = (<product>_0 + λ * ||<product>_2||_F) / sqrt(H_c * dim)
+        score   = (<product>_0 + lambda_ * ||<product>_2||_F) / sqrt(H_c * dim)
 
     The grade-0 (scalar) part measures alignment (like dot product).
-    The grade-2 (bivector) part measures relative orientation — novel.
+    The grade-2 (bivector) part measures relative orientation - novel.
 
     Memory: naive [B, H, L, L, H_c, D] is too large. We chunk over L_q
     in blocks of BLOCK_SIZE to bound peak VRAM.
@@ -40,7 +40,7 @@ class GeometricProductAttention(CliffordModule):
         num_heads (int): Number of attention heads.
         head_channels (int): Channels per head.
         causal (bool): If True, apply autoregressive causal mask.
-        bivector_weight (float): λ — weight of bivector score component.
+        bivector_weight (float): lambada_ - weight of bivector score component.
     """
 
     def __init__(
@@ -59,7 +59,7 @@ class GeometricProductAttention(CliffordModule):
             channels: Total number of multivector channels.
             num_heads: Number of attention heads.
             causal: Apply causal mask for autoregressive generation.
-            bivector_weight: λ weight on bivector score component.
+            bivector_weight: lambda_ weight on bivector score component.
             dropout: Dropout rate on attention weights.
         """
         super().__init__(algebra)
@@ -86,14 +86,14 @@ class GeometricProductAttention(CliffordModule):
     def _precompute_score_tables(self):
         """Precomputes lookup tables for efficient attention scoring.
 
-        Replaces the O(L²) full pairwise geometric product with direct bilinear
+        Replaces the O(L**2) full pairwise geometric product with direct bilinear
         forms for grade-0 and grade-2 components of Q * reverse(K):
 
-        Grade-0:  <Q * rev(K)>_0 = Σ_a Q[a] * K[a] * metric_rev[a]
-                  → simple weighted dot product, no pairwise expansion needed.
+        Grade-0:  <Q * rev(K)>_0 = Sum_a Q[a] * K[a] * metric_rev[a]
+                  -> simple weighted dot product, no pairwise expansion needed.
 
-        Grade-2:  <Q * rev(K)>_r = Σ_a Q[a] * K[a^r] * g2_sign[r, a]
-                  → precompute K_g2 once, then batched matmul.
+        Grade-2:  <Q * rev(K)>_r = Sum_a Q[a] * K[a^r] * g2_sign[r, a]
+                  -> precompute K_g2 once, then batched matmul.
 
         Memory: ~4 MB peak vs ~256 MB for the naive B_gathered approach.
         """
@@ -123,7 +123,7 @@ class GeometricProductAttention(CliffordModule):
             rev_b = alg.rev_signs.float()[b_idx]  # [n_g2, D]
 
             # gp_signs[a, r_val]: sign when A[a] pairs with B[a^r] to give output r
-            # alg.gp_signs[:, r_vals] → [D, n_g2]; transpose → [n_g2, D]
+            # alg.gp_signs[:, r_vals] -> [D, n_g2]; transpose -> [n_g2, D]
             gp_ar = alg.gp_signs[:, r_vals].float().T  # [n_g2, D]
 
             g2_sign = rev_b * gp_ar  # [n_g2, D]
@@ -142,7 +142,7 @@ class GeometricProductAttention(CliffordModule):
     ) -> torch.Tensor:
         """Computes GA attention score using precomputed bilinear form tables.
 
-        Avoids the O(B·H·Lq·Lk·Hc·D·BLOCK) memory of the full pairwise
+        Avoids the O(B.H.Lq.Lk.Hc.D.BLOCK) memory of the full pairwise
         geometric product. Instead:
 
           Grade-0: score_g0 = Q_weighted @ K^T  (weighted dot product, peak ~1 MB)
@@ -161,16 +161,16 @@ class GeometricProductAttention(CliffordModule):
         Lk = k_head.shape[2]
         n_g2 = self.n_g2
 
-        # ── Grade-0 score ────────────────────────────────────────────────────
-        # <Q * rev(K)>_0 = Σ_c Σ_d  Q[c,d] * K[c,d] * metric_rev[d]
+        # == Grade-0 score ====================================================
+        # <Q * rev(K)>_0 = Sum_c Sum_d  Q[c,d] * K[c,d] * metric_rev[d]
         # Implemented as a batched matrix multiply: [B,H,Lq,Hc*D] @ [B,H,Hc*D,Lk]
         q_weighted = q_head * self._metric_rev          # [B, H, Lq, Hc, D]
         q_flat = q_weighted.reshape(B, H, Lq, Hc * D)  # [B, H, Lq, Hc*D]
         k_flat = k_head.reshape(B, H, Lk, Hc * D)      # [B, H, Lk, Hc*D]
         score_g0 = torch.matmul(q_flat, k_flat.transpose(-2, -1))  # [B, H, Lq, Lk]
 
-        # ── Grade-2 score ────────────────────────────────────────────────────
-        # ||<Q * rev(K)>_2||_F = sqrt(Σ_c Σ_r (Σ_d Q[c,d]*k_g2[j,c,r,d])^2)
+        # == Grade-2 score ====================================================
+        # ||<Q * rev(K)>_2||_F = sqrt(Sum_c Sum_r (Sum_d Q[c,d]*k_g2[j,c,r,d])^2)
         # Batched matmul merging (B, H, Hc) into one batch dimension:
         #   q_2d:     [B*H*Hc, Lq, D]
         #   k_g2_2d:  [B*H*Hc, Lk*n_g2, D]   (Lk and n_g2 merged, n_g2 varies fast)
@@ -178,12 +178,12 @@ class GeometricProductAttention(CliffordModule):
         # Peak ~4 MB vs ~256 MB for the naive B_gathered approach.
         if n_g2 > 0:
             q_2d = q_head.permute(0, 1, 3, 2, 4).reshape(B * H * Hc, Lq, D)
-            # k_g2: [B, H, Lk, Hc, n_g2, D] → permute to [B, H, Hc, Lk, n_g2, D]
+            # k_g2: [B, H, Lk, Hc, n_g2, D] -> permute to [B, H, Hc, Lk, n_g2, D]
             k_g2_t = k_g2.permute(0, 1, 3, 2, 4, 5)
             k_g2_2d = k_g2_t.reshape(B * H * Hc, Lk * n_g2, D)
-            # [B*H*Hc, Lq, D] @ [B*H*Hc, D, Lk*n_g2] → [B*H*Hc, Lq, Lk*n_g2]
+            # [B*H*Hc, Lq, D] @ [B*H*Hc, D, Lk*n_g2] -> [B*H*Hc, Lq, Lk*n_g2]
             comp = torch.bmm(q_2d, k_g2_2d.transpose(-2, -1))
-            # Sum squared components over n_g2, then sum over Hc → [B, H, Lq, Lk]
+            # Sum squared components over n_g2, then sum over Hc -> [B, H, Lq, Lk]
             comp_sq = comp.reshape(B * H * Hc, Lq, Lk, n_g2).pow(2).sum(-1)  # [B*H*Hc, Lq, Lk]
             score_g2_sq = comp_sq.reshape(B, H, Hc, Lq, Lk).sum(2)           # [B, H, Lq, Lk]
             score_g2 = score_g2_sq.sqrt()
@@ -227,9 +227,9 @@ class GeometricProductAttention(CliffordModule):
         else:
             causal_mask = None
 
-        # Precompute K_g2 once for all query blocks — much cheaper than recomputing
+        # Precompute K_g2 once for all query blocks - much cheaper than recomputing
         # k_g2[b,h,j,c,r,d] = K[b,h,j,c, d^r_val] * g2_sign[r, d]
-        # Shape: [B, H, L, Hc, n_g2, D]  ≈ 768 KB for the small MPS config
+        # Shape: [B, H, L, Hc, n_g2, D]  ~= 768 KB for the small MPS config
         K_g2 = K[..., self._g2_b_idx] * self._g2_sign  # [B, H, L, Hc, n_g2, D]
 
         # Chunked attention over query positions to bound memory

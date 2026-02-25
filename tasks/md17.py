@@ -251,7 +251,7 @@ class MD17Task(BaseTask):
             f_pred = force_pred.cpu().numpy().flatten()
             f_error = f_pred - f_true
             axes[1].hist(f_error, bins=50, alpha=0.7, edgecolor='black')
-            axes[1].set_xlabel("Force Error (kcal/mol/Å)")
+            axes[1].set_xlabel("Force Error (kcal/mol/A)")
             axes[1].set_ylabel("Frequency")
             axes[1].set_title(f"MD17 Force Error Distribution ({self.molecule})")
             axes[1].axvline(0, color='r', linestyle='--', linewidth=2)
