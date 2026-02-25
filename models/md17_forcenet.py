@@ -191,39 +191,40 @@ class MD17ForceNet(CliffordModule):
             energy: Predicted energy per molecule [B]
             force: Predicted forces per atom [N, 3]
         """
-        pos.requires_grad_(True)
+        with torch.enable_grad():
+            pos.requires_grad_(True)
 
-        # Initial scalar embedding
-        h_scalar = self.atom_embedding(z)  # [N, Hidden]
-        h = torch.zeros(z.size(0), h_scalar.size(1), self.algebra.dim, device=z.device)
-        h[..., 0] = h_scalar
+            # Initial scalar embedding
+            h_scalar = self.atom_embedding(z)  # [N, Hidden]
+            h = torch.zeros(z.size(0), h_scalar.size(1), self.algebra.dim, device=z.device)
+            h[..., 0] = h_scalar
 
-        # Geometric message passing
-        for layer in self.layers:
-            h = layer(h, pos, edge_index)
+            # Geometric message passing
+            for layer in self.layers:
+                h = layer(h, pos, edge_index)
 
-        # Store features before output heads
-        self._last_features = h.detach()
+            # Store features before output heads
+            self._last_features = h.detach()
 
-        # Grade selection and normalization before output
-        h = self.blade_selector(h)
-        h = self.output_norm(h)
+            # Grade selection and normalization before output
+            h = self.blade_selector(h)
+            h = self.output_norm(h)
 
-        # Flatten multivector features
-        h_flat = h.reshape(h.size(0), -1)  # [N, Hidden * Dim]
+            # Flatten multivector features
+            h_flat = h.reshape(h.size(0), -1)  # [N, Hidden * Dim]
 
-        # Energy prediction (per-molecule scalar)
-        graph_repr = global_add_pool(h_flat, batch)  # [B, Hidden * Dim]
-        energy = self.energy_head(graph_repr).squeeze(-1)  # [B]
-        
-        force = -torch.autograd.grad(
-            outputs=energy,
-            inputs=pos,
-            grad_outputs=torch.ones_like(energy),
-            create_graph=True,
-            retain_graph=True
-        )[0]
-        
+            # Energy prediction (per-molecule scalar)
+            graph_repr = global_add_pool(h_flat, batch)  # [B, Hidden * Dim]
+            energy = self.energy_head(graph_repr).squeeze(-1)  # [B]
+            
+            force = -torch.autograd.grad(
+                outputs=energy,
+                inputs=pos,
+                grad_outputs=torch.ones_like(energy),
+                create_graph=self.training, 
+                retain_graph=True
+            )[0]
+            
         return energy, force
 
     def get_latent_features(self):
