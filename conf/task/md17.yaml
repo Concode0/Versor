@@ -7,25 +7,25 @@ algebra:
 dataset:
   name: "md17"
   molecule: "aspirin"
-  samples: 50000
+  samples: null
 model:
-  hidden_dim: 32
+  hidden_dim: 32 # Maybe large value improve perf.
   layers: 4
   num_rotors: 12
   max_z: 100
   use_decomposition: true
-  decomp_k: 10
+  decomp_k: 8
   use_rotor_backend: true
 training:
-  epochs: 100
+  epochs: 400
   lr: 0.001
-  batch_size: 64
+  batch_size: 8
   optimizer_type: "riemannian_adam"
   loss_weights:
     energy: 1.0
     force: 10.0
     sparsity: 0.01
-    conservative: 0.1
+    conservative: 0.0
     grade_reg: 0.01
   target_spectrum: [0.4, 0.4, 0.15, 0.05]
   max_bivector_norm: 10.0
