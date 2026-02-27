@@ -38,17 +38,26 @@ def _hermitian_signs(algebra: CliffordAlgebra) -> torch.Tensor:
             return cached
 
     signs = torch.ones(algebra.dim, device=algebra.device)
+    pq = algebra.p + algebra.q
     for i in range(algebra.dim):
         k = bin(i).count('1')  # grade
         # Clifford conjugation sign: (-1)^k * (-1)^{k(k-1)/2}
         conj_sign = ((-1) ** k) * ((-1) ** (k * (k - 1) // 2))
         # Metric sign: (-1)^{k(k-1)/2} * prod g_{jj} for j in I
+        # g_{jj} = +1 if j < p, -1 if p <= j < p+q, 0 if j >= p+q
         metric_product = 1
+        has_null = False
         for bit in range(algebra.n):
             if i & (1 << bit):
+                if bit >= pq:
+                    has_null = True
+                    break
                 metric_product *= (1 if bit < algebra.p else -1)
-        metric_sign = ((-1) ** (k * (k - 1) // 2)) * metric_product
-        signs[i] = conj_sign * metric_sign
+        if has_null:
+            signs[i] = 0
+        else:
+            metric_sign = ((-1) ** (k * (k - 1) // 2)) * metric_product
+            signs[i] = conj_sign * metric_sign
 
     algebra._cached_hermitian_signs = signs
     return signs

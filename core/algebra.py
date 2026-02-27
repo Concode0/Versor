@@ -16,34 +16,41 @@ class CliffordAlgebra:
 
     Handles geometric product, grade projection, and rotor operations.
 
+    Supports degenerate (null) dimensions via the ``r`` parameter:
+    ``Cl(p, q, r)`` has ``p`` positive, ``q`` negative, and ``r`` null
+    basis vectors (``e_i^2 = 0``).
+
     Attributes:
         p (int): Positive signature dimensions.
         q (int): Negative signature dimensions.
-        n (int): Total dimensions (p + q).
+        r (int): Degenerate (null) dimensions.
+        n (int): Total dimensions (p + q + r).
         dim (int): Total basis elements (2^n).
         device (str): Computation device.
     """
     _CACHED_TABLES = {}
 
-    def __init__(self, p: int, q: int = 0, device='cuda'):
+    def __init__(self, p: int, q: int = 0, r: int = 0, device='cuda'):
         """Initialize the algebra and cache the Cayley table.
 
         Args:
             p (int): Positive dimensions (+1).
             q (int, optional): Negative dimensions (-1). Defaults to 0.
+            r (int, optional): Degenerate dimensions (0). Defaults to 0.
             device (str, optional): The device on which computations are performed. Defaults to 'cuda'.
         """
         assert p >= 0, f"p must be non-negative, got {p}"
         assert q >= 0, f"q must be non-negative, got {q}"
-        assert p + q <= 12, f"p + q must be <= 12, got {p + q}"
+        assert r >= 0, f"r must be non-negative, got {r}"
+        assert p + q + r <= 12, f"p + q + r must be <= 12, got {p + q + r}"
 
-        self.p, self.q = p, q
-        self.n = p + q
+        self.p, self.q, self.r = p, q, r
+        self.n = p + q + r
         self.dim = 2 ** self.n
         self.device = device
 
         # Cache Cayley tables to avoid recomputation
-        cache_key = (p, q, str(device))
+        cache_key = (p, q, r, str(device))
         if cache_key not in CliffordAlgebra._CACHED_TABLES:
             CliffordAlgebra._CACHED_TABLES[cache_key] = self._generate_cayley_table()
 
@@ -123,7 +130,7 @@ class CliffordAlgebra:
             rev_signs[i] = (-1) ** (k * (k - 1) // 2)
 
         # Bivector squared scalars: for each basis bivector e_ab,
-        # (e_ab)^2 = -s_a * s_b where s_i = +1 if i < p, -1 if i >= p.
+        # (e_ab)^2 = -s_a * s_b where s_i = +1 if i < p, -1 if p <= i < p+q, 0 if i >= p+q.
         # Used by closed-form exp for arbitrary signature.
         if self.n >= 2:
             bv_mask = grade_masks[2]
@@ -137,8 +144,8 @@ class CliffordAlgebra:
                         bits.append(bit)
                 if len(bits) == 2:
                     a, b = bits
-                    s_a = 1.0 if a < self.p else -1.0
-                    s_b = 1.0 if b < self.p else -1.0
+                    s_a = 1.0 if a < self.p else (-1.0 if a < self.p + self.q else 0.0)
+                    s_b = 1.0 if b < self.p else (-1.0 if b < self.p + self.q else 0.0)
                     bv_sq_scalar[idx_pos] = -s_a * s_b
         else:
             bv_sq_scalar = torch.zeros(0, dtype=cayley_signs.dtype,
@@ -150,6 +157,11 @@ class CliffordAlgebra:
     def _compute_signs(self, indices: torch.Tensor) -> torch.Tensor:
         """Compute the sign matrix from commutation parity and metric signature.
 
+        Handles three signature types:
+        - Positive (i < p): e_i^2 = +1
+        - Negative (p <= i < p+q): e_i^2 = -1
+        - Null (i >= p+q): e_i^2 = 0
+
         Args:
             indices (torch.Tensor): Basis indices.
 
@@ -160,45 +172,56 @@ class CliffordAlgebra:
         # A bit-wise comparison counts inversions
         A = indices.unsqueeze(1) # Row
         B = indices.unsqueeze(0) # Col
-        
+
         swap_counts = torch.zeros((self.dim, self.dim), dtype=torch.long, device=self.device)
         for i in range(self.n):
             a_i = (A >> i) & 1
             # Count set bits in B strictly lower than bit i
             lower_mask = (1 << i) - 1
             b_lower = (B & lower_mask)
-            
+
             # Count bits in b_lower
             b_lower_cnt = torch.zeros_like(B)
             temp_b = b_lower
             for _ in range(self.n):
                 b_lower_cnt += (temp_b & 1)
                 temp_b = temp_b >> 1
-            
+
             swap_counts += a_i * b_lower_cnt
-            
+
         commutator_sign = (-1) ** swap_counts
-        
-        # 2. Metric Sign: e_i^2 = -1 if i >= p
+
+        # 2. Metric Sign: e_i^2 = -1 if p <= i < p+q, 0 if i >= p+q
         intersection = A & B
-        
-        # Mask for negative signature dimensions
+
+        # Mask for negative signature dimensions (p <= i < p+q)
         q_mask = 0
-        for i in range(self.p, self.n):
+        for i in range(self.p, self.p + self.q):
             q_mask |= (1 << i)
-            
+
         neg_intersection = intersection & q_mask
-        
+
         # Count set bits in negative intersection
         neg_cnt = torch.zeros_like(neg_intersection)
         temp_neg = neg_intersection
         for _ in range(self.n):
             neg_cnt += (temp_neg & 1)
             temp_neg = temp_neg >> 1
-            
+
         metric_sign = (-1) ** neg_cnt
-        
-        return commutator_sign * metric_sign
+
+        # 3. Null dimensions: if any null basis vector appears in the intersection
+        # (i.e., e_i^2 = 0 for i >= p+q), the entire product is killed.
+        if self.r > 0:
+            r_mask = 0
+            for i in range(self.p + self.q, self.n):
+                r_mask |= (1 << i)
+            null_intersection = intersection & r_mask
+            # Any set bit in null_intersection means a null vector is squared -> 0
+            has_null = (null_intersection != 0).to(metric_sign.dtype)
+            metric_sign = metric_sign * (1 - has_null)
+
+        return (commutator_sign * metric_sign).to(dtype=torch.float32)
 
     def geometric_product(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         """Computes the Geometric Product.
@@ -228,7 +251,7 @@ class CliffordAlgebra:
         # result[..., k] = sum_i A[..., i] * B[..., cayley[i,k]] * signs[i,k]
         # = sum_i (A[..., i, None] * B_gathered[..., i, :] * signs[i, :])  summed over i
         return (A.unsqueeze(-1) * B_gathered * self.gp_signs).sum(dim=-2)
-        
+
     def ensure_device(self, device) -> None:
         """Move cached tables to the given device if not already there.
 
@@ -244,7 +267,7 @@ class CliffordAlgebra:
         self.rev_signs = self.rev_signs.to(device)
         self.bv_sq_scalar = self.bv_sq_scalar.to(device)
         # Update cache so other instances sharing this key also benefit
-        cache_key = (self.p, self.q, str(self.device))
+        cache_key = (self.p, self.q, self.r, str(self.device))
         CliffordAlgebra._CACHED_TABLES[cache_key] = (
             self.cayley_indices, self.cayley_signs, self.gp_signs,
             self.grade_masks, self.rev_signs, self.bv_sq_scalar,
@@ -353,10 +376,10 @@ class CliffordAlgebra:
             - Null (B^2 ~= 0): exp(B) ~= 1 + B
 
         For n <= 3 the closed form is always exact (no disjoint bivector
-        pairs exist, so B^2 is always scalar).  For n >= 4, disjoint pairs
-        like (e_12, e_34) produce grade-4 cross terms in B^2, making the
-        closed form approximate for non-simple bivectors.  Taylor series
-        is used as fallback in that case.
+        pairs exist, so B^2 is always scalar).  For n >= 4, an adaptive
+        strategy is used: simple bivectors get closed-form, non-simple
+        bivectors are decomposed via power iteration then each component
+        is exponentiated in closed form.
 
         Args:
             mv (torch.Tensor): Input bivector or multivector.
@@ -369,8 +392,8 @@ class CliffordAlgebra:
             # Exact: no disjoint bivector pairs -> B^2 is always scalar
             return self._exp_bivector_closed(mv)
         else:
-            # n >= 4: closed form is approximate for non-simple bivectors
-            return self._exp_taylor(mv, order=order)
+            # n >= 4: adaptive strategy based on simplicity check
+            return self._exp_adaptive(mv)
 
     def _exp_bivector_closed(self, B: torch.Tensor) -> torch.Tensor:
         """Closed-form exponential for bivectors in arbitrary signature.
@@ -384,7 +407,7 @@ class CliffordAlgebra:
             - B^2 ~= 0 (parabolic): exp(B) ~= 1 + B
 
         Uses zero geometric products. Exact for simple bivectors in any
-        Clifford algebra Cl(p,q).
+        Clifford algebra Cl(p,q,r).
 
         Args:
             B (torch.Tensor): Pure bivector [..., dim].
@@ -440,6 +463,70 @@ class CliffordAlgebra:
 
         result = coeff_part * B
         result[..., 0] = scalar_part.squeeze(-1)
+
+        return result
+
+    def _exp_adaptive(self, B: torch.Tensor) -> torch.Tensor:
+        """Adaptive exp for n >= 4: closed-form for simple, decomposed for non-simple.
+
+        1. Compute B^2 via one geometric product
+        2. Check simplicity: if grade-4+ energy in B^2 is negligible, B is simple
+        3. Simple path: _exp_bivector_closed(B) -- zero GPs, exact
+        4. Non-simple path: decompose via power iteration, closed-form each, compose via GP
+
+        Args:
+            B (torch.Tensor): Pure bivector [..., dim].
+
+        Returns:
+            torch.Tensor: Rotor exp(B) [..., dim].
+        """
+        B_sq = self.geometric_product(B, B)
+
+        # Check simplicity: simple bivectors have B^2 = scalar (grade-0 only)
+        # Non-simple bivectors have grade-4+ components in B^2
+        total_energy = (B_sq ** 2).sum(dim=-1)
+        scalar_energy = B_sq[..., 0] ** 2
+        # Fraction of energy NOT in grade-0
+        non_scalar_frac = 1.0 - scalar_energy / (total_energy + 1e-30)
+
+        # Threshold for simplicity
+        is_simple = non_scalar_frac < 1e-6  # [...] bool
+
+        if is_simple.all():
+            return self._exp_bivector_closed(B)
+        elif not is_simple.any():
+            return self._exp_decomposed_internal(B)
+        else:
+            # Mixed batch: compute both, select per-element
+            R_closed = self._exp_bivector_closed(B)
+            R_decomp = self._exp_decomposed_internal(B)
+            mask = is_simple.unsqueeze(-1).expand_as(R_closed)
+            return torch.where(mask, R_closed, R_decomp)
+
+    def _exp_decomposed_internal(self, B: torch.Tensor) -> torch.Tensor:
+        """Decompose bivector and exponentiate each simple component.
+
+        Args:
+            B (torch.Tensor): Non-simple bivector [..., dim].
+
+        Returns:
+            torch.Tensor: Rotor exp(B) [..., dim].
+        """
+        from core.decomposition import differentiable_invariant_decomposition
+
+        decomp, _ = differentiable_invariant_decomposition(self, B)
+
+        if len(decomp) == 0:
+            result = torch.zeros_like(B)
+            result[..., 0] = 1.0
+            return result
+
+        # Exponentiate each simple component with closed-form
+        rotors = [self._exp_bivector_closed(b_i) for b_i in decomp]
+
+        result = rotors[0]
+        for R_i in rotors[1:]:
+            result = self.geometric_product(result, R_i)
 
         return result
 

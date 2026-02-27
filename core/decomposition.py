@@ -87,10 +87,10 @@ def ga_power_iteration(
         v_norm = v.norm(dim=-1, keepdim=True)
         v = v / (v_norm + 1e-10)
 
-        # Check convergence
-        diff = (v - v_prev).norm(dim=-1)
-        if (diff < threshold).all():
-            break
+        # # Check convergence
+        # diff = (v - v_prev).norm(dim=-1)
+        # if (diff < threshold).all():
+        #     pass
 
     # Compute u = (b _| v) / ||(b _| v)||
     u = algebra.right_contraction(b, v)
@@ -154,10 +154,10 @@ def differentiable_invariant_decomposition(
     residual = b.clone()
 
     for i in range(k):
-        # Check if residual is negligible
-        residual_norm = residual.norm(dim=-1)
-        if (residual_norm < threshold).all():
-            break
+        # # Check if residual is negligible
+        # residual_norm = residual.norm(dim=-1)
+        # if (residual_norm < threshold).all():
+        #     break
 
         # Project out next simple bivector
         b_i, v_i = ga_power_iteration(
@@ -174,10 +174,11 @@ def differentiable_invariant_decomposition(
 
 
 def exp_simple_bivector(algebra, b: torch.Tensor) -> torch.Tensor:
-    """Exponentiates a simple bivector using closed-form expression.
+    """Exponentiates a simple bivector using the algebra's closed-form expression.
 
-    For simple bivectors, we have the closed form:
-        exp(b) = cos(||b||) + sin(||b||)/||b|| * b
+    Delegates to ``algebra._exp_bivector_closed(b)`` which correctly handles
+    all three signature regimes (elliptic, hyperbolic, parabolic) instead of
+    assuming Euclidean L2 norm.
 
     Reference:
         Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
@@ -190,24 +191,7 @@ def exp_simple_bivector(algebra, b: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: Rotor exp(b) [..., dim].
     """
-    # Compute bivector norm
-    b_norm = b.norm(dim=-1, keepdim=True)
-
-    # Avoid division by zero
-    b_norm_safe = torch.clamp(b_norm, min=1e-10)
-
-    # exp(b) = cos(||b||) + sin(||b||)/||b|| * b
-    cos_term = torch.cos(b_norm)
-    sin_term = torch.sin(b_norm) / b_norm_safe
-
-    # Initialize result with scalar part
-    result = torch.zeros_like(b)
-    result[..., 0] = cos_term.squeeze(-1)
-
-    # Add bivector part
-    result = result + sin_term * b
-
-    return result
+    return algebra._exp_bivector_closed(b)
 
 
 def exp_decomposed(
