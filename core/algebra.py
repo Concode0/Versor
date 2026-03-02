@@ -8,8 +8,15 @@
 # We believe Geometric Algebra is the future of AI, and we want 
 # the industry to build upon this "unbending" paradigm.
 
+"""Differentiable Clifford Algebra core.
+
+Implements the geometric product, grade projections, and rotor operations
+for arbitrary signatures Cl(p, q, r).
+"""
+
 import torch
 import math
+
 
 class CliffordAlgebra:
     """Differentiable Clifford algebra kernel with memory-optimized blocked accumulation.
@@ -61,11 +68,19 @@ class CliffordAlgebra:
             self.grade_masks,
             self.rev_signs,
             self.bv_sq_scalar,
+            self.wedge_gp_signs,
+            self.inner_gp_signs,
+            self.grade_index,
+            self.rc_action,
         ) = CliffordAlgebra._CACHED_TABLES[cache_key]
 
     @property
     def num_grades(self) -> int:
-        """Counts the number of grades (n + 1)."""
+        """Counts the number of grades (n + 1).
+
+        Returns:
+            int: Number of grades.
+        """
         return self.n + 1
 
     def embed_vector(self, vectors: torch.Tensor) -> torch.Tensor:
@@ -83,28 +98,34 @@ class CliffordAlgebra:
             mv[..., 1 << i] = vectors[..., i]
         return mv
 
-    def get_grade_norms(self, mv: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    def get_grade_norms(self, mv: torch.Tensor) -> torch.Tensor:
         """Calculates norms per grade. Useful for invariant features.
 
-        Uses numerically stable norm: sqrt(sum(x^2) + eps) to avoid
-        NaN gradients when grade components are zero.
+        Vectorized via scatter_add — no Python loops over grades.
 
         Args:
             mv (torch.Tensor): Input multivector [..., dim].
-            eps (float): Small constant for numerical stability.
 
         Returns:
             torch.Tensor: Grade norms [..., num_grades].
         """
+        gi = self.grade_index
+        if gi.device != mv.device:
+            gi = gi.to(mv.device)
         batch_shape = mv.shape[:-1]
-        res = torch.zeros(*batch_shape, self.num_grades, device=mv.device, dtype=mv.dtype)
-        for k in range(self.num_grades):
-            mv_k = self.grade_projection(mv, k)
-            res[..., k] = (mv_k.pow(2).sum(dim=-1) + eps).sqrt()
-        return res
+        sq = mv.pow(2)
+        flat = sq.reshape(-1, self.dim)
+        idx = gi.unsqueeze(0).expand_as(flat)
+        result = torch.zeros(flat.shape[0], self.num_grades, device=mv.device, dtype=mv.dtype)
+        result.scatter_add_(1, idx, flat)
+        return result.reshape(*batch_shape, self.num_grades).clamp(min=1e-6).sqrt()
 
     def _generate_cayley_table(self):
-        """Precompute the Cayley table, grade masks, and reversion signs."""
+        """Precompute the Cayley table, grade masks, and reversion signs.
+
+        Returns:
+            tuple: Cached tensors for algebra operations.
+        """
         indices = torch.arange(self.dim, device=self.device)
 
         # Result index = A XOR B
@@ -151,8 +172,45 @@ class CliffordAlgebra:
             bv_sq_scalar = torch.zeros(0, dtype=cayley_signs.dtype,
                                        device=self.device)
 
+        # Grade index: maps each basis element to its grade (popcount)
+        grade_index = torch.tensor([bin(i).count('1') for i in range(self.dim)],
+                                   dtype=torch.long, device=self.device)
+
+        # Precomputed signs for single-pass wedge and inner product
+        # wedge(A,B) = (AB - BA)/2 uses antisymmetric part of signs
+        # inner(A,B) = (AB + BA)/2 uses symmetric part of signs
+        wedge_cayley_signs = (cayley_signs - cayley_signs.T) / 2.0
+        inner_cayley_signs = (cayley_signs + cayley_signs.T) / 2.0
+        wedge_gp_signs = torch.gather(wedge_cayley_signs, 1, cayley_indices)
+        inner_gp_signs = torch.gather(inner_cayley_signs, 1, cayley_indices)
+
+        # Precomputed right-contraction action matrices for bivector-vector case
+        # rc_action[b, i, j] encodes how basis bivector b acts on grade-1 vectors
+        if self.n >= 2:
+            bv_mask_idx = bv_indices.tolist()
+            n = self.n
+            rc_action = torch.zeros(len(bv_mask_idx), n, n,
+                                    dtype=cayley_signs.dtype, device=self.device)
+            for idx_pos, blade_idx in enumerate(bv_mask_idx):
+                bits = []
+                for bit in range(n):
+                    if blade_idx & (1 << bit):
+                        bits.append(bit)
+                if len(bits) == 2:
+                    a, b_bit = bits
+                    s_a = 1.0 if a < self.p else (-1.0 if a < self.p + self.q else 0.0)
+                    s_b = 1.0 if b_bit < self.p else (-1.0 if b_bit < self.p + self.q else 0.0)
+                    # e_{ab} . e_b = s_b * e_a  (right contraction)
+                    rc_action[idx_pos, a, b_bit] = s_b
+                    # e_{ab} . e_a = -s_a * e_b
+                    rc_action[idx_pos, b_bit, a] = -s_a
+        else:
+            rc_action = torch.zeros(0, self.n, self.n,
+                                    dtype=cayley_signs.dtype, device=self.device)
+
         return (cayley_indices, cayley_signs, gp_signs, grade_masks,
-                rev_signs, bv_sq_scalar)
+                rev_signs, bv_sq_scalar, wedge_gp_signs, inner_gp_signs,
+                grade_index, rc_action)
 
     def _compute_signs(self, indices: torch.Tensor) -> torch.Tensor:
         """Compute the sign matrix from commutation parity and metric signature.
@@ -255,8 +313,8 @@ class CliffordAlgebra:
     def ensure_device(self, device) -> None:
         """Move cached tables to the given device if not already there.
 
-        Call once when device is known (e.g. in layer forward) to avoid
-        per-call .to() overhead in grade_projection / reverse / exp.
+        Args:
+            device (torch.device): Target device.
         """
         if self.cayley_indices.device == device:
             return
@@ -266,22 +324,28 @@ class CliffordAlgebra:
         self.grade_masks = [m.to(device) for m in self.grade_masks]
         self.rev_signs = self.rev_signs.to(device)
         self.bv_sq_scalar = self.bv_sq_scalar.to(device)
-        # Update cache so other instances sharing this key also benefit
+        self.wedge_gp_signs = self.wedge_gp_signs.to(device)
+        self.inner_gp_signs = self.inner_gp_signs.to(device)
+        self.grade_index = self.grade_index.to(device)
+        self.rc_action = self.rc_action.to(device)
+
         cache_key = (self.p, self.q, self.r, str(self.device))
         CliffordAlgebra._CACHED_TABLES[cache_key] = (
             self.cayley_indices, self.cayley_signs, self.gp_signs,
             self.grade_masks, self.rev_signs, self.bv_sq_scalar,
+            self.wedge_gp_signs, self.inner_gp_signs,
+            self.grade_index, self.rc_action,
         )
 
     def grade_projection(self, mv: torch.Tensor, grade: int) -> torch.Tensor:
         """Isolates a specific grade.
 
         Args:
-            mv (torch.Tensor): Multivector.
+            mv (torch.Tensor): Multivector [..., Dim].
             grade (int): Target grade.
 
         Returns:
-            torch.Tensor: Projected multivector.
+            torch.Tensor: Projected multivector [..., Dim].
         """
         mask = self.grade_masks[grade]
         if mask.device != mv.device:
@@ -294,10 +358,10 @@ class CliffordAlgebra:
         """Computes the reversion. The Clifford conjugate.
 
         Args:
-            mv (torch.Tensor): Input multivector.
+            mv (torch.Tensor): Input multivector [..., Dim].
 
         Returns:
-            torch.Tensor: Reversed multivector.
+            torch.Tensor: Reversed multivector [..., Dim].
         """
         rev = self.rev_signs
         if rev.device != mv.device or rev.dtype != mv.dtype:
@@ -307,7 +371,7 @@ class CliffordAlgebra:
     def wedge(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         """Computes the wedge (outer) product: A ^ B = (AB - BA)/2.
 
-        The wedge product is antisymmetric and grade-raising.
+        Single-pass implementation using precomputed antisymmetric signs.
 
         Reference:
             Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
@@ -320,37 +384,55 @@ class CliffordAlgebra:
         Returns:
             torch.Tensor: Wedge product A ^ B [..., dim].
         """
-        AB = self.geometric_product(A, B)
-        BA = self.geometric_product(B, A)
-        return (AB - BA) / 2.0
+        idx = self.cayley_indices
+        if idx.device != A.device:
+            self.ensure_device(A.device)
+            idx = self.cayley_indices
+        B_gathered = B[..., idx]
+        return (A.unsqueeze(-1) * B_gathered * self.wedge_gp_signs).sum(dim=-2)
 
     def right_contraction(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         """Computes the right contraction: A _| B.
 
-        For a bivector b and vector v, this extracts the grade-1 component
-        of the geometric product. This is the core operation in GA power iteration.
+        Fast path for bivector-vector case using precomputed skew-symmetric
+        action matrices (avoids full geometric product + grade projection).
 
         Reference:
             Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
             from Irreducibles." arXiv:2507.11688v1 [cs.LG], Algorithm 2
 
         Args:
-            A (torch.Tensor): Left operand [..., dim].
-            B (torch.Tensor): Right operand [..., dim].
+            A (torch.Tensor): Left operand (bivector) [..., dim].
+            B (torch.Tensor): Right operand (vector) [..., dim].
 
         Returns:
             torch.Tensor: Right contraction A _| B [..., dim].
         """
-        # Right contraction of A into B
-        # For bivector-vector contraction, we extract grade-1 component
-        AB = self.geometric_product(A, B)
-        return self.grade_projection(AB, 1)
+        bv_mask = self.grade_masks[2]
+        if bv_mask.device != A.device:
+            self.ensure_device(A.device)
+            bv_mask = self.grade_masks[2]
+
+        bv_coeffs = A[..., bv_mask]                          # [..., num_bv]
+        g1_idx = self.grade_masks[1].nonzero(as_tuple=False).squeeze(-1)
+        v_coeffs = B[..., g1_idx]                            # [..., n]
+
+        rc = self.rc_action
+        if rc.device != A.device or rc.dtype != A.dtype:
+            rc = rc.to(device=A.device, dtype=A.dtype)
+
+        # M[..., i, j] = sum_b bv_coeffs[..., b] * rc_action[b, i, j]
+        M = torch.einsum('...b, bij -> ...ij', bv_coeffs, rc)  # [..., n, n]
+        result_v = torch.matmul(M, v_coeffs.unsqueeze(-1)).squeeze(-1)  # [..., n]
+
+        result = torch.zeros_like(A)
+        result[..., g1_idx] = result_v
+        return result
 
     def inner_product(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         """Computes the inner product: A . B = (AB + BA)/2.
 
-        The inner product is symmetric and grade-lowering. Useful for computing
-        norms and scalar parts of multivectors.
+        Single-pass implementation using precomputed symmetric signs.
 
         Reference:
             Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
@@ -363,37 +445,34 @@ class CliffordAlgebra:
         Returns:
             torch.Tensor: Inner product A . B [..., dim].
         """
-        AB = self.geometric_product(A, B)
-        BA = self.geometric_product(B, A)
-        return (AB + BA) / 2.0
+        idx = self.cayley_indices
+        if idx.device != A.device:
+            self.ensure_device(A.device)
+            idx = self.cayley_indices
+        B_gathered = B[..., idx]
+        return (A.unsqueeze(-1) * B_gathered * self.inner_gp_signs).sum(dim=-2)
 
-    def exp(self, mv: torch.Tensor, order: int = 8) -> torch.Tensor:
-        """Exponentiates a bivector to generate a rotor.
+    def exp(self, mv: torch.Tensor) -> torch.Tensor:
+        """Exponentiates a bivector to produce a rotor via closed-form.
 
-        Uses closed-form formula for pure bivectors in any signature:
-            - Euclidean (B^2 < 0): exp(B) = cos|B| + sin|B|/|B| . B
-            - Hyperbolic (B^2 > 0): exp(B) = cosh|B| + sinh|B|/|B| . B
-            - Null (B^2 ~= 0): exp(B) ~= 1 + B
+        Three signature regimes:
+            - Elliptic  (B^2 < 0): exp(B) = cos(th) + sin(th)/th * B
+            - Hyperbolic (B^2 > 0): exp(B) = cosh(th) + sinh(th)/th * B
+            - Parabolic  (B^2 ~ 0): exp(B) ~ 1 + B
 
-        For n <= 3 the closed form is always exact (no disjoint bivector
-        pairs exist, so B^2 is always scalar).  For n >= 4, an adaptive
-        strategy is used: simple bivectors get closed-form, non-simple
-        bivectors are decomposed via power iteration then each component
-        is exponentiated in closed form.
+        For n <= 3 every bivector is simple, so the closed-form is exact.
+        For n >= 4 the closed-form is exact for simple bivectors and a
+        first-order approximation for non-simple ones.  Use
+        ``exp_decomposed()`` when exact non-simple handling is needed
+        (inference only — see ``core.decomposition``).
 
         Args:
-            mv (torch.Tensor): Input bivector or multivector.
-            order (int, optional): Taylor order for fallback. Defaults to 8.
+            mv (torch.Tensor): Pure bivector [..., dim].
 
         Returns:
-            torch.Tensor: exp(mv).
+            torch.Tensor: Rotor exp(mv) [..., dim].
         """
-        if self.n <= 3:
-            # Exact: no disjoint bivector pairs -> B^2 is always scalar
-            return self._exp_bivector_closed(mv)
-        else:
-            # n >= 4: adaptive strategy based on simplicity check
-            return self._exp_adaptive(mv)
+        return self._exp_bivector_closed(mv)
 
     def _exp_bivector_closed(self, B: torch.Tensor) -> torch.Tensor:
         """Closed-form exponential for bivectors in arbitrary signature.
@@ -466,79 +545,15 @@ class CliffordAlgebra:
 
         return result
 
-    def _exp_adaptive(self, B: torch.Tensor) -> torch.Tensor:
-        """Adaptive exp for n >= 4: closed-form for simple, decomposed for non-simple.
-
-        1. Compute B^2 via one geometric product
-        2. Check simplicity: if grade-4+ energy in B^2 is negligible, B is simple
-        3. Simple path: _exp_bivector_closed(B) -- zero GPs, exact
-        4. Non-simple path: decompose via power iteration, closed-form each, compose via GP
-
-        Args:
-            B (torch.Tensor): Pure bivector [..., dim].
-
-        Returns:
-            torch.Tensor: Rotor exp(B) [..., dim].
-        """
-        B_sq = self.geometric_product(B, B)
-
-        # Check simplicity: simple bivectors have B^2 = scalar (grade-0 only)
-        # Non-simple bivectors have grade-4+ components in B^2
-        total_energy = (B_sq ** 2).sum(dim=-1)
-        scalar_energy = B_sq[..., 0] ** 2
-        # Fraction of energy NOT in grade-0
-        non_scalar_frac = 1.0 - scalar_energy / (total_energy + 1e-30)
-
-        # Threshold for simplicity
-        is_simple = non_scalar_frac < 1e-6  # [...] bool
-
-        if is_simple.all():
-            return self._exp_bivector_closed(B)
-        elif not is_simple.any():
-            return self._exp_decomposed_internal(B)
-        else:
-            # Mixed batch: compute both, select per-element
-            R_closed = self._exp_bivector_closed(B)
-            R_decomp = self._exp_decomposed_internal(B)
-            mask = is_simple.unsqueeze(-1).expand_as(R_closed)
-            return torch.where(mask, R_closed, R_decomp)
-
-    def _exp_decomposed_internal(self, B: torch.Tensor) -> torch.Tensor:
-        """Decompose bivector and exponentiate each simple component.
-
-        Args:
-            B (torch.Tensor): Non-simple bivector [..., dim].
-
-        Returns:
-            torch.Tensor: Rotor exp(B) [..., dim].
-        """
-        from core.decomposition import differentiable_invariant_decomposition
-
-        decomp, _ = differentiable_invariant_decomposition(self, B)
-
-        if len(decomp) == 0:
-            result = torch.zeros_like(B)
-            result[..., 0] = 1.0
-            return result
-
-        # Exponentiate each simple component with closed-form
-        rotors = [self._exp_bivector_closed(b_i) for b_i in decomp]
-
-        result = rotors[0]
-        for R_i in rotors[1:]:
-            result = self.geometric_product(result, R_i)
-
-        return result
-
     def _exp_taylor(self, mv: torch.Tensor, order: int = 8) -> torch.Tensor:
         """Taylor series exponential with scaling-and-squaring (fallback).
 
         Args:
-            mv (torch.Tensor): General multivector.
+            mv (torch.Tensor): General multivector [..., dim].
             order (int, optional): Taylor order. Defaults to 8.
 
         Returns:
-            torch.Tensor: exp(mv).
+            torch.Tensor: exp(mv) [..., dim].
         """
         norm = mv.norm(dim=-1, keepdim=True)
         k = torch.ceil(torch.log2(torch.clamp(norm, min=1.0))).int()
@@ -566,29 +581,31 @@ class CliffordAlgebra:
         return res
 
     def exp_decomposed(self, mv: torch.Tensor, **kwargs) -> torch.Tensor:
-        """Exponentiates a bivector using optional decomposition.
+        """Exponentiates a bivector via decomposition into simple components.
 
-        This method provides an alternative to the standard exp() that decomposes
-        the bivector into simple components before exponentiating. This can be
-        more parameter-efficient and interpretable for certain applications.
+        Decomposes a general bivector into a sum of simple (blade) bivectors
+        using GA power iteration, exponentiates each in closed form, then
+        composes via geometric product.  Exact for all bivectors, but the
+        power iteration loop is not differentiable through its normalization
+        steps.  During training the loop is detached and gradients flow only
+        through the final closed-form exp + composition.
 
         Reference:
-            Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
-            from Irreducibles." arXiv:2507.11688v1 [cs.LG]
+            Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear
+            Layers from Irreducibles." arXiv:2507.11688v1 [cs.LG]
 
         Args:
-            mv (torch.Tensor): Input bivector [..., dim].
-            **kwargs: Additional arguments passed to core.decomposition.exp_decomposed.
-                use_decomposition (bool): If True, use decomposition. Default True.
-                k (int, optional): Number of simple components.
+            mv (torch.Tensor): Pure bivector [..., dim].
+            **kwargs: Forwarded to ``core.decomposition.exp_decomposed``.
+                use_decomposition (bool): Enable decomposition. Default True.
+                k (int | None): Number of simple components (auto if None).
                 threshold (float): Convergence threshold. Default 1e-6.
-                max_iterations (int): Max iterations. Default 100.
+                max_iterations (int): Power iteration cap. Default 100.
 
         Returns:
             torch.Tensor: Rotor exp(mv) [..., dim].
         """
         from core.decomposition import exp_decomposed
-        # Set default to actually use decomposition
         if 'use_decomposition' not in kwargs:
             kwargs['use_decomposition'] = True
         return exp_decomposed(self, mv, **kwargs)

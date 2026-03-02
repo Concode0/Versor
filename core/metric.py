@@ -134,8 +134,8 @@ def grade_purity(algebra: CliffordAlgebra, A: torch.Tensor, grade: int) -> torch
     
     # Compute energies (using standard squared norm of coefficients for stability)
     energy_k = (A_k ** 2).sum(dim=-1)
-    energy_total = (A ** 2).sum(dim=-1) + 1e-9
-    
+    energy_total = (A ** 2).sum(dim=-1).clamp(min=1e-6)
+
     return energy_k / energy_total
 
 def mean_active_grade(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor:
@@ -150,7 +150,7 @@ def mean_active_grade(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor
     Returns:
         torch.Tensor: Average grade index.
     """
-    energy_total = (A ** 2).sum(dim=-1) + 1e-9
+    energy_total = (A ** 2).sum(dim=-1).clamp(min=1e-6)
     weighted_sum = torch.zeros_like(energy_total)
     
     for k in range(algebra.n + 1):
@@ -277,7 +277,7 @@ def hermitian_angle(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) 
     ip = hermitian_inner_product(algebra, A, B)
     norm_a = hermitian_norm(algebra, A)
     norm_b = hermitian_norm(algebra, B)
-    cos_theta = ip / (norm_a * norm_b + 1e-8)
+    cos_theta = ip / (norm_a * norm_b).clamp(min=1e-6)
     cos_theta = torch.clamp(cos_theta, -1.0, 1.0)
     return torch.acos(cos_theta)
 

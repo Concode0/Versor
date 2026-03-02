@@ -17,108 +17,468 @@ probe whether causal structure is visible in a dataset's multivector geometry.
 """
 
 import torch
-import itertools
+import torch.nn as nn
+import warnings
+import copy
+import concurrent.futures
 from typing import Tuple, List, Optional, Dict
 from core.algebra import CliffordAlgebra
 from core.metric import induced_norm
+from layers.linear import CliffordLinear
+from layers.rotor import RotorLayer
+from layers.projection import BladeSelector
+
+
+class _SignatureProbe(nn.Module):
+    """Minimal single-rotor probe for bivector energy analysis.
+
+    Architecture: CliffordLinear(1, C) -> RotorLayer(C) -> BladeSelector(C).
+    Only one linear layer for channel expansion; the rotor bivector energy
+    is the primary signal for signature discovery.
+    """
+
+    def __init__(self, algebra: CliffordAlgebra, channels: int = 4):
+        """Initialize Signature Probe.
+
+        Args:
+            algebra (CliffordAlgebra): CliffordAlgebra instance.
+            channels (int): Channel count.
+        """
+        super().__init__()
+        self.algebra = algebra
+        self.linear_in = CliffordLinear(algebra, 1, channels)
+        self.rotor = RotorLayer(algebra, channels)
+        self.linear_out = CliffordLinear(algebra, channels, 1)
+        self.selector = BladeSelector(algebra, 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+            x (torch.Tensor): [N, 1, dim] input tokens.
+
+        Returns:
+            torch.Tensor: [N, 1, dim] output tokens.
+        """
+        x = self.linear_in(x)   # [N, C, dim]
+        x = self.rotor(x)       # [N, C, dim]
+        x = self.linear_out(x)  # [N, 1, dim]
+        x = self.selector(x)
+        return x
+
+    def get_rotor_layers(self) -> List[RotorLayer]:
+        """Returns all RotorLayer modules for post-training analysis.
+
+        Returns:
+            List[RotorLayer]: List of rotor layers in the probe.
+        """
+        return [m for m in self.modules() if isinstance(m, RotorLayer)]
+
+
+def _apply_biased_init(probe: _SignatureProbe, algebra: CliffordAlgebra,
+                       bias_type: str = 'random') -> None:
+    """Biases RotorLayer bivector weights based on signature type.
+
+    Uses ``algebra.bv_sq_scalar`` to classify each basis bivector:
+    - bv_sq = -1: elliptic (positive-signature base vectors)
+    - bv_sq = +1: hyperbolic (mixed-signature base vectors)
+    - bv_sq =  0: null (degenerate base vectors)
+
+    Args:
+        probe (_SignatureProbe): The probe model to initialize.
+        algebra (CliffordAlgebra): The algebra for signature classification.
+        bias_type (str): One of 'euclidean', 'minkowski', 'projective', 'random'.
+    """
+    bv_sq = algebra.bv_sq_scalar  # [num_bivectors]
+    for rotor in probe.get_rotor_layers():
+        with torch.no_grad():
+            if bias_type == 'euclidean':
+                # Heavy weight on elliptic bivectors (bv_sq = -1)
+                weights = torch.where(bv_sq < -0.5, torch.tensor(1.0), torch.tensor(0.1))
+                rotor.bivector_weights.copy_(
+                    weights.unsqueeze(0).expand_as(rotor.bivector_weights)
+                    + torch.randn_like(rotor.bivector_weights) * 0.05
+                )
+            elif bias_type == 'minkowski':
+                # Mixed elliptic + hyperbolic
+                weights = torch.where(
+                    bv_sq.abs() > 0.5, torch.tensor(1.0), torch.tensor(0.1)
+                )
+                rotor.bivector_weights.copy_(
+                    weights.unsqueeze(0).expand_as(rotor.bivector_weights)
+                    + torch.randn_like(rotor.bivector_weights) * 0.05
+                )
+            elif bias_type == 'projective':
+                # Uniform across all types including null
+                nn.init.uniform_(rotor.bivector_weights, -0.5, 0.5)
+            else:  # 'random'
+                nn.init.normal_(rotor.bivector_weights, 0.0, 0.3)
 
 
 class MetricSearch:
-    """Finds the optimal signature (p, q).
+    """Learns optimal (p, q, r) signature via GBN probe training and bivector
+    energy analysis.
 
-    It calculates distortion. If the distortion is low, the manifold is preserved.
+    Trains small single-rotor GBN probes on conformally-lifted data using
+    coherence + curvature as the loss. After training, reads the learned
+    bivector energy distribution to infer the optimal signature.
+
+    Multiple probes with biased initialization combat local minima.
     """
 
-    def __init__(self, device: str = 'cpu'):
-        self.device = device
-
-    def _compute_pairwise_distances(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute pairwise Euclidean distances as a reference baseline."""
-        # x: [N, D]
-        # dist: [N, N]
-        diff = x.unsqueeze(1) - x.unsqueeze(0)
-        return torch.norm(diff, dim=-1)
-
-    def evaluate_signature(self, data: torch.Tensor, p: int, q: int) -> float:
-        """Measures the geometric distortion introduced by the algebra.
-
-        Stress = || D_euc - D_geo(p,q) ||_F / || D_euc ||_F.
+    def __init__(
+        self,
+        device: str = 'cpu',
+        num_probes: int = 6,
+        probe_epochs: int = 80,
+        probe_lr: float = 0.005,
+        probe_channels: int = 4,
+        k: int = 8,
+        energy_threshold: float = 0.05,
+        curvature_weight: float = 0.3,
+        sparsity_weight: float = 0.01,
+        max_workers: Optional[int] = None,
+        micro_batch_size: Optional[int] = None,
+        early_stop_patience: int = 0,
+    ):
+        """Initialize Metric Search.
 
         Args:
-            data (torch.Tensor): Input data [Batch, Dim].
-            p (int): Positive dimensions.
-            q (int): Negative dimensions.
+            device (str): Computation device.
+            num_probes (int): Number of parallel probes to train.
+            probe_epochs (int): Epochs per probe training.
+            probe_lr (float): Learning rate for probes.
+            probe_channels (int): Channels in probe models.
+            k (int): Nearest neighbors for flow analysis.
+            energy_threshold (float): Energy cutoff for active base vectors.
+            curvature_weight (float): Curvature penalty in probe loss.
+            sparsity_weight (float): Sparsity penalty in probe loss.
+            max_workers (int, optional): Max threads for parallel training.
+            micro_batch_size (int, optional): If set, train probes on random
+                micro-batches of this size each epoch instead of full data.
+            early_stop_patience (int): Stop probe training if best loss has
+                not improved for this many epochs. 0 disables early stopping.
+        """
+        self.device = device
+        self.num_probes = num_probes
+        self.probe_epochs = probe_epochs
+        self.probe_lr = probe_lr
+        self.probe_channels = probe_channels
+        self.k = k
+        self.energy_threshold = energy_threshold
+        self.curvature_weight = curvature_weight
+        self.sparsity_weight = sparsity_weight
+        self.max_workers = max_workers
+        self.micro_batch_size = micro_batch_size
+        self.early_stop_patience = early_stop_patience
+
+    def _lift_data(self, data: torch.Tensor) -> Tuple[torch.Tensor, CliffordAlgebra]:
+        """Lifts [N, X] data into Cl(X+1, 1, 0) via CGA-style embedding.
+
+        Adds 2 extra dimensions (one positive, one negative):
+            lifted = [x_1..x_X, 0.5*||x||^2, 1.0]
+
+        Args:
+            data (torch.Tensor): Input data [N, X].
 
         Returns:
-            float: Distortion score. Lower is better.
+            Tuple[torch.Tensor, CliffordAlgebra]: (mv_data [N, 1, dim], algebra).
         """
-        # Move data to the correct device
         data = data.to(self.device)
+        N, X = data.shape
 
-        N, D = data.shape
-        if p + q != D:
-            raise ValueError(f"Signature (p={p}, q={q}) must sum to data dimension {D}")
+        if X + 2 > 8:
+            warnings.warn(
+                f"Data dimension {X} yields algebra dim 2^{X+2}={2**(X+2)}. "
+                f"Consider PCA pre-reduction to X <= 6 for tractable computation."
+            )
 
-        # 1. Compute target pairwise distances (Euclidean/Intrinsic reference)
-        algebra = CliffordAlgebra(p, q, device=self.device)
+        # CGA-style: [x, 0.5*||x||^2, 1.0]
+        norm_sq = 0.5 * (data ** 2).sum(dim=-1, keepdim=True)
+        ones = torch.ones(N, 1, device=self.device, dtype=data.dtype)
+        lifted = torch.cat([data, norm_sq, ones], dim=-1)  # [N, X+2]
 
-        # Embed data as vectors
-        # Calculate pairwise geometric distances
-        diff_coeffs = data.unsqueeze(1) - data.unsqueeze(0) # [N, N, D]
+        algebra = CliffordAlgebra(X + 1, 1, 0, device=self.device)
+        mv = algebra.embed_vector(lifted)  # [N, 2^(X+2)]
+        mv = mv.unsqueeze(1)  # [N, 1, dim]
+        return mv, algebra
 
-        # Map coefficients to multivector basis indices
-        diff_flat = diff_coeffs.view(-1, D)
+    def _train_probe(
+        self,
+        mv_data: torch.Tensor,
+        algebra: CliffordAlgebra,
+        bias_type: str = 'random',
+    ) -> Dict:
+        """Trains a single probe and returns results.
 
-        mv = torch.zeros(diff_flat.shape[0], algebra.dim, device=self.device)
-        for i in range(D):
-            mv[:, 1 << i] = diff_flat[:, i]
+        Args:
+            mv_data (torch.Tensor): Conformally lifted data [N, 1, dim].
+            algebra (CliffordAlgebra): The conformal algebra.
+            bias_type (str): Initialization bias type.
 
-        # Compute induced norms
-        dists_geo = induced_norm(algebra, mv) # [N*N, 1]
-        dists_geo = dists_geo.view(N, N)
+        Returns:
+            Dict: Results with 'loss', 'coherence', 'curvature', 'probe'.
+        """
+        probe = _SignatureProbe(algebra, channels=self.probe_channels)
+        probe.to(self.device)
+        _apply_biased_init(probe, algebra, bias_type)
 
-        # Reference: Euclidean Distance
-        dists_euc = self._compute_pairwise_distances(data)
+        gf = GeodesicFlow(algebra, k=self.k)
+        optimizer = torch.optim.Adam(probe.parameters(), lr=self.probe_lr)
 
-        # Stress
-        stress = torch.norm(dists_euc - dists_geo) / (torch.norm(dists_euc) + 1e-8)
-        return stress.item()
+        best_loss = float('inf')
+        best_state = None
+        patience_counter = 0
+        N = mv_data.shape[0]
 
-    def search(self, data: torch.Tensor, limit_combinations: int = 10) -> Tuple[int, int]:
-        """Find the optimal signature by exhaustive evaluation.
+        for _ in range(self.probe_epochs):
+            # Micro-batch: sample a random subset each epoch
+            if self.micro_batch_size and self.micro_batch_size < N:
+                idx = torch.randperm(N, device=mv_data.device)[:self.micro_batch_size]
+                batch = mv_data[idx]
+            else:
+                batch = mv_data
+
+            optimizer.zero_grad()
+            output = probe(batch)  # [B, 1, dim]
+            output_flat = output.squeeze(1)  # [B, dim]
+
+            coherence_t = gf._coherence_tensor(output_flat)
+            curvature_t = gf._curvature_tensor(output_flat)
+
+            sparsity = sum(
+                r.sparsity_loss() for r in probe.get_rotor_layers()
+            )
+
+            loss = (
+                -coherence_t
+                + self.curvature_weight * curvature_t
+                + self.sparsity_weight * sparsity
+            )
+
+            loss.backward()
+            optimizer.step()
+
+            loss_val = loss.item()
+            if loss_val < best_loss:
+                best_loss = loss_val
+                best_state = copy.deepcopy(probe.state_dict())
+                patience_counter = 0
+            elif self.early_stop_patience > 0:
+                patience_counter += 1
+                if patience_counter >= self.early_stop_patience:
+                    break
+
+        # Restore best
+        if best_state is not None:
+            probe.load_state_dict(best_state)
+
+        # Final metrics
+        with torch.no_grad():
+            output = probe(mv_data).squeeze(1)
+            coh = gf.coherence(output)
+            curv = gf.curvature(output)
+
+        return {
+            'loss': best_loss,
+            'coherence': coh,
+            'curvature': curv,
+            'probe': probe,
+        }
+
+    def _analyze_bivector_energy(
+        self,
+        probe: _SignatureProbe,
+        algebra: CliffordAlgebra,
+        original_dim: int,
+    ) -> Tuple[Tuple[int, int, int], Dict]:
+        """Maps learned bivector energy to (p, q, r) signature.
+
+        Algorithm:
+        1. Collect bivector_weights from all RotorLayers -> energy = weight^2
+        2. Average across channels
+        3. For each basis bivector e_ab, look up bv_sq_scalar:
+           -1 -> elliptic, +1 -> hyperbolic, 0 -> null
+        4. Collect active base vector indices (energy > threshold) by type
+        5. Subtract 2 conformal dimensions from counts -> (p, q, r)
+
+        Args:
+            probe (_SignatureProbe): Trained probe model.
+            algebra (CliffordAlgebra): The conformal algebra.
+            original_dim (int): Original data dimension X (before lifting).
+
+        Returns:
+            Tuple[Tuple[int, int, int], Dict]: ((p, q, r), energy_breakdown dict).
+        """
+        bv_sq = algebra.bv_sq_scalar  # [num_bivectors]
+        bv_mask = algebra.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+
+        # Collect energy from all rotor layers
+        total_energy = torch.zeros(len(bv_indices), device=self.device)
+        n_layers = 0
+        for rotor in probe.get_rotor_layers():
+            with torch.no_grad():
+                # [channels, num_bivectors] -> energy = weight^2, mean across channels
+                energy = (rotor.bivector_weights ** 2).mean(dim=0)
+                total_energy += energy
+                n_layers += 1
+
+        if n_layers > 0:
+            total_energy /= n_layers
+
+        # Normalize
+        max_energy = total_energy.max().clamp(min=1e-8)
+        normalized_energy = total_energy / max_energy
+
+        # Classify base vectors by their bivector participation
+        n = algebra.n
+        base_type = {}  # base_vector_index -> set of signature types it participates in
+        base_active = {}  # base_vector_index -> max energy
+
+        for bv_idx_pos, blade_idx in enumerate(bv_indices.tolist()):
+            energy_val = normalized_energy[bv_idx_pos].item()
+            # Decode which base vectors form this bivector
+            bits = []
+            for bit in range(n):
+                if blade_idx & (1 << bit):
+                    bits.append(bit)
+            if len(bits) != 2:
+                continue
+
+            sq_val = bv_sq[bv_idx_pos].item()
+            if sq_val < -0.5:
+                sig_type = 'elliptic'
+            elif sq_val > 0.5:
+                sig_type = 'hyperbolic'
+            else:
+                sig_type = 'null'
+
+            for b in bits:
+                if b not in base_type:
+                    base_type[b] = set()
+                    base_active[b] = 0.0
+                base_type[b].add(sig_type)
+                base_active[b] = max(base_active[b], energy_val)
+
+        # Count active base vectors by dominant type
+        active_positive = 0  # base vectors mostly in elliptic bivectors
+        active_negative = 0  # base vectors in hyperbolic bivectors
+        active_null = 0  # base vectors in null bivectors
+
+        for b_idx in range(n):
+            if b_idx not in base_active or base_active[b_idx] < self.energy_threshold:
+                continue
+            types = base_type.get(b_idx, set())
+            if 'null' in types and 'elliptic' not in types and 'hyperbolic' not in types:
+                active_null += 1
+            elif 'hyperbolic' in types:
+                active_negative += 1
+            else:
+                active_positive += 1
+
+        # Subtract 2 conformal dimensions (1 positive + 1 negative from CGA lift)
+        p = max(0, active_positive - 1)
+        q = max(0, active_negative - 1)
+        r = active_null
+
+        # Clamp to original data dimension
+        total = p + q + r
+        if total > original_dim:
+            # Scale down proportionally
+            scale = original_dim / max(total, 1)
+            p = max(1, round(p * scale))
+            q = round(q * scale)
+            r = round(r * scale)
+            # Ensure they sum to <= original_dim
+            while p + q + r > original_dim:
+                if r > 0:
+                    r -= 1
+                elif q > 0:
+                    q -= 1
+                else:
+                    p -= 1
+        elif total == 0:
+            p = original_dim  # Default to Euclidean
+
+        energy_breakdown = {
+            'per_bivector_energy': normalized_energy.tolist(),
+            'active_positive': active_positive,
+            'active_negative': active_negative,
+            'active_null': active_null,
+            'bv_sq_scalar': bv_sq.tolist(),
+        }
+
+        return (p, q, r), energy_breakdown
+
+    def search(self, data: torch.Tensor) -> Tuple[int, int, int]:
+        """Returns optimal (p, q, r) signature for the data.
 
         Args:
             data (torch.Tensor): Input data [N, D].
-            limit_combinations (int): Unused. All combinations are evaluated.
 
         Returns:
-            Tuple[int, int]: The optimal (p, q).
+            Tuple[int, int, int]: Optimal signature (p, q, r).
         """
-        N, D = data.shape
-        best_pq = (D, 0) # Default to Euclidean
-        best_score = float('inf')
+        result = self.search_detailed(data)
+        return result['signature']
 
-        # Iterate over all p+q = D
-        candidates = []
-        for q in range(D + 1):
-            p = D - q
-            candidates.append((p, q))
+    def search_detailed(self, data: torch.Tensor) -> Dict:
+        """Returns signature and full diagnostics.
 
-        results = []
-        for p, q in candidates:
-            score = self.evaluate_signature(data, p, q)
-            results.append(((p, q), score))
+        Args:
+            data (torch.Tensor): Input data [N, D].
 
-            if score < best_score:
-                best_score = score
-                best_pq = (p, q)
+        Returns:
+            Dict: Diagnostics with 'signature', 'coherence', 'curvature',
+                'energy_breakdown', 'per_probe_results'.
+        """
+        data = data.to(self.device)
+        N, X = data.shape
 
-        return best_pq
+        # Conformal lift
+        mv_data, algebra = self._lift_data(data)
 
+        # Bias schedule: first 3 are deterministic, rest random
+        bias_types = ['euclidean', 'minkowski', 'projective']
+        while len(bias_types) < self.num_probes:
+            bias_types.append('random')
+        bias_types = bias_types[:self.num_probes]
 
-# ---------------------------------------------------------------------------
-# Geodesic Flow
-# ---------------------------------------------------------------------------
+        # Train probes
+        def _run_probe(bias_type):
+            return self._train_probe(mv_data, algebra, bias_type)
+
+        if self.num_probes <= 2:
+            # Sequential for small probe counts
+            probe_results = [_run_probe(bt) for bt in bias_types]
+        else:
+            # Parallel with threads (avoids pickle issues, PyTorch releases GIL)
+            max_w = self.max_workers or min(self.num_probes, 4)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_w) as pool:
+                futures = [pool.submit(_run_probe, bt) for bt in bias_types]
+                probe_results = [f.result() for f in futures]
+
+        # Select best probe by loss
+        best_idx = min(range(len(probe_results)), key=lambda i: probe_results[i]['loss'])
+        best = probe_results[best_idx]
+
+        # Analyze bivector energy
+        signature, energy_breakdown = self._analyze_bivector_energy(
+            best['probe'], algebra, X
+        )
+
+        return {
+            'signature': signature,
+            'coherence': best['coherence'],
+            'curvature': best['curvature'],
+            'energy_breakdown': energy_breakdown,
+            'per_probe_results': [
+                {'loss': r['loss'], 'coherence': r['coherence'], 'curvature': r['curvature']}
+                for r in probe_results
+            ],
+        }
+
 
 class GeodesicFlow:
     """Geodesic flow analysis in Clifford algebra.
@@ -141,19 +501,17 @@ class GeodesicFlow:
       one direction.  Causality is visible.
     - **Low coherence, high curvature** -> the flow is fragmented and
       collides with itself.  The signal is dominated by noise.
-
-    Args:
-        algebra (CliffordAlgebra): The algebra instance.
-        k (int): Number of nearest neighbours for the flow field.
     """
 
     def __init__(self, algebra: CliffordAlgebra, k: int = 8):
+        """Initialize Geodesic Flow.
+
+        Args:
+            algebra (CliffordAlgebra): The algebra instance.
+            k (int): Number of nearest neighbours for the flow field.
+        """
         self.algebra = algebra
         self.k = k
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
 
     def _embed(self, data: torch.Tensor) -> torch.Tensor:
         """Embeds raw vectors into the grade-1 multivector subspace.
@@ -193,10 +551,6 @@ class GeodesicFlow:
         dists.fill_diagonal_(float('inf'))
         _, idx = dists.topk(k, dim=-1, largest=False)
         return idx                                    # [N, k]
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def _connection_bivectors(self, mv: torch.Tensor) -> torch.Tensor:
         """Computes unit connection bivectors for all (point, neighbour) pairs.
@@ -248,6 +602,26 @@ class GeodesicFlow:
         bv = self._connection_bivectors(mv)   # [N, k, dim]
         return bv.mean(dim=1)                 # [N, dim]
 
+    def _coherence_tensor(self, mv: torch.Tensor) -> torch.Tensor:
+        """Differentiable coherence — returns a scalar tensor with grad_fn.
+
+        Args:
+            mv (torch.Tensor): ``[N, dim]`` multivectors.
+
+        Returns:
+            torch.Tensor: Scalar coherence in [0, 1].
+        """
+        bv = self._connection_bivectors(mv)   # [N, k, dim]
+        N, k, D = bv.shape
+
+        bi = bv.unsqueeze(2)                  # [N, k, 1, dim]
+        bj = bv.unsqueeze(1)                  # [N, 1, k, dim]
+        abs_cos = (bi * bj).sum(dim=-1).abs() # [N, k, k]
+
+        mask = ~torch.eye(k, dtype=torch.bool, device=mv.device)  # [k, k]
+        off_diag = abs_cos[:, mask]           # [N, k*(k-1)]
+        return off_diag.mean()
+
     def coherence(self, mv: torch.Tensor) -> float:
         """Measures concentration of connection bivectors within each neighbourhood.
 
@@ -270,18 +644,31 @@ class GeodesicFlow:
         Returns:
             float: Coherence score in [0, 1].
         """
+        return self._coherence_tensor(mv).item()
+
+    def _curvature_tensor(self, mv: torch.Tensor) -> torch.Tensor:
+        """Differentiable curvature — returns a scalar tensor with grad_fn.
+
+        Args:
+            mv (torch.Tensor): ``[N, dim]`` multivectors.
+
+        Returns:
+            torch.Tensor: Scalar curvature in [0, 1].
+        """
         bv = self._connection_bivectors(mv)   # [N, k, dim]
         N, k, D = bv.shape
+        nn_idx = self._knn(mv)                # [N, k_nn]
 
-        # Pairwise absolute cosine similarity within each neighbourhood
-        bi = bv.unsqueeze(2)                  # [N, k, 1, dim]
-        bj = bv.unsqueeze(1)                  # [N, 1, k, dim]
-        abs_cos = (bi * bj).sum(dim=-1).abs() # [N, k, k]
+        bi = bv.unsqueeze(2)                             # [N, k, 1, dim]
+        bj_all = bv[nn_idx]                              # [N, k_nn, k, dim]
 
-        # Exclude self-pairs (diagonal)
-        mask = ~torch.eye(k, dtype=torch.bool, device=mv.device)  # [k, k]
-        off_diag = abs_cos[:, mask]           # [N, k*(k-1)]
-        return off_diag.mean().item()
+        bj = bj_all[:, 0]                                # [N, k, dim]
+        bj = bj.unsqueeze(1)                             # [N, 1, k, dim]
+
+        cross_cos = (bi * bj).sum(dim=-1).abs()          # [N, k, k]
+        alignment = cross_cos.mean(dim=(-1, -2))         # [N]
+
+        return 1.0 - alignment.mean()
 
     def curvature(self, mv: torch.Tensor) -> float:
         """Measures how much connection structure changes across the manifold.
@@ -306,24 +693,7 @@ class GeodesicFlow:
         Returns:
             float: Curvature score in [0, 1].
         """
-        bv = self._connection_bivectors(mv)   # [N, k, dim]
-        N, k, D = bv.shape
-        nn_idx = self._knn(mv)                # [N, k_nn]
-
-        # For each neighbouring pair (i, j): cross-set mean |cos|
-        bi = bv.unsqueeze(2)                             # [N, k, 1, dim]
-        bj_all = bv[nn_idx]                              # [N, k_nn, k, dim]
-
-        # Flatten for efficient computation: compare point i's set against
-        # point j's set for the first knn neighbour only (most representative)
-        # Use first neighbour for a stable, fast estimate
-        bj = bj_all[:, 0]                                # [N, k, dim] - first neighbour's set
-        bj = bj.unsqueeze(1)                             # [N, 1, k, dim]
-
-        cross_cos = (bi * bj).sum(dim=-1).abs()          # [N, k, k]
-        alignment = cross_cos.mean(dim=(-1, -2))         # [N]
-
-        return (1.0 - alignment.mean()).item()
+        return self._curvature_tensor(mv).item()
 
     def interpolate(
         self,
@@ -391,8 +761,7 @@ class GeodesicFlow:
             data (torch.Tensor): ``[N, d]`` raw data.
 
         Returns:
-            dict with keys: ``coherence``, ``curvature``, ``causal``,
-            ``label``.
+            Dict: report with keys ``coherence``, ``curvature``, ``causal``, ``label``.
         """
         mv = self._embed(data)
         coh = self.coherence(mv)
@@ -410,10 +779,6 @@ class GeodesicFlow:
         }
 
 
-# ---------------------------------------------------------------------------
-# Dimension Lifting
-# ---------------------------------------------------------------------------
-
 class DimensionLifter:
     """Tests whether lifting data to a higher-dimensional algebra reveals structure.
 
@@ -429,12 +794,14 @@ class DimensionLifter:
 
     After lifting, geodesic flow coherence is re-measured.  An improvement
     indicates that the extra dimension captures hidden geometric structure.
-
-    Args:
-        device (str): Computation device.
     """
 
     def __init__(self, device: str = 'cpu'):
+        """Initialize Dimension Lifter.
+
+        Args:
+            device (str): Computation device.
+        """
         self.device = device
 
     def lift(
@@ -494,8 +861,8 @@ class DimensionLifter:
             k (int): Nearest neighbours for geodesic flow.
 
         Returns:
-            dict with keys ``original``, ``lift_positive``, ``lift_null``,
-            and ``best`` (name of the algebra with highest coherence).
+            Dict: results with keys ``original``, ``lift_positive``, ``lift_null``,
+                and ``best`` (name of the algebra with highest coherence).
         """
         data = data.to(self.device)
         N, d = data.shape
@@ -540,7 +907,7 @@ class DimensionLifter:
         """Renders a lifting test result as a human-readable string.
 
         Args:
-            results (dict): Output of :meth:`test`.
+            results (Dict): Output of :meth:`test`.
 
         Returns:
             str: Multi-line report.

@@ -8,8 +8,14 @@
 # We believe Geometric Algebra is the future of AI, and we want 
 # the industry to build upon this "unbending" paradigm.
 
+"""Conformal Geometric Algebra (CGA) utilities.
+
+Helpers to map between Euclidean space and the conformal null cone.
+"""
+
 import torch
 from core.algebra import CliffordAlgebra
+
 
 class ConformalAlgebra:
     """Helper for CGA. Handles Conformal Geometric Algebra operations.
@@ -19,8 +25,9 @@ class ConformalAlgebra:
     Attributes:
         d (int): Euclidean dimension.
         algebra (CliffordAlgebra): The higher dimensional algebra.
-        e_o (torch.Tensor): Origin (null).
-        e_inf (torch.Tensor): Infinity (null).
+        e_o (torch.Tensor): Origin basis vector (null).
+        e_inf (torch.Tensor): Infinity basis vector (null).
+        device (str): Computation device.
     """
 
     def __init__(self, euclidean_dim: int = 3, device='cpu'):
@@ -89,10 +96,10 @@ class ConformalAlgebra:
         Normalization: P -> P / (-P . e_inf).
 
         Args:
-            P (torch.Tensor): Conformal points.
+            P (torch.Tensor): Conformal points [Batch, 2^n].
 
         Returns:
-            torch.Tensor: Euclidean coordinates.
+            torch.Tensor: Euclidean coordinates [Batch, d].
         """
         # 1. Normalize P such that P inner e_inf = -1
         e_inf = self.e_inf.to(device=P.device, dtype=P.dtype)

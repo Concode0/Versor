@@ -8,19 +8,17 @@
 # We believe Geometric Algebra is the future of AI, and we want
 # the industry to build upon this "unbending" paradigm.
 
-"""Bivector decomposition using power iteration.
+"""Bivector decomposition via GA power iteration.
 
-This module implements differentiable bivector decomposition from:
+Decomposes a general bivector into simple (blade) components that can each
+be exponentiated with the closed-form formula.
+
+Reference:
     Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
     from Irreducibles." arXiv:2507.11688v1 [cs.LG]
-
-The key insight is that general bivectors can be decomposed into sums of
-simple bivectors, which can then be exponentiated using closed-form expressions
-instead of scaling-and-squaring.
 """
 
 import torch
-import math
 from typing import Tuple, List, Optional
 
 
@@ -31,74 +29,49 @@ def ga_power_iteration(
     threshold: float = 1e-6,
     max_iterations: int = 100
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """GA Power Iteration to find a simple bivector projection.
+    """Find the dominant simple bivector component via power iteration.
 
-    Implements Algorithm 2 from Pence et al. (2025). This finds the dominant
-    simple bivector component of a general bivector using power iteration,
-    avoiding eigendecomposition while remaining fully differentiable.
-
-    Reference:
-        Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
-        from Irreducibles." arXiv:2507.11688v1 [cs.LG], Algorithm 2, page 5
-
-    Algorithm:
-        1. Initialize random vector v
-        2. Iterate: v <- b _| v, then normalize v
-        3. Converge when ||v - v_prev|| < threshold
-        4. Compute u = (b _| v) / ||(b _| v)||
-        5. Return simple bivector b_s = sigma(u ^ v) where sigma = ||b||
+    Implements Algorithm 2 from Pence et al. (2025).  Iterates
+    ``v <- (b _| v) / ||b _| v||`` until convergence, then recovers
+    the simple projection ``b_s = sigma * (u ^ v)``.
 
     Args:
         algebra: CliffordAlgebra instance.
-        b (torch.Tensor): Bivector to decompose [..., dim].
-        v_init (torch.Tensor, optional): Initial vector. Random if None.
-        threshold (float): Convergence threshold for ||v - v_prev||.
-        max_iterations (int): Maximum iterations before stopping.
+        b: Bivector to decompose [..., dim].
+        v_init: Initial grade-1 vector (random if None).
+        threshold: Convergence tolerance on ``||v - v_prev||``.
+        max_iterations: Iteration cap.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]:
-            - b_s: Simple bivector projection [..., dim]
-            - v: Converged vector [..., dim]
+        (b_s, v) where b_s is the simple projection and v the converged
+        vector, both shaped [..., dim].
     """
     batch_shape = b.shape[:-1]
     device = b.device
     dtype = b.dtype
 
-    # Initialize random vector in grade-1 subspace if not provided
     if v_init is None:
         v_raw = torch.randn(*batch_shape, algebra.n, device=device, dtype=dtype)
         v = algebra.embed_vector(v_raw)
     else:
         v = v_init
 
-    # Normalize initial vector
     v_norm = v.norm(dim=-1, keepdim=True)
-    v = v / (v_norm + 1e-10)
+    v = v / v_norm.clamp(min=1e-6)
 
-    # Power iteration
-    for iteration in range(max_iterations):
+    for _ in range(max_iterations):
         v_prev = v
-
-        # Apply bivector: v <- b _| v
-        # Note: Algorithm 2 line 4 shows single contraction per iteration
         v = algebra.right_contraction(b, v)
-
-        # Normalize
         v_norm = v.norm(dim=-1, keepdim=True)
-        v = v / (v_norm + 1e-10)
+        v = v / v_norm.clamp(min=1e-6)
 
-        # # Check convergence
-        # diff = (v - v_prev).norm(dim=-1)
-        # if (diff < threshold).all():
-        #     pass
+        if (v - v_prev).norm(dim=-1).max() < threshold:
+            break
 
-    # Compute u = (b _| v) / ||(b _| v)||
     u = algebra.right_contraction(b, v)
     u_norm = u.norm(dim=-1, keepdim=True)
-    u = u / (u_norm + 1e-10)
+    u = u / u_norm.clamp(min=1e-6)
 
-    # Compute simple bivector: b_s = sigma(u ^ v)
-    # where sigma = ||b|| is the bivector norm
     sigma = b.norm(dim=-1, keepdim=True)
     b_s = sigma * algebra.wedge(u, v)
 
@@ -112,84 +85,57 @@ def differentiable_invariant_decomposition(
     threshold: float = 1e-6,
     max_iterations: int = 100
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
-    """Decomposes a bivector into simple bivector components.
+    """Decompose a bivector into simple components via greedy projection.
 
-    Implements Algorithm 1 from Pence et al. (2025). This iteratively projects
-    out simple bivector components using power iteration, avoiding eigendecomposition
-    while remaining fully differentiable.
-
-    Reference:
-        Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
-        from Irreducibles." arXiv:2507.11688v1 [cs.LG], Algorithm 1, page 5
-
-    Algorithm:
-        1. For i = 1 to k:
-        2.   Find simple bivector b_i using power iteration
-        3.   Subtract from residual: b <- b - b_i
-        4.   Stop if ||b|| < threshold
+    Implements Algorithm 1 from Pence et al. (2025).  Iteratively
+    extracts the dominant simple component and subtracts it from the
+    residual.
 
     Args:
         algebra: CliffordAlgebra instance.
-        b (torch.Tensor): Bivector to decompose [..., dim].
-        k (int, optional): Number of components. Auto-determined if None.
-        threshold (float): Stop when residual norm < threshold.
-        max_iterations (int): Max iterations per power iteration.
+        b: Bivector [..., dim].
+        k: Number of components (auto = n(n-1)/2 if None).
+        threshold: Stop when residual norm falls below this.
+        max_iterations: Per-component power iteration cap.
 
     Returns:
-        Tuple[List[torch.Tensor], List[torch.Tensor]]:
-            - decomp: List of simple bivectors [b_1, b_2, ..., b_k]
-            - vectors: List of corresponding vectors [v_1, v_2, ..., v_k]
+        (decomp, vectors): lists of simple bivectors and their
+        associated vectors.
     """
-    # Determine maximum number of components: k_max = n(n-1)/2
     n = algebra.n
     k_max = (n * (n - 1)) // 2
+    k = min(k, k_max) if k is not None else k_max
 
-    if k is None:
-        k = k_max
-    else:
-        k = min(k, k_max)
-
-    decomp = []
-    vectors = []
+    decomp: List[torch.Tensor] = []
+    vectors: List[torch.Tensor] = []
     residual = b.clone()
 
-    for i in range(k):
-        # # Check if residual is negligible
-        # residual_norm = residual.norm(dim=-1)
-        # if (residual_norm < threshold).all():
-        #     break
+    for _ in range(k):
+        if residual.norm(dim=-1).max() < threshold:
+            break
 
-        # Project out next simple bivector
         b_i, v_i = ga_power_iteration(
             algebra, residual, threshold=threshold, max_iterations=max_iterations
         )
-
         decomp.append(b_i)
         vectors.append(v_i)
-
-        # Subtract from residual
         residual = residual - b_i
 
     return decomp, vectors
 
 
 def exp_simple_bivector(algebra, b: torch.Tensor) -> torch.Tensor:
-    """Exponentiates a simple bivector using the algebra's closed-form expression.
+    """Closed-form exponential of a simple bivector.
 
-    Delegates to ``algebra._exp_bivector_closed(b)`` which correctly handles
-    all three signature regimes (elliptic, hyperbolic, parabolic) instead of
-    assuming Euclidean L2 norm.
-
-    Reference:
-        Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
-        from Irreducibles." arXiv:2507.11688v1 [cs.LG], Equation 5, page 5
+    Delegates to ``algebra._exp_bivector_closed`` which handles all
+    three signature regimes (elliptic, hyperbolic, parabolic).
 
     Args:
         algebra: CliffordAlgebra instance.
-        b (torch.Tensor): Simple bivector [..., dim].
+        b: Simple bivector [..., dim].
 
     Returns:
-        torch.Tensor: Rotor exp(b) [..., dim].
+        Rotor exp(b) [..., dim].
     """
     return algebra._exp_bivector_closed(b)
 
@@ -202,51 +148,67 @@ def exp_decomposed(
     threshold: float = 1e-6,
     max_iterations: int = 100
 ) -> torch.Tensor:
-    """Exponentiates a bivector using optional decomposition.
+    """Exponentiate a bivector via decomposition into simple components.
 
-    If use_decomposition is True, decomposes the bivector into simple components
-    and exponentiates each using closed form, then composes the results.
-    Otherwise, falls back to standard scaling-and-squaring method.
+    When ``use_decomposition`` is True the bivector is decomposed into
+    simple blades (via ``differentiable_invariant_decomposition``), each
+    is exponentiated in closed form, and the rotors are composed via
+    geometric product.
 
-    Reference:
-        Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
-        from Irreducibles." arXiv:2507.11688v1 [cs.LG]
-
-    Algorithm:
-        1. Decompose: [b_1, b_2, ..., b_k] <- decomposition(b)
-        2. Exponentiate each: R_i <- exp(b_i) using closed form
-        3. Compose: R <- R_1 * R_2 * ... * R_k
+    During training the power iteration loop is **detached** (run in
+    forward-only mode) so that gradients do not flow through the
+    normalization divisions.  Gradients instead flow through the
+    closed-form exp of each component and the final GP composition.
+    This is stable for all bivector magnitudes.
 
     Args:
         algebra: CliffordAlgebra instance.
-        b (torch.Tensor): Bivector to exponentiate [..., dim].
-        use_decomposition (bool): If True, use decomposition method.
-        k (int, optional): Number of components for decomposition.
-        threshold (float): Convergence threshold.
-        max_iterations (int): Max iterations for power iteration.
+        b: Bivector [..., dim].
+        use_decomposition: Enable decomposition (False -> ``algebra.exp``).
+        k: Number of simple components (auto if None).
+        threshold: Convergence threshold.
+        max_iterations: Power iteration cap.
 
     Returns:
-        torch.Tensor: Rotor exp(b) [..., dim].
+        Rotor exp(b) [..., dim].
     """
     if not use_decomposition:
-        # Fall back to standard method
         return algebra.exp(b)
 
-    # Decompose bivector
-    decomp, _ = differentiable_invariant_decomposition(
-        algebra, b, k=k, threshold=threshold, max_iterations=max_iterations
-    )
+    # Detach for decomposition (power iteration is not differentiable)
+    # then re-project the original bivector onto the discovered planes.
+    with torch.no_grad():
+        decomp, _ = differentiable_invariant_decomposition(
+            algebra, b.detach(), k=k, threshold=threshold,
+            max_iterations=max_iterations
+        )
 
-    # Handle case where decomposition is empty (zero bivector)
     if len(decomp) == 0:
         result = torch.zeros_like(b)
-        result[..., 0] = 1.0  # Identity rotor
+        result[..., 0] = 1.0
         return result
 
-    # Exponentiate each component using closed form
-    rotors = [exp_simple_bivector(algebra, b_i) for b_i in decomp]
+    bv_mask = algebra.grade_masks[2]
+    if bv_mask.device != b.device:
+        bv_mask = bv_mask.to(b.device)
 
-    # Compose rotors via geometric product: R = R_1 * R_2 * ... * R_k
+    rotors = []
+    residual = b
+    for b_i_detached in decomp:
+        # Plane direction (unit simple bivector) — detached
+        plane_norm = b_i_detached.norm(dim=-1, keepdim=True).clamp(min=1e-12)
+        plane_dir = b_i_detached / plane_norm  # detached unit plane
+
+        # Project the live bivector onto this plane
+        bv_live = residual[..., bv_mask]
+        plane_bv = plane_dir[..., bv_mask]
+        coeff = (bv_live * plane_bv).sum(dim=-1, keepdim=True)
+
+        b_i_live = coeff * plane_dir
+        residual = residual - b_i_live
+
+        rotors.append(exp_simple_bivector(algebra, b_i_live))
+
     result = rotors[0]
     for R_i in rotors[1:]:
         result = algebra.geometric_product(result, R_i)
