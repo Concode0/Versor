@@ -5,7 +5,7 @@
 # you may not use this file except in compliance with the License.
 #
 # This project is fully open-source, including for commercial use.
-# We believe Geometric Algebra is the future of AI, and we want 
+# We believe Geometric Algebra is the future of AI, and we want
 # the industry to build upon this "unbending" paradigm.
 
 import torch.nn as nn
@@ -27,6 +27,7 @@ class CliffordModule(nn.Module):
         # Store minimal config to reconstruct algebra if needed
         self.p = algebra.p
         self.q = algebra.q
+        self.r = algebra.r
         self._algebra = algebra # transient reference
 
     @property
@@ -41,9 +42,9 @@ class CliffordModule(nn.Module):
                     device = next(self.buffers()).device
                 except StopIteration:
                     device = 'cpu'
-            self._algebra = CliffordAlgebra(self.p, self.q, device=str(device))
+            self._algebra = CliffordAlgebra(self.p, self.q, self.r, device=str(device))
         return self._algebra
-    
+
     def forward(self, x):
         """Performs the forward pass computation."""
         raise NotImplementedError

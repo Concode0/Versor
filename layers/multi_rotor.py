@@ -8,10 +8,16 @@
 # We believe Geometric Algebra is the future of AI, and we want 
 # the industry to build upon this "unbending" paradigm.
 
+"""Multi-Rotor superposition layers.
+
+Implements rotor-based transformations using weighted sums of sandwich products.
+"""
+
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
 from layers.base import CliffordModule
+
 
 class MultiRotorLayer(CliffordModule):
     """Multi-rotor layer with weighted superposition: x' = sum_k w_k R_k x R~_k.
@@ -22,7 +28,9 @@ class MultiRotorLayer(CliffordModule):
         channels (int): Input features.
         num_rotors (int): Number of overlapping rotors.
         use_decomposition (bool): If True, use power iteration decomposition.
-        decomp_k (int, optional): Number of simple components for decomposition.
+        decomp_k (int | None): Number of simple components for decomposition.
+        rotor_bivectors (torch.nn.Parameter): Bivector coefficients [num_rotors, num_bv]
+        weights (torch.nn.Parameter): Mixing weights [channels, num_rotors]
     """
 
     def __init__(
@@ -33,7 +41,7 @@ class MultiRotorLayer(CliffordModule):
         use_decomposition: bool = False,
         decomp_k: int = None
     ):
-        """Initialize the multi-rotor layer.
+        """Initialize Multi-Rotor Layer.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
@@ -72,7 +80,15 @@ class MultiRotorLayer(CliffordModule):
         nn.init.xavier_uniform_(self.weights)
 
     def _compute_rotors(self, device, dtype):
-        """Compute R and R~ from bivector weights."""
+        """Compute R and R~ from bivector weights.
+
+        Args:
+            device (torch.device): Target device
+            dtype (torch.dtype): Target data type
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: Rotor and reversed rotor multivectors
+        """
         B = torch.zeros(self.num_rotors, self.algebra.dim, device=device, dtype=dtype)
         indices = self.bivector_indices.unsqueeze(0).expand(self.num_rotors, -1)
         B.scatter_(1, indices, self.rotor_bivectors)
@@ -96,7 +112,7 @@ class MultiRotorLayer(CliffordModule):
             return_invariants (bool): If True, returns grade norms.
 
         Returns:
-            torch.Tensor: Transformed output.
+            torch.Tensor: Transformed output [Batch, Channels, Dim].
         """
         from core.validation import check_multivector, check_channels
         check_multivector(x, self.algebra, "MultiRotorLayer input")
@@ -129,12 +145,20 @@ class MultiRotorLayer(CliffordModule):
         return out
 
     def train(self, mode: bool = True):
-        """Override to invalidate rotor cache when switching to train mode."""
+        """Override to invalidate rotor cache when switching to train mode.
+
+        Args:
+            mode (bool): Whether to set to training mode.
+        """
         if mode:
             self._cached_R = None
             self._cached_R_rev = None
         return super().train(mode)
 
     def sparsity_loss(self) -> torch.Tensor:
-        """Computes the L1 sparsity loss for rotor bivectors and weights."""
+        """Computes the L1 sparsity loss for rotor bivectors and weights.
+
+        Returns:
+            torch.Tensor: Scalar sparsity loss.
+        """
         return torch.norm(self.rotor_bivectors, p=1) + torch.norm(self.weights, p=1)

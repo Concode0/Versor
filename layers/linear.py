@@ -8,11 +8,17 @@
 # We believe Geometric Algebra is the future of AI, and we want 
 # the industry to build upon this "unbending" paradigm.
 
+"""Geometric Algebra Linear Layers.
+
+Supports traditional matrix-based mixing and parameter-efficient rotor-based backends.
+"""
+
 import torch
 import torch.nn as nn
 from typing import Literal, Optional
 from core.algebra import CliffordAlgebra
 from layers.base import CliffordModule
+
 
 class CliffordLinear(CliffordModule):
     """Fully connected layer with optional rotor-based backend.
@@ -29,8 +35,9 @@ class CliffordLinear(CliffordModule):
         in_channels (int): Input features.
         out_channels (int): Output features.
         backend (str): 'traditional' or 'rotor'
-        weight (torch.Tensor): Weights [Out, In] (traditional backend only)
-        gadget (RotorGadget): Rotor transformation (rotor backend only)
+        weight (torch.nn.Parameter | None): Weights [Out, In] (traditional backend only).
+        bias (torch.nn.Parameter | None): Bias multivector [Out, Dim] (traditional backend only).
+        gadget (nn.Module | None): Rotor transformation (rotor backend only).
     """
 
     def __init__(
@@ -45,7 +52,7 @@ class CliffordLinear(CliffordModule):
         aggregation: Literal['mean', 'sum', 'learned'] = 'mean',
         shuffle: Literal['none', 'fixed', 'random'] = 'none',
     ):
-        """Sets up the linear layer.
+        """Initialize Clifford Linear.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
@@ -126,7 +133,11 @@ class CliffordLinear(CliffordModule):
             return self.gadget(x)
 
     def extra_repr(self) -> str:
-        """String representation for debugging."""
+        """String representation for debugging.
+
+        Returns:
+            str: Layer parameters description
+        """
         if self.backend == 'traditional':
             return f"in_channels={self.in_channels}, out_channels={self.out_channels}, backend=traditional"
         else:
