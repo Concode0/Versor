@@ -50,7 +50,7 @@ iterative:
 
 implicit:
   mode: "auto"
-  probe_epochs: 10
+  probe_epochs: 30
   jacobian_weight: 0.1
 
 grouping:
