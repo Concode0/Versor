@@ -452,6 +452,50 @@ class CliffordAlgebra:
         B_gathered = B[..., idx]
         return (A.unsqueeze(-1) * B_gathered * self.inner_gp_signs).sum(dim=-2)
 
+    def blade_inverse(self, blade: torch.Tensor) -> torch.Tensor:
+        """Compute the inverse of a blade: B^{-1} = B_rev / <B * B_rev>_0.
+
+        Works for any simple blade (non-degenerate). For null blades the
+        scalar denominator is clamped to avoid division by zero.
+
+        Args:
+            blade (torch.Tensor): Blade multivector [..., dim].
+
+        Returns:
+            torch.Tensor: Inverse blade [..., dim].
+        """
+        blade_rev = self.reverse(blade)
+        blade_sq = self.geometric_product(blade, blade_rev)
+        scalar = blade_sq[..., 0:1].clamp(min=1e-12)
+        return blade_rev / scalar
+
+    def blade_project(self, mv: torch.Tensor, blade: torch.Tensor) -> torch.Tensor:
+        """Project multivector onto blade subspace: (mv . B) B^{-1}.
+
+        Args:
+            mv (torch.Tensor): Multivector to project [..., dim].
+            blade (torch.Tensor): Blade defining the subspace [..., dim].
+
+        Returns:
+            torch.Tensor: Projected multivector [..., dim].
+        """
+        inner = self.inner_product(mv, blade)
+        return self.geometric_product(inner, self.blade_inverse(blade))
+
+    def blade_reject(self, mv: torch.Tensor, blade: torch.Tensor) -> torch.Tensor:
+        """Reject multivector from blade subspace: mv - proj_B(mv).
+
+        The orthogonal complement of the projection onto blade.
+
+        Args:
+            mv (torch.Tensor): Multivector to reject [..., dim].
+            blade (torch.Tensor): Blade defining the subspace [..., dim].
+
+        Returns:
+            torch.Tensor: Rejected multivector [..., dim].
+        """
+        return mv - self.blade_project(mv, blade)
+
     def exp(self, mv: torch.Tensor) -> torch.Tensor:
         """Exponentiates a bivector to produce a rotor via closed-form.
 
