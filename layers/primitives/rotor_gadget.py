@@ -14,7 +14,7 @@ import torch.nn as nn
 from typing import Literal
 
 from core.algebra import CliffordAlgebra
-from layers.base import CliffordModule
+from .base import CliffordModule
 
 
 class RotorGadget(CliffordModule):

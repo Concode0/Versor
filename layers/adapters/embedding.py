@@ -11,7 +11,7 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
-from layers.base import CliffordModule
+from ..primitives.base import CliffordModule
 
 
 class MultivectorEmbedding(CliffordModule):

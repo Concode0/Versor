@@ -1,23 +1,22 @@
 """Neural network layers built on Clifford algebra.
 
-Provides rotor layers, linear transformations, normalization,
-attention, embeddings, and graph convolution modules.
+Organized into Primitives, Canonical Blocks, and Task-Specific Adapters.
 """
 
-from .base import CliffordModule
-from .rotor import RotorLayer
-from .multi_rotor import MultiRotorLayer
-from .linear import CliffordLinear
-from .rotor_gadget import RotorGadget
-from .normalization import CliffordLayerNorm
-from .projection import BladeSelector
-from .embedding import MultivectorEmbedding, RotaryBivectorPE
-from .attention import GeometricProductAttention
-from .multi_rotor_ffn import MultiRotorFFN
+from .primitives.base import CliffordModule
+from .primitives.rotor import RotorLayer
+from .primitives.multi_rotor import MultiRotorLayer
+from .primitives.linear import CliffordLinear
+from .primitives.rotor_gadget import RotorGadget
+from .primitives.normalization import CliffordLayerNorm
+from .primitives.projection import BladeSelector
+from .adapters.embedding import MultivectorEmbedding, RotaryBivectorPE
+from .blocks.attention import GeometricProductAttention
+from .blocks.multi_rotor_ffn import MultiRotorFFN
 
 # CliffordGraphConv requires torch_geometric
 try:
-    from .gnn import CliffordGraphConv
+    from .adapters.gnn import CliffordGraphConv
 except ImportError:
     CliffordGraphConv = None
 

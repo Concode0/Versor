@@ -13,8 +13,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from core.algebra import CliffordAlgebra
-from layers.base import CliffordModule
-from layers.linear import CliffordLinear
+from ..primitives.base import CliffordModule
+from ..primitives.linear import CliffordLinear
 
 
 # Memory-bounded block size for chunked attention computation

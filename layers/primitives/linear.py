@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 from typing import Literal, Optional
 from core.algebra import CliffordAlgebra
-from layers.base import CliffordModule
+from .base import CliffordModule
 
 
 class CliffordLinear(CliffordModule):
@@ -81,7 +81,7 @@ class CliffordLinear(CliffordModule):
             self.gadget = None
 
         elif backend == 'rotor':
-            from layers.rotor_gadget import RotorGadget
+            from .rotor_gadget import RotorGadget
             self.gadget = RotorGadget(
                 algebra=algebra,
                 in_channels=in_channels,

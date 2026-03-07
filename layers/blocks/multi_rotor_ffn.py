@@ -9,11 +9,11 @@
 # the industry to build upon this "unbending" paradigm.
 
 from core.algebra import CliffordAlgebra
-from layers.base import CliffordModule
-from layers.linear import CliffordLinear
-from layers.normalization import CliffordLayerNorm
-from layers.multi_rotor import MultiRotorLayer
-from layers.projection import BladeSelector
+from ..primitives.base import CliffordModule
+from ..primitives.linear import CliffordLinear
+from ..primitives.normalization import CliffordLayerNorm
+from ..primitives.multi_rotor import MultiRotorLayer
+from ..primitives.projection import BladeSelector
 from functional.activation import GeometricGELU
 
 

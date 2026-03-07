@@ -11,7 +11,7 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
-from layers.base import CliffordModule
+from .base import CliffordModule
 
 class BladeSelector(CliffordModule):
     """Blade Selector. Filters insignificant components.

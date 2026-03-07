@@ -11,7 +11,7 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
-from layers.base import CliffordModule
+from .base import CliffordModule
 
 class CliffordLayerNorm(CliffordModule):
     """Geometric LayerNorm that preserves direction and recovers scale.

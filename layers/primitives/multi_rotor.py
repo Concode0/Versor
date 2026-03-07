@@ -16,7 +16,7 @@ Implements rotor-based transformations using weighted sums of sandwich products.
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
-from layers.base import CliffordModule
+from .base import CliffordModule
 
 
 class MultiRotorLayer(CliffordModule):

@@ -11,8 +11,8 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
-from layers.base import CliffordModule
-from layers.linear import CliffordLinear
+from ..primitives.base import CliffordModule
+from ..primitives.linear import CliffordLinear
 
 class CliffordGraphConv(CliffordModule):
     """Geometric Graph Conv. Performs message passing using multivector features.
