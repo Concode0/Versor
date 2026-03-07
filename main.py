@@ -5,7 +5,7 @@
 # you may not use this file except in compliance with the License.
 #
 # This project is fully open-source, including for commercial use.
-# We believe Geometric Algebra is the future of AI, and we want 
+# We believe Geometric Algebra is the future of AI, and we want
 # the industry to build upon this "unbending" paradigm.
 
 """Versor CLI entry point.
@@ -15,17 +15,10 @@ Dispatches geometric learning tasks via Hydra configuration.
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from tasks.motion import MotionAlignmentTask
-from tasks.qm9 import QM9Task
-from tasks.multi_rotor_qm9 import MultiRotorQM9Task
-from tasks.semantic import SemanticTask
 from tasks.md17 import MD17Task
-from tasks.pdbbind import PDBBindTask
-from tasks.weatherbench import WeatherBenchTask
-from tasks.abc import ABCTask
-from tasks.lm import LanguageModelingTask
-from tasks.feynman import FeynmanTask
-from tasks.feynman_sweep import FeynmanSweepTask
+from tasks.symbolic_regression import SRTask
+from tasks.lqa import LQATask
+from tasks.deap_eeg import DEAPEEGTask
 
 EXAMPLE_TASKS = {'manifold', 'hyperbolic', 'sanity'}
 
@@ -39,17 +32,10 @@ def main(cfg: DictConfig):
     task_name = cfg.name
 
     task_map = {
-        'motion': MotionAlignmentTask,
-        'qm9': QM9Task,
-        'multi_rotor_qm9': MultiRotorQM9Task,
-        'semantic': SemanticTask,
         'md17': MD17Task,
-        'pdbbind': PDBBindTask,
-        'weatherbench': WeatherBenchTask,
-        'abc': ABCTask,
-        'lm': LanguageModelingTask,
-        'feynman': FeynmanTask,
-        'feynman_sweep': FeynmanSweepTask,
+        'sr': SRTask,
+        'lqa': LQATask,
+        'deap_eeg': DEAPEEGTask,
     }
 
     if task_name in EXAMPLE_TASKS:

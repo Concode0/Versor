@@ -11,11 +11,11 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
-from layers.base import CliffordModule
-from layers.linear import CliffordLinear
-from layers.multi_rotor import MultiRotorLayer
-from layers.normalization import CliffordLayerNorm
-from layers.projection import BladeSelector
+from layers import CliffordModule
+from layers import CliffordLinear
+from layers import MultiRotorLayer
+from layers import CliffordLayerNorm
+from layers import BladeSelector
 from functional.activation import GeometricGELU
 from torch_geometric.nn import global_add_pool
 
