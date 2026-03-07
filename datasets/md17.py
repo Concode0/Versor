@@ -34,7 +34,7 @@ import torch
 import numpy as np
 from torch.utils.data import Dataset, DataLoader as _TorchDataLoader
 
-# ---- Optional PyTorch Geometric import ----
+# Optional PyTorch Geometric import
 _HAS_PYG = False
 try:
     from torch_geometric.datasets import MD17 as _PyGMD17
@@ -45,17 +45,26 @@ except ImportError:
     _BaseTransform = object   # sentinel for class inheritance
 
 
-# =====================================================================
-# Radius graph (shared by both paths)
-# =====================================================================
-
 class PureRadiusGraph(_BaseTransform if _HAS_PYG else object):
     """Pure-PyTorch radius graph (no torch-cluster dependency)."""
 
     def __init__(self, r: float):
+        """Initialize Radius Graph transform.
+
+        Args:
+            r (float): Cutoff radius.
+        """
         self.r = r
 
     def forward(self, data):
+        """Build radius graph.
+
+        Args:
+            data (torch_geometric.data.Data): Input graph data.
+
+        Returns:
+            torch_geometric.data.Data: Data with edge_index.
+        """
         pos = data.pos
         dist = torch.cdist(pos, pos)          # [N, N]
         mask = (dist < self.r) & (dist > 0)
@@ -63,13 +72,17 @@ class PureRadiusGraph(_BaseTransform if _HAS_PYG else object):
         return data
 
     def __call__(self, data):
+        """Build radius graph (transform API).
+
+        Args:
+            data (torch_geometric.data.Data): Input graph data.
+
+        Returns:
+            torch_geometric.data.Data: Data with edge_index.
+        """
         # Called as a transform (both PyG and non-PyG paths)
         return self.forward(data)
 
-
-# =====================================================================
-# PyG-backed loader (primary path)
-# =====================================================================
 
 if _HAS_PYG:
     class VersorMD17(_PyGMD17):
@@ -83,6 +96,15 @@ if _HAS_PYG:
 
         def __init__(self, root: str, molecule: str = 'aspirin',
                      radius: float = 5.0, transform=None, pre_transform=None):
+            """Initialize MD17 dataset.
+
+            Args:
+                root (str): Root directory.
+                molecule (str): Molecule name.
+                radius (float): Cutoff radius for graph.
+                transform (callable, optional): Transform to apply.
+                pre_transform (callable, optional): Pre-transform to apply.
+            """
             radius_graph = PureRadiusGraph(r=radius)
             if transform is None:
                 transform = radius_graph
@@ -92,11 +114,28 @@ if _HAS_PYG:
             self.radius = radius
 
         def get(self, idx):
+            """Get a single conformation.
+
+            Args:
+                idx (int): Conformation index.
+
+            Returns:
+                torch_geometric.data.Data: Centered graph data.
+            """
             data = super().get(idx)
             data.pos = data.pos - data.pos.mean(dim=0, keepdim=True)
             return data
 
     def _get_pyg_normalization_stats(dataset, train_idx):
+        """Compute normalization stats for energy and forces.
+
+        Args:
+            dataset (VersorMD17): MD17 dataset.
+            train_idx (torch.Tensor): Indices for training set.
+
+        Returns:
+            Tuple[float, float, float, float]: energy_mean, energy_std, force_mean, force_std.
+        """
         if hasattr(dataset, '_data'):
             energy = dataset._data.energy
             force = dataset._data.force
@@ -114,18 +153,25 @@ if _HAS_PYG:
         return energy_mean, energy_std, force_mean, force_std
 
 
-# =====================================================================
-# NPZ-backed loader (fallback when PyG is not installed)
-# =====================================================================
-
 class _GraphData:
-    """Minimal PyG-Data-compatible object produced by the NPZ path."""
+    """Minimal PyG-Data-compatible object produced by the NPZ path.
+
+    Attributes:
+        pos (torch.Tensor): Atomic positions [N, 3].
+        z (torch.Tensor): Atomic numbers [N].
+        energy (torch.Tensor): Potential energy [].
+        force (torch.Tensor): Atomic forces [N, 3].
+        edge_index (torch.Tensor): Graph connectivity [2, E].
+        num_nodes (int): Number of atoms N.
+        batch (torch.Tensor | None): Batch indices for nodes.
+    """
 
     __slots__ = ('pos', 'z', 'energy', 'force', 'edge_index', 'num_nodes', 'batch')
 
     def __init__(self, pos: torch.Tensor, z: torch.Tensor,
                  energy: torch.Tensor, force: torch.Tensor,
                  edge_index: torch.Tensor):
+        """Initialize Graph Data object."""
         self.pos = pos
         self.z = z
         self.energy = energy
@@ -136,7 +182,14 @@ class _GraphData:
 
 
 def _collate_graphs(batch):
-    """Collate _GraphData objects into a single batch (mimics PyG DataLoader)."""
+    """Collate _GraphData objects into a single batch (mimics PyG DataLoader).
+
+    Args:
+        batch (list): List of _GraphData objects.
+
+    Returns:
+        _GraphData: Collated batch object.
+    """
     batch_idx = []
     pos_list, z_list, energy_list, force_list, edge_list = [], [], [], [], []
     node_offset = 0
@@ -186,6 +239,13 @@ class VersorMD17NPZ(Dataset):
 
     def __init__(self, root: str, molecule: str = 'aspirin',
                  radius: float = 5.0):
+        """Initialize NPZ-based MD17 dataset.
+
+        Args:
+            root (str): Root directory.
+            molecule (str): Molecule name.
+            radius (float): Cutoff radius for graph.
+        """
         self.root = root
         self.molecule = molecule
         self.radius = radius
@@ -215,6 +275,11 @@ class VersorMD17NPZ(Dataset):
               f"{z.shape[0]} atoms")
 
     def _find_npz(self) -> Optional[str]:
+        """Locate NPZ file for the molecule.
+
+        Returns:
+            str | None: Absolute path to the NPZ file or None if not found.
+        """
         candidates = _NPZ_PATTERNS.get(self.molecule, [f'md17_{self.molecule}.npz'])
         search_dirs = [
             self.root,
@@ -229,23 +294,41 @@ class VersorMD17NPZ(Dataset):
         return None
 
     def _get_edge_index(self, pos: torch.Tensor) -> torch.Tensor:
-        """Build radius graph for a single conformation."""
+        """Build radius graph for a single conformation.
+
+        Args:
+            pos (torch.Tensor): Atomic positions [N, 3].
+
+        Returns:
+            torch.Tensor: Graph connectivity [2, E].
+        """
         dist = torch.cdist(pos, pos)
         mask = (dist < self.radius) & (dist > 0)
         return mask.nonzero(as_tuple=False).t().contiguous()
 
     @property
     def energy(self) -> torch.Tensor:
+        """Returns potential energies."""
         return self._E
 
     @property
     def force(self) -> torch.Tensor:
+        """Returns atomic forces."""
         return self._F
 
     def __len__(self) -> int:
+        """Returns conformation count."""
         return len(self._R)
 
     def __getitem__(self, idx: int) -> _GraphData:
+        """Get a single conformation graph.
+
+        Args:
+            idx (int): Conformation index.
+
+        Returns:
+            _GraphData: Atom centered graph data.
+        """
         pos = self._R[idx]                         # [natoms, 3]
         pos = pos - pos.mean(dim=0, keepdim=True)  # center
         edge_index = self._get_edge_index(pos)
@@ -258,10 +341,6 @@ class VersorMD17NPZ(Dataset):
             edge_index=edge_index,
         )
 
-
-# =====================================================================
-# Unified loader function
-# =====================================================================
 
 def get_md17_loaders(root: str, molecule: str = 'aspirin',
                      batch_size: int = 32,
@@ -276,17 +355,19 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
       2. Raw .npz files from ``root/``
 
     Args:
-        root:        Root directory for data storage.
-        molecule:    Molecule name (aspirin, benzene, ethanol, ...).
-        batch_size:  Batch size.
-        max_samples: Cap the total dataset size (for fast iteration).
-        radius:      Radius graph cutoff in Angstrom.
+        root (str): Root directory for data storage.
+        molecule (str): Molecule name (aspirin, benzene, ethanol, ...).
+        batch_size (int): Batch size.
+        max_samples (int, optional): Cap the total dataset size (for fast iteration).
+        radius (float): Radius graph cutoff in Angstrom.
+        num_workers (int): Number of worker processes for loading.
+        pin_memory (bool): If True, pin memory in DataLoader.
 
     Returns:
-        (train_loader, val_loader, test_loader,
-         energy_mean, energy_std, force_mean, force_std)
+        tuple: (train_loader, val_loader, test_loader,
+                energy_mean, energy_std, force_mean, force_std)
     """
-    # --- Strategy 1: PyTorch Geometric ---
+    # Strategy 1: PyTorch Geometric
     if _HAS_PYG:
         dataset = VersorMD17(root=root, molecule=molecule, radius=radius)
         N = len(dataset)
@@ -325,7 +406,7 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
         return (train_loader, val_loader, test_loader,
                 energy_mean, energy_std, force_mean, force_std)
 
-    # --- Strategy 2: Raw NPZ files ---
+    # Strategy 2: Raw NPZ files
     warnings.warn(
         "PyTorch Geometric not installed. Attempting to load MD17 from raw .npz files.\n"
         "For full functionality: uv sync --extra graph",
