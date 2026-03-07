@@ -3,6 +3,7 @@ name: "md17"
 algebra:
   p: 3
   q: 0
+  r: 0
   device: "auto"
 dataset:
   name: "md17"

@@ -3,6 +3,7 @@ name: "lm"
 algebra:
   p: 3
   q: 1                          # Cl(3,1) - Minkowski spacetime
+  r: 0
   device: "auto"
 dataset:
   data_path: "./data/text"

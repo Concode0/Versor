@@ -1,10 +1,11 @@
 defaults:
   - _self_
-  - task: qm9
+  - task: sr
 
 algebra:
   p: 3
   q: 0
+  r: 0
   device: "auto"  # Auto-detect: cuda > mps > cpu
 
 training:
