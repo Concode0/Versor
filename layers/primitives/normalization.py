@@ -28,31 +28,36 @@ class CliffordLayerNorm(CliffordModule):
             starts identical to the old (scale-discarding) behaviour.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, channels: int, eps: float = 1e-6):
+    def __init__(self, algebra: CliffordAlgebra, channels: int, eps: float = 1e-6, recover: bool = True):
         """Sets up normalization.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
             channels (int): Features.
             eps (float): Stability term.
+            recover (bool): Whether to inject original scale into the scalar part.
         """
         super().__init__(algebra)
         self.eps = eps
+        self.recover = recover
 
         self.weight = nn.Parameter(torch.ones(channels))
         self.bias = nn.Parameter(torch.zeros(channels))
         # Learnable gate: how much of the original log-magnitude to push
         # into the scalar part.  Zero-init -> backward compatible at start.
-        self.norm_scale = nn.Parameter(torch.zeros(channels))
+        if recover:
+            self.norm_scale = nn.Parameter(torch.zeros(channels))
+        else:
+            self.register_buffer('norm_scale', None)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Normalizes energy, preserves direction, recovers scale in grade-0.
+        """Normalizes energy, preserves direction, optionally recovers scale in grade-0.
 
         Args:
             x (torch.Tensor): Input [Batch, Channels, Dim].
 
         Returns:
-            torch.Tensor: Normalized input with scale in scalar part.
+            torch.Tensor: Normalized input.
         """
         # Per-channel magnitude
         norm = x.norm(dim=-1, keepdim=True)  # [B, C, 1]
@@ -63,13 +68,13 @@ class CliffordLayerNorm(CliffordModule):
         # Affine transform on direction
         out = x_normalized * self.weight.view(1, -1, 1)
 
-        # Push original magnitude into scalar (grade-0) part.
-        # log1p keeps the value bounded and well-behaved for gradients.
-        log_norm = torch.log1p(norm.squeeze(-1))  # [B, C]
-
         out = out.clone()
-        out[..., 0] = (out[..., 0]
-                       + self.bias.view(1, -1)
-                       + self.norm_scale.view(1, -1) * log_norm)
+        out[..., 0] = out[..., 0] + self.bias.view(1, -1)
+
+        if self.recover:
+            # Push original magnitude into scalar (grade-0) part.
+            # log1p keeps the value bounded and well-behaved for gradients.
+            log_norm = torch.log1p(norm.squeeze(-1))  # [B, C]
+            out[..., 0] = out[..., 0] + self.norm_scale.view(1, -1) * log_norm
 
         return out
