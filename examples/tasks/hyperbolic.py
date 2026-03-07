@@ -11,7 +11,7 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
-from layers.rotor import RotorLayer
+from layers import RotorLayer
 from functional.loss import GeometricMSELoss
 from tasks.base import BaseTask
 from core.visualizer import GeneralVisualizer

@@ -49,10 +49,10 @@ from torch.utils.data import Dataset, DataLoader
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from core.algebra import CliffordAlgebra
-from layers.linear import CliffordLinear
-from layers.rotor import RotorLayer
-from layers.normalization import CliffordLayerNorm
-from layers.projection import BladeSelector
+from layers import CliffordLinear
+from layers import RotorLayer
+from layers import CliffordLayerNorm
+from layers import BladeSelector
 from functional.activation import GeometricGELU
 from optimizers.riemannian import RiemannianAdam
 from experiments.orthogonality import StrictOrthogonality, OrthogonalitySettings

@@ -11,8 +11,8 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
-from layers.linear import CliffordLinear
-from layers.rotor import RotorLayer
+from layers import CliffordLinear
+from layers import RotorLayer
 
 class RotorTCN(nn.Module):
     """Temporal convolutional network with Clifford algebra features.

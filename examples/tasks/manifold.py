@@ -11,8 +11,8 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
-from layers.rotor import RotorLayer
-from layers.projection import BladeSelector
+from layers import RotorLayer
+from layers import BladeSelector
 from functional.loss import SubspaceLoss
 from tasks.base import BaseTask
 from core.visualizer import GeneralVisualizer

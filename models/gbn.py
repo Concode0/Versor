@@ -11,9 +11,9 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
-from layers.linear import CliffordLinear
-from layers.rotor import RotorLayer
-from layers.projection import BladeSelector
+from layers import CliffordLinear
+from layers import RotorLayer
+from layers import BladeSelector
 from functional.activation import GeometricGELU
 
 class GeometricBladeNetwork(nn.Module):

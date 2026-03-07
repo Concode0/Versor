@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
 
-class GLUNet(nn.Module):
-    """Geometric Language Understanding Network.
+class LQANet(nn.Module):
+    """Logical Query Answering Network.
     
     Implements rotor composition for relational reasoning and
     wedge-product based orthogonal rejection for concept erasure.

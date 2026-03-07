@@ -6,5 +6,5 @@ algebra:
   device: "cpu"
 dataset:
   name: "lorentz_boost"
-  samples: 500
+  samples: 10000
   rapidity: 1.5

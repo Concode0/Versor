@@ -27,8 +27,8 @@ import torch.optim as optim
 import numpy as np
 import plotly.graph_objects as go
 from core.algebra import CliffordAlgebra
-from layers.rotor import RotorLayer
-from layers.projection import BladeSelector
+from layers import RotorLayer
+from layers import BladeSelector
 
 # Setup Page
 st.set_page_config(page_title="Versor: Geometric Algebra Demo", layout="wide")

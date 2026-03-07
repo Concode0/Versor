@@ -24,9 +24,9 @@ import concurrent.futures
 from typing import Tuple, List, Optional, Dict
 from core.algebra import CliffordAlgebra
 from core.metric import induced_norm
-from layers.linear import CliffordLinear
-from layers.rotor import RotorLayer
-from layers.projection import BladeSelector
+from layers import CliffordLinear
+from layers import RotorLayer
+from layers import BladeSelector
 
 
 class _SignatureProbe(nn.Module):

@@ -5,9 +5,9 @@ import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
 # Note: Reflecting MotherNet architecture from temp_ref
-# from layers.normalization import CliffordLayerNorm
-# from layers.mother_layers import MotherEmbedding, PhaseShiftHead
-# from layers.geometric_transformer import GeometricTransformerBlock
+# from layers import CliffordLayerNorm
+# from layers import MotherEmbedding, PhaseShiftHead
+# from layers import GeometricTransformerBlock
 
 class EEGNet(nn.Module):
     """Geometric EEG Emotion Classification Network.

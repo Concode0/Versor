@@ -9,8 +9,8 @@ from log import get_logger
 
 logger = get_logger(__name__)
 
-class GLUTask(BaseTask):
-    """Geometric Language Understanding (GLU) Task.
+class LQATask(BaseTask):
+    """Logical Query Answering (LQA) Task.
     
     Focuses on:
     1. The Depth Test: Multi-hop Relational Reasoning (CLUTRR)
@@ -29,9 +29,9 @@ class GLUTask(BaseTask):
 
     def setup_model(self):
         """Geometric Rotor Composition Network."""
-        # Skeleton: To be implemented in models/glu_net.py
-        from models.glu_net import GLUNet
-        return GLUNet(self.algebra, self.cfg.model)
+        # Skeleton: To be implemented in models/lqa_net.py
+        from models.lqa_net import LQANet
+        return LQANet(self.algebra, self.cfg.model)
 
     def setup_criterion(self):
         return nn.CrossEntropyLoss()

@@ -11,8 +11,8 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
-from layers.linear import CliffordLinear
-from layers.multi_rotor import MultiRotorLayer
+from layers import CliffordLinear
+from layers import MultiRotorLayer
 from functional.activation import GeometricGELU
 
 class MultiRotorModel(nn.Module):

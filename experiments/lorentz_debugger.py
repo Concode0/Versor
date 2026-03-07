@@ -58,10 +58,10 @@ from core.metric import (
     signature_norm_squared, hermitian_distance, hermitian_norm,
     hermitian_grade_spectrum, signature_trace_form,
 )
-from layers.linear import CliffordLinear
-from layers.rotor import RotorLayer
-from layers.normalization import CliffordLayerNorm
-from layers.projection import BladeSelector
+from layers import CliffordLinear
+from layers import RotorLayer
+from layers import CliffordLayerNorm
+from layers import BladeSelector
 from functional.activation import GeometricGELU
 from optimizers.riemannian import RiemannianAdam
 from experiments.orthogonality import StrictOrthogonality, OrthogonalitySettings
