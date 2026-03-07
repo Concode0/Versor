@@ -5,29 +5,15 @@ setup_algebra, setup_model, setup_criterion, get_data, train_step, evaluate, vis
 """
 
 from .base import BaseTask
-from .feynman import FeynmanTask
-from .feynman_sweep import FeynmanSweepTask
-from .qm9 import QM9Task
-from .semantic import SemanticTask
+from .symbolic_regression import SRTask
 from .md17 import MD17Task
-from .motion import MotionAlignmentTask
-from .multi_rotor_qm9 import MultiRotorQM9Task
-from .abc import ABCTask
 from .lm import LanguageModelingTask
-from .pdbbind import PDBBindTask
-from .weatherbench import WeatherBenchTask
+from .deeplense import DeepLenseTask
 
 __all__ = [
     "BaseTask",
-    "FeynmanTask",
-    "FeynmanSweepTask",
-    "QM9Task",
-    "SemanticTask",
+    "SRTask",
     "MD17Task",
-    "MotionAlignmentTask",
-    "MultiRotorQM9Task",
-    "ABCTask",
     "LanguageModelingTask",
-    "PDBBindTask",
-    "WeatherBenchTask",
+    "DeepLenseTask",
 ]
