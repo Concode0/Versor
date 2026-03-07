@@ -56,6 +56,26 @@ class GeometricGELU(nn.Module):
         return x * scale
 
 
+class GeometricSquare(nn.Module):
+    """Gated geometric self-product: x + gate * GP(x, x).
+
+    GP(grade-1, grade-1) produces grade-0 (squares x_i^2) and grade-2
+    (wedge products x_i ^ x_j).  Creates algebraic cross-terms that
+    rotors can then rotate into the output.
+    """
+
+    def __init__(self, algebra, channels: int = 1):
+        super().__init__()
+        self.algebra = algebra
+        # sigmoid(-2) ≈ 0.12 — starts small so GP doesn't dominate
+        self.gate_logit = nn.Parameter(torch.full((channels,), -2.0))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        gp = self.algebra.geometric_product(x, x)  # [B, C, dim]
+        gate = torch.sigmoid(self.gate_logit).view(1, -1, 1)  # [1, C, 1]
+        return x + gate * gp
+
+
 class GradeSwish(nn.Module):
     """Per-grade gated activation.
 
