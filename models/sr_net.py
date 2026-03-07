@@ -26,7 +26,7 @@ from layers.linear import CliffordLinear
 from layers.normalization import CliffordLayerNorm
 from layers.projection import BladeSelector
 from layers.rotor import RotorLayer
-from functional.activation import GeometricGELU
+from functional.activation import GeometricGELU, GeometricSquare
 
 
 def _blade_name(idx: int, n: int) -> str:
@@ -142,17 +142,45 @@ class SRMultiGradeEmbedding(CliffordModule):
 
         self.register_buffer('g1_idx', torch.tensor(g1_idx, dtype=torch.long))
 
+        # Precompute grade-2 indices for LUT embedding
+        g2_idx = [i for i in range(dim) if bin(i).count('1') == 2]
+        self.n_g2 = len(g2_idx)
+        self.register_buffer('g2_idx', torch.tensor(g2_idx, dtype=torch.long))
+
         # Grade-0: scalar bias per channel
         self.grade0_bias = nn.Parameter(torch.zeros(channels))
 
         # Grade-1: project k inputs -> C * n_g1
         self.grade1_proj = nn.Linear(in_features, channels * self.n_g1, bias=False)
 
+        # Grade-2 LUT: log(|x|+ε) and sign(x)/(|x|+ε) projected into grade-2 slots
+        self.n_lut = 2  # log, inv
+        n_lut_total = min(in_features * self.n_lut, self.n_g2)
+        self.n_lut_inputs = n_lut_total
+        self.lut_proj = nn.Linear(n_lut_total, channels * self.n_g2, bias=False)
+
         self._init_weights()
 
     def _init_weights(self):
         """Initialize projection weights."""
         nn.init.normal_(self.grade1_proj.weight, std=0.01)
+        nn.init.normal_(self.lut_proj.weight, std=0.001)  # start small
+
+    def _compute_lut(self, x: torch.Tensor) -> torch.Tensor:
+        """Compute nonlinear LUT features: log(|x|+eps), sign(x)/(|x|+eps).
+
+        Args:
+            x (torch.Tensor): [B, k] raw inputs.
+
+        Returns:
+            torch.Tensor: [B, n_lut_inputs] LUT features.
+        """
+        eps = 1e-6
+        abs_x = x.abs() + eps
+        log_x = torch.log(abs_x)
+        inv_x = x.sign() / abs_x
+        lut = torch.cat([log_x, inv_x], dim=-1)  # [B, 2k]
+        return lut[:, :self.n_lut_inputs]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Embed scalar inputs into the multivector space.
@@ -175,11 +203,17 @@ class SRMultiGradeEmbedding(CliffordModule):
         g1_idx = self.g1_idx.view(1, 1, -1).expand(B, self.channels, -1)
         out.scatter_(2, g1_idx, g1_feats)
 
+        # Grade-2 LUT (log, inv)
+        lut = self._compute_lut(x)  # [B, n_lut_inputs]
+        g2_feats = self.lut_proj(lut).reshape(B, self.channels, self.n_g2)
+        g2_idx = self.g2_idx.view(1, 1, -1).expand(B, self.channels, -1)
+        out.scatter_(2, g2_idx, g2_feats)
+
         return out
 
 
 class _ResidualBlock(nn.Module):
-    """One residual block: Norm -> Linear -> GELU -> Rotor -> BladeSelector -> skip."""
+    """One residual block: Norm -> Linear -> Activation -> Rotor -> BladeSelector -> skip."""
 
     def __init__(
         self,
@@ -187,11 +221,15 @@ class _ResidualBlock(nn.Module):
         channels: int,
         use_decomposition: bool,
         use_skip: bool = True,
+        activation_type: str = "gelu",
     ):
         super().__init__()
         self.norm       = CliffordLayerNorm(algebra, channels)
         self.linear     = CliffordLinear(algebra, channels, channels)
-        self.activation = GeometricGELU(algebra, channels)
+        if activation_type == "square":
+            self.activation = GeometricSquare(algebra, channels)
+        else:
+            self.activation = GeometricGELU(algebra, channels)
         self.rotor      = RotorLayer(algebra, channels, use_decomposition=use_decomposition)
         self.blade = BladeSelector(algebra, channels)
         self.use_skip = use_skip
@@ -338,7 +376,8 @@ class SRGBN(CliffordModule):
         )
 
         self.blocks = nn.ModuleList([
-            _ResidualBlock(algebra, channels, use_decomposition, use_skip=use_skip)
+            _ResidualBlock(algebra, channels, use_decomposition,
+                           use_skip=use_skip, activation_type="square")
             for _ in range(num_layers)
         ])
 

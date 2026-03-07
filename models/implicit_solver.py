@@ -62,7 +62,7 @@ class ImplicitSolver:
         jacobian_weight: Weight for Jacobian norm regularizer.
     """
 
-    def __init__(self, device='cpu', probe_epochs=10, jacobian_weight=0.1):
+    def __init__(self, device='cpu', probe_epochs=30, jacobian_weight=0.1):
         self.device = device
         self.probe_epochs = probe_epochs
         self.jacobian_weight = jacobian_weight
@@ -90,20 +90,17 @@ class ImplicitSolver:
         # Implicit probe: augment data with y as extra variable
         Z = torch.cat([X, y], dim=-1)  # [N, k+1]
 
-        # Build a larger algebra for k+1 variables if needed
+        # Build implicit algebra: add 1 to p for the y variable
         p, q, r = algebra.p, algebra.q, algebra.r
-        n_needed = k + 1
-        if p + q + r < n_needed:
-            p_impl = min(n_needed, 6)
-            impl_algebra = CliffordAlgebra(p_impl, q, r, device=self.device)
-        else:
-            impl_algebra = algebra
+        impl_algebra = CliffordAlgebra(p + 1, q, r, device=self.device)
 
         implicit_loss = self._probe_implicit(impl_algebra, Z)
 
-        # Pick better mode (implicit must be substantially better, not just
-        # trivially zero from the F=0 solution)
-        if np.isfinite(implicit_loss) and implicit_loss < explicit_loss * 0.8:
+        # Pick better mode. The implicit probe trains with Eikonal loss
+        # (F/‖∇F‖ → 0) which is harder than explicit MSE, so we allow
+        # implicit to be up to 50% worse and still be selected — the
+        # formula quality via sympy.solve often compensates.
+        if np.isfinite(implicit_loss) and implicit_loss < explicit_loss * 1.5:
             mode = "implicit"
             logger.info(f"Implicit mode selected: loss {implicit_loss:.4f} vs explicit {explicit_loss:.4f}")
         else:
@@ -118,11 +115,10 @@ class ImplicitSolver:
         )
 
     def train_implicit(self, model, Z_data, algebra, epochs, lr):
-        """Train F(Z)=0 where Z=[X,y].
+        """Train F(Z)=0 where Z=[X,y] with warmup + Eikonal loss.
 
-        Loss = F(Z)^2 + lambda_jac / (||grad_Z F||^2 + eps) + sparsity
-
-        The Jacobian term prevents the trivial F=0 solution.
+        Phase 1 (warmup): maximize gradient norm to escape trivial F≡0.
+        Phase 2 (main): Eikonal-normalized loss F/‖∇F‖ → 0.
 
         Args:
             model: SRGBN model with in_features=k+1.
@@ -136,6 +132,7 @@ class ImplicitSolver:
         """
         optimizer = RiemannianAdam(model.parameters(), lr=lr, algebra=algebra)
         target = torch.zeros(Z_data.shape[0], 1, device=self.device)
+        warmup_epochs = max(epochs // 4, 5)
 
         model.train()
         for epoch in range(epochs):
@@ -144,24 +141,34 @@ class ImplicitSolver:
             Z_grad = Z_data.detach().requires_grad_(True)
             pred = model(Z_grad)  # [N, 1]
 
-            # F(Z) should be 0
-            f_loss = F.mse_loss(pred, target)
-
-            # Jacobian regularizer: prevent trivial F=0
             if Z_grad.grad is not None:
                 Z_grad.grad = None
             grad_F = torch.autograd.grad(
                 pred.sum(), Z_grad, create_graph=True, retain_graph=True
             )[0]  # [N, k+1]
             jac_norm_sq = (grad_F ** 2).sum(dim=-1).mean()
-            jac_loss = self.jacobian_weight / (jac_norm_sq + 1e-8)
 
             sparsity = model.total_sparsity_loss()
 
-            loss = f_loss + jac_loss + 0.01 * sparsity
+            if epoch < warmup_epochs:
+                # Warmup: escape trivial F≡0
+                output_mag = pred.pow(2).mean()
+                loss = (-self.jacobian_weight * torch.log(jac_norm_sq + 1e-4)
+                        - 0.01 * torch.log(output_mag + 1e-4)
+                        + 0.01 * sparsity)
+            else:
+                # Eikonal-normalized loss
+                per_sample_grad_norm = torch.sqrt(
+                    (grad_F ** 2).sum(dim=-1, keepdim=True) + 1e-8
+                )
+                normalized_pred = pred / (per_sample_grad_norm + 1e-4)
+                eikonal_loss = F.mse_loss(normalized_pred, target)
+                jac_loss = -self.jacobian_weight * torch.log(jac_norm_sq + 1e-4)
+                loss = eikonal_loss + jac_loss + 0.01 * sparsity
 
             if torch.isfinite(loss):
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
                 optimizer.step()
 
         model.eval()
@@ -169,7 +176,7 @@ class ImplicitSolver:
 
     def _probe_explicit(self, algebra, X, y):
         """Short explicit probe: train SRGBN to predict y from X."""
-        model = SRGBN.single_rotor(algebra, X.shape[1], channels=4)
+        model = SRGBN.single_rotor(algebra, X.shape[1], channels=16)
         model = model.to(self.device)
         optimizer = RiemannianAdam(model.parameters(), lr=0.003, algebra=algebra)
 
@@ -190,39 +197,65 @@ class ImplicitSolver:
         return final_loss
 
     def _probe_implicit(self, algebra, Z):
-        """Short implicit probe: train SRGBN(k+1) to output 0.
+        """Short implicit probe with two-phase training.
 
-        Reports the *combined* loss (F^2 + Jacobian penalty) rather than
-        just MSE, to prevent the trivial F=0 solution from winning.
-        Also validates that the learned function has non-trivial gradients.
+        Phase 1 (warmup): maximize gradient norm to escape the trivial F≡0
+        state where both F and ∇F are zero (so Eikonal loss gives no signal).
+        Phase 2 (main): Eikonal-normalized loss F/‖∇F‖ → 0 for non-trivial
+        convergence.
+
+        Reports raw f_loss for comparison with explicit probe.
         """
-        model = SRGBN.single_rotor(algebra, Z.shape[1], channels=4)
+        model = SRGBN.single_rotor(algebra, Z.shape[1], channels=16)
         model = model.to(self.device)
+
+        # Break the F≡0 dead gradient: SRGBN initializes grade0_bias to zeros,
+        # making output ≡ 0. With implicit target = 0, gradient = 2*pred*dpred/dθ = 0.
+        # Non-zero grade0_bias gives the optimizer a non-trivial starting point.
+        with torch.no_grad():
+            for m in model.modules():
+                if hasattr(m, 'grade0_bias'):
+                    torch.nn.init.normal_(m.grade0_bias, std=1.0)
+
         optimizer = RiemannianAdam(model.parameters(), lr=0.003, algebra=algebra)
         target = torch.zeros(Z.shape[0], 1, device=self.device)
+        warmup_epochs = max(self.probe_epochs // 3, 5)
 
         model.train()
-        for _ in range(self.probe_epochs):
+        for epoch in range(self.probe_epochs):
             optimizer.zero_grad()
 
             Z_grad = Z.detach().requires_grad_(True)
             pred = model(Z_grad)
-            f_loss = F.mse_loss(pred, target)
 
-            # Jacobian regularizer
+            # Compute per-sample gradient norm
             grad_F = torch.autograd.grad(
                 pred.sum(), Z_grad, create_graph=True, retain_graph=True
             )[0]
             jac_norm_sq = (grad_F ** 2).sum(dim=-1).mean()
-            jac_loss = self.jacobian_weight / (jac_norm_sq + 1e-8)
 
-            loss = f_loss + jac_loss
+            if epoch < warmup_epochs:
+                # Phase 1: maximize gradient norm to escape F≡0
+                # Also push output magnitude up to create non-trivial F
+                output_mag = pred.pow(2).mean()
+                loss = (-self.jacobian_weight * torch.log(jac_norm_sq + 1e-4)
+                        - 0.01 * torch.log(output_mag + 1e-4))
+            else:
+                # Phase 2: Eikonal-normalized loss
+                per_sample_grad_norm = torch.sqrt(
+                    (grad_F ** 2).sum(dim=-1, keepdim=True) + 1e-8
+                )
+                normalized_pred = pred / (per_sample_grad_norm + 1e-4)
+                eikonal_loss = F.mse_loss(normalized_pred, target)
+                jac_loss = -self.jacobian_weight * torch.log(jac_norm_sq + 1e-4)
+                loss = eikonal_loss + jac_loss
+
             if torch.isfinite(loss):
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
                 optimizer.step()
 
-        # Report combined loss including Jacobian penalty to prevent
-        # trivial F=0 from always winning the comparison
+        # Evaluate final quality
         model.eval()
         Z_grad = Z.detach().requires_grad_(True)
         pred = model(Z_grad)
@@ -232,10 +265,48 @@ class ImplicitSolver:
         jac_norm_sq = (grad_F ** 2).sum(dim=-1).mean()
 
         # If gradient is near-zero, the model learned the trivial solution
-        # Penalize heavily
-        if jac_norm_sq.item() < 0.01:
-            logger.debug("Implicit probe: trivial solution (near-zero gradient)")
+        if jac_norm_sq.item() < 0.001:
+            logger.info(f"Implicit probe: trivial (jac_norm_sq={jac_norm_sq.item():.6f}, "
+                        f"f_loss={f_loss.item():.6f})")
             return float('inf')
 
-        combined_loss = f_loss.item() + self.jacobian_weight / (jac_norm_sq.item() + 1e-8)
-        return combined_loss
+        # Report raw f_loss (comparable to explicit MSE)
+        logger.info(f"Implicit probe: f_loss={f_loss.item():.4f}, "
+                    f"jac_norm_sq={jac_norm_sq.item():.4f}")
+        return f_loss.item()
+
+    def extract_implicit_formula(self, model, algebra, var_names, target_var_idx):
+        """Extract F(x,y)=0 via translate_implicit, then sympy.solve for y.
+
+        Args:
+            model: Trained SRGBN with in_features=k+1.
+            algebra: CliffordAlgebra for the implicit space.
+            var_names: List of input variable names.
+            target_var_idx: Index of the target variable (y) in augmented space.
+
+        Returns:
+            sympy.Expr or None: Explicit expression for y, or implicit F if
+            solve fails, or None if no terms extracted.
+        """
+        from models.rotor_translate import RotorTranslator
+
+        translator = RotorTranslator(algebra)
+        terms = translator.translate_implicit(model, target_var_idx)
+
+        if not terms:
+            return None
+
+        # Build F expression
+        F_expr = sympy.Integer(0)
+        for t in terms:
+            F_expr += t.weight * t.expr
+
+        y_sym = sympy.Symbol("y")
+        try:
+            solutions = sympy.solve(F_expr, y_sym)
+            if solutions:
+                return solutions[0]
+        except Exception:
+            pass
+
+        return F_expr  # Return implicit form if solve fails

@@ -35,6 +35,10 @@ from optimizers.riemannian import RiemannianAdam
 
 logger = logging.getLogger(__name__)
 
+# Module mapping for sympy.lambdify to ensure numpy ufuncs work on compound exprs
+_LAMBDIFY_MODULES = [{"log": np.log, "sqrt": np.sqrt, "Abs": np.abs,
+                       "sign": np.sign, "exp": np.exp}, "numpy"]
+
 
 def _safe_float(val, default=0.5):
     """Convert a value to float, replacing NaN/inf with default."""
@@ -249,9 +253,40 @@ class IterativeUnbender:
         ss_res = np.sum((y_orig - y_hat) ** 2)
         r2_final = 1.0 - ss_res / ss_tot
 
+        # If explicit R2 is poor and implicit wasn't tried, try implicit fallback
+        implicit_form = prep.implicit_form
+        if (r2_final < 0.5
+                and self.implicit_mode != 'explicit'
+                and len(prep.groups) == 1
+                and (implicit_form is None or implicit_form.mode != "implicit")):
+            logger.info(f"Explicit R2={r2_final:.4f} < 0.5, trying implicit fallback")
+            # Force implicit mode
+            from models.implicit_solver import ImplicitFormulation
+            fallback_form = ImplicitFormulation(
+                target_var_idx=X_norm.shape[1], mode="implicit",
+            )
+            fallback_prep = _PrepResult(
+                groups=prep.groups, implicit_form=fallback_form,
+                svd_Vt=prep.svd_Vt, svd_S=prep.svd_S,
+            )
+            impl_terms, impl_stages = self._process_group_implicit(
+                prep.groups[0], 0, fallback_prep, X_orig, y_orig, X_norm, y_norm,
+            )
+            if impl_terms:
+                impl_y_hat = self._evaluate_terms(impl_terms, X_orig)
+                impl_ss_res = np.sum((y_orig - impl_y_hat) ** 2)
+                impl_r2 = 1.0 - impl_ss_res / ss_tot
+                if impl_r2 > r2_final:
+                    logger.info(f"Implicit fallback improved R2: "
+                                f"{r2_final:.4f} -> {impl_r2:.4f}")
+                    all_terms = impl_terms
+                    all_ops = ["sub"] * len(impl_terms)
+                    all_stages = impl_stages
+                    r2_final = impl_r2
+                    implicit_form = fallback_form
+
         # Assemble formula
         vnames = var_names if var_names else [f"x{i+1}" for i in range(self.in_features)]
-        implicit_form = prep.implicit_form
         formula = self._assemble_formula(
             all_terms, vnames, all_ops, implicit_form=implicit_form,
         )
@@ -298,10 +333,20 @@ class IterativeUnbender:
                 from models.implicit_solver import ImplicitSolver
                 solver = ImplicitSolver(
                     device=self.device,
-                    probe_epochs=self.probe_config.get("probe_epochs", 10),
+                    probe_epochs=self.probe_config.get("probe_epochs", 30),
+                    jacobian_weight=self.probe_config.get("jacobian_weight", 0.1),
                 )
                 algebra = groups[0].algebra
-                solver_result = solver.probe_best_mode(algebra, X_norm, y_norm)
+                # Subsample for faster/more responsive probing
+                N_probe = X_norm.shape[0]
+                if N_probe > 500:
+                    idx = torch.randperm(N_probe, device=self.device)[:500]
+                    X_probe = X_norm[idx]
+                    y_probe = y_norm[idx]
+                else:
+                    X_probe = X_norm
+                    y_probe = y_norm
+                solver_result = solver.probe_best_mode(algebra, X_probe, y_probe)
                 if self.implicit_mode == 'auto':
                     implicit_form = solver_result
                 elif self.implicit_mode == 'implicit':
@@ -355,6 +400,158 @@ class IterativeUnbender:
     def _process_group(self, group, group_idx, prep, X_orig, y_orig,
                        X_norm, y_norm):
         """Single-rotor iterative extraction for one variable group.
+
+        Dispatches to implicit or explicit extraction based on prep result.
+
+        Returns:
+            (list[RotorTerm], list[StageResult])
+        """
+        # If implicit mode selected, use implicit extraction for this group
+        if prep.implicit_form is not None and prep.implicit_form.mode == "implicit":
+            terms, stages = self._process_group_implicit(
+                group, group_idx, prep, X_orig, y_orig, X_norm, y_norm,
+            )
+            return terms, stages
+
+        return self._process_group_explicit(
+            group, group_idx, prep, X_orig, y_orig, X_norm, y_norm,
+        )
+
+    def _process_group_implicit(self, group, group_idx, prep, X_orig, y_orig,
+                                 X_norm, y_norm):
+        """Implicit extraction: train F(x,y)=0, extract via sympy.solve.
+
+        Returns:
+            (list[RotorTerm], list[StageResult])
+        """
+        from models.implicit_solver import ImplicitSolver
+
+        algebra = group.algebra
+        var_indices = group.var_indices
+        n_group_vars = len(var_indices)
+
+        # Build augmented algebra (k+1 variables)
+        p, q, r = group.signature
+        impl_algebra = CliffordAlgebra(p + 1, q, r, device=self.device)
+
+        # Augmented data Z = [X_group_norm, y_norm]
+        X_group_norm = _standardize(
+            torch.tensor(X_orig[:, var_indices], dtype=torch.float32, device=self.device)
+        )
+        Z = torch.cat([X_group_norm, y_norm], dim=-1)  # [N, k+1]
+
+        # Train implicit model
+        solver = ImplicitSolver(device=self.device)
+
+        auto = SRGBN.auto_config(Z.shape[0], n_group_vars + 1, impl_algebra.dim)
+        model = SRGBN.single_rotor(
+            impl_algebra, n_group_vars + 1, channels=max(auto["channels"], 16),
+        )
+        model = model.to(self.device)
+
+        # Break F≡0 dead gradient (see implicit_solver._probe_implicit)
+        with torch.no_grad():
+            for m in model.modules():
+                if hasattr(m, 'grade0_bias'):
+                    torch.nn.init.normal_(m.grade0_bias, std=1.0)
+
+        model = solver.train_implicit(
+            model, Z, impl_algebra,
+            epochs=max(self.stage_epochs * 3, 60),
+            lr=self.stage_lr,
+        )
+
+        # Extract via direct symbolic expansion, fallback to legacy
+        translator = RotorTranslator(impl_algebra)
+        impl_terms = translator.translate_direct(model)
+        if impl_terms:
+            # Rename target variable x_{k+1} -> y for implicit solve
+            target_sym = sympy.Symbol(f"x{n_group_vars + 1}")
+            y_sym_sub = sympy.Symbol("y")
+            for t in impl_terms:
+                if t.expr is not None:
+                    t.expr = t.expr.subs(target_sym, y_sym_sub)
+        else:
+            impl_terms = translator.translate_implicit(model, target_var_idx=n_group_vars)
+
+        if not impl_terms:
+            logger.info(f"  Group {group_idx}: implicit extraction found no terms, "
+                         f"falling back to explicit")
+            return self._process_group_explicit(
+                group, group_idx, prep, X_orig, y_orig, X_norm, y_norm,
+            )
+
+        # Build F expression and solve for y
+        F_expr = sympy.Integer(0)
+        for t in impl_terms:
+            F_expr += t.weight * t.expr
+
+        y_sym = sympy.Symbol("y")
+        var_syms = [sympy.Symbol(f"x{i+1}") for i in range(n_group_vars)]
+
+        explicit_expr = None
+        try:
+            solutions = sympy.solve(F_expr, y_sym)
+            if solutions:
+                explicit_expr = solutions[0]
+        except Exception:
+            pass
+
+        if explicit_expr is None:
+            # Keep implicit form F=0
+            explicit_expr = F_expr
+
+        # Build callable if we have an explicit (y-free) expression
+        has_y = y_sym in explicit_expr.free_symbols
+        result_fn = None
+        if not has_y:
+            # Zero out phantom variables beyond the group
+            for s in list(explicit_expr.free_symbols):
+                if s not in var_syms and s != y_sym:
+                    explicit_expr = explicit_expr.subs(s, 0)
+            n_terms = len(sympy.Add.make_args(explicit_expr))
+            if n_terms <= 20:
+                explicit_expr = sympy.simplify(explicit_expr)
+            else:
+                explicit_expr = sympy.expand(explicit_expr)
+            result_fn = sympy.lambdify(var_syms, explicit_expr, modules=_LAMBDIFY_MODULES)
+
+        result_term = RotorTerm(
+            planes=[p for t in impl_terms for p in t.planes],
+            weight=1.0,
+            expr=explicit_expr,
+            fn=result_fn,
+        )
+
+        # Evaluate R2
+        r2 = 0.0
+        if result_term.fn is not None:
+            args = [X_orig[:, var_indices[i]] for i in range(n_group_vars)]
+            try:
+                y_hat = result_term.fn(*args)
+                if np.all(np.isfinite(y_hat)):
+                    ss_tot = np.sum((y_orig - y_orig.mean()) ** 2) + 1e-12
+                    ss_res = np.sum((y_orig - y_hat) ** 2)
+                    r2 = 1.0 - ss_res / ss_tot
+            except Exception:
+                pass
+            logger.info(f"  Group {group_idx}: implicit extraction R2={r2:.4f}")
+
+        stage = StageResult(
+            stage_idx=0, signature=group.signature,
+            terms=[result_term], fitted_values=np.zeros(len(y_orig)),
+            residual_before=y_orig, residual_after=np.zeros(len(y_orig)),
+            curvature_before=0.5, curvature_after=0.0,
+            coherence_before=0.5, coherence_after=0.5,
+            rotor_planes=[], accepted=True,
+            group_idx=group_idx,
+        )
+
+        return [result_term], [stage]
+
+    def _process_group_explicit(self, group, group_idx, prep, X_orig, y_orig,
+                                 X_norm, y_norm):
+        """Explicit single-rotor iterative extraction for one variable group.
 
         Returns:
             (list[RotorTerm], list[StageResult])
@@ -425,9 +622,12 @@ class IterativeUnbender:
             curv_after = _safe_float(curv_after, 0.5)
             coh_after = _safe_float(coh_after, 0.5)
 
-            # Extract terms via RotorTranslator
+            # Extract terms via direct symbolic expansion
             translator = RotorTranslator(algebra)
-            stage_terms = translator.translate(model)
+            stage_terms = translator.translate_direct(model)
+            if not stage_terms:
+                # Fallback to legacy plane-by-plane translation
+                stage_terms = translator.translate(model)
 
             if not stage_terms:
                 logger.info(f"  Group {group_idx} stage {stage_idx}: no terms, stopping")
@@ -448,8 +648,9 @@ class IterativeUnbender:
 
             for t in stage_terms:
                 term_val = translator.evaluate_terms([t], X_group)
+                # Try division first (for multiplicative structure)
                 res_div, log_corr = _log_corr_divide(new_residual, term_val)
-                if res_div is not None and log_corr > 0.8:
+                if res_div is not None and log_corr > 0.7:
                     new_residual = res_div
                     comp_ops.append("div")
                 else:
@@ -475,13 +676,9 @@ class IterativeUnbender:
             if not skip_coherence and degradation > self.coherence_degradation_threshold:
                 logger.warning(
                     f"  Group {group_idx} stage {stage_idx}: coherence degraded "
-                    f"{prev_coherence:.3f} -> {new_coh:.3f}"
+                    f"{prev_coherence:.3f} -> {new_coh:.3f}, rejecting stage"
                 )
-                # Fallback to polynomial
-                stage_terms = self._polynomial_fallback(X_group, residual)
-                comp_ops = ["sub"] * len(stage_terms)
-                fitted = self._evaluate_terms(stage_terms, X_group)
-                new_residual = residual - fitted
+                accepted = False
 
             rotor_planes = self._get_active_rotor_planes(model)
 
@@ -519,27 +716,6 @@ class IterativeUnbender:
 
             if curv_after < self.curvature_threshold:
                 break
-
-        # Final check: if geometric extraction is insufficient, add polynomial fallback
-        r2_final = 1.0 - np.sum(residual ** 2) / ss_tot
-        if r2_final < 0.5 and X_group.shape[1] <= 6:
-            logger.info(
-                f"  Group {group_idx}: R2={r2_final:.4f} < 0.5, "
-                f"applying polynomial fallback on residual"
-            )
-            poly_terms = self._polynomial_fallback(X_group, residual)
-            if poly_terms:
-                poly_fitted = self._evaluate_terms(poly_terms, X_group)
-                poly_residual = residual - poly_fitted
-                ss_res_poly = np.sum(poly_residual ** 2)
-                r2_poly = 1.0 - ss_res_poly / ss_tot
-                if r2_poly > r2_final + 0.05:
-                    logger.info(
-                        f"  Group {group_idx}: polynomial improved R2 "
-                        f"{r2_final:.4f} -> {r2_poly:.4f}"
-                    )
-                    terms.extend(poly_terms)
-                    residual = poly_residual
 
         return terms, stages
 
@@ -675,7 +851,9 @@ class IterativeUnbender:
             )
 
             translator = RotorTranslator(mother_alg)
-            cross_terms = translator.translate(model)
+            cross_terms = translator.translate_direct(model)
+            if not cross_terms:
+                cross_terms = translator.translate(model)
             return cross_terms, cross_energy
 
         except Exception as e:
@@ -715,6 +893,8 @@ class IterativeUnbender:
                     args.extend([np.zeros(X_orig.shape[0])
                                  for _ in range(n_expected - len(args))])
                 pred = t.fn(*args)
+                pred = np.broadcast_to(np.asarray(pred, dtype=np.float64),
+                                       (X_orig.shape[0],)).copy()
                 if np.all(np.isfinite(pred)):
                     term_preds.append(pred)
                 else:
@@ -725,7 +905,8 @@ class IterativeUnbender:
         if not term_preds:
             return all_terms, all_ops
 
-        A = np.column_stack(term_preds)
+        # Include intercept column for constant offset fitting
+        A = np.column_stack(term_preds + [np.ones(X_orig.shape[0])])
         new_weights = np.linalg.lstsq(A, y_orig, rcond=None)[0]
 
         refined = []
@@ -736,6 +917,21 @@ class IterativeUnbender:
                 expr=t.expr,
                 fn=t.fn,
             ))
+
+        # Add intercept term if significant
+        intercept = float(new_weights[-1])
+        if abs(intercept) > 1e-8:
+            n_vars = X_orig.shape[1]
+            intercept_syms = [sympy.Symbol(f"x{i+1}") for i in range(n_vars)]
+            intercept_expr = sympy.Float(intercept)
+            refined.append(RotorTerm(
+                planes=[],
+                weight=1.0,
+                expr=intercept_expr,
+                fn=sympy.lambdify(intercept_syms, intercept_expr, modules=_LAMBDIFY_MODULES),
+            ))
+            all_ops = list(all_ops) + ["sub"]
+
         return refined, all_ops
 
     # =======================================================================
@@ -807,7 +1003,7 @@ class IterativeUnbender:
             for i in range(d):
                 if abs(coeffs_lin[i]) > 1e-8:
                     expr = expr + float(coeffs_lin[i]) * symbols[i]
-            fn = sympy.lambdify(symbols, expr, "numpy")
+            fn = sympy.lambdify(symbols, expr, modules=_LAMBDIFY_MODULES)
             term = RotorTerm(planes=[], weight=1.0, expr=expr, fn=fn)
             return True, [term], r2_lin
 
@@ -829,43 +1025,6 @@ class IterativeUnbender:
 
         ranked = sorted(range(n_vars), key=lambda i: correlations[i], reverse=True)
         return ranked[:max_vars]
-
-    def _polynomial_fallback(self, X_raw, residual_raw):
-        """Fit polynomial + interaction terms when geometric unbending fails.
-
-        Returns list[RotorTerm].
-        """
-        n_vars = X_raw.shape[1]
-        N = X_raw.shape[0]
-        symbols = [sympy.Symbol(f"x{i+1}") for i in range(n_vars)]
-
-        features = [np.ones(N)]
-        feature_exprs = [sympy.Integer(1)]
-
-        for i in range(min(n_vars, 6)):
-            for deg in [1, 2, 3]:
-                features.append(X_raw[:, i] ** deg)
-                feature_exprs.append(symbols[i] ** deg)
-
-        if n_vars >= 2:
-            for i in range(min(n_vars, 4)):
-                for j in range(i + 1, min(n_vars, 4)):
-                    features.append(X_raw[:, i] * X_raw[:, j])
-                    feature_exprs.append(symbols[i] * symbols[j])
-
-        A = np.column_stack(features)
-        coeffs = np.linalg.lstsq(A, residual_raw, rcond=None)[0]
-
-        expr = sympy.Integer(0)
-        for c, fe in zip(coeffs, feature_exprs):
-            if abs(c) > 1e-8:
-                expr = expr + float(c) * fe
-
-        if expr == sympy.Integer(0):
-            return []
-
-        fn = sympy.lambdify(symbols, expr, "numpy")
-        return [RotorTerm(planes=[], weight=1.0, expr=expr, fn=fn)]
 
     def _probe_residual(self, X_raw, residual_raw, n_probes=4):
         """Probe the metric signature of [X, residual] data manifold."""
