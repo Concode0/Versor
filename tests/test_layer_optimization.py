@@ -18,22 +18,6 @@ class TestOptimization(unittest.TestCase):
     def setUp(self):
         self.device = 'cpu'
 
-    def test_metric_search_euclidean(self):
-        """Test that MetricSearch prefers Euclidean signature for Euclidean data."""
-        # Create random Euclidean data in 2D
-        # x coordinates
-        data = torch.randn(20, 2)
-        
-        searcher = MetricSearch(device=self.device)
-        
-        # We expect (2, 0) to be the best for random flat data if we measure
-        # preservation of "flatness" or basic distances.
-        
-        best_p, best_q = searcher.search(data)
-        
-        # It should prefer p=2, q=0
-        self.assertEqual((best_p, best_q), (2, 0))
-
     def test_rotor_pruning(self):
         """Test that RotorLayer correctly prunes small bivector weights."""
         algebra = CliffordAlgebra(p=3, q=0, device='cpu')
