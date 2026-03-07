@@ -7,13 +7,13 @@ setup_algebra, setup_model, setup_criterion, get_data, train_step, evaluate, vis
 from .base import BaseTask
 from .symbolic_regression import SRTask
 from .md17 import MD17Task
-from .lm import LanguageModelingTask
-from .deeplense import DeepLenseTask
+from .glu import GLUTask
+from .deap_eeg import DEAPEEGTask
 
 __all__ = [
     "BaseTask",
     "SRTask",
     "MD17Task",
-    "LanguageModelingTask",
-    "DeepLenseTask",
+    "GLUTask",
+    "DEAPEEGTask",
 ]

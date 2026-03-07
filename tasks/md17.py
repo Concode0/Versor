@@ -45,7 +45,7 @@ class MD17Task(BaseTask):
 
     def setup_algebra(self):
         """Use Cl(3,0) for 3D Euclidean space."""
-        return CliffordAlgebra(p=3, q=0, device=self.device)
+        return CliffordAlgebra(p=3, q=0, r=self.cfg.algebra.get("r", 0), device=self.device)
 
     def setup_model(self):
         """Build MD17ForceNet model with decomposition and rotor backend."""

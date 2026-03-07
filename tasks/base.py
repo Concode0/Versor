@@ -60,7 +60,7 @@ class BaseTask(ABC):
         self.criterion = self.setup_criterion()
         self.optimizer = self._setup_optimizer()
         self.epochs = cfg.training.epochs
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=5)
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=3)
 
         # AMP scaler (None when AMP is disabled)
         self._scaler = self.device_config.get_scaler()
