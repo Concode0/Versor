@@ -33,6 +33,7 @@ import sympy
 import torch
 
 from core.algebra import CliffordAlgebra
+from models.sr.utils import LAMBDIFY_MODULES, make_lambdify_fn
 
 logger = logging.getLogger(__name__)
 
@@ -137,10 +138,7 @@ class RotorTranslator:
             if expr == sympy.Integer(0):
                 continue
 
-            _numpy_mod = {"log": np.log, "sqrt": np.sqrt, "Abs": np.abs,
-                         "sign": np.sign, "exp": np.exp}
-            fn = sympy.lambdify(self.symbols, expr,
-                                modules=[_numpy_mod, "numpy"])
+            fn = make_lambdify_fn(self.symbols, expr)
 
             terms.append(RotorTerm(
                 planes=planes,
@@ -583,10 +581,7 @@ class RotorTranslator:
 
         # Lambdify with self.symbols so evaluate_terms/refine can call fn(*args)
         # Use explicit numpy module dict to ensure ufuncs work on compound exprs
-        _numpy_mod = {"log": np.log, "sqrt": np.sqrt, "Abs": np.abs,
-                      "sign": np.sign, "exp": np.exp, "sin": np.sin,
-                      "cos": np.cos}
-        fn = sympy.lambdify(self.symbols, expr, modules=[_numpy_mod, "numpy"])
+        fn = make_lambdify_fn(self.symbols, expr)
 
         return [RotorTerm(
             planes=[],
@@ -618,5 +613,7 @@ class RotorTranslator:
                 np.asarray(result, dtype=np.float64),
                 (X_np.shape[0],),
             )
-            y_hat += t.weight * result
+            val = t.weight * result
+            if np.all(np.isfinite(val)):
+                y_hat += val
         return y_hat

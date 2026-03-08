@@ -20,7 +20,6 @@
 """
 
 import logging
-import signal
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -32,59 +31,13 @@ from core.algebra import CliffordAlgebra
 from core.search import GeodesicFlow, MetricSearch
 from models.sr.translator import RotorTranslator, RotorTerm
 from models.sr.net import SRGBN
+from models.sr.utils import (
+    LAMBDIFY_MODULES, safe_sympy_solve, safe_float, standardize,
+    subsample, safe_svd, make_lambdify_fn, evaluate_terms,
+)
 from optimizers.riemannian import RiemannianAdam
 
 logger = logging.getLogger(__name__)
-
-# Module mapping for sympy.lambdify to ensure numpy ufuncs work on compound exprs
-_LAMBDIFY_MODULES = [{"log": np.log, "sqrt": np.sqrt, "Abs": np.abs,
-                       "sign": np.sign, "exp": np.exp}, "numpy"]
-
-
-def _safe_sympy_solve(expr, var, timeout_sec=5):
-    """sympy.solve with timeout and validation."""
-    def handler(signum, frame):
-        raise TimeoutError("sympy.solve timed out")
-
-    old = signal.signal(signal.SIGALRM, handler)
-    signal.alarm(timeout_sec)
-    try:
-        solutions = sympy.solve(expr, var)
-    except (TimeoutError, Exception):
-        return None
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old)
-
-    if not solutions:
-        return None
-
-    # Pick simplest real solution
-    for sol in solutions:
-        if not sol.has(sympy.I):
-            return sol
-    return solutions[0]  # fallback
-
-
-def _safe_float(val, default=0.5):
-    """Convert a value to float, replacing NaN/inf with default."""
-    f = float(val) if not isinstance(val, float) else val
-    if not np.isfinite(f):
-        return default
-    return f
-
-
-def _standardize(data):
-    """Zero-mean, unit-variance standardization (numpy or torch)."""
-    if isinstance(data, torch.Tensor):
-        mu = data.mean(0)
-        std = data.std(0).clamp(min=1e-8)
-        return (data - mu) / std
-    else:
-        mu = data.mean(axis=0)
-        std = data.std(axis=0)
-        std = np.where(std < 1e-8, 1.0, std)
-        return (data - mu) / std
 
 
 @dataclass
@@ -275,7 +228,7 @@ class IterativeUnbender:
             )
 
         # Final R2
-        y_hat = self._evaluate_terms(all_terms, X_orig)
+        y_hat = evaluate_terms(all_terms, X_orig)
         ss_res = np.sum((y_orig - y_hat) ** 2)
         r2_final = 1.0 - ss_res / ss_tot
 
@@ -298,7 +251,7 @@ class IterativeUnbender:
                 prep.groups[0], 0, fallback_prep, X_orig, y_orig, X_norm, y_norm,
             )
             if impl_terms:
-                impl_y_hat = self._evaluate_terms(impl_terms, X_orig)
+                impl_y_hat = evaluate_terms(impl_terms, X_orig)
                 impl_ss_res = np.sum((y_orig - impl_y_hat) ** 2)
                 impl_r2 = 1.0 - impl_ss_res / ss_tot
                 if impl_r2 > r2_final:
@@ -336,9 +289,8 @@ class IterativeUnbender:
         """SVD alignment, variable grouping, implicit mode probe."""
         # SVD align
         X_c = X_orig - X_orig.mean(axis=0)
-        try:
-            _, S, Vt = np.linalg.svd(X_c, full_matrices=False)
-        except np.linalg.LinAlgError:
+        S, Vt = safe_svd(X_c)
+        if S is None:
             S, Vt = np.ones(X_orig.shape[1]), np.eye(X_orig.shape[1])
 
         # Variable grouping
@@ -363,14 +315,10 @@ class IterativeUnbender:
                 )
                 algebra = groups[0].algebra
                 # Subsample for faster/more responsive probing
-                N_probe = X_norm.shape[0]
-                if N_probe > 500:
-                    idx = torch.randperm(N_probe, device=self.device)[:500]
-                    X_probe = X_norm[idx]
-                    y_probe = y_norm[idx]
-                else:
-                    X_probe = X_norm
-                    y_probe = y_norm
+                probe_data = torch.cat([X_norm, y_norm], dim=-1)
+                probe_data = subsample(probe_data, 500)
+                X_probe = probe_data[:, :-1]
+                y_probe = probe_data[:, -1:]
                 solver_result = solver.probe_best_mode(algebra, X_probe, y_probe)
                 if self.implicit_mode == 'auto':
                     implicit_form = solver_result
@@ -391,10 +339,8 @@ class IterativeUnbender:
         # Quick MetricSearch
         combined = np.column_stack([X_orig, y_orig.reshape(-1, 1)])
         data = torch.tensor(combined, dtype=torch.float32, device=self.device)
-        data = _standardize(data)
-        if data.shape[0] > 500:
-            idx = torch.randperm(data.shape[0])[:500]
-            data = data[idx]
+        data = standardize(data)
+        data = subsample(data, 500)
         if data.shape[1] > 6:
             data_c = data - data.mean(0)
             _, _, V = torch.linalg.svd(data_c, full_matrices=False)
@@ -460,7 +406,7 @@ class IterativeUnbender:
         impl_algebra = CliffordAlgebra(p + 1, q, r, device=self.device)
 
         # Augmented data Z = [X_group_norm, y_norm]
-        X_group_norm = _standardize(
+        X_group_norm = standardize(
             torch.tensor(X_orig[:, var_indices], dtype=torch.float32, device=self.device)
         )
         Z = torch.cat([X_group_norm, y_norm], dim=-1)  # [N, k+1]
@@ -539,7 +485,7 @@ class IterativeUnbender:
                 explicit_expr = sympy.simplify(explicit_expr)
             else:
                 explicit_expr = sympy.expand(explicit_expr)
-            result_fn = sympy.lambdify(var_syms, explicit_expr, modules=_LAMBDIFY_MODULES)
+            result_fn = make_lambdify_fn(var_syms, explicit_expr)
 
         result_term = RotorTerm(
             planes=[p for t in impl_terms for p in t.planes],
@@ -587,7 +533,7 @@ class IterativeUnbender:
 
         # Data for this group
         X_group = X_orig[:, var_indices]
-        X_group_norm = _standardize(
+        X_group_norm = standardize(
             torch.tensor(X_group, dtype=torch.float32, device=self.device)
         )
 
@@ -600,7 +546,7 @@ class IterativeUnbender:
             )
         ) if algebra.n >= n_group_vars + 1 else None
 
-        prev_coherence = _safe_float(
+        prev_coherence = safe_float(
             self._measure_coherence(X_group, residual, algebra), 0.5,
         )
 
@@ -636,7 +582,7 @@ class IterativeUnbender:
             residual_norm = (residual_t - res_mean) / res_std
 
             # Probe curvature
-            probe_curv = _safe_float(
+            probe_curv = safe_float(
                 self._measure_curvature(X_group, residual, algebra), 0.5,
             )
 
@@ -644,8 +590,8 @@ class IterativeUnbender:
             model, curv_after, coh_after = self._train_single_rotor(
                 model, X_group_norm, residual_norm, algebra,
             )
-            curv_after = _safe_float(curv_after, 0.5)
-            coh_after = _safe_float(coh_after, 0.5)
+            curv_after = safe_float(curv_after, 0.5)
+            coh_after = safe_float(coh_after, 0.5)
 
             # Extract terms via direct symbolic expansion
             translator = RotorTranslator(algebra)
@@ -679,7 +625,7 @@ class IterativeUnbender:
             fitted = residual - new_residual
 
             # Coherence check
-            new_coh = _safe_float(
+            new_coh = safe_float(
                 self._measure_coherence(X_group, new_residual, algebra), 0.5,
             )
             degradation = prev_coherence - new_coh
@@ -810,7 +756,7 @@ class IterativeUnbender:
         mother_mvs = []
         for g in groups:
             X_g = X_orig[:, g.var_indices]
-            X_g_std = _standardize(X_g)
+            X_g_std = standardize(X_g)
             # Pad to group algebra dim
             n_g = g.algebra.n
             if X_g_std.shape[1] < n_g:
@@ -856,7 +802,7 @@ class IterativeUnbender:
             res_std = residual_t.std().clamp(min=1e-8)
             residual_norm = (residual_t - res_mean) / res_std
 
-            X_norm_std = _standardize(X_norm) if isinstance(X_norm, torch.Tensor) else X_norm
+            X_norm_std = standardize(X_norm) if isinstance(X_norm, torch.Tensor) else X_norm
             model, _, _ = self._train_stage(
                 model, X_norm_std, residual_norm, mother_alg,
             )
@@ -944,7 +890,7 @@ class IterativeUnbender:
                 planes=[],
                 weight=1.0,
                 expr=intercept_expr,
-                fn=sympy.lambdify(intercept_syms, intercept_expr, modules=_LAMBDIFY_MODULES),
+                fn=make_lambdify_fn(intercept_syms, intercept_expr),
             ))
             all_ops = list(all_ops) + ["sub"]
 
@@ -953,22 +899,6 @@ class IterativeUnbender:
     # =======================================================================
     # Shared Helpers
     # =======================================================================
-
-    def _evaluate_terms(self, terms, X_orig):
-        """Evaluate all RotorTerms on data."""
-        y_hat = np.zeros(X_orig.shape[0])
-        n_vars = X_orig.shape[1]
-        for t in terms:
-            if t.fn is not None:
-                n_expected = t.fn.__code__.co_argcount
-                args = [X_orig[:, i] for i in range(min(n_vars, n_expected))]
-                if len(args) < n_expected:
-                    args.extend([np.zeros(X_orig.shape[0])
-                                 for _ in range(n_expected - len(args))])
-                val = t.weight * t.fn(*args)
-                if np.all(np.isfinite(val)):
-                    y_hat += val
-        return y_hat
 
     def _check_linearity(self, X_raw, y_raw, r2_threshold=0.995):
         """Two-branch linearity check: standard linear vs log-log power law.
@@ -1019,7 +949,7 @@ class IterativeUnbender:
             for i in range(d):
                 if abs(coeffs_lin[i]) > 1e-8:
                     expr = expr + float(coeffs_lin[i]) * symbols[i]
-            fn = sympy.lambdify(symbols, expr, modules=_LAMBDIFY_MODULES)
+            fn = make_lambdify_fn(symbols, expr)
             term = RotorTerm(planes=[], weight=1.0, expr=expr, fn=fn)
             return True, [term], r2_lin
 
@@ -1050,11 +980,8 @@ class IterativeUnbender:
         X_selected = X_raw[:, active_vars]
         combined = np.column_stack([X_selected, residual_raw.reshape(-1, 1)])
         data = torch.tensor(combined, dtype=torch.float32, device=self.device)
-        data = _standardize(data)
-
-        if data.shape[0] > 500:
-            idx = torch.randperm(data.shape[0], device=self.device)[:500]
-            data = data[idx]
+        data = standardize(data)
+        data = subsample(data, 500)
 
         searcher = MetricSearch(
             device=self.device,
@@ -1192,47 +1119,41 @@ class IterativeUnbender:
 
     def _measure_coherence(self, X_raw, residual, algebra):
         """Measure coherence of the [X, residual] manifold."""
-        combined = np.column_stack([X_raw, residual.reshape(-1, 1)])
-        data = torch.tensor(combined, dtype=torch.float32, device=self.device)
-        data = _standardize(data)
-
-        if data.shape[0] > 256:
-            idx = torch.randperm(data.shape[0], device=self.device)[:256]
-            data = data[idx]
-
-        n = algebra.n
-        d = data.shape[1]
-        if d > n:
-            data = data[:, :n]
-        elif d < n:
-            pad = torch.zeros(data.shape[0], n - d, device=self.device)
-            data = torch.cat([data, pad], dim=-1)
-
+        data = self._prepare_manifold_data(X_raw, residual, algebra)
         mv = algebra.embed_vector(data)
         gf = GeodesicFlow(algebra, k=min(self.geodesic_k, data.shape[0] - 1))
         return gf.coherence(mv)
 
     def _measure_curvature(self, X_raw, residual, algebra):
         """Measure curvature of the [X, residual] manifold."""
+        data = self._prepare_manifold_data(X_raw, residual, algebra)
+        mv = algebra.embed_vector(data)
+        gf = GeodesicFlow(algebra, k=min(self.geodesic_k, data.shape[0] - 1))
+        return gf.curvature(mv)
+
+    def _prepare_manifold_data(self, X_raw, residual, algebra):
+        """Build [X, residual] data fitted to algebra dimension n.
+
+        Always keeps the residual column (last). If d > n, truncates
+        X columns (not residual) to fit. If d < n, zero-pads.
+        """
         combined = np.column_stack([X_raw, residual.reshape(-1, 1)])
         data = torch.tensor(combined, dtype=torch.float32, device=self.device)
-        data = _standardize(data)
-
-        if data.shape[0] > 256:
-            idx = torch.randperm(data.shape[0], device=self.device)[:256]
-            data = data[idx]
+        data = standardize(data)
+        data = subsample(data, 256)
 
         n = algebra.n
         d = data.shape[1]
         if d > n:
-            data = data[:, :n]
+            # Keep residual (last column), truncate X columns to fit
+            residual_col = data[:, -1:]
+            x_cols = data[:, :n - 1]
+            data = torch.cat([x_cols, residual_col], dim=-1)
         elif d < n:
             pad = torch.zeros(data.shape[0], n - d, device=self.device)
             data = torch.cat([data, pad], dim=-1)
 
-        mv = algebra.embed_vector(data)
-        gf = GeodesicFlow(algebra, k=min(self.geodesic_k, data.shape[0] - 1))
-        return gf.curvature(mv)
+        return data
 
     def _get_active_rotor_planes(self, model):
         """Get list of dominant plane names from active rotors."""
@@ -1262,7 +1183,7 @@ class IterativeUnbender:
         if implicit_form is not None and implicit_form.mode == "implicit":
             y_sym = sympy.Symbol("y")
             if y_sym in result_expr.free_symbols:
-                sol = _safe_sympy_solve(result_expr, y_sym)
+                sol = safe_sympy_solve(result_expr, y_sym)
                 if sol is not None:
                     return f"y = {sympy.simplify(sol)}"
                 return f"F({', '.join(var_names)}, y) = {sympy.simplify(result_expr)}"

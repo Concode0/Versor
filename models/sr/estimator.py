@@ -21,6 +21,7 @@ from sklearn.base import BaseEstimator, RegressorMixin
 
 from core.algebra import CliffordAlgebra
 from models.sr.net import SRGBN
+from models.sr.utils import make_lambdify_fn
 from optimizers.riemannian import RiemannianAdam
 
 
@@ -163,11 +164,7 @@ class VersorSR(BaseEstimator, RegressorMixin):
                 for t in result.all_terms:
                     if t.expr is not None:
                         combined += t.weight * t.expr
-                _numpy_mod = {"log": np.log, "sqrt": np.sqrt, "Abs": np.abs,
-                              "sign": np.sign, "exp": np.exp}
-                self._formula_fn = sympy.lambdify(
-                    syms, combined, modules=[_numpy_mod, "numpy"],
-                )
+                self._formula_fn = make_lambdify_fn(syms, combined)
         except Exception:
             self.formula_ = "extraction_failed"
 

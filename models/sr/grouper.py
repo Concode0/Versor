@@ -22,6 +22,7 @@ import numpy as np
 import torch
 
 from core.algebra import CliffordAlgebra
+from models.sr.utils import standardize, subsample, safe_svd
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,11 @@ class VariableGrouper:
         Caps at n=12 (algebra.py hard limit). If exceeded, reduces
         largest groups to 2 dims each via SVD.
 
+        Builds per-group basis vector maps that respect signature ordering:
+        mother basis is [e1+...eP+, e1-...eQ-, e1°...eR°], and each
+        group's local positive/negative/null vectors are mapped to the
+        correct mother slots.
+
         Args:
             groups: list[VariableGroup].
 
@@ -138,23 +144,46 @@ class VariableGrouper:
             R = sum(g.signature[2] for g in groups)
 
         mother = CliffordAlgebra(P, Q, R, device=self.device)
+
+        # Build per-group basis vector maps respecting signature ordering.
+        # Mother basis order: [positive_0..P-1, negative_0..Q-1, null_0..R-1]
+        # Each group's positive vectors map to consecutive mother positive slots, etc.
+        p_offset = 0  # next available positive slot in mother
+        q_offset = P  # next available negative slot (starts after all positives)
+        r_offset = P + Q  # next available null slot
+
         offsets = []
-        off = 0
         for g in groups:
-            offsets.append(off)
-            g.mother_offset = off
-            off += g.signature[0] + g.signature[1] + g.signature[2]
+            gp, gq, gr = g.signature
+            # Map: local basis vector index -> mother basis vector index
+            vec_map = {}
+            for i in range(gp):
+                vec_map[i] = p_offset + i
+            for i in range(gq):
+                vec_map[gp + i] = q_offset + i
+            for i in range(gr):
+                vec_map[gp + gq + i] = r_offset + i
+
+            g._mother_vec_map = vec_map
+            g.mother_offset = 0  # legacy field, not used for injection
+            offsets.append(vec_map)
+
+            p_offset += gp
+            q_offset += gq
+            r_offset += gr
 
         return mother, offsets
 
     def inject_to_mother(self, mv_local, group, mother_algebra):
-        """Map [B, C, 2^n_local] -> [B, C, 2^N_mother] by bit-shifting.
+        """Map [B, C, 2^n_local] -> [B, C, 2^N_mother] via basis vector map.
 
-        Each local basis blade index is shifted by group.mother_offset bits.
+        Uses the per-group vector map built by build_mother_algebra to
+        correctly translate blade indices respecting signature ordering.
+        Local blade index bits are remapped to mother blade index bits.
 
         Args:
             mv_local: torch.Tensor [..., 2^n_local].
-            group: VariableGroup with mother_offset set.
+            group: VariableGroup with _mother_vec_map set.
             mother_algebra: CliffordAlgebra for the mother space.
 
         Returns:
@@ -162,17 +191,25 @@ class VariableGrouper:
         """
         local_dim = group.algebra.dim
         mother_dim = mother_algebra.dim
-        offset = group.mother_offset
+        vec_map = group._mother_vec_map
+        n_local = group.algebra.n
 
         batch_shape = mv_local.shape[:-1]
         result = torch.zeros(*batch_shape, mother_dim,
                              device=mv_local.device, dtype=mv_local.dtype)
 
         for local_idx in range(local_dim):
-            # Shift local blade index bits by offset
-            mother_idx = local_idx << offset
-            if mother_idx < mother_dim:
-                result[..., mother_idx] = mv_local[..., local_idx]
+            # Remap each set bit in local_idx through the vector map
+            mother_idx = 0
+            for bit in range(n_local):
+                if local_idx & (1 << bit):
+                    mother_bit = vec_map.get(bit)
+                    if mother_bit is None:
+                        break
+                    mother_idx |= (1 << mother_bit)
+            else:
+                if mother_idx < mother_dim:
+                    result[..., mother_idx] = mv_local[..., local_idx]
 
         return result
 
@@ -185,24 +222,15 @@ class VariableGrouper:
 
         # SVD for warm-start
         X_c = X - X.mean(axis=0)
-        try:
-            _, S, Vt = np.linalg.svd(X_c, full_matrices=False)
-        except np.linalg.LinAlgError:
-            S, Vt = None, None
+        S, Vt = safe_svd(X_c)
 
         # MetricSearch
         data = torch.tensor(
             np.column_stack([X, y.reshape(-1, 1)]),
             dtype=torch.float32, device=self.device,
         )
-        if data.shape[0] > 500:
-            idx = torch.randperm(data.shape[0])[:500]
-            data = data[idx]
-
-        # Standardize
-        mu = data.mean(0)
-        std = data.std(0).clamp(min=1e-8)
-        data = (data - mu) / std
+        data = subsample(data, 500)
+        data = standardize(data)
 
         # Cap at 6 dims for MetricSearch
         if data.shape[1] > 6:
@@ -238,23 +266,15 @@ class VariableGrouper:
 
         # SVD
         X_c = X_sub - X_sub.mean(axis=0)
-        try:
-            _, S, Vt = np.linalg.svd(X_c, full_matrices=False)
-        except np.linalg.LinAlgError:
-            S, Vt = None, None
+        S, Vt = safe_svd(X_c)
 
         # MetricSearch on group data
         data = torch.tensor(
             np.column_stack([X_sub, y.reshape(-1, 1)]),
             dtype=torch.float32, device=self.device,
         )
-        if data.shape[0] > 500:
-            idx = torch.randperm(data.shape[0])[:500]
-            data = data[idx]
-
-        mu = data.mean(0)
-        std = data.std(0).clamp(min=1e-8)
-        data = (data - mu) / std
+        data = subsample(data, 500)
+        data = standardize(data)
 
         if data.shape[1] > 6:
             data_c = data - data.mean(0)

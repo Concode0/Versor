@@ -20,7 +20,6 @@ is a simple bilinear -- the rotor discovers e_x ^ e_y immediately.
 """
 
 import logging
-import signal
 from dataclasses import dataclass
 
 import numpy as np
@@ -30,6 +29,7 @@ import torch.nn.functional as F
 
 from core.algebra import CliffordAlgebra
 from models.sr.net import SRGBN
+from models.sr.utils import safe_sympy_solve
 from optimizers.riemannian import RiemannianAdam
 
 logger = logging.getLogger(__name__)
@@ -145,10 +145,13 @@ class ImplicitSolver:
             Z_grad = Z_data.detach().requires_grad_(True)
             pred = model(Z_grad)  # [N, 1]
 
-            if Z_grad.grad is not None:
-                Z_grad.grad = None
+            # Only build higher-order graph when needed (Phase 2 Eikonal).
+            # Warmup only needs grad magnitudes, not gradients-of-gradients.
+            need_higher_order = epoch >= warmup_epochs
             grad_F = torch.autograd.grad(
-                pred.sum(), Z_grad, create_graph=True, retain_graph=True
+                pred.sum(), Z_grad,
+                create_graph=need_higher_order,
+                retain_graph=True,
             )[0]  # [N, k+1]
             jac_norm_sq = (grad_F ** 2).sum(dim=-1).mean()
 
@@ -232,15 +235,16 @@ class ImplicitSolver:
             Z_grad = Z.detach().requires_grad_(True)
             pred = model(Z_grad)
 
-            # Compute per-sample gradient norm
+            need_higher_order = epoch >= warmup_epochs
             grad_F = torch.autograd.grad(
-                pred.sum(), Z_grad, create_graph=True, retain_graph=True
+                pred.sum(), Z_grad,
+                create_graph=need_higher_order,
+                retain_graph=True,
             )[0]
             jac_norm_sq = (grad_F ** 2).sum(dim=-1).mean()
 
             if epoch < warmup_epochs:
                 # Phase 1: maximize gradient norm to escape F≡0
-                # Also push output magnitude up to create non-trivial F
                 output_mag = pred.pow(2).mean()
                 loss = (-self.jacobian_weight * torch.log(jac_norm_sq + 1e-4)
                         - 0.01 * torch.log(output_mag + 1e-4))
@@ -295,33 +299,8 @@ class ImplicitSolver:
             F_expr += t.weight * t.expr
 
         y_sym = sympy.Symbol("y")
-        sol = self._safe_sympy_solve(F_expr, y_sym)
+        sol = safe_sympy_solve(F_expr, y_sym)
         if sol is not None:
             return sol
 
         return F_expr  # Return implicit form if solve fails
-
-    @staticmethod
-    def _safe_sympy_solve(expr, var, timeout_sec=5):
-        """sympy.solve with timeout and validation."""
-        def handler(signum, frame):
-            raise TimeoutError("sympy.solve timed out")
-
-        old = signal.signal(signal.SIGALRM, handler)
-        signal.alarm(timeout_sec)
-        try:
-            solutions = sympy.solve(expr, var)
-        except (TimeoutError, Exception):
-            return None
-        finally:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old)
-
-        if not solutions:
-            return None
-
-        # Pick simplest real solution
-        for sol in solutions:
-            if not sol.has(sympy.I):
-                return sol
-        return solutions[0]  # fallback
