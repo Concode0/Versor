@@ -20,6 +20,7 @@
 """
 
 import logging
+import signal
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -29,7 +30,7 @@ import torch.nn.functional as F
 
 from core.algebra import CliffordAlgebra
 from core.search import GeodesicFlow, MetricSearch
-from models.sr.translator import RotorTranslator, RotorTerm, _log_corr_divide
+from models.sr.translator import RotorTranslator, RotorTerm
 from models.sr.net import SRGBN
 from optimizers.riemannian import RiemannianAdam
 
@@ -38,6 +39,31 @@ logger = logging.getLogger(__name__)
 # Module mapping for sympy.lambdify to ensure numpy ufuncs work on compound exprs
 _LAMBDIFY_MODULES = [{"log": np.log, "sqrt": np.sqrt, "Abs": np.abs,
                        "sign": np.sign, "exp": np.exp}, "numpy"]
+
+
+def _safe_sympy_solve(expr, var, timeout_sec=5):
+    """sympy.solve with timeout and validation."""
+    def handler(signum, frame):
+        raise TimeoutError("sympy.solve timed out")
+
+    old = signal.signal(signal.SIGALRM, handler)
+    signal.alarm(timeout_sec)
+    try:
+        solutions = sympy.solve(expr, var)
+    except (TimeoutError, Exception):
+        return None
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+    if not solutions:
+        return None
+
+    # Pick simplest real solution
+    for sol in solutions:
+        if not sol.has(sympy.I):
+            return sol
+    return solutions[0]  # fallback
 
 
 def _safe_float(val, default=0.5):
@@ -647,14 +673,8 @@ class IterativeUnbender:
 
             for t in stage_terms:
                 term_val = translator.evaluate_terms([t], X_group)
-                # Try division first (for multiplicative structure)
-                res_div, log_corr = _log_corr_divide(new_residual, term_val)
-                if res_div is not None and log_corr > 0.7:
-                    new_residual = res_div
-                    comp_ops.append("div")
-                else:
-                    new_residual = new_residual - term_val
-                    comp_ops.append("sub")
+                new_residual = new_residual - term_val
+                comp_ops.append("sub")
 
             fitted = residual - new_residual
 
@@ -873,11 +893,7 @@ class IterativeUnbender:
         if not all_terms:
             return all_terms, all_ops
 
-        has_div = any(op == "div" for op in all_ops)
-        if has_div:
-            return self._refine_mixed_composition(all_terms, X_orig, y_orig, all_ops)
-
-        # Pure additive: lstsq reweighting
+        # Joint lstsq reweighting (all additive)
         return self._refine_additive(all_terms, X_orig, y_orig, all_ops)
 
     def _refine_additive(self, all_terms, X_orig, y_orig, all_ops):
@@ -933,77 +949,6 @@ class IterativeUnbender:
             all_ops = list(all_ops) + ["sub"]
 
         return refined, all_ops
-
-    def _refine_mixed_composition(self, all_terms, X_orig, y_orig, all_ops):
-        """Refinement for mixed composition (has both additive and div terms).
-
-        Evaluates the compositional formula on data, then fits a single
-        scale + offset: y ≈ a * y_pred + b.
-        """
-        y_pred = self._evaluate_composed(all_terms, all_ops, X_orig)
-        if y_pred is None or not np.all(np.isfinite(y_pred)):
-            logger.info("  Mixed composition evaluation failed, returning raw terms")
-            return all_terms, all_ops
-
-        # Single scale+offset refinement: y ≈ a * y_pred + b
-        A = np.column_stack([y_pred, np.ones(len(y_orig))])
-        coeffs = np.linalg.lstsq(A, y_orig, rcond=None)[0]
-        scale, offset = float(coeffs[0]), float(coeffs[1])
-
-        # Apply scale to first term
-        if abs(scale) > 1e-10 and abs(scale - 1.0) > 1e-4:
-            all_terms[0] = RotorTerm(
-                planes=all_terms[0].planes,
-                weight=all_terms[0].weight * scale,
-                expr=all_terms[0].expr * scale if all_terms[0].expr else None,
-                fn=all_terms[0].fn,
-            )
-
-        # Add constant term if significant
-        if abs(offset) > 1e-4:
-            n_vars = X_orig.shape[1]
-            x_syms = [sympy.Symbol(f"x{i+1}") for i in range(n_vars)]
-            all_terms.append(RotorTerm(
-                planes=[], weight=offset,
-                expr=sympy.Float(offset),
-                fn=lambda *args, c=offset: np.full(len(args[0]) if hasattr(args[0], '__len__') else 1, c),
-            ))
-            all_ops = list(all_ops) + ["sub"]
-
-        return all_terms, all_ops
-
-    def _evaluate_composed(self, all_terms, all_ops, X_orig):
-        """Evaluate the compositional formula (with div/sub ops) on data."""
-        n_vars = X_orig.shape[1]
-        result = None
-
-        for i, t in enumerate(all_terms):
-            if t.fn is None:
-                continue
-            n_expected = t.fn.__code__.co_argcount
-            args = [X_orig[:, j] for j in range(min(n_vars, n_expected))]
-            if len(args) < n_expected:
-                args.extend([np.zeros(X_orig.shape[0])
-                             for _ in range(n_expected - len(args))])
-            try:
-                val = t.weight * t.fn(*args)
-                val = np.broadcast_to(np.asarray(val, dtype=np.float64),
-                                      (X_orig.shape[0],)).copy()
-            except Exception:
-                continue
-
-            if not np.all(np.isfinite(val)):
-                continue
-
-            if result is None:
-                result = val
-            elif all_ops[i] == "div":
-                safe_val = np.where(np.abs(val) < 1e-8, 1e-8, val)
-                result = result / safe_val
-            else:
-                result = result + val
-
-        return result
 
     # =======================================================================
     # Shared Helpers
@@ -1163,13 +1108,12 @@ class IterativeUnbender:
                 r_batch = residual_norm
 
             pred = model(x_batch)
-            hidden = model._hidden_for_reg.mean(dim=1)
+            hidden = model._hidden_for_curvature.mean(dim=1)
 
             curv = gf._curvature_tensor(hidden)
             coh = gf._coherence_tensor(hidden)
             mse = F.mse_loss(pred, r_batch)
             sparsity = model.total_sparsity_loss()
-            grade_bal = model.grade_balance_loss()
 
             if not torch.isfinite(curv):
                 curv = torch.tensor(0.0, device=self.device)
@@ -1181,7 +1125,6 @@ class IterativeUnbender:
                 - self.coherence_weight * coh
                 + self.mse_weight * mse
                 + self.sparsity_weight * sparsity
-                + 0.005 * grade_bal
             )
 
             if torch.isfinite(loss):
@@ -1191,7 +1134,7 @@ class IterativeUnbender:
         model.eval()
         with torch.no_grad():
             model(X_norm)
-            h = model._hidden_for_reg.mean(dim=1)
+            h = model._last_hidden.mean(dim=1)
             final_curv = gf.curvature(h)
             final_coh = gf.coherence(h)
         return model, final_curv, final_coh
@@ -1242,7 +1185,7 @@ class IterativeUnbender:
         model.eval()
         with torch.no_grad():
             model(X_norm)
-            h = model._hidden_for_reg.mean(dim=1)
+            h = model._last_hidden.mean(dim=1)
             final_curv = gf.curvature(h)
             final_coh = gf.coherence(h)
         return model, final_curv, final_coh
@@ -1308,24 +1251,10 @@ class IterativeUnbender:
         symbols = [sympy.Symbol(f"x{i+1}") for i in range(n_vars)]
         subs = {symbols[i]: sympy.Symbol(var_names[i]) for i in range(n_vars)}
 
-        if any(op == "div" for op in all_ops):
-            result_expr = None
-            for i, t in enumerate(all_terms):
-                term_expr = t.weight * t.expr if t.expr is not None else sympy.Integer(0)
-                if result_expr is None:
-                    result_expr = term_expr
-                elif all_ops[i] == "div":
-                    if term_expr != 0:
-                        result_expr = result_expr / term_expr
-                else:
-                    result_expr = result_expr + term_expr
-            if result_expr is None:
-                result_expr = sympy.Integer(0)
-        else:
-            result_expr = sympy.Integer(0)
-            for t in all_terms:
-                if t.expr is not None:
-                    result_expr += t.weight * t.expr
+        result_expr = sympy.Integer(0)
+        for t in all_terms:
+            if t.expr is not None:
+                result_expr += t.weight * t.expr
 
         result_expr = result_expr.subs(subs)
 
@@ -1333,13 +1262,9 @@ class IterativeUnbender:
         if implicit_form is not None and implicit_form.mode == "implicit":
             y_sym = sympy.Symbol("y")
             if y_sym in result_expr.free_symbols:
-                try:
-                    solutions = sympy.solve(result_expr, y_sym)
-                    if solutions:
-                        result_expr = solutions[0]
-                        return f"y = {sympy.simplify(result_expr)}"
-                except Exception:
-                    pass
+                sol = _safe_sympy_solve(result_expr, y_sym)
+                if sol is not None:
+                    return f"y = {sympy.simplify(sol)}"
                 return f"F({', '.join(var_names)}, y) = {sympy.simplify(result_expr)}"
 
         return f"y = {sympy.simplify(result_expr)}"

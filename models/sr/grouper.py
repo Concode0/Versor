@@ -281,23 +281,47 @@ class VariableGrouper:
         )
 
     def _correlation_matrix(self, X):
-        """Compute Pearson correlation matrix, NaN-safe."""
+        """Compute distance correlation matrix (detects nonlinear dependencies)."""
         n_vars = X.shape[1]
+        n_samples = X.shape[0]
+
+        # Subsample for O(n^2) distance matrix computation
+        if n_samples > 500:
+            rng = np.random.default_rng(42)
+            idx = rng.choice(n_samples, size=500, replace=False)
+            X = X[idx]
+
         corr = np.eye(n_vars)
         for i in range(n_vars):
             for j in range(i + 1, n_vars):
-                xi = X[:, i] - X[:, i].mean()
-                xj = X[:, j] - X[:, j].mean()
-                denom = np.sqrt((xi ** 2).sum() * (xj ** 2).sum())
-                if denom < 1e-30:
-                    c = 0.0
-                else:
-                    c = float(np.dot(xi, xj) / denom)
-                if not np.isfinite(c):
-                    c = 0.0
+                c = self._distance_correlation(X[:, i], X[:, j])
                 corr[i, j] = c
                 corr[j, i] = c
         return corr
+
+    def _distance_correlation(self, x, y):
+        """Distance correlation between 1-D arrays."""
+        n = len(x)
+        if n < 4:
+            return 0.0
+
+        # Pairwise distance matrices
+        a = np.abs(x[:, None] - x[None, :])
+        b = np.abs(y[:, None] - y[None, :])
+
+        # Double center
+        A = a - a.mean(axis=0, keepdims=True) - a.mean(axis=1, keepdims=True) + a.mean()
+        B = b - b.mean(axis=0, keepdims=True) - b.mean(axis=1, keepdims=True) + b.mean()
+
+        dcov_sq = (A * B).mean()
+        dvar_x = (A * A).mean()
+        dvar_y = (B * B).mean()
+
+        denom = np.sqrt(dvar_x * dvar_y)
+        if denom < 1e-30:
+            return 0.0
+
+        return float(np.sqrt(max(dcov_sq, 0) / denom))
 
     def _spectral_cluster(self, affinity, n_clusters):
         """Simple spectral clustering using Laplacian eigenvectors + k-means."""

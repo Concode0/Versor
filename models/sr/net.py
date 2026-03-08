@@ -142,45 +142,17 @@ class SRMultiGradeEmbedding(CliffordModule):
 
         self.register_buffer('g1_idx', torch.tensor(g1_idx, dtype=torch.long))
 
-        # Precompute grade-2 indices for LUT embedding
-        g2_idx = [i for i in range(dim) if bin(i).count('1') == 2]
-        self.n_g2 = len(g2_idx)
-        self.register_buffer('g2_idx', torch.tensor(g2_idx, dtype=torch.long))
-
         # Grade-0: scalar bias per channel
         self.grade0_bias = nn.Parameter(torch.zeros(channels))
 
         # Grade-1: project k inputs -> C * n_g1
         self.grade1_proj = nn.Linear(in_features, channels * self.n_g1, bias=False)
 
-        # Grade-2 LUT: log(|x|+ε) and sign(x)/(|x|+ε) projected into grade-2 slots
-        self.n_lut = 2  # log, inv
-        n_lut_total = min(in_features * self.n_lut, self.n_g2)
-        self.n_lut_inputs = n_lut_total
-        self.lut_proj = nn.Linear(n_lut_total, channels * self.n_g2, bias=False)
-
         self._init_weights()
 
     def _init_weights(self):
         """Initialize projection weights."""
         nn.init.normal_(self.grade1_proj.weight, std=0.01)
-        nn.init.normal_(self.lut_proj.weight, std=0.001)  # start small
-
-    def _compute_lut(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute nonlinear LUT features: log(|x|+eps), sign(x)/(|x|+eps).
-
-        Args:
-            x (torch.Tensor): [B, k] raw inputs.
-
-        Returns:
-            torch.Tensor: [B, n_lut_inputs] LUT features.
-        """
-        eps = 1e-6
-        abs_x = x.abs() + eps
-        log_x = torch.log(abs_x)
-        inv_x = x.sign() / abs_x
-        lut = torch.cat([log_x, inv_x], dim=-1)  # [B, 2k]
-        return lut[:, :self.n_lut_inputs]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Embed scalar inputs into the multivector space.
@@ -202,12 +174,6 @@ class SRMultiGradeEmbedding(CliffordModule):
         g1_feats = self.grade1_proj(x).reshape(B, self.channels, self.n_g1)
         g1_idx = self.g1_idx.view(1, 1, -1).expand(B, self.channels, -1)
         out.scatter_(2, g1_idx, g1_feats)
-
-        # Grade-2 LUT (log, inv)
-        lut = self._compute_lut(x)  # [B, n_lut_inputs]
-        g2_feats = self.lut_proj(lut).reshape(B, self.channels, self.n_g2)
-        g2_idx = self.g2_idx.view(1, 1, -1).expand(B, self.channels, -1)
-        out.scatter_(2, g2_idx, g2_feats)
 
         return out
 
@@ -390,6 +356,16 @@ class SRGBN(CliffordModule):
         self.output_blade  = BladeSelector(algebra, channels)
         self.output_linear = CliffordLinear(algebra, channels, 1)
 
+        # Readout: learned weighted sum across all blade components.
+        # Grade-0 extraction alone cannot capture linear functions (y=c*x)
+        # because inputs live in grade-1 and rotors preserve grade.
+        # The readout projects all grades to scalar, letting grade-1
+        # (rotor-transformed vectors) contribute to the output.
+        self.readout = nn.Parameter(torch.zeros(algebra.dim))
+        # Initialize: grade-0 weight = 1 (backward compatible), rest = 0
+        with torch.no_grad():
+            self.readout[0] = 1.0
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass.
 
@@ -406,12 +382,13 @@ class SRGBN(CliffordModule):
 
         # Cache last hidden state for analysis / ortho monitoring.
         self._last_hidden = out.detach()   # [B, C, dim]
-        self._hidden_for_reg = out         # non-detached, for grade balance loss
+        self._hidden_for_curvature = out   # non-detached, for curvature loss
 
         out = self.output_norm(out)
         out = self.output_blade(out)
         out = self.output_linear(out)          # [B, 1, dim]
-        out = out[:, 0, 0].unsqueeze(-1)       # [B, 1] — grade-0 component
+        # Readout: weighted sum across all blade components
+        out = (out[:, 0, :] * self.readout).sum(-1, keepdim=True)  # [B, 1]
 
         return out
 
@@ -447,28 +424,6 @@ class SRGBN(CliffordModule):
             if isinstance(module, RotorLayer):
                 total = total + module.sparsity_loss()
         return total
-
-    def grade_balance_loss(self) -> torch.Tensor:
-        """Entropy-based penalty on grade energy concentration.
-
-        Returns 0 when energy is perfectly balanced across grades,
-        1 when all energy is concentrated in a single grade.
-        """
-        hidden = self._hidden_for_reg  # [B, C, dim]
-        n_grades = self.algebra.n + 1
-        energies = []
-        for g in range(n_grades):
-            g_idx = [i for i in range(self.algebra.dim) if bin(i).count("1") == g]
-            if g_idx:
-                energies.append(hidden[..., g_idx].pow(2).mean())
-            else:
-                energies.append(torch.tensor(0.0, device=hidden.device))
-        e = torch.stack(energies)
-        p = e / (e.sum() + 1e-12)
-        # Negative entropy (minimize to maximize entropy = balance)
-        entropy = -(p * (p + 1e-12).log()).sum()
-        max_entropy = torch.tensor(n_grades, device=hidden.device).float().log()
-        return 1.0 - entropy / max_entropy
 
     @torch.no_grad()
     def structural_analysis(self, x_sample: torch.Tensor):

@@ -63,29 +63,6 @@ def _correlation(a: np.ndarray, b: np.ndarray) -> float:
     return abs(float(np.dot(a_c, b_c) / denom))
 
 
-def _log_corr_divide(residual: np.ndarray, fitted: np.ndarray):
-    """Check log-domain correlation to decide if division is appropriate.
-
-    Returns (divided_result_or_None, log_correlation).
-    """
-    eps = 1e-8
-    abs_res = np.abs(residual) + eps
-    abs_fit = np.abs(fitted) + eps
-
-    log_corr = _correlation(np.log(abs_res), np.log(abs_fit))
-
-    if log_corr < 0.7:
-        return None, log_corr
-
-    safe_fitted = np.where(np.abs(fitted) < eps, np.sign(fitted) * eps, fitted)
-    safe_fitted = np.where(safe_fitted == 0, eps, safe_fitted)
-    result = residual / safe_fitted
-
-    if not np.all(np.isfinite(result)):
-        return None, log_corr
-
-    return result, log_corr
-
 
 class RotorTranslator:
     def __init__(self, algebra: CliffordAlgebra):
@@ -320,23 +297,6 @@ class RotorTranslator:
         n_g1 = emb.n_g1
         g1_idx = emb.g1_idx.cpu().numpy()
 
-        # Grade-2 LUT projection weights: [C*n_g2, n_lut_inputs]
-        has_lut = hasattr(emb, 'lut_proj')
-        if has_lut:
-            W2 = emb.lut_proj.weight.detach().cpu().numpy()
-            n_g2 = emb.n_g2
-            g2_idx = emb.g2_idx.cpu().numpy()
-            n_lut_inputs = emb.n_lut_inputs
-
-            # Build symbolic LUT inputs using auxiliary symbols for clean lambdify.
-            # log_xi = log(|xi|+eps), inv_xi = sign(xi)/(|xi|+eps)
-            # These are treated as named functions in the expression.
-            lut_syms = []
-            for i in range(k):
-                lut_syms.append(sympy.Symbol(f"log_x{i+1}"))
-                lut_syms.append(sympy.Symbol(f"inv_x{i+1}"))
-            lut_syms = lut_syms[:n_lut_inputs]
-
         # Grade-0 bias
         g0_bias = emb.grade0_bias.detach().cpu().numpy()  # [C]
 
@@ -359,81 +319,47 @@ class RotorTranslator:
                 if expr != 0:
                     mv[blade] = expr
 
-            # Grade-2: LUT
-            if has_lut:
-                for g_pos in range(n_g2):
-                    row = c * n_g2 + g_pos
-                    blade = int(g2_idx[g_pos])
-                    expr = sympy.Integer(0)
-                    for i in range(n_lut_inputs):
-                        w = float(W2[row, i])
-                        if abs(w) > 1e-10:
-                            expr += w * lut_syms[i]
-                    if expr != 0:
-                        mv[blade] = mv.get(blade, sympy.Integer(0)) + expr
-
             channels.append(mv)
 
         return channels
 
-    def _prune_expr(self, expr: sympy.Expr, tol: float = 1e-4) -> sympy.Expr:
-        """Zero out small numeric coefficients in a SymPy expression."""
+    def _simplify_if_large(self, mv: dict, max_terms: int = 50) -> dict:
+        """Force simplification if any blade has too many terms."""
+        simplified = {}
+        for blade_idx, expr in mv.items():
+            if expr == 0:
+                continue
+            n_terms = len(sympy.Add.make_args(expr))
+            if n_terms > max_terms:
+                # Collect on symbols to reduce term count
+                free = list(expr.free_symbols)
+                if free:
+                    expr = sympy.collect(sympy.expand(expr), free)
+            simplified[blade_idx] = expr
+        return simplified
+
+    def _prune_expr(self, expr: sympy.Expr, tol: float = 1e-6) -> sympy.Expr:
+        """Zero out terms with coefficient magnitude below tol (absolute)."""
         if expr.is_Number:
             return expr if abs(float(expr)) > tol else sympy.Integer(0)
 
-        # Collect terms and prune
         terms = sympy.Add.make_args(expr)
-        max_coeff = 0
-        for t in terms:
-            c = abs(complex(t.as_coeff_Mul()[0]))
-            if c > max_coeff:
-                max_coeff = c
-
-        if max_coeff == 0:
-            return sympy.Integer(0)
-
-        threshold = tol * max_coeff
         pruned = sympy.Integer(0)
         for t in terms:
             c = abs(complex(t.as_coeff_Mul()[0]))
-            if c >= threshold:
+            if c >= tol:
                 pruned += t
         return pruned
 
-    def _prune_mv(self, mv: dict, tol: float = 1e-4) -> dict:
-        """Prune small numeric coefficients from symbolic multivector.
-
-        After each symbolic operation (GP, sandwich, linear, blade),
-        this bounds expression tree growth by removing terms whose
-        coefficients are below tol * max_coefficient.
-        """
+    def _prune_mv(self, mv: dict, tol: float = 1e-6) -> dict:
+        """Prune terms below absolute threshold from symbolic multivector."""
         if not mv:
             return {}
-
-        # Find max coefficient magnitude across all blades
-        max_coeff = 0
-        for expr in mv.values():
-            if expr == 0:
-                continue
-            if expr.is_Number:
-                max_coeff = max(max_coeff, abs(float(expr)))
-            else:
-                for term in sympy.Add.make_args(expr):
-                    try:
-                        c = abs(complex(term.as_coeff_Mul()[0]))
-                        max_coeff = max(max_coeff, c)
-                    except (TypeError, ValueError):
-                        max_coeff = max(max_coeff, 1.0)
-
-        if max_coeff == 0:
-            return {}
-
-        threshold = tol * max_coeff
         pruned = {}
         for blade_idx, expr in mv.items():
-            pruned_expr = self._prune_expr(expr, tol=threshold / max(max_coeff, 1e-30))
-            if pruned_expr != 0:
-                pruned[blade_idx] = pruned_expr
+            p = self._prune_expr(expr, tol)
+            if p != 0:
+                pruned[blade_idx] = p
         return pruned
 
     def _symbolic_linear(self, channel_mvs: list, linear) -> list:
@@ -512,6 +438,22 @@ class RotorTranslator:
         # 1. Build symbolic embedding per channel
         channel_mvs = self._build_symbolic_input(model)
 
+        # Cap symbolic channels to prevent memory explosion
+        MAX_SYM_CHANNELS = 4
+        if C > MAX_SYM_CHANNELS:
+            step = C // MAX_SYM_CHANNELS
+            averaged = []
+            for i in range(MAX_SYM_CHANNELS):
+                start = i * step
+                end = start + step if i < MAX_SYM_CHANNELS - 1 else C
+                merged = {}
+                for c in range(start, end):
+                    for blade, expr in channel_mvs[c].items():
+                        merged[blade] = merged.get(blade, sympy.Integer(0)) + expr / (end - start)
+                averaged.append(merged)
+            channel_mvs = averaged
+            C = MAX_SYM_CHANNELS
+
         # 2. For each block, apply full flow: linear → activation → rotor → blade → skip
         for block_idx, block in enumerate(model.blocks):
             # Save pre-block state for skip connection
@@ -549,9 +491,10 @@ class RotorTranslator:
 
                 new_channel_mvs.append(sym_mv)
             channel_mvs = new_channel_mvs
-            # Prune after activation
+            # Prune and simplify after activation
             for c in range(len(channel_mvs)):
                 channel_mvs[c] = self._prune_mv(channel_mvs[c])
+                channel_mvs[c] = self._simplify_if_large(channel_mvs[c])
 
             # 2d. Rotor sandwich R * M * R~
             new_channel_mvs = []
@@ -561,9 +504,10 @@ class RotorTranslator:
                 sym_mv = self._symbolic_sandwich(channel_mvs[c], B_c)
                 new_channel_mvs.append(sym_mv)
             channel_mvs = new_channel_mvs
-            # Prune after rotor
+            # Prune and simplify after rotor
             for c in range(len(channel_mvs)):
                 channel_mvs[c] = self._prune_mv(channel_mvs[c])
+                channel_mvs[c] = self._simplify_if_large(channel_mvs[c])
 
             # 2e. Blade selector
             channel_mvs = self._symbolic_blade(channel_mvs, block.blade)
@@ -608,14 +552,17 @@ class RotorTranslator:
                     blade_idx, sympy.Integer(0)
                 ) + b_val
 
-        # 4. Extract grade-0 (scalar) component
-        expr = combined_mv.get(0, sympy.Integer(0))
+        # 4. Apply readout weights across all blade components
+        readout_w = model.readout.detach().cpu().numpy()  # [dim]
+        expr = sympy.Integer(0)
+        for blade_idx, blade_expr in combined_mv.items():
+            w = float(readout_w[blade_idx])
+            if abs(w) > 1e-10:
+                expr += w * blade_expr
 
-        # 5. Zero out phantom variables (beyond in_features) and their LUT symbols
+        # 5. Zero out phantom variables (beyond in_features)
         for i in range(k, n):
             expr = expr.subs(sympy.Symbol(f"x{i+1}"), 0)
-            expr = expr.subs(sympy.Symbol(f"log_x{i+1}"), 0)
-            expr = expr.subs(sympy.Symbol(f"inv_x{i+1}"), 0)
 
         # 6. Prune and simplify (use expand+collect, not simplify which can hang)
         expr = self._prune_expr(expr)
@@ -633,20 +580,6 @@ class RotorTranslator:
 
         if expr == sympy.Integer(0):
             return []
-
-        # Substitute LUT auxiliary symbols back to x_i-based expressions.
-        # Use forms that lambdify handles cleanly with numpy:
-        #   log_xi -> log(xi**2 + eps)/2  ≈ log(|xi|)
-        #   inv_xi -> xi/(xi**2 + eps)    ≈ 1/xi
-        _eps = sympy.Float(1e-12)
-        for i in range(k):
-            log_sym = sympy.Symbol(f"log_x{i+1}")
-            inv_sym = sympy.Symbol(f"inv_x{i+1}")
-            xi = sympy.Symbol(f"x{i+1}")
-            if log_sym in expr.free_symbols:
-                expr = expr.subs(log_sym, sympy.log(xi**2 + _eps) / 2)
-            if inv_sym in expr.free_symbols:
-                expr = expr.subs(inv_sym, xi / (xi**2 + _eps))
 
         # Lambdify with self.symbols so evaluate_terms/refine can call fn(*args)
         # Use explicit numpy module dict to ensure ufuncs work on compound exprs

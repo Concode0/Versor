@@ -20,6 +20,7 @@ is a simple bilinear -- the rotor discovers e_x ^ e_y immediately.
 """
 
 import logging
+import signal
 from dataclasses import dataclass
 
 import numpy as np
@@ -95,11 +96,15 @@ class ImplicitSolver:
 
         implicit_loss = self._probe_implicit(impl_algebra, Z)
 
-        # Pick better mode. The implicit probe trains with Eikonal loss
-        # (F/‖∇F‖ → 0) which is harder than explicit MSE, so we allow
-        # implicit to be up to 50% worse and still be selected — the
-        # formula quality via sympy.solve often compensates.
-        if np.isfinite(implicit_loss) and implicit_loss < explicit_loss * 1.5:
+        # Pick better mode. Implicit only wins if explicit loss is high
+        # (model struggles with explicit fitting) AND implicit loss is low.
+        # For simple relationships (linear, polynomial), explicit is almost
+        # always better — implicit adds complexity (sympy.solve) for no gain.
+        # Threshold: explicit must fail badly (loss > 0.5) for implicit to
+        # even be considered, and implicit must beat explicit outright.
+        if (np.isfinite(implicit_loss)
+                and explicit_loss > 0.5
+                and implicit_loss < explicit_loss * 0.5):
             mode = "implicit"
             logger.info(f"Implicit mode selected: loss {implicit_loss:.4f} vs explicit {explicit_loss:.4f}")
         else:
@@ -290,11 +295,33 @@ class ImplicitSolver:
             F_expr += t.weight * t.expr
 
         y_sym = sympy.Symbol("y")
-        try:
-            solutions = sympy.solve(F_expr, y_sym)
-            if solutions:
-                return solutions[0]
-        except Exception:
-            pass
+        sol = self._safe_sympy_solve(F_expr, y_sym)
+        if sol is not None:
+            return sol
 
         return F_expr  # Return implicit form if solve fails
+
+    @staticmethod
+    def _safe_sympy_solve(expr, var, timeout_sec=5):
+        """sympy.solve with timeout and validation."""
+        def handler(signum, frame):
+            raise TimeoutError("sympy.solve timed out")
+
+        old = signal.signal(signal.SIGALRM, handler)
+        signal.alarm(timeout_sec)
+        try:
+            solutions = sympy.solve(expr, var)
+        except (TimeoutError, Exception):
+            return None
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old)
+
+        if not solutions:
+            return None
+
+        # Pick simplest real solution
+        for sol in solutions:
+            if not sol.has(sympy.I):
+                return sol
+        return solutions[0]  # fallback

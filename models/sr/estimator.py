@@ -134,8 +134,10 @@ class VersorSR(BaseEstimator, RegressorMixin):
 
         # Extract formula via IterativeUnbender
         self.formula_ = ""
+        self._formula_fn = None
         try:
             from models.sr.unbender import IterativeUnbender
+            import sympy
 
             x_mean_t = torch.from_numpy(self.x_mean_)
             x_std_t = torch.from_numpy(self.x_std_)
@@ -153,13 +155,28 @@ class VersorSR(BaseEstimator, RegressorMixin):
                 var_names=var_names,
             )
             self.formula_ = result.formula
+
+            # Build callable from extracted terms for predict()
+            if result.all_terms:
+                syms = [sympy.Symbol(f"x{i+1}") for i in range(n_vars)]
+                combined = sympy.Integer(0)
+                for t in result.all_terms:
+                    if t.expr is not None:
+                        combined += t.weight * t.expr
+                _numpy_mod = {"log": np.log, "sqrt": np.sqrt, "Abs": np.abs,
+                              "sign": np.sign, "exp": np.exp}
+                self._formula_fn = sympy.lambdify(
+                    syms, combined, modules=[_numpy_mod, "numpy"],
+                )
         except Exception:
             self.formula_ = "extraction_failed"
 
         return self
 
     def predict(self, X):
-        """Predict y from X.
+        """Predict y from X using the extracted formula.
+
+        Falls back to model forward pass if formula extraction failed.
 
         Args:
             X: np.ndarray [N, k] input features.
@@ -168,6 +185,24 @@ class VersorSR(BaseEstimator, RegressorMixin):
             np.ndarray [N] predictions.
         """
         X = np.asarray(X, dtype=np.float32)
+
+        # Try formula-based prediction first (reflects actual SR quality)
+        if hasattr(self, '_formula_fn') and self._formula_fn is not None:
+            try:
+                X_norm = (X - self.x_mean_) / self.x_std_
+                n_vars = X.shape[1]
+                args = [X_norm[:, i] for i in range(n_vars)]
+                pred_norm = self._formula_fn(*args)
+                pred_norm = np.broadcast_to(
+                    np.asarray(pred_norm, dtype=np.float64),
+                    (X.shape[0],),
+                ).copy()
+                if np.all(np.isfinite(pred_norm)):
+                    return pred_norm * self.y_std_ + self.y_mean_
+            except Exception:
+                pass
+
+        # Fallback: model forward pass
         X_norm = (X - self.x_mean_) / self.x_std_
         X_t = torch.from_numpy(X_norm)
 
