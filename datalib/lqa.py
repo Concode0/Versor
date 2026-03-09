@@ -131,7 +131,7 @@ class CLUTRRDataset(Dataset):
             logger.info("Downloading CLUTRR %s from HuggingFace...", split)
             hf_split = "train" if split == "train" else "test"
             ds = _load_hf_dataset("CLUTRR/v1", "gen_train234_test2to10", hf_split,
-                                 trust_remote_code=True)
+                                trust_remote_code=True)
 
             if n_samples is not None and n_samples < len(ds):
                 ds = ds.select(range(n_samples))
@@ -239,7 +239,7 @@ class HANSDataset(Dataset):
                 labels = ds["label"]  # 0=entailment, 1=neutral, 2=contradiction
             else:
                 logger.info("Downloading HANS validation from HuggingFace...")
-                ds = _load_hf_dataset("jhu-cogsci/hans", split="validation")
+                ds = _load_hf_dataset("jhu-cogsci/hans", split="validation", trust_remote_code=True)
                 if n_samples is not None and n_samples < len(ds):
                     ds = ds.select(range(n_samples))
 
