@@ -25,7 +25,7 @@ from omegaconf import DictConfig
 
 from core.algebra import CliffordAlgebra
 from tasks.base import BaseTask
-from datalib.symbolic_regression import get_sr_loaders, get_dataset_ids, _fetch_pmlb_data
+from datalib.symbolic_regression import get_sr_loaders, get_sr_raw_splits, get_dataset_ids, _fetch_pmlb_data
 from models.sr import SRGBN
 from models.sr.unbender import IterativeUnbender
 from log import get_logger
@@ -91,6 +91,7 @@ class SRTask(BaseTask):
             'soft_rejection_alpha': cfg.get("rejection", {}).get("soft_alpha", 10.0),
             'soft_rejection_threshold': cfg.get("rejection", {}).get("soft_threshold", 0.01),
             'mother_cross_threshold': cfg.get("mother_algebra", {}).get("cross_term_threshold", 0.01),
+            'basis_config': dict(cfg.get("basis", {})),
         })
 
         super().__init__(cfg)
