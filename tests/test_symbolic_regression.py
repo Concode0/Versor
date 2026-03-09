@@ -9,7 +9,7 @@ import torch
 from omegaconf import OmegaConf
 
 from core.algebra import CliffordAlgebra
-from datasets.symbolic_regression import (
+from datalib.symbolic_regression import (
     SRDataset,
     get_sr_loaders,
     get_dataset_ids,
@@ -18,7 +18,7 @@ from datasets.symbolic_regression import (
     BLACKBOX_DATASETS,
     SRBENCH_DATASETS,
 )
-from models.sr_net import (
+from models.sr.net import (
     SRMultiGradeEmbedding,
     SRGBN,
     _blade_name,
@@ -153,15 +153,15 @@ def test_embedding_grade1_nonzero(algebra):
 
 
 def test_embedding_grade2_zero(algebra):
-    """Grade-2 components are zero since embedding only populates grade-0 and grade-1."""
+    """Grade-2 components are zero (no LUT embedding)."""
     B, k, C = 4, 3, 4
     x = torch.ones(B, k) * 5.0
 
     g2_idx = [i for i in range(algebra.dim) if bin(i).count("1") == 2]
     emb = SRMultiGradeEmbedding(algebra, in_features=k, channels=C)
     out = emb(x)
-    assert out[:, :, g2_idx].abs().max().item() < 1e-9, \
-        "Grade-2 should be zero in embedding (grade-1 only)"
+    assert out[:, :, g2_idx].abs().max().item() == 0.0, \
+        "Grade-2 components should be zero (no LUT)"
 
 
 def test_model_forward_shape(algebra):

@@ -4,7 +4,7 @@ import torch
 import pytest
 from core.algebra import CliffordAlgebra
 from core.metric import hermitian_norm, hermitian_grade_spectrum
-from models.md17_forcenet import MD17ForceNet, MD17InteractionBlock
+from models.md17 import MD17ForceNet, MD17InteractionBlock
 from functional.loss import ConservativeLoss, HermitianGradeRegularization
 
 

@@ -12,8 +12,8 @@ Tests cover:
 import pytest
 import torch
 from core.algebra import CliffordAlgebra
-from layers.rotor_gadget import RotorGadget
-from layers.linear import CliffordLinear
+from layers import RotorGadget
+from layers import CliffordLinear
 
 
 @pytest.fixture
@@ -450,7 +450,7 @@ class TestIntegration:
 
     def test_with_rotor_layer(self, algebra_3d):
         """Test combination with RotorLayer."""
-        from layers.rotor import RotorLayer
+        from layers import RotorLayer
 
         # Create a small network: Linear -> Rotor
         linear = RotorGadget(
@@ -472,7 +472,7 @@ class TestIntegration:
 
     def test_with_multi_rotor_layer(self, algebra_3d):
         """Test combination with MultiRotorLayer."""
-        from layers.multi_rotor import MultiRotorLayer
+        from layers import MultiRotorLayer
 
         linear = RotorGadget(
             algebra=algebra_3d,

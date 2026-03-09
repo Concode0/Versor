@@ -8,11 +8,11 @@ import numpy as np
 import torch
 
 from core.algebra import CliffordAlgebra
-from models.rotor_translate import (
+from models.sr.translator import (
     RotorTranslator, SimplePlane, RotorTerm,
-    _correlation, _log_corr_divide,
+    _correlation,
 )
-from models.sr_net import SRGBN
+from models.sr.net import SRGBN
 
 
 @pytest.fixture
@@ -197,21 +197,3 @@ def test_correlation():
     assert _correlation(c, d) < 0.1
 
 
-def test_log_corr_divide():
-    """_log_corr_divide returns divided result when log-correlated."""
-    a = np.array([10.0, 100.0, 1000.0, 10000.0])
-    b = np.array([2.0, 20.0, 200.0, 2000.0])
-    result, corr = _log_corr_divide(a, b)
-    assert result is not None
-    assert corr > 0.7
-    np.testing.assert_allclose(result, a / b, atol=1e-5)
-
-
-def test_log_corr_divide_uncorrelated():
-    """_log_corr_divide returns None for uncorrelated data."""
-    a = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
-    b = np.array([5.0, 1.0, 4.0, 2.0, 3.0])
-    result, corr = _log_corr_divide(a, b)
-    # With these values, log correlation may or may not be high
-    # but at minimum the function should not crash
-    assert isinstance(corr, float)

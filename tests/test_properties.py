@@ -12,7 +12,7 @@ import torch
 import unittest
 import math
 from core.algebra import CliffordAlgebra
-from layers.normalization import CliffordLayerNorm
+from layers import CliffordLayerNorm
 
 class TestGeometricProperties(unittest.TestCase):
     def setUp(self):

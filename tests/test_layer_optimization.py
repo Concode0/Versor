@@ -12,7 +12,7 @@ import torch
 import unittest
 from core.algebra import CliffordAlgebra
 from core.search import MetricSearch
-from layers.rotor import RotorLayer
+from layers import RotorLayer
 
 class TestOptimization(unittest.TestCase):
     def setUp(self):

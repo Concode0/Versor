@@ -13,9 +13,9 @@ import torch
 import torch.nn.functional as F
 from core.algebra import CliffordAlgebra
 from optimizers.riemannian import ExponentialSGD, RiemannianAdam
-from layers.rotor import RotorLayer
-from layers.multi_rotor import MultiRotorLayer
-from layers.rotor_gadget import RotorGadget
+from layers import RotorLayer
+from layers import MultiRotorLayer
+from layers import RotorGadget
 
 
 # ============================================================================

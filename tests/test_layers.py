@@ -11,9 +11,9 @@
 import torch
 import unittest
 from core.algebra import CliffordAlgebra
-from layers.linear import CliffordLinear
-from layers.rotor import RotorLayer
-from layers.multi_rotor import MultiRotorLayer
+from layers import CliffordLinear
+from layers import RotorLayer
+from layers import MultiRotorLayer
 
 class TestLayers(unittest.TestCase):
     def setUp(self):
@@ -57,14 +57,14 @@ class TestLayers(unittest.TestCase):
         self.assertTrue(torch.allclose(x_norm, y_norm, atol=1e-5))
 
     def test_multi_rotor_shape(self):
-        from layers.multi_rotor import MultiRotorLayer
+        from layers import MultiRotorLayer
         x = torch.randn(4, 5, 8)
         layer = MultiRotorLayer(self.alg, 5, num_rotors=4)
         y = layer(x)
         self.assertEqual(y.shape, (4, 5, 8))
 
     def test_multi_rotor_invariants(self):
-        from layers.multi_rotor import MultiRotorLayer
+        from layers import MultiRotorLayer
         x = torch.randn(4, 5, 8)
         layer = MultiRotorLayer(self.alg, 5, num_rotors=4)
         inv = layer(x, return_invariants=True)
@@ -133,7 +133,7 @@ class TestLayers(unittest.TestCase):
 
     def test_multi_rotor_layer_backward_decomposed(self):
         """Test gradient flow through MultiRotorLayer with decomposition."""
-        from layers.multi_rotor import MultiRotorLayer
+        from layers import MultiRotorLayer
 
         x = torch.randn(2, 3, 8, requires_grad=True)
         layer = MultiRotorLayer(self.alg, 3, num_rotors=4, use_decomposition=True, decomp_k=2)

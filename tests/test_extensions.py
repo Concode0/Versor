@@ -11,7 +11,7 @@
 import torch
 import unittest
 from core.cga import ConformalAlgebra
-from layers.gnn import CliffordGraphConv
+from layers import CliffordGraphConv
 from core.algebra import CliffordAlgebra
 
 class TestExtensions(unittest.TestCase):

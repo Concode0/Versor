@@ -9,7 +9,7 @@ import torch
 from unittest.mock import patch, MagicMock
 
 from core.algebra import CliffordAlgebra
-from models.iterative_unbender import (
+from models.sr.unbender import (
     IterativeUnbender,
     StageResult,
     UnbendingResult,
@@ -127,7 +127,7 @@ def test_orthogonal_elimination():
 
 def test_svd_warmstart():
     """SVD warm-start sets bivector weights without error."""
-    from models.sr_net import SRGBN
+    from models.sr.net import SRGBN
 
     algebra = CliffordAlgebra(3, 0, 0, device="cpu")
     model = SRGBN.single_rotor(algebra, 3, channels=4)
@@ -343,7 +343,7 @@ def test_kepler_not_linear():
 
 def test_accepted_false_excludes_terms():
     """Unaccepted stage terms should NOT be added to all_terms."""
-    from models.rotor_translate import RotorTerm
+    from models.sr.translator import RotorTerm
 
     fake_terms = [RotorTerm(planes=[], weight=1.0)]
     stage_rejected = StageResult(
@@ -431,18 +431,7 @@ def test_orthogonal_elimination_result_fields():
     assert elim.preserved_fraction == 0.8
 
 
-def test_polynomial_fallback():
-    """Polynomial fallback should produce reasonable R2."""
+def test_polynomial_fallback_removed():
+    """Polynomial fallback was removed in favor of implicit mode + parabolic terms."""
     unbender = IterativeUnbender(in_features=1, device="cpu")
-
-    rng = np.random.default_rng(42)
-    X = rng.uniform(-2, 2, (100, 1)).astype(np.float32)
-    y = (X[:, 0] ** 2 + 0.5 * X[:, 0]).astype(np.float32)
-
-    terms = unbender._polynomial_fallback(X, y)
-    assert len(terms) >= 1
-
-    y_hat = unbender._evaluate_terms(terms, X)
-    ss_tot = np.sum((y - y.mean()) ** 2) + 1e-12
-    r2 = 1.0 - np.sum((y - y_hat) ** 2) / ss_tot
-    assert r2 > 0.9
+    assert not hasattr(unbender, '_polynomial_fallback')
