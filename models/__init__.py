@@ -4,10 +4,10 @@ Models combine rotor layers, linear transformations, normalization,
 and activation functions into complete architectures.
 """
 
-from .gbn import GeometricBladeNetwork
+from .blocks import GeometricBladeNetwork
 from .sr import SRGBN, SRMultiGradeEmbedding
-from .multi_rotor import MultiRotorModel
-from .time_series import RotorTCN
+from .blocks import MultiRotorModel
+from .blocks import RotorTCN
 from .deap import EEGNet
 from .lqa import GLRNet, ChainReasoningHead, EntailmentHead, NegationHead
 
