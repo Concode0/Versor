@@ -55,7 +55,7 @@ from layers import CliffordLayerNorm
 from layers import BladeSelector
 from functional.activation import GeometricGELU
 from optimizers.riemannian import RiemannianAdam
-from experiments.orthogonality import StrictOrthogonality, OrthogonalitySettings
+from functional.orthogonality import StrictOrthogonality, OrthogonalitySettings
 
 
 # =====================================================================

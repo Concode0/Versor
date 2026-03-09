@@ -1,6 +1,6 @@
 """Stateless functional operations for geometric algebra networks.
 
-Includes activation functions and loss functions.
+Includes activation functions, loss functions, and orthogonality enforcement.
 """
 
 from .activation import GeometricGELU, GradeSwish
@@ -16,6 +16,8 @@ from .loss import (
     PhysicsInformedLoss,
 )
 
+from .orthogonality import StrictOrthogonality, OrthogonalitySettings
+
 __all__ = [
     # activations
     "GeometricGELU",
@@ -29,4 +31,7 @@ __all__ = [
     "ChamferDistance",
     "ConservativeLoss",
     "PhysicsInformedLoss",
+    # orthogonality
+    "StrictOrthogonality",
+    "OrthogonalitySettings",
 ]

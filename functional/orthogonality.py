@@ -12,16 +12,15 @@
 
 Provides loss terms, projection operators, and diagnostic tools that
 enforce and monitor grade orthogonality in multivector representations.
-Designed as an external, pluggable module for mathematical debugging.
 
 In a Clifford algebra, different grades are algebraically orthogonal
 under the Hermitian inner product. In practice, numerical operations
 in neural networks can introduce parasitic cross-grade energy. This
 module detects and corrects such drift.
 
-Usage as external settings:
+Usage:
 
-    from experiments.orthogonality import StrictOrthogonality, OrthogonalitySettings
+    from functional.orthogonality import StrictOrthogonality, OrthogonalitySettings
 
     settings = OrthogonalitySettings(
         enabled=True,
@@ -59,7 +58,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class OrthogonalitySettings:
-    """External configuration for strict orthogonality enforcement.
+    """Configuration for strict orthogonality enforcement.
 
     Attributes:
         enabled: Master switch.
@@ -212,7 +211,7 @@ class StrictOrthogonality(nn.Module):
         return self.settings.weight * frac
 
     # ------------------------------------------------------------------
-    # Diagnostics (mathematical debugger)
+    # Diagnostics
     # ------------------------------------------------------------------
 
     def grade_energies(self, x: torch.Tensor) -> Dict[int, float]:
@@ -279,7 +278,7 @@ class StrictOrthogonality(nn.Module):
 
     @torch.no_grad()
     def diagnostics(self, x: torch.Tensor) -> dict:
-        """Full diagnostic report for mathematical debugging.
+        """Full diagnostic report.
 
         Issues a UserWarning if cross-grade coupling exceeds
         ``settings.coupling_warn_threshold``.
