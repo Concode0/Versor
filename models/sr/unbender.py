@@ -105,7 +105,6 @@ class IterativeUnbender:
         self,
         in_features,
         device="cpu",
-        # Existing params
         max_stages=5,
         max_retries=2,
         curvature_weight=1.0,
@@ -119,7 +118,6 @@ class IterativeUnbender:
         curvature_threshold=0.05,
         coherence_degradation_threshold=0.15,
         probe_config=None,
-        # New params
         implicit_mode='auto',
         grouping_enabled=True,
         max_groups=4,
