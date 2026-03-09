@@ -496,6 +496,24 @@ class CliffordAlgebra:
         """
         return mv - self.blade_project(mv, blade)
 
+    def grade_involution(self, mv: torch.Tensor) -> torch.Tensor:
+        """Grade involution (main involution): x̂ = Σ (-1)^k ⟨x⟩_k.
+
+        Flips sign of all odd-grade components, preserves even-grade.
+        This is an algebra automorphism: (AB)^ = Â B̂.
+
+        Args:
+            mv (torch.Tensor): Input multivector [..., dim].
+
+        Returns:
+            torch.Tensor: Involuted multivector [..., dim].
+        """
+        gi = self.grade_index
+        if gi.device != mv.device:
+            gi = gi.to(mv.device)
+        signs = (-1.0) ** gi.float()
+        return mv * signs.to(dtype=mv.dtype)
+
     def exp(self, mv: torch.Tensor) -> torch.Tensor:
         """Exponentiates a bivector to produce a rotor via closed-form.
 

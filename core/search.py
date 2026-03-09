@@ -924,3 +924,49 @@ class DimensionLifter:
             )
         lines.append(f"\n  Best algebra: {results['best']}")
         return '\n'.join(lines)
+
+
+def compute_uncertainty_and_alignment(algebra: CliffordAlgebra, data_tensor: torch.Tensor):
+    """Compute Geometric Uncertainty Index (U) and Procrustes Alignment (V).
+
+    Used by :class:`~layers.adapters.mother.MotherEmbedding` to initialise
+    per-group / per-subject alignment rotors.
+
+    Args:
+        algebra: CliffordAlgebra instance.
+        data_tensor: ``[N, D]`` tensor of raw features.
+
+    Returns:
+        Tuple ``(U, V)`` where *U* is a float (mean commutator norm) and
+        *V* is a ``[D, D]`` Procrustes alignment matrix from SVD.
+    """
+    N, D = data_tensor.shape
+    n = algebra.n
+
+    # 1. Lift data to grade-1 for commutator analysis
+    if D < n:
+        pad = torch.zeros(N, n - D, device=data_tensor.device)
+        x_n = torch.cat([data_tensor, pad], dim=-1)
+    else:
+        x_n = data_tensor[:, :n]
+
+    x = algebra.embed_vector(x_n)  # [N, dim]
+
+    # 2. Mean multivector and commutator [x_i, mu]
+    mu = x.mean(dim=0, keepdim=True)  # [1, dim]
+    x_mu = algebra.geometric_product(x, mu.expand_as(x))
+    mu_x = algebra.geometric_product(mu.expand_as(x), x)
+    commutator = x_mu - mu_x
+
+    U = torch.norm(commutator, p=2, dim=-1).mean().item()
+
+    # 3. Procrustes alignment via SVD
+    x_c = data_tensor - data_tensor.mean(dim=0, keepdim=True)
+    try:
+        x_cpu = x_c.cpu()
+        _, _, V = torch.svd(x_cpu)
+        V = V.to(data_tensor.device)
+    except Exception:
+        V = torch.eye(D, device=data_tensor.device)
+
+    return U, V
