@@ -329,16 +329,25 @@ def test_hubble_noisy_linear():
     assert r2 > 0.99
 
 
-def test_kepler_not_linear():
-    """Kepler T ~ a^1.5 should NOT pass linearity check (power law)."""
+def test_kepler_power_law_recovery():
+    """Kepler T ~ a^1.5 should be recovered as power law short-circuit."""
     unbender = IterativeUnbender(in_features=1, device="cpu")
 
     rng = np.random.default_rng(42)
     a = rng.uniform(1, 50, (200, 1)).astype(np.float32)
     T = (a[:, 0] ** 1.5).astype(np.float32)
 
-    is_linear, terms, r2 = unbender._check_linearity(a, T)
-    assert not is_linear, "Kepler T~a^1.5 should NOT be classified as linear"
+    is_shortcircuit, terms, r2 = unbender._check_linearity(a, T)
+    # Power law should be detected and returned as a short-circuit term
+    assert is_shortcircuit, "Kepler T~a^1.5 should be detected as power law"
+    assert len(terms) == 1, "Should produce exactly one power-law term"
+    assert r2 > 0.99, f"Power law R2 should be high, got {r2}"
+    # Check that the expression contains x1^(3/2)
+    import sympy
+    expr = terms[0].expr
+    assert expr is not None, "Power law term should have an expression"
+    x1 = sympy.Symbol("x1")
+    assert x1 in expr.free_symbols, "Expression should contain x1"
 
 
 def test_accepted_false_excludes_terms():
