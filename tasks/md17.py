@@ -13,8 +13,8 @@ import torch.nn as nn
 from core.algebra import CliffordAlgebra
 from core.metric import hermitian_norm, hermitian_grade_spectrum
 from tasks.base import BaseTask
-from datasets.md17 import get_md17_loaders
-from models.md17_forcenet import MD17ForceNet
+from datalib.md17 import get_md17_loaders
+from models.md17 import MD17ForceNet
 from functional.loss import ConservativeLoss, HermitianGradeRegularization
 from log import get_logger
 

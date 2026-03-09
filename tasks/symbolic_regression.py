@@ -25,9 +25,9 @@ from omegaconf import DictConfig
 
 from core.algebra import CliffordAlgebra
 from tasks.base import BaseTask
-from datasets.symbolic_regression import get_sr_loaders, get_dataset_ids, _fetch_pmlb_data
-from models.sr_net import SRGBN
-from models.iterative_unbender import IterativeUnbender
+from datalib.symbolic_regression import get_sr_loaders, get_dataset_ids, _fetch_pmlb_data
+from models.sr import SRGBN
+from models.sr.unbender import IterativeUnbender
 from log import get_logger
 
 logger = get_logger(__name__)
