@@ -8,7 +8,14 @@
 # We believe Geometric Algebra is the future of AI, and we want
 # the industry to build upon this "unbending" paradigm.
 
-"""MD17 dataset loader.
+"""MD17 / rMD17 dataset loader.
+
+Supports both original MD17 and revised MD17 (rMD17) datasets.
+rMD17 (Christensen & von Lilienfeld 2020) fixes DFT noise in the
+original MD17 by recomputing energies/forces at CCSD(T) level.
+
+Standard rMD17 protocol: 1000 train / 1000 val / rest test.
+Split sizes are configurable via ``n_train`` / ``n_val`` parameters.
 
 Loading priority:
     1. PyTorch Geometric (auto-downloads from official mirror)
@@ -19,8 +26,8 @@ Loading priority:
 Install PyG:
     uv sync --extra graph
 
-Manual download (from http://www.sgdml.org/datasets/md17):
-    curl -O http://www.sgdml.org/datasets/md17/md17_aspirin.npz
+Manual download (rMD17 from http://www.sgdml.org/datasets/):
+    curl -O http://www.sgdml.org/datasets/rmd17/rmd17_aspirin.npz
 """
 
 from __future__ import annotations
@@ -86,32 +93,38 @@ class PureRadiusGraph(_BaseTransform if _HAS_PYG else object):
 
 if _HAS_PYG:
     class VersorMD17(_PyGMD17):
-        """MD17 Wrapper for Versor using PyTorch Geometric.
+        """MD17 / rMD17 Wrapper for Versor using PyTorch Geometric.
 
         Auto-downloads from official mirrors. Normalizes positions.
+        Supports both original MD17 and revised MD17 (rMD17).
 
-        All 8 molecules supported: aspirin, benzene, ethanol, malonaldehyde,
-        naphthalene, salicylic_acid, toluene, uracil.
+        rMD17 molecules: aspirin, azobenzene, benzene, ethanol,
+        malonaldehyde, naphthalene, paracetamol, salicylic_acid,
+        toluene, uracil.
         """
 
         def __init__(self, root: str, molecule: str = 'aspirin',
-                     radius: float = 5.0, transform=None, pre_transform=None):
-            """Initialize MD17 dataset.
+                     radius: float = 5.0, revised: bool = True,
+                     transform=None, pre_transform=None):
+            """Initialize MD17/rMD17 dataset.
 
             Args:
                 root (str): Root directory.
                 molecule (str): Molecule name.
                 radius (float): Cutoff radius for graph.
+                revised (bool): Use revised MD17 (default True).
                 transform (callable, optional): Transform to apply.
                 pre_transform (callable, optional): Pre-transform to apply.
             """
             radius_graph = PureRadiusGraph(r=radius)
             if transform is None:
                 transform = radius_graph
-            super().__init__(root, name=molecule, transform=transform,
+            name = f"revised {molecule}" if revised else molecule
+            super().__init__(root, name=name, transform=transform,
                              pre_transform=pre_transform)
             self.molecule = molecule
             self.radius = radius
+            self.revised = revised
 
         def get(self, idx):
             """Get a single conformation.
@@ -180,6 +193,17 @@ class _GraphData:
         self.num_nodes = pos.shape[0]
         self.batch = None   # filled by collate
 
+    def to(self, device):
+        """Move all tensors to device (mirrors PyG Data.to())."""
+        self.pos = self.pos.to(device)
+        self.z = self.z.to(device)
+        self.energy = self.energy.to(device)
+        self.force = self.force.to(device)
+        self.edge_index = self.edge_index.to(device)
+        if self.batch is not None:
+            self.batch = self.batch.to(device)
+        return self
+
 
 def _collate_graphs(batch):
     """Collate _GraphData objects into a single batch (mimics PyG DataLoader).
@@ -215,7 +239,7 @@ def _collate_graphs(batch):
     return out
 
 
-# Canonical NPZ filenames (original MD17 + revised MD17)
+# Canonical NPZ filenames for original MD17
 _NPZ_PATTERNS = {
     'aspirin':         ['aspirin_dft.npz', 'md17_aspirin.npz'],
     'benzene':         ['benzene_dft.npz', 'md17_benzene2017.npz', 'md17_benzene.npz'],
@@ -227,51 +251,84 @@ _NPZ_PATTERNS = {
     'uracil':          ['uracil_dft.npz', 'md17_uracil.npz'],
 }
 
+# Canonical NPZ filenames for revised MD17 (rMD17)
+_RMD17_NPZ_PATTERNS = {
+    'aspirin':         ['rmd17_aspirin.npz'],
+    'azobenzene':      ['rmd17_azobenzene.npz'],
+    'benzene':         ['rmd17_benzene.npz'],
+    'ethanol':         ['rmd17_ethanol.npz'],
+    'malonaldehyde':   ['rmd17_malonaldehyde.npz'],
+    'naphthalene':     ['rmd17_naphthalene.npz'],
+    'paracetamol':     ['rmd17_paracetamol.npz'],
+    'salicylic_acid':  ['rmd17_salicylic_acid.npz'],
+    'toluene':         ['rmd17_toluene.npz'],
+    'uracil':          ['rmd17_uracil.npz'],
+}
+
 
 class VersorMD17NPZ(Dataset):
-    """NPZ-based MD17 loader (no PyTorch Geometric required).
+    """NPZ-based MD17/rMD17 loader (no PyTorch Geometric required).
 
     Expects manually downloaded .npz files in ``root/raw/`` or ``root/``.
-    Download from http://www.sgdml.org/datasets/md17
+    Download from http://www.sgdml.org/datasets/
 
     Produces _GraphData objects compatible with PyG-based task code.
     """
 
     def __init__(self, root: str, molecule: str = 'aspirin',
-                 radius: float = 5.0):
-        """Initialize NPZ-based MD17 dataset.
+                 radius: float = 5.0, revised: bool = True):
+        """Initialize NPZ-based MD17/rMD17 dataset.
 
         Args:
             root (str): Root directory.
             molecule (str): Molecule name.
             radius (float): Cutoff radius for graph.
+            revised (bool): Use revised MD17 (default True).
         """
         self.root = root
         self.molecule = molecule
         self.radius = radius
+        self.revised = revised
         self._radius_graph = PureRadiusGraph(r=radius)
 
         npz_path = self._find_npz()
+        variant = "rMD17" if revised else "MD17"
         if npz_path is None:
             raise FileNotFoundError(
-                f"MD17 NPZ file for '{molecule}' not found in {root}.\n"
+                f"{variant} NPZ file for '{molecule}' not found in {root}.\n"
                 f"Options:\n"
                 f"  1. Install PyG:  uv sync --extra graph\n"
-                f"  2. Download NPZ from http://www.sgdml.org/datasets/md17/md17_{molecule}.npz"
+                f"  2. Download NPZ from http://www.sgdml.org/datasets/"
             )
 
         data = np.load(npz_path)
-        R = torch.tensor(data['R'], dtype=torch.float32)   # [N, natoms, 3]
-        E = torch.tensor(data['E'], dtype=torch.float32).squeeze(-1)   # [N]
-        F = torch.tensor(data['F'], dtype=torch.float32)   # [N, natoms, 3]
-        z = torch.tensor(data['z'], dtype=torch.long)      # [natoms]
+        # rMD17 npz uses 'coords' key, original MD17 uses 'R'
+        if 'coords' in data:
+            R = torch.tensor(data['coords'], dtype=torch.float32)
+        else:
+            R = torch.tensor(data['R'], dtype=torch.float32)
+        # rMD17 uses 'energies', original uses 'E'
+        if 'energies' in data:
+            E = torch.tensor(data['energies'], dtype=torch.float32).squeeze(-1)
+        else:
+            E = torch.tensor(data['E'], dtype=torch.float32).squeeze(-1)
+        # rMD17 uses 'forces', original uses 'F'
+        if 'forces' in data:
+            F = torch.tensor(data['forces'], dtype=torch.float32)
+        else:
+            F = torch.tensor(data['F'], dtype=torch.float32)
+        # rMD17 uses 'nuclear_charges', original uses 'z'
+        if 'nuclear_charges' in data:
+            z = torch.tensor(data['nuclear_charges'], dtype=torch.long)
+        else:
+            z = torch.tensor(data['z'], dtype=torch.long)
 
         self._R = R
         self._E = E
         self._F = F
         self._z = z
         self._edge_index_cache: Optional[torch.Tensor] = None
-        print(f">>> MD17 NPZ ({molecule}): {len(R)} conformations, "
+        print(f">>> {variant} NPZ ({molecule}): {len(R)} conformations, "
               f"{z.shape[0]} atoms")
 
     def _find_npz(self) -> Optional[str]:
@@ -280,11 +337,18 @@ class VersorMD17NPZ(Dataset):
         Returns:
             str | None: Absolute path to the NPZ file or None if not found.
         """
-        candidates = _NPZ_PATTERNS.get(self.molecule, [f'md17_{self.molecule}.npz'])
+        if self.revised:
+            patterns = _RMD17_NPZ_PATTERNS
+            default = [f'rmd17_{self.molecule}.npz']
+        else:
+            patterns = _NPZ_PATTERNS
+            default = [f'md17_{self.molecule}.npz']
+        candidates = patterns.get(self.molecule, default)
         search_dirs = [
             self.root,
             os.path.join(self.root, 'raw'),
             os.path.join(self.root, 'MD17', self.molecule),
+            os.path.join(self.root, 'rMD17', self.molecule),
         ]
         for d in search_dirs:
             for name in candidates:
@@ -342,13 +406,43 @@ class VersorMD17NPZ(Dataset):
         )
 
 
+def _compute_split(N: int, n_train: Optional[int], n_val: Optional[int]):
+    """Compute train/val/test split sizes.
+
+    If n_train and n_val are given as absolute counts, use those and assign
+    the rest to test. Otherwise fall back to 80/10/10 ratio split.
+
+    Args:
+        N (int): Total number of samples.
+        n_train (int | None): Number of training samples (None for ratio split).
+        n_val (int | None): Number of validation samples (None for ratio split).
+
+    Returns:
+        Tuple[int, int]: (train_size, val_size). Test size = N - train - val.
+    """
+    if n_train is not None and n_val is not None:
+        train_size = min(n_train, N)
+        val_size = min(n_val, N - train_size)
+    else:
+        train_size = int(0.8 * N)
+        val_size = int(0.1 * N)
+    return train_size, val_size
+
+
 def get_md17_loaders(root: str, molecule: str = 'aspirin',
                      batch_size: int = 32,
                      max_samples: Optional[int] = None,
+                     revised: bool = True,
+                     n_train: Optional[int] = None,
+                     n_val: Optional[int] = None,
                      radius: float = 5.0,
                      num_workers: int = 2,
                      pin_memory: bool = False):
-    """Load MD17 dataset with deterministic 80/10/10 train/val/test split.
+    """Load MD17/rMD17 dataset with configurable train/val/test split.
+
+    Standard rMD17 protocol: 1000 train / 1000 val / rest test.
+    Set ``n_train`` and ``n_val`` to control split sizes directly,
+    or leave as None for 80/10/10 ratio split (original MD17 convention).
 
     Automatically selects the best available loading strategy:
       1. PyTorch Geometric (auto-downloads, preferred)
@@ -359,6 +453,9 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
         molecule (str): Molecule name (aspirin, benzene, ethanol, ...).
         batch_size (int): Batch size.
         max_samples (int, optional): Cap the total dataset size (for fast iteration).
+        revised (bool): Use revised MD17 dataset (default True).
+        n_train (int, optional): Fixed number of training samples.
+        n_val (int, optional): Fixed number of validation samples.
         radius (float): Radius graph cutoff in Angstrom.
         num_workers (int): Number of worker processes for loading.
         pin_memory (bool): If True, pin memory in DataLoader.
@@ -367,9 +464,12 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
         tuple: (train_loader, val_loader, test_loader,
                 energy_mean, energy_std, force_mean, force_std)
     """
+    variant = "rMD17" if revised else "MD17"
+
     # Strategy 1: PyTorch Geometric
     if _HAS_PYG:
-        dataset = VersorMD17(root=root, molecule=molecule, radius=radius)
+        dataset = VersorMD17(root=root, molecule=molecule, radius=radius,
+                             revised=revised)
         N = len(dataset)
 
         g = torch.Generator()
@@ -380,8 +480,7 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
             indices = indices[:max_samples]
             N = max_samples
 
-        train_size = int(0.8 * N)
-        val_size = int(0.1 * N)
+        train_size, val_size = _compute_split(N, n_train, n_val)
         train_idx = indices[:train_size]
         val_idx = indices[train_size:train_size + val_size]
         test_idx = indices[train_size + val_size:]
@@ -399,7 +498,7 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
                                        shuffle=False, num_workers=num_workers,
                                        pin_memory=pin_memory)
 
-        print(f">>> MD17 ({molecule}) via PyG: "
+        print(f">>> {variant} ({molecule}) via PyG: "
               f"{train_size}/{val_size}/{len(test_idx)} train/val/test")
         print(f">>> Energy: mean={energy_mean:.2f}, std={energy_std:.2f} | "
               f"Force: mean={force_mean:.4f}, std={force_std:.4f}")
@@ -408,12 +507,13 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
 
     # Strategy 2: Raw NPZ files
     warnings.warn(
-        "PyTorch Geometric not installed. Attempting to load MD17 from raw .npz files.\n"
+        f"PyTorch Geometric not installed. Attempting to load {variant} from raw .npz files.\n"
         "For full functionality: uv sync --extra graph",
         ImportWarning, stacklevel=2
     )
 
-    dataset = VersorMD17NPZ(root=root, molecule=molecule, radius=radius)
+    dataset = VersorMD17NPZ(root=root, molecule=molecule, radius=radius,
+                            revised=revised)
     # ^ raises FileNotFoundError if .npz also missing
 
     N = len(dataset)
@@ -424,8 +524,7 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
         indices = indices[:max_samples]
         N = max_samples
 
-    train_size = int(0.8 * N)
-    val_size = int(0.1 * N)
+    train_size, val_size = _compute_split(N, n_train, n_val)
     train_idx = indices[:train_size]
     val_idx = indices[train_size:train_size + val_size]
     test_idx = indices[train_size + val_size:]
@@ -453,7 +552,7 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
         shuffle=False, collate_fn=_collate_graphs,
         num_workers=num_workers, pin_memory=pin_memory)
 
-    print(f">>> MD17 ({molecule}) via NPZ: "
+    print(f">>> {variant} ({molecule}) via NPZ: "
           f"{train_size}/{val_size}/{len(test_idx)} train/val/test")
     print(f">>> Energy: mean={energy_mean:.2f}, std={energy_std:.2f} | "
           f"Force: mean={force_mean:.4f}, std={force_std:.4f}")

@@ -6,8 +6,11 @@ algebra:
   r: 1
   device: "auto"
 dataset:
-  name: "md17"
+  name: "rmd17"
   molecule: "aspirin"
+  revised: true
+  n_train: 1000
+  n_val: 1000
   samples: null
 model:
   hidden_dim: 32
