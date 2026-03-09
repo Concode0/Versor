@@ -22,6 +22,25 @@ This sandwich product is an **isometry**: it preserves lengths, angles, and the 
 
 We call this **unbending**: the network learns the minimal rotation that maps the input manifold to the output manifold, dedicating all capacity to geometric structure rather than compensating for non-geometric side effects.
 
+In code, this is the `RotorLayer` forward pass (`layers/primitives/rotor.py`):
+
+```python
+def _compute_rotors(self, device, dtype):
+    B = torch.zeros(self.channels, self.algebra.dim, device=device, dtype=dtype)
+    indices = self.bivector_indices.unsqueeze(0).expand(self.channels, -1)
+    B.scatter_(1, indices, self.bivector_weights)
+    R = self.algebra.exp(-0.5 * B)       # Bivector -> Rotor
+    R_rev = self.algebra.reverse(R)       # Clifford conjugate
+    return R, R_rev
+
+def forward(self, x):
+    R, R_rev = self._compute_rotors(x.device, x.dtype)
+    Rx = self.algebra.geometric_product(R.unsqueeze(0), x)
+    return self.algebra.geometric_product(Rx, R_rev.unsqueeze(0))
+```
+
+Every learnable parameter is a bivector component — a specific rotation plane. The `exp(-B/2)` maps it to the Spin group; the sandwich product applies the isometry.
+
 ## Why This Matters
 
 ### Geometric Inductive Bias
@@ -58,6 +77,17 @@ The **Geometric Blade Network (GBN)** is a sequential architecture built from:
 
 Each component respects the multivector structure. The model learns **what to rotate** (CliffordLinear), **how to rotate** (RotorLayer), and **what to keep** (BladeSelector).
 
+The key non-linearity, `GeometricGELU`, is five lines (`functional/activation.py`):
+
+```python
+def forward(self, x):
+    norm = x.norm(dim=-1, keepdim=True)
+    scale = F.gelu(norm + self.bias.view(1, -1, 1)) / (norm + 1e-6)
+    return x * scale
+```
+
+It scales the magnitude via GELU while preserving the direction `x / ||x||`. Standard activations (ReLU, GELU) applied coefficient-wise destroy this directional information.
+
 ## The Remaining Challenge: CliffordLinear
 
 While RotorLayers provide pure isometric transformations, the current `CliffordLinear` layer still uses standard scalar weight matrices for channel mixing. This is the last piece that operates above the geometric ceiling — these weights can introduce unconstrained scaling.
@@ -80,3 +110,23 @@ Current achievements, while significant, are just the beginning. The ambition is
 Our current reliance on matrix operations reflects the architecture of modern GPUs, which are optimized for dense linear algebra. This is an implementation reality, not a fundamental limit.
 
 The true essence of Geometric Algebra lies deeper, offering efficiency at the level of bit manipulation. In a native GA hardware architecture, geometric products would be atomic operations, and the sparsity and symmetry of the algebra would be exploited not just for mathematical elegance, but for computational speed beyond current matrix multiplication. We are building the software paradigm for this future today, preparing for the shift from dense linear algebra to elegant, bit-efficient geometric computation.
+
+### From Rotors to Formulas
+
+The ultimate proof of interpretability: trained bivector weights can be read back as symbolic formulas. Each rotation plane maps to a closed-form trigonometric or hyperbolic term (`models/sr/translator.py`):
+
+```python
+def _plane_to_action(self, plane: SimplePlane) -> sympy.Expr:
+    xi = self.symbols[plane.var_i]
+    xj = self.symbols[plane.var_j]
+    theta = plane.angle
+
+    if plane.sig_type == "elliptic":
+        return xi * sympy.cos(2 * theta) - xj * sympy.sin(2 * theta)
+    elif plane.sig_type == "hyperbolic":
+        return xi * sympy.cosh(2 * theta) + xj * sympy.sinh(2 * theta)
+    else:  # parabolic
+        return xi + 2 * theta * xj
+```
+
+A standard neural network is a black box of millions of uninterpretable scalars. A trained GBN is a composition of named rotation planes with exact symbolic correspondences. This is not post-hoc explanation — it is direct readout from the algebra.

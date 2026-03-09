@@ -11,7 +11,7 @@ Standard PyTorch layers operate on flat vectors with matrix multiplication. Vers
 ### How does Versor compare to e3nn and other geometric DL libraries?
 **e3nn** focuses on $SO(3)$/$O(3)$ equivariance for 3D point clouds using spherical harmonics and irreducible representations. Versor takes a different approach:
 
-- **Metric-agnostic**: Versor works with any $(p, q)$ signature — Euclidean, Minkowski, Conformal — using the same `RotorLayer` code. e3nn is specialized for 3D Euclidean symmetry.
+- **Metric-agnostic**: Versor works with any $(p, q, r)$ signature — Euclidean, Minkowski, Conformal, Degenerate — using the same `RotorLayer` code. e3nn is specialized for 3D Euclidean symmetry.
 - **Rotor-native**: GBN layers learn rotations directly as bivector exponentials, not as Wigner-D matrices or CG tensor products.
 - **Unified algebra**: Scalars, vectors, bivectors, and higher-grade elements coexist in one multivector. There's no separate handling of different representation orders.
 
@@ -23,10 +23,10 @@ For basic usage, no. Think of it as: your data gets embedded into a richer repre
 ### What domains is Versor suited for?
 Any domain where data has geometric structure:
 
-- **Molecular property prediction**: 3D atom positions in $Cl(3,0)$ — QM9 benchmark at 7.64 meV MAE.
-- **Motion/sensor data**: High-dimensional time-series aligned into separable latent spaces — UCI-HAR at ~100% accuracy.
-- **NLP/semantic embedding**: BERT embeddings disentangled via rotor-based autoencoder — 100% grade purity on 20 Newsgroups.
-- **Physics simulation**: Minkowski $Cl(1,1)$ or $Cl(1,3)$ for spacetime-aware models.
+- **Symbolic regression**: Cl(4,0) — iterative geometric unbending discovers closed-form formulas from data. Median R² = 0.9984 on Feynman equations.
+- **Molecular dynamics**: Cl(3,0,1) PGA — energy + force prediction with conservative constraints.
+- **Logical query answering**: Cl(4,1) CGA — geometric reasoning on frozen LLM embeddings with ~300K params.
+- **EEG emotion classification**: Cl(3,1) Minkowski — phase-amplitude representation with mother manifold alignment.
 - **Any manifold-valued data**: If your data lives on a manifold (and it almost always does), rotors align it without deformation.
 
 ## Setup & Environment
@@ -36,6 +36,7 @@ Core: `torch`, `numpy`, `hydra-core`, `tqdm`. Everything else is optional:
 - `uv sync --extra viz` for visualization (matplotlib, seaborn, scikit-learn, plotly, imageio)
 - `uv sync --extra examples` for example tasks (transformers, scikit-learn, matplotlib)
 - `uv sync --extra graph` for molecular GNN tasks (torch-geometric)
+- `uv sync --extra all_tasks` for all task dependencies (graph, pdbbind, weather, cad)
 - `uv sync --extra all` for everything
 
 ### Does Versor support GPU?
@@ -43,12 +44,12 @@ Yes. Pass `device='cuda'` when creating the algebra:
 ```python
 algebra = CliffordAlgebra(p=3, q=0, device='cuda')
 ```
-Or via Hydra config: `uv run main.py task=qm9 algebra.device=cuda`
+Or via Hydra config: `uv run main.py task=sr algebra.device=cuda`
 
 ### I get a CUDA error on macOS / CPU-only machine
 The default device in some configs may be `'cuda'`. Override it:
 ```bash
-uv run main.py task=qm9 algebra.device=cpu
+uv run main.py task=sr algebra.device=cpu
 ```
 Or pass `device='cpu'` when creating the algebra directly.
 
@@ -63,10 +64,10 @@ GBN is the model architecture family built with Versor. A GBN is composed of:
 4. **GeometricGELU** — non-linear activation (preserves direction)
 5. **BladeSelector** — soft attention over basis blades (what to keep)
 
-Versor provides several GBN variants: `GeometricBladeNetwork` (general-purpose), `MultiRotorModel` (multi-rotor), `MoleculeGNN` / `MultiRotorQuantumNet` (graph-based), `MotionManifoldNetwork` (alignment), and `SemanticAutoEncoder` (disentanglement).
+Versor provides several GBN variants: `SRGBN` (symbolic regression), `MD17ForceNet` (molecular dynamics), `GLRNet` (logical query answering), and `EEGNet` (emotion classification).
 
 ### What is a multivector tensor shape?
-`[Batch, Channels, 2^n]` where $n = p + q$. For $Cl(3,0)$: `[B, C, 8]`. For $Cl(6,0)$: `[B, C, 64]`.
+`[Batch, Channels, 2^n]` where $n = p + q + r$. For $Cl(3,0)$: `[B, C, 8]`. For $Cl(4,1)$: `[B, C, 32]`.
 
 ### How do I embed regular vectors into multivectors?
 Use `algebra.embed_vector()`:
@@ -83,7 +84,7 @@ It learns bivector weights $B$ — one scalar per rotation plane. In $Cl(3,0)$, 
 A single rotor rotates in one plane. `MultiRotorLayer` uses $K$ rotors in parallel with learned mixing weights. Think of it as multi-head attention but for geometric rotations — each "head" rotates in a different plane, and the outputs are combined by weighted superposition.
 
 ### What is CliffordLinear?
-Channel mixing via scalar weights — essentially `nn.Linear` applied across the channel dimension without mixing blade components. It's the only non-geometric layer: it can scale channels independently but doesn't perform geometric products. Replacing it with pure rotor compositions is on the roadmap (see `docs/milestone.md`).
+Channel mixing via scalar weights — essentially `nn.Linear` applied across the channel dimension without mixing blade components. It's the only non-geometric layer: it can scale channels independently but doesn't perform geometric products. Replacing it with pure rotor compositions is on the roadmap (see `docs/milestone.md`). The `RotorGadget` backend (`CliffordLinear(algebra, in_ch, out_ch, backend='rotor')`) already achieves ~63% parameter reduction via rotor pairs.
 
 ### What is BladeSelector?
 A soft gate over basis blades. Each blade gets a learned sigmoid weight. This lets the network suppress noise in unwanted grades (e.g., keep only vectors, suppress bivectors).
@@ -92,21 +93,30 @@ A soft gate over basis blades. Each blade gets a learned sigmoid weight. This le
 It computes `x * GELU(|x| + bias) / |x|`. The magnitude is scaled non-linearly via GELU, but the **direction** (the unit multivector) is preserved. This ensures the activation doesn't rotate the data — only the RotorLayer does that.
 
 ### How many parameters does a GBN have compared to a standard MLP?
-Significantly fewer. A RotorLayer in $Cl(3,0)$ with $C$ channels learns $C \times 3$ bivector parameters (one per rotation plane). A standard `nn.Linear` mapping $C$ features would need $C^2$ parameters. For the QM9 task, the full `MultiRotorQuantumNet` achieves 7.64 meV MAE with a lightweight parameter count, because rotors parameterize only the geometrically meaningful degrees of freedom.
+Significantly fewer. A RotorLayer in $Cl(3,0)$ with $C$ channels learns $C \times 3$ bivector parameters (one per rotation plane). A standard `nn.Linear` mapping $C$ features would need $C^2$ parameters. Rotors parameterize only the geometrically meaningful degrees of freedom.
 
-### Which metric signature $(p, q)$ should I use?
+### Which metric signature $(p, q, r)$ should I use?
 - **$Cl(3,0)$** — 3D spatial data (molecules, point clouds, robotics)
-- **$Cl(1,1)$** — Hyperbolic/relativistic data (Lorentz boosts, hyperbolic embeddings)
-- **$Cl(4,0)$ to $Cl(6,0)$** — Higher-dimensional feature alignment (motion, NLP, embedding spaces)
-- **Not sure?** Use `MetricSearch` to brute-force the optimal signature for your dataset.
+- **$Cl(3,0,1)$** — PGA: SE(3) rigid-body motions (molecular dynamics with translation)
+- **$Cl(3,1)$** — Minkowski: spacetime or phase-amplitude data (EEG, physics)
+- **$Cl(4,0)$ to $Cl(6,0)$** — Higher-dimensional feature alignment (symbolic regression, embedding spaces)
+- **$Cl(4,1)$** — Conformal: translations become rotations (logical reasoning, CAD)
+- **Not sure?** Use `MetricSearch` to discover the optimal signature for your dataset.
+
+### What is MetricSearch?
+It lifts data into a conformal algebra `Cl(X+1, 1)`, trains GBN probes with biased initialization (euclidean, minkowski, projective), then analyzes the learned bivector energy distribution to classify each base vector as elliptic, hyperbolic, or null — returning an optimal `(p, q, r)` 3-tuple. See `core/search.py`.
+
+### How does the Cayley table caching work?
+`CliffordAlgebra` caches multiplication tables by `(p, q, r, device)`. The first instantiation for a given signature computes the table; subsequent instantiations reuse it. This means creating multiple layers with the same algebra is free.
 
 ## Tasks
 
 ### What tasks are included?
 **Main tasks** (via `main.py`):
-- `qm9` / `multi_rotor_qm9` — Molecular property prediction (graph-based, requires `--extra graph`)
-- `motion` — UCI-HAR motion alignment with rotor-based latent space
-- `semantic` — Semantic disentanglement autoencoder (BERT → grade purity, requires `--extra examples`)
+- `sr` — Symbolic regression via iterative geometric unbending (PMLB datasets)
+- `md17` — Molecular dynamics: energy + force prediction (requires `--extra graph`)
+- `lqa` — Logical query answering with geometric reasoning probes (requires `--extra examples`)
+- `deap_eeg` — EEG emotion classification with mother manifold alignment
 
 **Example tasks** (via `examples/main.py`):
 - `manifold` — Flatten a figure-8 manifold
@@ -128,7 +138,7 @@ Either a `DataLoader` (for batched training) or a raw tensor (for in-memory trai
 ## Performance
 
 ### Why is inference fast on CPU?
-GBN's computational profile differs fundamentally from standard deep learning. The core operation (rotor sandwich product in $Cl(3,0)$) is only $8 \times 8 = 64$ multiply-accumulates — far below the threshold where GPU parallelism pays off. Additionally, GBN involves heavy branching (Cayley table lookups, grade-conditional projections) that causes GPU warp divergence. High-IPC CPUs with large caches (Apple Silicon, modern x86) handle these small, branchy, memory-bound workloads more efficiently. Result: **5.8 ms/molecule** on an M4 CPU for QM9 inference. See `docs/milestone.md` for detailed analysis.
+GBN's computational profile differs fundamentally from standard deep learning. The core operation (rotor sandwich product in $Cl(3,0)$) is only $8 \times 8 = 64$ multiply-accumulates — far below the threshold where GPU parallelism pays off. Additionally, GBN involves heavy branching (Cayley table lookups, grade-conditional projections) that causes GPU warp divergence. High-IPC CPUs with large caches (Apple Silicon, modern x86) handle these small, branchy, memory-bound workloads more efficiently. See `docs/milestone.md` for detailed analysis.
 
 ### Why is training slow?
 The geometric product has complexity $O(2^{2n})$ — it's a full bilinear product over all basis blade pairs. For $Cl(3,0)$ this is $8 \times 8 = 64$ operations per product. For $Cl(6,0)$ it's $64 \times 64 = 4096$. Strategies to mitigate:
@@ -137,14 +147,8 @@ The geometric product has complexity $O(2^{2n})$ — it's a full bilinear produc
 - Prefer smaller signatures when possible
 - Use GPU for batch training (`algebra.device='cuda'`)
 
-### How does the Cayley table caching work?
-`CliffordAlgebra` caches multiplication tables by `(p, q, device)`. The first instantiation for a given signature computes the table; subsequent instantiations reuse it. This means creating multiple layers with the same algebra is free.
-
-### What is MetricSearch?
-It brute-forces all $(p, q)$ signatures with $p + q = D$ and evaluates a geometric stress metric on your data. Useful when you don't know whether your data is better modeled by Euclidean, hyperbolic, or mixed geometry.
-
 ### What does "Lipschitz by construction" mean?
-The rotor sandwich product $Rx\tilde{R}$ is an isometry — it preserves norms exactly ($\|x'\| = \|x\|$), giving a Lipschitz constant of exactly 1. Standard networks must use spectral normalization or gradient penalties to approximate this property. In a GBN, it's guaranteed by the algebra. This directly improves robustness to input perturbations: the motion task shows only a small accuracy drop under noise (see README benchmarks).
+The rotor sandwich product $Rx\tilde{R}$ is an isometry — it preserves norms exactly ($\|x'\| = \|x\|$), giving a Lipschitz constant of exactly 1. Standard networks must use spectral normalization or gradient penalties to approximate this property. In a GBN, it's guaranteed by the algebra.
 
 ## Troubleshooting
 
@@ -153,20 +157,26 @@ Check your tensor shapes. Multivectors should be `[Batch, Channels, 2^n]`. Commo
 - Missing channel dimension (use `x.unsqueeze(1)`)
 - Wrong algebra dimension (check `algebra.dim`)
 
-### `qm9` or `multi_rotor_qm9` fails with ImportError
-These tasks require `torch-geometric`. Install it:
-```bash
-uv sync --extra graph
-```
+### SR task runs out of memory during symbolic translation
+The symbolic trace through the model can produce large sympy expressions. Solutions:
+- Reduce the number of channels in the model
+- The translator automatically caps symbolic channels at 4 (`MAX_SYM_CHANNELS`)
+- Use `translate()` (indirect) instead of `translate_direct()` for simpler expressions
 
-### `semantic` task fails with ImportError
-This task requires optional dependencies (`transformers`, `scikit-learn`). Install them:
+### LQA task fails with ImportError
+This task requires optional dependencies (`transformers`, `sentence-transformers`, `datasets`). Install them:
 ```bash
 uv sync --extra examples
 ```
 
-### First run of `semantic` task is slow
-The first run downloads the BERT model (~440 MB) and encodes the 20 Newsgroups corpus. Embeddings are cached to `data/newsgroups/` — subsequent runs load from cache and start immediately.
+### DEAP task can't find data files
+The DEAP dataset requires manual download from the official source. Place preprocessed `.dat` files in `data/DEAP/data_preprocessed_python/`. See `docs/tasks/deap_eeg.md` for details.
+
+### MD17 task fails with ImportError
+This task requires `torch-geometric`. Install it:
+```bash
+uv sync --extra graph
+```
 
 ### Checkpoint loading fails with PyTorch version mismatch
 Versor uses `weights_only=False` with a fallback for older PyTorch versions. If you still get errors, ensure your PyTorch version is >= 2.0.
