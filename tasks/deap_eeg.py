@@ -16,6 +16,7 @@ using Geometric Algebra. Cross-subject (LOSO) validation by default.
 Key: emotional states are pushed into Grade-0 (rotor-invariant scalars).
 """
 
+import numpy as np
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
@@ -45,7 +46,6 @@ class DEAPEEGTask(BaseTask):
         self.window_size = cfg.dataset.get('window_size', 512)
         self.stride = cfg.dataset.get('stride', None)
         self.task_mode = cfg.dataset.get('task_mode', 'regression')
-        self.label_threshold = cfg.dataset.get('label_threshold', 0.5)
         super().__init__(cfg)
 
     def setup_algebra(self):
@@ -122,7 +122,8 @@ class DEAPEEGTask(BaseTask):
         labels = labels.to(self.device)
 
         if self.task_mode == 'classification':
-            labels = (labels > self.label_threshold).float()
+            medians = labels.median(dim=0).values
+            labels = (labels > medians).float()
 
         preds = self.model(group_data)  # [B, 4]
         loss = self.criterion(preds, labels)
@@ -154,14 +155,18 @@ class DEAPEEGTask(BaseTask):
         for i, name in enumerate(VADL_NAMES):
             metrics[f'{name}_RMSE'] = rmse[i].item()
 
-        # Binary F1 (threshold at 5.0)
+        # Binary F1 — per-dimension median threshold (Koelstra et al., 2012)
         try:
             from sklearn.metrics import f1_score
-            pred_bin = (preds > self.label_threshold).numpy()
-            label_bin = (labels > self.label_threshold).numpy()
+            preds_np = preds.numpy()
+            labels_np = labels.numpy()
             for i, name in enumerate(VADL_NAMES):
-                f1 = f1_score(label_bin[:, i], pred_bin[:, i], average='binary', zero_division=0)
+                threshold_i = float(np.median(labels_np[:, i]))
+                pred_bin = (preds_np[:, i] > threshold_i).astype(int)
+                label_bin = (labels_np[:, i] > threshold_i).astype(int)
+                f1 = f1_score(label_bin, pred_bin, average='binary', zero_division=0)
                 metrics[f'{name}_F1'] = f1
+                metrics[f'{name}_threshold'] = threshold_i
         except ImportError:
             logger.warning("scikit-learn not available, skipping F1 metrics.")
 
@@ -215,3 +220,5 @@ class DEAPEEGTask(BaseTask):
         final_metrics = self.evaluate(val_loader)
         for k, v in final_metrics.items():
             logger.info("FINAL %s: %.4f", k, v)
+
+        return final_metrics

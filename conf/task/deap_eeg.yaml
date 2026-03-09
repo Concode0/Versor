@@ -15,7 +15,6 @@ dataset:
   window_size: 512      # 4 seconds at 128 Hz
   stride: null           # null = non-overlapping (= window_size)
   task_mode: "regression"
-  label_threshold: 0.5   # for binary F1 evaluation (normalized 1-9 → [0,1])
 
 model:
   channels: 16

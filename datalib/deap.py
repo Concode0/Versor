@@ -27,6 +27,7 @@ import pickle
 import math
 import numpy as np
 import torch
+from pathlib import Path
 from torch.utils.data import Dataset, DataLoader
 from log import get_logger
 
@@ -62,6 +63,11 @@ BASELINE_SAMPLES = 384   # 3 seconds × 128 Hz
 STIMULUS_SAMPLES = 7680  # 60 seconds × 128 Hz
 
 NUM_BANDS = len(BANDS)
+
+
+def _deap_cache_path(data_root, sid, window_size, stride, n_bands):
+    """Cache path for one subject's pre-computed DE features."""
+    return Path(data_root).parent / "deap_cache" / f"s{sid:02d}_w{window_size}_st{stride}_b{n_bands}.pt"
 
 
 def _bandpass_filter(data, low, high, fs, order=5):
@@ -227,48 +233,66 @@ class DEAPDataset(Dataset):
         self._load_subjects(subjects)
 
     def _load_subjects(self, subjects):
-        """Load and window all trials for given subjects, normalize per-subject."""
+        """Load and window all trials for given subjects, normalize per-subject.
+
+        Uses a per-subject cache to skip expensive bandpass filtering on
+        subsequent runs. Cache stores raw (un-normalized) features so one
+        cache file serves both normalize=True and normalize=False.
+        """
+        n_bands = len(self.bands)
+
         for sid in subjects:
-            path = os.path.join(self.data_root, f's{sid:02d}.dat')
-            if not os.path.exists(path):
-                logger.warning("Subject file not found: %s", path)
-                continue
+            cache_path = _deap_cache_path(
+                self.data_root, sid, self.window_size, self.stride, n_bands
+            )
 
-            with open(path, 'rb') as f:
-                dat = pickle.load(f, encoding='latin1')
+            if cache_path.exists():
+                cached = torch.load(cache_path, weights_only=False)
+                subject_samples = cached["samples"]
+                logger.info("Subject %02d: loaded %d windows from cache", sid, len(subject_samples))
+            else:
+                path = os.path.join(self.data_root, f's{sid:02d}.dat')
+                if not os.path.exists(path):
+                    logger.warning("Subject file not found: %s", path)
+                    continue
 
-            data = dat['data']     # (40, 40, 8064) — trials × channels × samples
-            labels = dat['labels'] # (40, 4) — VADL
+                with open(path, 'rb') as f:
+                    dat = pickle.load(f, encoding='latin1')
 
-            subject_samples = []
-            for trial_idx in range(data.shape[0]):
-                eeg = data[trial_idx, :32, :]  # 32 EEG channels only
-                vadl = labels[trial_idx]        # [4]
+                data = dat['data']     # (40, 40, 8064) — trials × channels × samples
+                labels = dat['labels'] # (40, 4) — VADL
 
-                # Strip baseline, keep stimulus
-                stimulus = eeg[:, BASELINE_SAMPLES:BASELINE_SAMPLES + STIMULUS_SAMPLES]
+                subject_samples = []
+                for trial_idx in range(data.shape[0]):
+                    eeg = data[trial_idx, :32, :]  # 32 EEG channels only
+                    vadl = labels[trial_idx]        # [4]
 
-                # Window the stimulus
-                n_windows = (STIMULUS_SAMPLES - self.window_size) // self.stride + 1
-                for w in range(n_windows):
-                    start = w * self.stride
-                    end = start + self.window_size
-                    window = stimulus[:, start:end]  # [32, window_size]
+                    # Strip baseline, keep stimulus
+                    stimulus = eeg[:, BASELINE_SAMPLES:BASELINE_SAMPLES + STIMULUS_SAMPLES]
 
-                    de = extract_de_features(window, SAMPLING_RATE, self.bands)
-                    grouped = group_features(de)
-                    subject_samples.append((grouped, vadl.astype(np.float32)))
+                    # Window the stimulus
+                    n_windows = (STIMULUS_SAMPLES - self.window_size) // self.stride + 1
+                    for w in range(n_windows):
+                        start = w * self.stride
+                        end = start + self.window_size
+                        window = stimulus[:, start:end]  # [32, window_size]
 
-            # Subject-wise normalization
+                        de = extract_de_features(window, SAMPLING_RATE, self.bands)
+                        grouped = group_features(de)
+                        subject_samples.append((grouped, vadl.astype(np.float32)))
+
+                # Save cache (raw, before normalization)
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                torch.save({"samples": subject_samples}, cache_path)
+                logger.info("Subject %02d: %d windows (cached to %s)", sid, len(subject_samples), cache_path)
+
+            # Subject-wise normalization (applied after cache load)
             if self.normalize and subject_samples:
                 means, stds = _normalize_subject_samples(subject_samples)
                 self._subject_stats[sid] = (means, stds)
 
-            start_idx = len(self.samples)
             self.samples.extend(subject_samples)
             self.subject_ids.extend([sid] * len(subject_samples))
-
-            logger.info("Subject %02d: %d windows", sid, len(subject_samples))
 
         logger.info("Total: %d windows from %d subjects", len(self.samples), len(subjects))
 
