@@ -39,25 +39,29 @@ class MD17Task(BaseTask):
         self.loss_weights = cfg.training.get('loss_weights', {'energy': 1.0, 'force': 10.0})
         super().__init__(cfg)
         self.conservative_loss = ConservativeLoss()
-        # Hermitian grade regularization: scalar + vector dominant for Cl(3,0)
-        target_spectrum = cfg.training.get('target_spectrum', [0.4, 0.4, 0.15, 0.05])
+        # Hermitian grade regularization for Cl(3,0,1): 5 grades
+        target_spectrum = cfg.training.get('target_spectrum', [0.35, 0.30, 0.20, 0.10, 0.05])
         self.grade_reg = HermitianGradeRegularization(self.algebra, target_spectrum=target_spectrum)
 
     def setup_algebra(self):
-        """Use Cl(3,0) for 3D Euclidean space."""
-        return CliffordAlgebra(p=3, q=0, r=self.cfg.algebra.get("r", 0), device=self.device)
+        """Use Cl(3,0,1) PGA for SE(3) rigid-body motions."""
+        return CliffordAlgebra(p=3, q=0, r=self.cfg.algebra.get("r", 1), device=self.device)
 
     def setup_model(self):
-        """Build MD17ForceNet model with decomposition and rotor backend."""
+        """Build MD17ForceNet model with PGA motors, dynamic rotors, and RBF."""
         return MD17ForceNet(
             self.algebra,
             hidden_dim=self.cfg.model.hidden_dim,
             num_layers=self.cfg.model.layers,
-            num_rotors=self.cfg.model.get('num_rotors', 8),
+            num_static_rotors=self.cfg.model.get('num_static_rotors', 8),
+            num_dynamic_rotors=self.cfg.model.get('num_dynamic_rotors', 4),
             max_z=self.cfg.model.get('max_z', 100),
+            num_rbf=self.cfg.model.get('num_rbf', 20),
+            rbf_cutoff=self.cfg.model.get('rbf_cutoff', 5.0),
             use_decomposition=self.cfg.model.get('use_decomposition', False),
             decomp_k=self.cfg.model.get('decomp_k', 10),
-            use_rotor_backend=self.cfg.model.get('use_rotor_backend', False)
+            use_rotor_backend=self.cfg.model.get('use_rotor_backend', False),
+            use_geo_square=self.cfg.model.get('use_geo_square', True),
         )
 
     def setup_criterion(self):
