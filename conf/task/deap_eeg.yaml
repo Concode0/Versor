@@ -1,0 +1,35 @@
+# @package _global_
+name: "deap_eeg"
+
+algebra:
+  p: 3
+  q: 1
+  r: 0
+  device: "auto"
+
+dataset:
+  name: "deap"
+  data_root: "data/deap/data_preprocessed_python"
+  subject_id: 1
+  eval_mode: "cross_subject"
+  window_size: 512      # 4 seconds at 128 Hz
+  stride: null           # null = non-overlapping (= window_size)
+  task_mode: "regression"
+  label_threshold: 0.5   # for binary F1 evaluation (normalized 1-9 → [0,1])
+
+model:
+  channels: 16
+  num_layers: 3
+  num_heads: 4
+  num_rotors: 8
+  eta_gating: 1.5
+  H_base: 0.5
+  dropout: 0.1
+  num_targets: 4
+  use_profiler: true
+training:
+  epochs: 100
+  lr: 0.0005
+  batch_size: 32
+  optimizer_type: "riemannian_adam"
+  max_bivector_norm: 10.0

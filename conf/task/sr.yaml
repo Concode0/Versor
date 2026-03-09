@@ -24,14 +24,12 @@ model:
   use_decomposition: true
 
 training:
-  epochs: 50
+  epochs: 200
   lr: 0.003
   batch_size: 128
   optimizer_type: "riemannian_adam"
   max_bivector_norm: 10.0
   sparsity_weight: 0.01
-  grade_balance_weight: 0.005
-  blade_weight_decay: 0.05
   scheduler_patience: 10
 
 iterative:
@@ -50,7 +48,7 @@ iterative:
 
 implicit:
   mode: "auto"
-  probe_epochs: 30
+  probe_epochs: 100
   jacobian_weight: 0.1
 
 grouping:
@@ -67,4 +65,4 @@ rejection:
 
 mother_algebra:
   cross_term_threshold: 0.01
-  joint_epochs: 20
+  joint_epochs: 50
