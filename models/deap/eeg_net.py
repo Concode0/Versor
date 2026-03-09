@@ -39,8 +39,13 @@ class MultiTargetPhaseShiftHead(CliffordModule):
     Extends PhaseShiftHead to output ``num_targets`` predictions (e.g. 4 for
     VADL) by learning a separate phase angle per target dimension.
 
-    Each target mixes Grade-0 (scalar component) and Grade-4 (high-grade component) via:
-        result_k = G0 * cos(theta_k) - G4 * sin(theta_k)
+    Each target mixes Grade-0 (scalar component) and Grade-4 (high-grade
+    component) via a per-channel phase rotation, then aggregates channels
+    through a **learned per-target projection** (not uniform mean).
+
+    The per-target bias decouples baseline prediction from the phase
+    computation, preventing the phase angles from collapsing to encode
+    only the label mean.
     """
 
     def __init__(self, algebra: CliffordAlgebra, channels: int, num_targets: int = 4):
@@ -48,8 +53,11 @@ class MultiTargetPhaseShiftHead(CliffordModule):
         self.channels = channels
         self.num_targets = num_targets
         self.theta = nn.Parameter(torch.randn(1, channels, num_targets) * 0.1)
+        self.proj = nn.Parameter(
+            torch.full((num_targets, channels), 1.0 / channels)
+        )
+        self.bias = nn.Parameter(torch.zeros(num_targets))
 
-        # Identify grade-4 pseudoscalar indices
         mask_g4 = self.algebra.grade_masks[4]
         if mask_g4.sum() > 0:
             self.register_buffer('g4_idx', mask_g4.nonzero(as_tuple=True)[0])
@@ -57,28 +65,15 @@ class MultiTargetPhaseShiftHead(CliffordModule):
             self.g4_idx = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Mix grades via pseudoscalar phase rotation.
+        G0 = x[..., 0:1]  # [B, C, 1]
 
-        Args:
-            x: Multivectors ``[B, C, D]`` (already pooled over sequence).
-
-        Returns:
-            Predictions ``[B, num_targets]``.
-        """
-        # Grade-0 (Scalar): [B, C, 1]
-        G0 = x[..., 0:1]
-
-        # Grade-4 (High-grade/Pseudoscalar): [B, C, 1]
         if self.g4_idx is not None and len(self.g4_idx) > 0:
             G4 = x[..., self.g4_idx]
         else:
             G4 = torch.zeros_like(G0)
 
-        # Phase equation per target: [B, C, num_targets]
-        result = G0 * torch.cos(self.theta) - G4 * torch.sin(self.theta)
-
-        # Mean across channels → [B, num_targets]
-        return result.mean(dim=1)
+        phase = G0 * torch.cos(self.theta) - G4 * torch.sin(self.theta)  # [B, C, num_targets]
+        return torch.einsum('bct,tc->bt', phase, self.proj) + self.bias
 
 
 class EEGNet(nn.Module):
@@ -106,7 +101,6 @@ class EEGNet(nn.Module):
         """
         super().__init__()
 
-        # ── Algebra ───────────────────────────────────────────────────────
         p, q = 3, 1
         if config is not None:
             if hasattr(config, 'algebra'):
@@ -118,7 +112,6 @@ class EEGNet(nn.Module):
 
         self.algebra = CliffordAlgebra(p, q, device=device)
 
-        # ── Hyperparameters ───────────────────────────────────────────────
         if config is not None and hasattr(config, 'model'):
             m = config.model
             channels = m.get('channels', 16)
@@ -145,7 +138,6 @@ class EEGNet(nn.Module):
         self.channels = channels
         self.group_names = sorted(group_sizes.keys())
 
-        # ── 1. Mother Embeddings with Procrustes Alignment ────────────────
         self.embeddings = nn.ModuleDict()
         for name, size in group_sizes.items():
             U = profiles[name]['U'] if profiles and name in profiles else 0.0
@@ -154,7 +146,6 @@ class EEGNet(nn.Module):
                 self.algebra, size, channels, U, V
             )
 
-        # ── 2. Geometric Transformer Blocks (entropy gating ON) ──────────
         self.blocks = nn.ModuleList([
             GeometricTransformerBlock(
                 self.algebra, channels, num_heads, num_rotors,
@@ -163,27 +154,14 @@ class EEGNet(nn.Module):
             for _ in range(num_layers)
         ])
 
-        # ── 3. Norm → Neutralizer → Head ─────────────────────────────────
         self.final_norm = CliffordLayerNorm(self.algebra, channels)
         self.neutralizer = GeometricNeutralizer(self.algebra, channels)
         self.head = MultiTargetPhaseShiftHead(self.algebra, channels, num_targets)
 
     def forward(self, group_data, return_diagnostics=False):
-        """Process EEG region groups through the geometric manifold.
-
-        Args:
-            group_data: Dict mapping region name to ``[B, input_dim]`` tensors.
-            return_diagnostics: If True, also return entropy and gating values.
-
-        Returns:
-            VADL predictions ``[B, num_targets]``.
-            If ``return_diagnostics``: ``(preds, avg_H, avg_lambda)``.
-        """
-        # Embed each brain region into the mother manifold
         tokens = [self.embeddings[name](group_data[name]) for name in self.group_names]
         x = torch.stack(tokens, dim=1)  # [B, L, C, D]
 
-        # Transformer stack
         all_H, all_lambda = [], []
         for block in self.blocks:
             if return_diagnostics:
@@ -194,22 +172,11 @@ class EEGNet(nn.Module):
                 x = block(x)
 
         B, L, C, D = x.shape
-
-        # LayerNorm (operates on [B*L, C, D])
-        x = self.final_norm(x.reshape(B * L, C, D))
-
-        # GeometricNeutralizer: per-token before pooling
-        x = self.neutralizer(x)  # [B*L, C, D]
-
-        # Reshape back and mean pool over regions
+        x = self.neutralizer(self.final_norm(x.reshape(B * L, C, D)))
         x = x.reshape(B, L, C, D).mean(dim=1)  # [B, C, D]
-
-        # Phase-shift head → [B, num_targets]
         preds = self.head(x)
 
         if return_diagnostics:
-            avg_H = torch.stack(all_H).mean(dim=0)
-            avg_lambda = torch.stack(all_lambda).mean(dim=0)
-            return preds, avg_H, avg_lambda
+            return preds, torch.stack(all_H).mean(dim=0), torch.stack(all_lambda).mean(dim=0)
 
         return preds
