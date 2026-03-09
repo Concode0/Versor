@@ -1,31 +1,23 @@
 # Python-generated files
 __pycache__/
+.pytest_cache/
 *.py[oc]
 build/
 dist/
 wheels/
 *.egg-info
+.venv
 
-GEMINI.md
 .DS_Store
 outputs/
 data/
+benchmarks/results/
 
-PATENT_*.md
-
-# Virtual environments
-.venv
-
-# Training artifacts
-*.ckpt
 *.pt
 train_log_*.txt
 
-# Visualization outputs (root-level)
 /*.png
 /*.gif
+
 lorentz_plots/
 zeta_plots/
-
-# Reference PDFs
-*.pdf
