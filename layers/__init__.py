@@ -9,10 +9,12 @@ from .primitives.multi_rotor import MultiRotorLayer
 from .primitives.linear import CliffordLinear
 from .primitives.rotor_gadget import RotorGadget
 from .primitives.normalization import CliffordLayerNorm
-from .primitives.projection import BladeSelector
+from .primitives.projection import BladeSelector, GeometricNeutralizer
 from .adapters.embedding import MultivectorEmbedding, RotaryBivectorPE
+from .adapters.mother import MotherEmbedding, EntropyGatedAttention, PhaseShiftHead
 from .blocks.attention import GeometricProductAttention
 from .blocks.multi_rotor_ffn import MultiRotorFFN
+from .blocks.transformer import GeometricTransformerBlock
 
 # CliffordGraphConv requires torch_geometric
 try:
@@ -28,9 +30,14 @@ __all__ = [
     "RotorGadget",
     "CliffordLayerNorm",
     "BladeSelector",
+    "GeometricNeutralizer",
     "MultivectorEmbedding",
     "RotaryBivectorPE",
+    "MotherEmbedding",
+    "EntropyGatedAttention",
+    "PhaseShiftHead",
     "GeometricProductAttention",
     "MultiRotorFFN",
+    "GeometricTransformerBlock",
     "CliffordGraphConv",
 ]

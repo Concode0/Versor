@@ -194,11 +194,12 @@ class GeometricProductAttention(CliffordModule):
         scale = math.sqrt(self.head_channels * self.algebra.dim)
         return (score_g0 + self.bivector_weight * score_g2) / scale
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, key_padding_mask: torch.Tensor = None) -> torch.Tensor:
         """Computes geometric product attention.
 
         Args:
             x: Input multivectors [B, L, C, D].
+            key_padding_mask: Optional [B, L] bool mask where True = padded (ignored).
 
         Returns:
             Output multivectors [B, L, C, D].
@@ -247,6 +248,13 @@ class GeometricProductAttention(CliffordModule):
                 mask_block = causal_mask[q_start:q_end, :]  # [Lq, L]
                 scores = scores.masked_fill(
                     mask_block.unsqueeze(0).unsqueeze(0), float('-inf')
+                )
+
+            # Apply key padding mask: True = padded → -inf
+            if key_padding_mask is not None:
+                # key_padding_mask: [B, L] -> [B, 1, 1, L]
+                scores = scores.masked_fill(
+                    key_padding_mask.unsqueeze(1).unsqueeze(2), float('-inf')
                 )
 
             # Softmax + dropout
