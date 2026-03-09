@@ -84,7 +84,7 @@ class LQATask(BaseTask):
         if self.probe == "chain":
             return nn.CrossEntropyLoss()
         elif self.probe == "entailment":
-            return nn.CrossEntropyLoss()
+            return nn.BCEWithLogitsLoss()
         elif self.probe == "negation":
             return nn.BCEWithLogitsLoss()
         else:
@@ -121,6 +121,9 @@ class LQATask(BaseTask):
         # Primary loss
         if self.probe == "negation":
             labels = batch["answer"].float().unsqueeze(-1)
+            loss = self.criterion(logits, labels)
+        elif self.probe == "entailment":
+            labels = batch["label"].float().unsqueeze(-1)  # [B, 1]
             loss = self.criterion(logits, labels)
         else:
             labels = batch["label"]
@@ -194,6 +197,8 @@ class LQATask(BaseTask):
         all_preds = []
         all_labels = []
         all_chain_lengths = []
+        all_confidences = []
+        all_g2_norms = []
 
         with torch.no_grad():
             for batch in loader:
@@ -201,9 +206,21 @@ class LQATask(BaseTask):
                 output = self.model(batch)
                 logits = output["logits"]
 
-                if self.probe == "negation":
+                if self.probe in ("negation", "entailment"):
                     preds = (logits.squeeze(-1) > 0).long()
-                    labels = batch["answer"].long()
+                    if self.probe == "negation":
+                        labels = batch["answer"].long()
+                    else:
+                        labels = batch["label"].long()
+                    # Confidence via sigmoid
+                    conf = torch.sigmoid(logits.squeeze(-1))
+                    all_confidences.append(conf.cpu())
+                    # Grade-2 diagnostics for entailment
+                    if self.probe == "entailment" and "premise_mv" in output:
+                        _, _, g2_norm, _, _ = self.model.head._compute_product_features(
+                            output["premise_mv"], output["hypothesis_mv"]
+                        )
+                        all_g2_norms.append(g2_norm.cpu())
                 else:
                     preds = logits.argmax(dim=-1)
                     labels = batch["label"]
@@ -236,13 +253,36 @@ class LQATask(BaseTask):
                     logger.info("  %s: %.4f", k, v)
 
         elif self.probe == "entailment":
-            # Per-class accuracy
-            for cls in range(3):
-                mask = all_labels == cls
-                if mask.sum() > 0:
-                    cls_acc = correct[mask].mean().item()
-                    cls_names = {0: "Entailment", 1: "Neutral", 2: "Contradiction"}
-                    metrics[f"Acc_{cls_names[cls]}"] = cls_acc
+            # Per-class accuracy (binary: 1=entailment, 0=non-entailment)
+            ent_mask = all_labels == 1
+            nonent_mask = all_labels == 0
+            if ent_mask.sum() > 0:
+                metrics["Acc_Entailment"] = correct[ent_mask].mean().item()
+            if nonent_mask.sum() > 0:
+                metrics["Acc_NonEntailment"] = correct[nonent_mask].mean().item()
+
+            # Prediction distribution
+            n_total = len(all_preds)
+            metrics["Pred_Entailment_Frac"] = (all_preds == 1).float().mean().item()
+            metrics["Pred_NonEntailment_Frac"] = (all_preds == 0).float().mean().item()
+
+            # Confidence statistics
+            if all_confidences:
+                all_conf = torch.cat(all_confidences)
+                metrics["Confidence_Mean"] = all_conf.mean().item()
+                metrics["Confidence_Std"] = all_conf.std().item()
+                # Confidence for correct vs incorrect predictions
+                if correct.sum() > 0:
+                    metrics["Confidence_Correct"] = all_conf[correct.bool()].mean().item()
+                if (1 - correct).sum() > 0:
+                    metrics["Confidence_Incorrect"] = all_conf[~correct.bool()].mean().item()
+
+            # Grade-2 signal diagnostics
+            if all_g2_norms:
+                g2_all = torch.cat([g.flatten() for g in all_g2_norms])
+                metrics["Grade2_Norm_Mean"] = g2_all.mean().item()
+                metrics["Grade2_Norm_Std"] = g2_all.std().item()
+                metrics["Grade2_Norm_Max"] = g2_all.max().item()
 
         elif self.probe == "negation":
             # Negation robustness

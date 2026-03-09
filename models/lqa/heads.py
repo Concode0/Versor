@@ -101,21 +101,21 @@ class ChainReasoningHead(CliffordModule):
 
 
 class EntailmentHead(CliffordModule):
-    """Asymmetric entailment via geometric product structure.
+    """Asymmetric entailment via geometric product structure (binary).
 
     Computes P * rev(H) where P=premise, H=hypothesis multivectors.
     The grade-0 part (symmetric alignment) and grade-2 part (antisymmetric
     orientation) provide naturally asymmetric features.
 
+    Binary output: entailment (1) vs non-entailment (0), matching HANS protocol.
+
     Key: <P * rev(H)>_2 flips sign when P <-> H are swapped,
     giving the model asymmetry for free from the algebra.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, channels: int,
-                 num_classes: int = 3, hidden_dim: int = 64):
+    def __init__(self, algebra: CliffordAlgebra, channels: int, hidden_dim: int = 64):
         super().__init__(algebra)
         self.channels = channels
-        self.num_classes = num_classes
 
         g2_mask = algebra.grade_masks[2]
         self.register_buffer('g2_idx', g2_mask.nonzero(as_tuple=False).squeeze(-1))
@@ -129,18 +129,14 @@ class EntailmentHead(CliffordModule):
             nn.Dropout(0.1),
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
-            nn.Linear(hidden_dim // 2, num_classes),
+            nn.Linear(hidden_dim // 2, 1),
         )
 
-    def forward(self, premise: torch.Tensor, hypothesis: torch.Tensor) -> torch.Tensor:
-        """Compute entailment logits from geometric product features.
-
-        Args:
-            premise: Premise multivectors [B, C, D].
-            hypothesis: Hypothesis multivectors [B, C, D].
+    def _compute_product_features(self, premise: torch.Tensor, hypothesis: torch.Tensor):
+        """Compute geometric product and extract grade features.
 
         Returns:
-            Logits [B, num_classes].
+            (g0, g2, g2_norm, g2_dir, features) tuple.
         """
         H_rev = self.algebra.reverse(hypothesis)
         product = self.algebra.geometric_product(premise, H_rev)  # [B, C, D]
@@ -158,7 +154,33 @@ class EntailmentHead(CliffordModule):
             g2_dir.reshape(g2_dir.shape[0], -1),
         ], dim=-1)
 
+        return g0, g2, g2_norm, g2_dir, features
+
+    def forward(self, premise: torch.Tensor, hypothesis: torch.Tensor) -> torch.Tensor:
+        """Compute binary entailment logits from geometric product features.
+
+        Args:
+            premise: Premise multivectors [B, C, D].
+            hypothesis: Hypothesis multivectors [B, C, D].
+
+        Returns:
+            Logits [B, 1].
+        """
+        _, _, _, _, features = self._compute_product_features(premise, hypothesis)
         return self.classifier(features)
+
+    def get_grade2_stats(self, premise: torch.Tensor, hypothesis: torch.Tensor) -> dict:
+        """Diagnostic: grade-2 signal statistics.
+
+        Returns dict with g2_norm mean/std/max across the batch.
+        """
+        _, _, g2_norm, _, _ = self._compute_product_features(premise, hypothesis)
+        g2_flat = g2_norm.flatten()
+        return {
+            "g2_norm_mean": g2_flat.mean().item(),
+            "g2_norm_std": g2_flat.std().item(),
+            "g2_norm_max": g2_flat.max().item(),
+        }
 
 
 class NegationHead(CliffordModule):

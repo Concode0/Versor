@@ -217,7 +217,7 @@ class HANSDataset(Dataset):
     def __init__(self, data_root: str, split: str = "train",
                  encoder_name: str = "sentence-transformers/all-MiniLM-L6-v2",
                  n_samples: int = None):
-        cache_name = f"hans_hf_{split}" + (f"_{n_samples}" if n_samples else "")
+        cache_name = f"hans_bin_{split}" + (f"_{n_samples}" if n_samples else "")
         cache = _cache_path(data_root, cache_name)
         if cache.exists():
             logger.info("Loading cached HANS %s from %s", split, cache)
@@ -236,7 +236,8 @@ class HANSDataset(Dataset):
 
                 premises = ds["premise"]
                 hypotheses = ds["hypothesis"]
-                labels = ds["label"]  # 0=entailment, 1=neutral, 2=contradiction
+                # Binary: 0=entailment → 1.0, {1=neutral, 2=contradiction} → 0.0
+                labels = [1.0 if l == 0 else 0.0 for l in ds["label"]]
             else:
                 logger.info("Downloading HANS validation from HuggingFace...")
                 ds = _load_hf_dataset("jhu-cogsci/hans", split="validation", trust_remote_code=True)
@@ -245,14 +246,14 @@ class HANSDataset(Dataset):
 
                 premises = ds["premise"]
                 hypotheses = ds["hypothesis"]
-                # HANS: 0=entailment, 1=non-entailment → map 1 to 2 (contradiction)
-                labels = [0 if l == 0 else 2 for l in ds["label"]]
+                # HANS: 0=entailment → 1.0, 1=non-entailment → 0.0
+                labels = [1.0 if l == 0 else 0.0 for l in ds["label"]]
 
             logger.info("Encoding %d premise/hypothesis pairs...", len(premises))
             encoder = _get_encoder(encoder_name)
             self.premise_emb = _encode_texts(list(premises), encoder)
             self.hypothesis_emb = _encode_texts(list(hypotheses), encoder)
-            self.labels = torch.tensor(labels, dtype=torch.long)
+            self.labels = torch.tensor(labels, dtype=torch.float32)
 
             _ensure_dir(cache)
             torch.save({

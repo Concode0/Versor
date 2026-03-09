@@ -24,6 +24,7 @@ model:
 
 dataset:
   data_root: data
+  # For entailment: recommend n_train=100000
   n_train: null
   n_test: null
   num_workers: 0

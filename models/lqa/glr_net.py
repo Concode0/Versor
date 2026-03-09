@@ -94,7 +94,7 @@ class GLRNet(nn.Module):
         if probe == "chain":
             self.head = ChainReasoningHead(algebra, channels, num_relations=num_relations)
         elif probe == "entailment":
-            self.head = EntailmentHead(algebra, channels, num_classes=3)
+            self.head = EntailmentHead(algebra, channels)
         elif probe == "negation":
             self.head = NegationHead(algebra, channels)
         else:
