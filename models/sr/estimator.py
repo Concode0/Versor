@@ -45,6 +45,7 @@ class VersorSR(BaseEstimator, RegressorMixin):
         max_time=600,
         use_decomposition=True,
         max_bivector_norm=10.0,
+        basis_config=None,
     ):
         self.p = p
         self.q = q
@@ -60,6 +61,7 @@ class VersorSR(BaseEstimator, RegressorMixin):
         self.max_time = max_time
         self.use_decomposition = use_decomposition
         self.max_bivector_norm = max_bivector_norm
+        self.basis_config = basis_config
 
     def fit(self, X, y):
         """Train GBN on (X, y).
@@ -149,6 +151,7 @@ class VersorSR(BaseEstimator, RegressorMixin):
                 in_features=n_vars, device="cpu",
                 max_stages=3, stage_epochs=self.epochs // 3,
                 implicit_mode='auto', svd_warmstart=True,
+                basis_config=self.basis_config or {},
             )
             var_names = [f"x{i + 1}" for i in range(n_vars)]
             result = unbender.run(

@@ -66,9 +66,12 @@ def _correlation(a: np.ndarray, b: np.ndarray) -> float:
 
 
 class RotorTranslator:
-    def __init__(self, algebra: CliffordAlgebra):
+    def __init__(self, algebra: CliffordAlgebra, var_expr_map: dict = None):
         self.algebra = algebra
         self.symbols = [sympy.Symbol(f"x{i+1}") for i in range(algebra.n)]
+        # Optional mapping from column index -> sympy.Expr in original variables.
+        # When set, final expressions substitute _zi placeholders with these.
+        self.var_expr_map = var_expr_map
 
     def translate(self, model) -> List[RotorTerm]:
         """Analyze model rotors and return symbolic terms.
@@ -138,6 +141,7 @@ class RotorTranslator:
             if expr == sympy.Integer(0):
                 continue
 
+            expr = self._apply_var_expr_map(expr)
             fn = make_lambdify_fn(self.symbols, expr)
 
             terms.append(RotorTerm(
@@ -579,6 +583,9 @@ class RotorTranslator:
         if expr == sympy.Integer(0):
             return []
 
+        # Substitute expanded-variable placeholders with original-variable exprs
+        expr = self._apply_var_expr_map(expr)
+
         # Lambdify with self.symbols so evaluate_terms/refine can call fn(*args)
         # Use explicit numpy module dict to ensure ufuncs work on compound exprs
         fn = make_lambdify_fn(self.symbols, expr)
@@ -589,6 +596,16 @@ class RotorTranslator:
             expr=expr,
             fn=fn,
         )]
+
+    def _apply_var_expr_map(self, expr: sympy.Expr) -> sympy.Expr:
+        """Substitute xi placeholders with var_expr_map expressions."""
+        if self.var_expr_map is None:
+            return expr
+        for col_idx, target_expr in self.var_expr_map.items():
+            placeholder = sympy.Symbol(f"x{col_idx + 1}")
+            if placeholder in expr.free_symbols:
+                expr = expr.subs(placeholder, target_expr)
+        return expr
 
     def evaluate_terms(self, terms: List[RotorTerm], X_np: np.ndarray) -> np.ndarray:
         """Evaluate extracted terms on data to get predictions."""

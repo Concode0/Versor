@@ -63,7 +63,7 @@ class ImplicitSolver:
         jacobian_weight: Weight for Jacobian norm regularizer.
     """
 
-    def __init__(self, device='cpu', probe_epochs=30, jacobian_weight=0.1):
+    def __init__(self, device='cpu', probe_epochs=50, jacobian_weight=0.1):
         self.device = device
         self.probe_epochs = probe_epochs
         self.jacobian_weight = jacobian_weight
@@ -218,11 +218,13 @@ class ImplicitSolver:
 
         # Break the F≡0 dead gradient: SRGBN initializes grade0_bias to zeros,
         # making output ≡ 0. With implicit target = 0, gradient = 2*pred*dpred/dθ = 0.
-        # Non-zero grade0_bias gives the optimizer a non-trivial starting point.
+        # Non-zero grade0_bias and grade1_proj give a non-trivial starting point.
         with torch.no_grad():
             for m in model.modules():
                 if hasattr(m, 'grade0_bias'):
                     torch.nn.init.normal_(m.grade0_bias, std=1.0)
+                if hasattr(m, 'grade1_proj'):
+                    torch.nn.init.xavier_normal_(m.grade1_proj.weight)
 
         optimizer = RiemannianAdam(model.parameters(), lr=0.003, algebra=algebra)
         target = torch.zeros(Z.shape[0], 1, device=self.device)
@@ -284,7 +286,10 @@ class ImplicitSolver:
         return f_loss.item()
 
     def extract_implicit_formula(self, model, algebra, var_names, target_var_idx):
-        """Extract F(x,y)=0 via translate_implicit, then sympy.solve for y."""
+        """Extract F(x,y)=0 via translate_implicit, then solve for y.
+
+        Fallback chain: sympy.solve -> sympy.solveset -> return implicit form.
+        """
         from models.sr.translator import RotorTranslator
 
         translator = RotorTranslator(algebra)
@@ -299,8 +304,18 @@ class ImplicitSolver:
             F_expr += t.weight * t.expr
 
         y_sym = sympy.Symbol("y")
+
+        # Attempt 1: sympy.solve
         sol = safe_sympy_solve(F_expr, y_sym)
         if sol is not None:
             return sol
 
-        return F_expr  # Return implicit form if solve fails
+        # Attempt 2: sympy.solveset
+        try:
+            sol_set = sympy.solveset(F_expr, y_sym, domain=sympy.S.Reals)
+            if sol_set.is_FiniteSet and len(sol_set) > 0:
+                return list(sol_set)[0]
+        except Exception:
+            pass
+
+        return F_expr  # Return implicit form if all solves fail

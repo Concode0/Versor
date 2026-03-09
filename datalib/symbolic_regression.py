@@ -134,6 +134,56 @@ def _fetch_pmlb_data(dataset_name: str, cache_dir: str) -> pd.DataFrame:
     return df
 
 
+def get_sr_raw_splits(
+    dataset_name: str = "192_vineyard",
+    n_samples: int | None = 10000,
+    cache_dir: str = "./data/pmlb_cache",
+    seed: int = 42,
+) -> tuple:
+    """Return raw train/test splits without normalization.
+
+    Reuses the same loading/splitting logic as get_sr_loaders but skips
+    normalization, for use by BasisExpander which needs raw-scale data.
+
+    Args:
+        dataset_name: PMLB dataset name.
+        n_samples: Max samples to use; None or 0 for all available.
+        cache_dir: Local cache directory for PMLB downloads.
+        seed: Random seed for splitting and subsampling.
+
+    Returns:
+        (X_train, y_train, X_test, y_test, var_names) — all numpy arrays.
+    """
+    df = _fetch_pmlb_data(dataset_name, cache_dir)
+
+    X = df.drop("target", axis=1).values.astype(np.float64)
+    y = df["target"].values.astype(np.float64)
+    var_names = [c for c in df.columns if c != "target"]
+
+    # Filter NaN/Inf
+    valid = np.isfinite(X).all(axis=1) & np.isfinite(y)
+    X = X[valid]
+    y = y[valid]
+
+    rng = np.random.default_rng(seed)
+    if n_samples and n_samples > 0 and n_samples < len(X):
+        perm = rng.permutation(len(X))[:n_samples]
+        X = X[perm]
+        y = y[perm]
+
+    # 75/25 split (SRBench standard)
+    N = len(X)
+    n_train = int(0.75 * N)
+    perm = rng.permutation(N)
+    X = X[perm]
+    y = y[perm]
+
+    X_train, X_test = X[:n_train], X[n_train:]
+    y_train, y_test = y[:n_train], y[n_train:]
+
+    return X_train, y_train, X_test, y_test, var_names
+
+
 class SRDataset(Dataset):
     """Holds normalised (x, y) pairs for one symbolic regression problem.
 

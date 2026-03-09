@@ -125,6 +125,7 @@ class IterativeUnbender:
         soft_rejection_alpha=10.0,
         soft_rejection_threshold=0.01,
         mother_cross_threshold=0.01,
+        basis_config=None,
     ):
         self.in_features = in_features
         self.device = device
@@ -148,6 +149,9 @@ class IterativeUnbender:
         self.soft_rejection_alpha = soft_rejection_alpha
         self.soft_rejection_threshold = soft_rejection_threshold
         self.mother_cross_threshold = mother_cross_threshold
+        self.basis_config = basis_config or {}
+        # Populated by basis expansion (if any) for formula assembly
+        self._basis_result = None
 
     def run(self, X_norm, y_norm, x_mean, x_std, y_mean, y_std, var_names):
         """Run the full 4-phase iterative unbending pipeline.
@@ -170,13 +174,34 @@ class IterativeUnbender:
             y_norm.squeeze(-1) * y_std.to(self.device) + y_mean.to(self.device)
         )
 
-        # Phase 0: Linearity short-circuit
+        # Phase 0: Basis expansion (before linearity check)
+        self._basis_result = None
+        if self.basis_config.get("enabled", False):
+            X_orig, y_orig, var_names = self._apply_basis_expansion(
+                X_orig, y_orig, var_names,
+            )
+            # Update in_features for downstream model building
+            self.in_features = X_orig.shape[1]
+            # Re-normalize expanded data for GBN training
+            X_expanded_t = torch.tensor(X_orig, dtype=torch.float32, device=self.device)
+            x_mean = X_expanded_t.mean(0)
+            x_std = X_expanded_t.std(0).clamp(min=1e-6)
+            X_norm = (X_expanded_t - x_mean) / x_std
+            y_expanded_t = torch.tensor(y_orig, dtype=torch.float32, device=self.device)
+            y_mean = y_expanded_t.mean()
+            y_std = y_expanded_t.std().clamp(min=1e-6)
+            y_norm = ((y_expanded_t - y_mean) / y_std).unsqueeze(-1)
+
+        # Phase 0a: Linearity short-circuit
         is_linear, lin_terms, lin_r2 = self._check_linearity(X_orig, y_orig)
         if is_linear:
             logger.info(f"Linear model sufficient (R2={lin_r2:.4f}), skipping unbending")
             vnames = var_names if var_names else [f"x{i+1}" for i in range(self.in_features)]
             lin_ops = ["sub"] * len(lin_terms)
             formula = self._assemble_formula(lin_terms, vnames, lin_ops)
+            # Wrap in exp() if target was log-transformed
+            if self._basis_result is not None and self._basis_result.log_target:
+                formula = self._wrap_log_target(formula)
             return UnbendingResult(
                 stages=[],
                 formula=formula,
@@ -266,6 +291,9 @@ class IterativeUnbender:
         formula = self._assemble_formula(
             all_terms, vnames, all_ops, implicit_form=implicit_form,
         )
+        # Wrap in exp() if target was log-transformed
+        if self._basis_result is not None and self._basis_result.log_target:
+            formula = self._wrap_log_target(formula)
 
         return UnbendingResult(
             stages=all_stages,
@@ -350,6 +378,11 @@ class IterativeUnbender:
             p, q, r = searcher.search(data)
             if p + q + r < 2:
                 p = max(p, 2)
+            # Clamp p to prevent over-dimensioning for low-variable problems
+            max_p = max(n_vars, 2)
+            if p > max_p:
+                logger.info(f"MetricSearch clamped p: {p} -> {max_p} (n_vars={n_vars})")
+                p = max_p
         except Exception:
             p, q, r = min(n_vars, 4), 0, 0
 
@@ -898,12 +931,18 @@ class IterativeUnbender:
     # Shared Helpers
     # =======================================================================
 
-    def _check_linearity(self, X_raw, y_raw, r2_threshold=0.995):
-        """Two-branch linearity check: standard linear vs log-log power law.
+    def _check_linearity(self, X_raw, y_raw, r2_threshold=0.90):
+        """Multi-branch linearity check with BIC parsimony and power-law action.
 
-        Returns (is_linear, terms, r2) where terms are list[RotorTerm].
+        Three branches:
+          1. Standard linear fit
+          2. Log-log power law (builds explicit power-law term if R2 >= 0.90)
+          3. BIC comparison: linear vs quadratic -- prefer simpler form
+
+        Returns (is_linear_or_powerlaw, terms, r2) where terms are list[RotorTerm].
         """
         N, d = X_raw.shape
+        symbols = [sympy.Symbol(f"x{i+1}") for i in range(d)]
 
         # Branch 1: Standard linear fit
         A_lin = np.column_stack([X_raw, np.ones(N)])
@@ -913,9 +952,12 @@ class IterativeUnbender:
         ss_tot = np.sum((y_raw - y_raw.mean()) ** 2) + 1e-12
         r2_lin = 1.0 - ss_res_lin / ss_tot
 
-        # Branch 2: Log-log fit (power law detection)
+        # Branch 2: Log-log fit (power law detection + action)
         eps = 1e-8
         pos_mask = np.all(np.abs(X_raw) > eps, axis=1) & (np.abs(y_raw) > eps)
+        r2_log = -1.0
+        powerlaw_term = None
+
         if pos_mask.sum() > max(10, int(N * 0.8)):
             X_pos = np.abs(X_raw[pos_mask])
             y_pos = np.abs(y_raw[pos_mask])
@@ -929,29 +971,126 @@ class IterativeUnbender:
             r2_log = 1.0 - ss_res_log / ss_tot_log
 
             exponents = coeffs_log[:d]
+            log_intercept = coeffs_log[d]
             has_nonunit = any(
                 abs(e - 1.0) > 0.15 and abs(e) > 0.15 for e in exponents
             )
+
+            # Action: if power law fits well, build explicit term
+            if r2_log >= 0.90 and has_nonunit:
+                # Round exponents to nearest simple fraction
+                rounded_exp = [self._round_exponent(e) for e in exponents]
+                # y = exp(intercept) * prod(xi^alpha_i)
+                # Determine sign of y from original data
+                y_sign = np.sign(np.median(y_raw[pos_mask]))
+                scale = float(np.exp(log_intercept))
+                if y_sign < 0:
+                    scale = -scale
+
+                expr = sympy.Float(scale)
+                for i in range(d):
+                    if abs(rounded_exp[i]) > 1e-3:
+                        expr = expr * symbols[i] ** sympy.Rational(rounded_exp[i]).limit_denominator(6)
+
+                # Evaluate on full data to compute R2
+                fn = make_lambdify_fn(symbols, expr)
+                try:
+                    args = [X_raw[:, i] for i in range(d)]
+                    y_hat_pl = fn(*args)
+                    y_hat_pl = np.broadcast_to(
+                        np.asarray(y_hat_pl, dtype=np.float64), (N,)
+                    ).copy()
+                    if np.all(np.isfinite(y_hat_pl)):
+                        ss_res_pl = np.sum((y_raw - y_hat_pl) ** 2)
+                        r2_pl = 1.0 - ss_res_pl / ss_tot
+                        powerlaw_term = RotorTerm(
+                            planes=[], weight=1.0, expr=expr, fn=fn,
+                        )
+                        logger.info(
+                            f"Power law short-circuit: exponents={rounded_exp}, "
+                            f"R2={r2_pl:.4f} (log-space R2={r2_log:.4f})"
+                        )
+                        # If power law is great, return immediately
+                        if r2_pl >= r2_threshold:
+                            return True, [powerlaw_term], r2_pl
+                except Exception:
+                    powerlaw_term = None
+
+            # If power law fits better in log-space but exponents differ from 1,
+            # reject linear classification
             if has_nonunit and r2_log > r2_lin:
                 logger.debug(
                     f"Power law detected (exponents={exponents.tolist()}, "
                     f"r2_log={r2_log:.4f} > r2_lin={r2_lin:.4f}), "
                     f"rejecting linear classification"
                 )
+                # Return power law term if we built one, else continue to unbending
+                if powerlaw_term is not None:
+                    return True, [powerlaw_term], r2_log
                 return False, [], r2_lin
 
+        # Branch 3: BIC parsimony -- linear vs quadratic
         if r2_lin >= r2_threshold:
-            symbols = [sympy.Symbol(f"x{i+1}") for i in range(d)]
-            intercept = float(coeffs_lin[d])
-            expr = sympy.Float(intercept)
-            for i in range(d):
-                if abs(coeffs_lin[i]) > 1e-8:
-                    expr = expr + float(coeffs_lin[i]) * symbols[i]
-            fn = make_lambdify_fn(symbols, expr)
-            term = RotorTerm(planes=[], weight=1.0, expr=expr, fn=fn)
-            return True, [term], r2_lin
+            # Build quadratic features for BIC comparison
+            if d <= 6:
+                bic_prefers_linear = self._bic_prefers_simpler(
+                    X_raw, y_raw, coeffs_lin, ss_res_lin,
+                )
+            else:
+                bic_prefers_linear = True  # skip BIC for high-d
+
+            if bic_prefers_linear or r2_lin >= 0.995:
+                intercept = float(coeffs_lin[d])
+                expr = sympy.Float(intercept)
+                for i in range(d):
+                    if abs(coeffs_lin[i]) > 1e-8:
+                        expr = expr + float(coeffs_lin[i]) * symbols[i]
+                fn = make_lambdify_fn(symbols, expr)
+                term = RotorTerm(planes=[], weight=1.0, expr=expr, fn=fn)
+                logger.info(
+                    f"Linear model accepted (R2={r2_lin:.4f}, BIC_prefers_linear={bic_prefers_linear})"
+                )
+                return True, [term], r2_lin
 
         return False, [], r2_lin
+
+    @staticmethod
+    def _round_exponent(e):
+        """Round exponent to nearest simple fraction: 0, +-1/3, +-1/2, +-1, +-2, +-3."""
+        candidates = [0, 1/3, 1/2, 1, 2, 3, -1/3, -1/2, -1, -2, -3]
+        best = min(candidates, key=lambda c: abs(e - c))
+        return best
+
+    @staticmethod
+    def _bic_prefers_simpler(X_raw, y_raw, coeffs_lin, ss_res_lin):
+        """BIC comparison: linear vs quadratic. Returns True if linear wins."""
+        N, d = X_raw.shape
+
+        # Linear BIC: k_lin = d + 1 (coefficients + intercept)
+        k_lin = d + 1
+        bic_lin = N * np.log(ss_res_lin / N + 1e-30) + k_lin * np.log(N)
+
+        # Quadratic features: x_i*x_j for all i<=j, plus linear
+        quad_features = []
+        for i in range(d):
+            for j in range(i, d):
+                quad_features.append(X_raw[:, i] * X_raw[:, j])
+        A_quad = np.column_stack([X_raw] + quad_features + [np.ones(N)])
+        k_quad = A_quad.shape[1]
+
+        try:
+            coeffs_quad = np.linalg.lstsq(A_quad, y_raw, rcond=None)[0]
+            y_hat_quad = A_quad @ coeffs_quad
+            ss_res_quad = np.sum((y_raw - y_hat_quad) ** 2)
+            bic_quad = N * np.log(ss_res_quad / N + 1e-30) + k_quad * np.log(N)
+        except Exception:
+            return True  # Can't fit quadratic, prefer linear
+
+        # Prefer simpler (linear) unless quadratic BIC is substantially better
+        # DELTA_BIC < 6 means "not strong evidence" for the complex model
+        delta_bic = bic_quad - bic_lin
+        logger.debug(f"BIC comparison: linear={bic_lin:.1f}, quad={bic_quad:.1f}, delta={delta_bic:.1f}")
+        return delta_bic > -6.0
 
     def _select_active_vars(self, X_raw, y_raw, max_vars=6):
         """Select top-k variables by |correlation| with target."""
@@ -1187,6 +1326,51 @@ class IterativeUnbender:
                 return f"F({', '.join(var_names)}, y) = {sympy.simplify(result_expr)}"
 
         return f"y = {sympy.simplify(result_expr)}"
+
+    def _apply_basis_expansion(self, X_orig, y_orig, var_names):
+        """Run BasisExpander on raw data, updating X_orig and var_names.
+
+        Returns:
+            (X_expanded, y_transformed, expanded_var_names)
+        """
+        from models.sr.basis import BasisExpander
+
+        cfg = self.basis_config
+        expander = BasisExpander(
+            enable_log=cfg.get("log", True),
+            enable_reciprocal=cfg.get("reciprocal", True),
+            enable_sqrt=cfg.get("sqrt", True),
+            enable_exp=cfg.get("exp", True),
+            log_target_auto=cfg.get("log_target_auto", True),
+            corr_threshold=cfg.get("corr_threshold", 0.05),
+            max_expansion_factor=cfg.get("max_expansion_factor", 3),
+            dynamic_range_threshold=cfg.get("dynamic_range_threshold", 100.0),
+            exp_max_input=cfg.get("exp_max_input", 700.0),
+        )
+        result = expander.analyze_and_expand(X_orig, y_orig, var_names)
+        self._basis_result = result
+
+        y_out = y_orig
+        if result.log_target:
+            y_out = np.log(np.abs(y_orig) + 1e-30)
+
+        # Build expanded var_names from name_map
+        n_expanded = result.X_expanded.shape[1]
+        expanded_names = [result.var_name_map.get(i, f"z{i+1}") for i in range(n_expanded)]
+
+        logger.info(
+            f"BasisExpander: {result.n_original} -> {n_expanded} features, "
+            f"log_target={result.log_target}"
+        )
+        return result.X_expanded, y_out, expanded_names
+
+    @staticmethod
+    def _wrap_log_target(formula):
+        """Wrap formula in exp() when target was log-transformed."""
+        if formula.startswith("y = "):
+            inner = formula[4:]
+            return f"y = exp({inner})"
+        return formula
 
     @staticmethod
     def _to_numpy(t):
