@@ -13,24 +13,12 @@ import torch
 from core.algebra import CliffordAlgebra
 from core.search import GeodesicFlow, DimensionLifter, MetricSearch
 
+pytestmark = pytest.mark.unit
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-@pytest.fixture(scope="module")
-def alg2():
-    return CliffordAlgebra(p=2, q=0, device='cpu')
-
-
-@pytest.fixture(scope="module")
-def alg3():
-    return CliffordAlgebra(p=3, q=0, device='cpu')
-
-
-@pytest.fixture(scope="module")
-def alg31():
-    return CliffordAlgebra(p=3, q=1, device='cpu')
 
 
 def _circle_data(N: int = 64, noise: float = 0.0) -> torch.Tensor:

@@ -4,22 +4,26 @@ A step-by-step guide to using Versor's geometric layers in your own models.
 
 ## 1. Create a Clifford Algebra
 
-Everything starts with a `CliffordAlgebra` instance. The signature $(p, q)$ determines the geometry:
+Everything starts with a `CliffordAlgebra` instance. The signature $(p, q, r)$ determines the geometry:
 
 ```python
 from core.algebra import CliffordAlgebra
 
 # 3D Euclidean (rotations in 3-space)
-algebra = CliffordAlgebra(p=3, q=0, device='cpu')
+algebra = CliffordAlgebra(p=3, q=0, r=0, device='cpu')
 print(algebra.dim)  # 8 = 2^3 basis blades
 
 # 2D Minkowski (Lorentz boosts)
-algebra_mink = CliffordAlgebra(p=1, q=1, device='cpu')
+algebra_mink = CliffordAlgebra(p=1, q=1, r=0, device='cpu')
 print(algebra_mink.dim)  # 4 = 2^2 basis blades
+
+# PGA: 3D Euclidean + 1 null dimension for translations
+algebra_pga = CliffordAlgebra(p=3, q=0, r=1, device='cpu')
+print(algebra_pga.dim)  # 16 = 2^4 basis blades
 ```
 
 Key properties:
-- `algebra.n` — total dimensions ($p + q$)
+- `algebra.n` — total dimensions ($p + q + r$)
 - `algebra.dim` — total basis blades ($2^n$)
 - `algebra.num_grades` — number of grades ($n + 1$)
 
@@ -263,15 +267,15 @@ loss = iso_loss(output, input)
 
 ## 8. Automatic Metric Search
 
-Don't know the right $(p, q)$? Let Versor find it:
+Don't know the right $(p, q, r)$? Let Versor find it:
 
 ```python
 from core.search import MetricSearch
 
 data = torch.randn(100, 6)  # 6D data
 searcher = MetricSearch(device='cpu')
-best_p, best_q = searcher.search(data)
-print(f"Optimal signature: Cl({best_p}, {best_q})")
+best_p, best_q, best_r = searcher.search(data)
+print(f"Optimal signature: Cl({best_p}, {best_q}, {best_r})")
 ```
 
-This brute-forces all $(p, q)$ with $p + q = D$ and picks the signature that minimizes a geometric stress metric.
+This lifts data into a conformal algebra, trains GBN probes with biased initialization, and analyzes the learned bivector energy to classify each dimension as positive, negative, or null — returning the optimal `(p, q, r)` 3-tuple.

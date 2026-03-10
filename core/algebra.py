@@ -101,7 +101,7 @@ class CliffordAlgebra:
     def get_grade_norms(self, mv: torch.Tensor) -> torch.Tensor:
         """Calculates norms per grade. Useful for invariant features.
 
-        Vectorized via scatter_add — no Python loops over grades.
+        Vectorized via scatter_add -- no Python loops over grades.
 
         Args:
             mv (torch.Tensor): Input multivector [..., dim].
@@ -452,6 +452,68 @@ class CliffordAlgebra:
         B_gathered = B[..., idx]
         return (A.unsqueeze(-1) * B_gathered * self.inner_gp_signs).sum(dim=-2)
 
+    def blade_inverse(self, blade: torch.Tensor) -> torch.Tensor:
+        """Compute the inverse of a blade: B^{-1} = B_rev / <B * B_rev>_0.
+
+        Works for any simple blade (non-degenerate). For null blades the
+        scalar denominator is clamped to avoid division by zero.
+
+        Args:
+            blade (torch.Tensor): Blade multivector [..., dim].
+
+        Returns:
+            torch.Tensor: Inverse blade [..., dim].
+        """
+        blade_rev = self.reverse(blade)
+        blade_sq = self.geometric_product(blade, blade_rev)
+        scalar = blade_sq[..., 0:1].clamp(min=1e-12)
+        return blade_rev / scalar
+
+    def blade_project(self, mv: torch.Tensor, blade: torch.Tensor) -> torch.Tensor:
+        """Project multivector onto blade subspace: (mv . B) B^{-1}.
+
+        Args:
+            mv (torch.Tensor): Multivector to project [..., dim].
+            blade (torch.Tensor): Blade defining the subspace [..., dim].
+
+        Returns:
+            torch.Tensor: Projected multivector [..., dim].
+        """
+        inner = self.inner_product(mv, blade)
+        return self.geometric_product(inner, self.blade_inverse(blade))
+
+    def blade_reject(self, mv: torch.Tensor, blade: torch.Tensor) -> torch.Tensor:
+        """Reject multivector from blade subspace: mv - proj_B(mv).
+
+        The orthogonal complement of the projection onto blade.
+
+        Args:
+            mv (torch.Tensor): Multivector to reject [..., dim].
+            blade (torch.Tensor): Blade defining the subspace [..., dim].
+
+        Returns:
+            torch.Tensor: Rejected multivector [..., dim].
+        """
+        return mv - self.blade_project(mv, blade)
+
+    def grade_involution(self, mv: torch.Tensor) -> torch.Tensor:
+        """Grade involution (main involution): x_hat = sum (-1)^k <x>_k.
+
+        Flips sign of all odd-grade components, preserves even-grade.
+        This is an algebra automorphism: (AB)^ = A_hat B_hat.
+
+        Args:
+            mv (torch.Tensor): Input multivector [..., dim].
+
+        Returns:
+            torch.Tensor: Involuted multivector [..., dim].
+        """
+        gi = self.grade_index
+        if gi.device != mv.device:
+            gi = gi.to(mv.device)
+        signs = (-1.0) ** gi.float()
+        return mv * signs.to(dtype=mv.dtype)
+
     def exp(self, mv: torch.Tensor) -> torch.Tensor:
         """Exponentiates a bivector to produce a rotor via closed-form.
 
@@ -464,7 +526,7 @@ class CliffordAlgebra:
         For n >= 4 the closed-form is exact for simple bivectors and a
         first-order approximation for non-simple ones.  Use
         ``exp_decomposed()`` when exact non-simple handling is needed
-        (inference only — see ``core.decomposition``).
+        (inference only -- see ``core.decomposition``).
 
         Args:
             mv (torch.Tensor): Pure bivector [..., dim].
@@ -596,7 +658,7 @@ class CliffordAlgebra:
 
         Args:
             mv (torch.Tensor): Pure bivector [..., dim].
-            **kwargs: Forwarded to ``core.decomposition.exp_decomposed``.
+            **kwargs (dict): Forwarded to ``core.decomposition.exp_decomposed``.
                 use_decomposition (bool): Enable decomposition. Default True.
                 k (int | None): Number of simple components (auto if None).
                 threshold (float): Convergence threshold. Default 1e-6.

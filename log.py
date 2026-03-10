@@ -49,6 +49,7 @@ def _configure_once() -> None:
     root = logging.getLogger("versor")
     level_name = os.environ.get("VERSOR_LOG_LEVEL", "INFO").upper()
     root.setLevel(getattr(logging, level_name, logging.INFO))
+    root.propagate = False
 
     # Console handler (stderr, so tqdm on stderr is unaffected)
     fmt = "%(levelname)s %(name)s: %(message)s"

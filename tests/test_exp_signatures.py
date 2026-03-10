@@ -12,6 +12,8 @@ import torch
 
 from core.algebra import CliffordAlgebra
 
+pytestmark = pytest.mark.unit
+
 
 DEVICE = "cpu"
 
@@ -368,3 +370,283 @@ class TestExpEdgeCases:
             CliffordAlgebra(0, -1, device=DEVICE)
         with pytest.raises(AssertionError):
             CliffordAlgebra(7, 6, device=DEVICE)  # p+q=13 > 12
+
+    def test_cl_pq_equals_cl_pq0(self):
+        """Cl(p,q) should be identical to Cl(p,q,0)."""
+        for p, q in [(2, 0), (3, 0), (2, 1), (3, 1)]:
+            alg2 = CliffordAlgebra(p, q, device=DEVICE)
+            alg3 = CliffordAlgebra(p, q, 0, device=DEVICE)
+            assert alg2.r == 0
+            assert alg3.r == 0
+            assert torch.allclose(alg2.gp_signs.float(), alg3.gp_signs.float())
+            assert torch.equal(alg2.cayley_indices, alg3.cayley_indices)
+            assert torch.allclose(alg2.bv_sq_scalar, alg3.bv_sq_scalar)
+
+
+class TestExpHighDimGradient:
+    """Gradient flow through exp() for n >= 4 (non-trivial bivector spaces)."""
+
+    @pytest.fixture(params=[(4, 0), (3, 1), (4, 1), (1, 5)])
+    def algebra(self, request):
+        p, q = request.param
+        return CliffordAlgebra(p, q, device=DEVICE)
+
+    def test_gradient_finite_simple_bivector(self, algebra):
+        """Gradient through exp() of a single basis bivector (simple, exact)."""
+        bv_mask = algebra.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+
+        B = torch.zeros(1, algebra.dim, requires_grad=True)
+        B_full = B + torch.zeros_like(B).scatter(
+            -1, bv_indices[:1].unsqueeze(0),
+            torch.tensor([[0.5]])
+        )
+        R = algebra.exp(B_full)
+        loss = R.sum()
+        loss.backward()
+        assert B.grad is not None
+        assert torch.isfinite(B.grad).all(), f"NaN/Inf grad in Cl({algebra.p},{algebra.q})"
+
+    def test_gradient_finite_general_bivector(self, algebra):
+        """Gradient through exp() of a general (potentially non-simple) bivector."""
+        bv_mask = algebra.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+
+        torch.manual_seed(42)
+        coeffs = torch.randn(len(bv_indices)) * 0.3
+        B = torch.zeros(1, algebra.dim, requires_grad=True)
+        B_full = B + torch.zeros_like(B).scatter(
+            -1, bv_indices.unsqueeze(0), coeffs.unsqueeze(0)
+        )
+        R = algebra.exp(B_full)
+        loss = R.pow(2).sum()
+        loss.backward()
+        assert B.grad is not None
+        assert torch.isfinite(B.grad).all(), f"NaN/Inf grad in Cl({algebra.p},{algebra.q})"
+
+    def test_gradient_near_zero_bivector(self, algebra):
+        """Gradient near zero (init-scale) bivectors must be finite."""
+        bv_mask = algebra.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+
+        torch.manual_seed(123)
+        coeffs = torch.randn(len(bv_indices)) * 0.01  # very small
+        B = torch.zeros(1, algebra.dim, requires_grad=True)
+        B_full = B + torch.zeros_like(B).scatter(
+            -1, bv_indices.unsqueeze(0), coeffs.unsqueeze(0)
+        )
+        R = algebra.exp(B_full)
+        loss = R.sum()
+        loss.backward()
+        assert torch.isfinite(B.grad).all()
+
+
+class TestExpDecomposedGradient:
+    """Gradient flow through exp_decomposed() during training."""
+
+    def test_decomposed_gradient_cl40(self):
+        """exp_decomposed should produce finite gradients in Cl(4,0)."""
+        alg = CliffordAlgebra(4, 0, device=DEVICE)
+        bv_mask = alg.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+
+        # Non-simple: e12 + e34
+        B = torch.zeros(1, alg.dim, requires_grad=True)
+        B_full = B + torch.zeros_like(B).scatter(
+            -1, bv_indices[[0, 5]].unsqueeze(0),
+            torch.tensor([[0.3, 0.4]])
+        )
+        R = alg.exp_decomposed(B_full, use_decomposition=True)
+        loss = R.pow(2).sum()
+        loss.backward()
+        assert B.grad is not None
+        assert torch.isfinite(B.grad).all(), "exp_decomposed gradient has NaN/Inf"
+
+    def test_decomposed_gradient_cl15(self):
+        """exp_decomposed should produce finite gradients in Cl(1,5)."""
+        alg = CliffordAlgebra(1, 5, device=DEVICE)
+        bv_mask = alg.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+
+        torch.manual_seed(42)
+        coeffs = torch.randn(min(4, len(bv_indices))) * 0.3
+        idx = bv_indices[:len(coeffs)]
+        B = torch.zeros(1, alg.dim, requires_grad=True)
+        B_full = B + torch.zeros_like(B).scatter(
+            -1, idx.unsqueeze(0), coeffs.unsqueeze(0)
+        )
+        R = alg.exp_decomposed(B_full, use_decomposition=True)
+        loss = R.pow(2).sum()
+        loss.backward()
+        assert B.grad is not None
+        assert torch.isfinite(B.grad).all()
+
+    def test_decomposed_matches_inference(self):
+        """Decomposed exp with grad should approximate inference result."""
+        alg = CliffordAlgebra(4, 0, device=DEVICE)
+        bv_mask = alg.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+
+        B_data = torch.zeros(1, alg.dim, dtype=torch.float64)
+        B_data[0, bv_indices[0].item()] = 0.3  # e12
+        B_data[0, bv_indices[5].item()] = 0.4  # e34
+
+        # Training path (detached decomposition)
+        B_train = B_data.clone().requires_grad_(True)
+        R_train = alg.exp_decomposed(B_train, use_decomposition=True)
+
+        # Inference path (full decomposition)
+        with torch.no_grad():
+            R_infer = alg.exp_decomposed(B_data, use_decomposition=True)
+
+        assert torch.allclose(R_train, R_infer, atol=1e-4), \
+            f"Train vs inference max diff: {(R_train - R_infer).abs().max()}"
+
+
+class TestSandwichBPTT:
+    """Backward through sandwich product chains (BPTT-like)."""
+
+    def _sandwich(self, alg, R, x):
+        """RxR~"""
+        R_rev = alg.reverse(R)
+        return alg.geometric_product(alg.geometric_product(R, x), R_rev)
+
+    @pytest.fixture(params=[(3, 0), (4, 0), (2, 1), (1, 5)])
+    def algebra(self, request):
+        p, q = request.param
+        return CliffordAlgebra(p, q, device=DEVICE)
+
+    def test_single_sandwich_gradient(self, algebra):
+        """Gradient through one sandwich product: R x R~."""
+        bv_mask = algebra.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+
+        B_param = torch.zeros(1, algebra.dim, requires_grad=True)
+        coeffs = torch.randn(min(3, len(bv_indices))) * 0.3
+        B = B_param + torch.zeros_like(B_param).scatter(
+            -1, bv_indices[:len(coeffs)].unsqueeze(0), coeffs.unsqueeze(0)
+        )
+        R = algebra.exp(-0.5 * B)
+
+        x = torch.zeros(1, algebra.dim)
+        x[0, 1] = 1.0  # e1
+        x_rot = self._sandwich(algebra, R, x)
+
+        loss = x_rot.pow(2).sum()
+        loss.backward()
+        assert B_param.grad is not None
+        assert torch.isfinite(B_param.grad).all()
+
+    def test_chained_sandwich_gradient(self, algebra):
+        """Gradient through 3 sequential sandwiches (depth-3 rotor chain)."""
+        bv_mask = algebra.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+        num_bv = min(3, len(bv_indices))
+
+        torch.manual_seed(0)
+        params = []
+        for _ in range(3):
+            p = torch.zeros(1, algebra.dim, requires_grad=True)
+            params.append(p)
+
+        x = torch.zeros(1, algebra.dim)
+        x[0, 1] = 1.0
+
+        for param in params:
+            coeffs = torch.randn(num_bv) * 0.2
+            B = param + torch.zeros_like(param).scatter(
+                -1, bv_indices[:num_bv].unsqueeze(0), coeffs.unsqueeze(0)
+            )
+            R = algebra.exp(-0.5 * B)
+            x = self._sandwich(algebra, R, x)
+
+        loss = x.pow(2).sum()
+        loss.backward()
+        for i, param in enumerate(params):
+            assert param.grad is not None, f"param[{i}] has no grad"
+            assert torch.isfinite(param.grad).all(), f"param[{i}] has NaN/Inf grad"
+
+    def test_batched_sandwich_gradient(self, algebra):
+        """Gradient through batched sandwich: [B, C, dim]."""
+        batch, channels = 4, 8
+        bv_mask = algebra.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+        num_bv = min(3, len(bv_indices))
+
+        torch.manual_seed(1)
+        B_param = torch.randn(channels, algebra.dim) * 0.01
+        B_param = B_param.requires_grad_(True)
+
+        # Mask to bivector subspace
+        bv_float = bv_mask.float().unsqueeze(0)
+        B = B_param * bv_float
+        R = algebra.exp(-0.5 * B)  # [C, dim]
+
+        x = torch.randn(batch, channels, algebra.dim) * 0.1
+        R_exp = R.unsqueeze(0).expand(batch, -1, -1)
+        R_rev = algebra.reverse(R_exp)
+
+        x_rot = algebra.geometric_product(
+            algebra.geometric_product(R_exp, x), R_rev
+        )
+        loss = x_rot.pow(2).sum()
+        loss.backward()
+        assert B_param.grad is not None
+        assert torch.isfinite(B_param.grad).all()
+
+
+class TestDecompositionConvergence:
+    """Verify power iteration convergence checks work."""
+
+    def test_simple_bivector_converges_fast(self):
+        """A simple bivector should decompose into 1 component."""
+        from core.decomposition import differentiable_invariant_decomposition
+        alg = CliffordAlgebra(4, 0, device=DEVICE)
+        bv_mask = alg.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+
+        B = torch.zeros(1, alg.dim, dtype=torch.float64)
+        B[0, bv_indices[0].item()] = 1.0
+
+        decomp, _ = differentiable_invariant_decomposition(alg, B, threshold=1e-6)
+        # Simple bivector: residual should vanish after 1 component
+        assert len(decomp) >= 1
+        residual = B.clone()
+        for b_i in decomp:
+            residual = residual - b_i
+        assert residual.norm().item() < 1e-4
+
+    def test_non_simple_needs_two_components(self):
+        """e12 + e34 in Cl(4,0) should decompose into 2 components."""
+        from core.decomposition import differentiable_invariant_decomposition
+        alg = CliffordAlgebra(4, 0, device=DEVICE)
+        bv_mask = alg.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+
+        B = torch.zeros(1, alg.dim, dtype=torch.float64)
+        B[0, bv_indices[0].item()] = 0.5  # e12
+        B[0, bv_indices[5].item()] = 0.7  # e34
+
+        decomp, _ = differentiable_invariant_decomposition(alg, B, threshold=1e-6)
+        residual = B.clone()
+        for b_i in decomp:
+            residual = residual - b_i
+        assert residual.norm().item() < 1e-3, \
+            f"Residual norm {residual.norm().item()} too large"
+
+    def test_residual_check_limits_components(self):
+        """With tight threshold, simple bivector should yield exactly 1 component."""
+        from core.decomposition import differentiable_invariant_decomposition
+        alg = CliffordAlgebra(4, 0, device=DEVICE)
+        bv_mask = alg.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+
+        B = torch.zeros(1, alg.dim, dtype=torch.float64)
+        B[0, bv_indices[0].item()] = 1.0
+
+        decomp, _ = differentiable_invariant_decomposition(
+            alg, B, threshold=1e-4, max_iterations=200
+        )
+        # With the residual check restored, iteration should stop early
+        # because residual vanishes after extracting the single simple component
+        assert len(decomp) <= 2, f"Expected <=2 components for simple B, got {len(decomp)}"

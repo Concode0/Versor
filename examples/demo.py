@@ -27,13 +27,13 @@ import torch.optim as optim
 import numpy as np
 import plotly.graph_objects as go
 from core.algebra import CliffordAlgebra
-from layers.rotor import RotorLayer
-from layers.projection import BladeSelector
+from layers import RotorLayer
+from layers import BladeSelector
 
 # Setup Page
 st.set_page_config(page_title="Versor: Geometric Algebra Demo", layout="wide")
 
-st.title("🌀 Versor: Geometric Algebra Neural Engine")
+st.title("Versor: Geometric Algebra Neural Engine")
 st.markdown("""
 This interactive demo visualizes **Geometric Algebra (GA)** transformations.
 Versor uses **Multivectors** and **Rotors** to manipulate high-dimensional geometry.
@@ -52,7 +52,7 @@ st.sidebar.subheader("Training Parameters")
 train_epochs = st.sidebar.slider("Epochs", 10, 1000, 50)
 lr = st.sidebar.number_input("Learning Rate", 0.001, 0.1, 0.05)
 
-start_align = st.sidebar.button("🚀 Align Manifold (Train)", type="primary")
+start_align = st.sidebar.button("Align Manifold (Train)", type="primary")
 
 def plot_3d_manifold(data, title, color_data=None):
     """Generates an interactive 3D scatter plot using Plotly.

@@ -1,0 +1,41 @@
+# @package _global_
+name: lqa
+
+# Probe selection: chain | entailment | negation
+probe: chain
+
+algebra:
+  p: 4
+  q: 1
+  r: 0
+  device: auto
+
+model:
+  channels: 16
+  num_layers: 3
+  num_heads: 4
+  num_rotors: 8
+  dropout: 0.1
+  encoder: "sentence-transformers/all-MiniLM-L6-v2"
+  encoder_dim: 384
+  max_seq_len: 64
+  use_entropy_gating: true
+  num_relations: 18
+
+dataset:
+  data_root: data
+  # For entailment: recommend n_train=100000
+  n_train: null
+  n_test: null
+  num_workers: 0
+
+training:
+  epochs: 50
+  lr: 0.001
+  batch_size: 64
+  optimizer_type: riemannian_adam
+  # Auxiliary loss weights
+  isometry_weight: 0.01
+  asymmetry_weight: 0.1
+  asymmetry_margin: 0.1
+  involution_weight: 0.1

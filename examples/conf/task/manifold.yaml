@@ -7,3 +7,4 @@ algebra:
 dataset:
   name: "figure8"
   samples: 1000
+  noise_std: 0.1

@@ -8,24 +8,46 @@
 # We believe Geometric Algebra is the future of AI, and we want 
 # the industry to build upon this "unbending" paradigm.
 
+"""Geometric GA activations.
+
+Magnitude-scaling and grade-wise gating functions that preserve geometric structure.
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 
 class GeometricGELU(nn.Module):
     """Geometric GELU activation: x' = x * GELU(||x|| + b) / ||x||.
 
     Scales magnitude while preserving direction.
+
+    Attributes:
+        algebra (CliffordAlgebra): The algebra instance.
+        bias (torch.nn.Parameter): Learnable bias added to norm.
     """
 
     def __init__(self, algebra, channels: int = 1):
-        """Initialize the activation with learnable bias."""
+        """Initialize Geometric GELU.
+
+        Args:
+            algebra (CliffordAlgebra): The algebra instance.
+            channels (int): Number of channels.
+        """
         super().__init__()
         self.algebra = algebra
         self.bias = nn.Parameter(torch.zeros(channels))
 
-    def forward(self, x: torch.Tensor):
-        """Apply geometric GELU activation."""
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply geometric GELU activation.
+
+        Args:
+            x (torch.Tensor): Input multivector [..., Dim].
+
+        Returns:
+            torch.Tensor: Activated multivector.
+        """
         norm = x.norm(dim=-1, keepdim=True)
         
         eps = 1e-6
@@ -33,14 +55,46 @@ class GeometricGELU(nn.Module):
         
         return x * scale
 
-class GradeSwish(nn.Module):
-    """Per-grade gated activation.
 
-    Each grade receives an independent sigmoid gate.
+class GeometricSquare(nn.Module):
+    """Gated geometric self-product: x + gate * GP(x, x).
+
+    GP(grade-1, grade-1) produces grade-0 (squares x_i^2) and grade-2
+    (wedge products x_i ^ x_j).  Creates algebraic cross-terms that
+    rotors can then rotate into the output.
     """
 
     def __init__(self, algebra, channels: int = 1):
-        """Initialize per-grade gate parameters."""
+        super().__init__()
+        self.algebra = algebra
+        # sigmoid(-2) ~= 0.12 -- starts small so GP doesn't dominate
+        self.gate_logit = nn.Parameter(torch.full((channels,), -2.0))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        gp = self.algebra.geometric_product(x, x)  # [B, C, dim]
+        gate = torch.sigmoid(self.gate_logit).view(1, -1, 1)  # [1, C, 1]
+        return x + gate * gp
+
+
+class GradeSwish(nn.Module):
+    """Per-grade gated activation.
+
+    Each grade receives an independent sigmoid gate based on its norm.
+
+    Attributes:
+        algebra (CliffordAlgebra): The algebra instance.
+        n_grades (int): Number of grades.
+        grade_weights (torch.nn.Parameter): Weights for each grade gate.
+        grade_biases (torch.nn.Parameter): Biases for each grade gate.
+    """
+
+    def __init__(self, algebra, channels: int = 1):
+        """Initialize Grade Swish.
+
+        Args:
+            algebra (CliffordAlgebra): The algebra instance.
+            channels (int): Number of channels.
+        """
         super().__init__()
         self.algebra = algebra
         self.n_grades = algebra.n + 1
@@ -50,26 +104,38 @@ class GradeSwish(nn.Module):
         
         self.register_buffer('grade_masks', self._build_masks())
 
-    def _build_masks(self):
-        """Precomputes masks."""
+    def _build_masks(self) -> torch.Tensor:
+        """Precompute grade masks.
+
+        Returns:
+            torch.Tensor: Boolean masks for each grade [n_grades, dim].
+        """
         masks = torch.zeros(self.n_grades, self.algebra.dim, dtype=torch.bool)
         for i in range(self.algebra.dim):
             grade = bin(i).count('1')
             masks[grade, i] = True
         return masks
 
-    def _build_grade_map(self):
-        """Precompute per-component grade index for vectorized forward."""
+    def _build_grade_map(self) -> torch.Tensor:
+        """Precompute per-component grade index for vectorized forward.
+
+        Returns:
+            torch.Tensor: Long tensor of grade indices [dim].
+        """
         grade_map = torch.zeros(self.algebra.dim, dtype=torch.long)
         for i in range(self.algebra.dim):
             grade_map[i] = bin(i).count('1')
         return grade_map
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply per-grade gating.
 
-    def forward(self, x: torch.Tensor):
-        """Apply per-grade gating."""
+        Args:
+            x (torch.Tensor): Input multivector [..., Dim].
+
+        Returns:
+            torch.Tensor: Activated multivector.
+        """
         # Build grade map buffer on first call or device change
         if not hasattr(self, '_grade_map') or self._grade_map is None:
             self.register_buffer('_grade_map', self._build_grade_map())

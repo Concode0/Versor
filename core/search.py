@@ -24,9 +24,9 @@ import concurrent.futures
 from typing import Tuple, List, Optional, Dict
 from core.algebra import CliffordAlgebra
 from core.metric import induced_norm
-from layers.linear import CliffordLinear
-from layers.rotor import RotorLayer
-from layers.projection import BladeSelector
+from layers import CliffordLinear
+from layers import RotorLayer
+from layers import BladeSelector
 
 
 class _SignatureProbe(nn.Module):
@@ -331,10 +331,11 @@ class MetricSearch:
         max_energy = total_energy.max().clamp(min=1e-8)
         normalized_energy = total_energy / max_energy
 
-        # Classify base vectors by their bivector participation
+        # Classify base vectors by energy-weighted dominant type.
         n = algebra.n
-        base_type = {}  # base_vector_index -> set of signature types it participates in
-        base_active = {}  # base_vector_index -> max energy
+        # base_type_energy[b] -> accumulated energy per signature type
+        base_type_energy: dict = {}
+        base_active: dict = {}
 
         for bv_idx_pos, blade_idx in enumerate(bv_indices.tolist()):
             energy_val = normalized_energy[bv_idx_pos].item()
@@ -355,24 +356,25 @@ class MetricSearch:
                 sig_type = 'null'
 
             for b in bits:
-                if b not in base_type:
-                    base_type[b] = set()
+                if b not in base_type_energy:
+                    base_type_energy[b] = {'elliptic': 0.0, 'hyperbolic': 0.0, 'null': 0.0}
                     base_active[b] = 0.0
-                base_type[b].add(sig_type)
+                base_type_energy[b][sig_type] += energy_val
                 base_active[b] = max(base_active[b], energy_val)
 
-        # Count active base vectors by dominant type
-        active_positive = 0  # base vectors mostly in elliptic bivectors
-        active_negative = 0  # base vectors in hyperbolic bivectors
-        active_null = 0  # base vectors in null bivectors
+        # Count active base vectors by their dominant (highest cumulative energy) type
+        active_positive = 0  # base vectors whose dominant bivectors are elliptic
+        active_negative = 0  # base vectors whose dominant bivectors are hyperbolic
+        active_null = 0      # base vectors whose dominant bivectors are null
 
         for b_idx in range(n):
             if b_idx not in base_active or base_active[b_idx] < self.energy_threshold:
                 continue
-            types = base_type.get(b_idx, set())
-            if 'null' in types and 'elliptic' not in types and 'hyperbolic' not in types:
+            type_energy = base_type_energy[b_idx]
+            dominant = max(type_energy, key=type_energy.get)
+            if dominant == 'null':
                 active_null += 1
-            elif 'hyperbolic' in types:
+            elif dominant == 'hyperbolic':
                 active_negative += 1
             else:
                 active_positive += 1
@@ -603,7 +605,7 @@ class GeodesicFlow:
         return bv.mean(dim=1)                 # [N, dim]
 
     def _coherence_tensor(self, mv: torch.Tensor) -> torch.Tensor:
-        """Differentiable coherence — returns a scalar tensor with grad_fn.
+        """Differentiable coherence -- returns a scalar tensor with grad_fn.
 
         Args:
             mv (torch.Tensor): ``[N, dim]`` multivectors.
@@ -647,7 +649,7 @@ class GeodesicFlow:
         return self._coherence_tensor(mv).item()
 
     def _curvature_tensor(self, mv: torch.Tensor) -> torch.Tensor:
-        """Differentiable curvature — returns a scalar tensor with grad_fn.
+        """Differentiable curvature -- returns a scalar tensor with grad_fn.
 
         Args:
             mv (torch.Tensor): ``[N, dim]`` multivectors.
@@ -924,3 +926,49 @@ class DimensionLifter:
             )
         lines.append(f"\n  Best algebra: {results['best']}")
         return '\n'.join(lines)
+
+
+def compute_uncertainty_and_alignment(algebra: CliffordAlgebra, data_tensor: torch.Tensor):
+    """Compute Geometric Uncertainty Index (U) and Procrustes Alignment (V).
+
+    Used by :class:`~layers.adapters.mother.MotherEmbedding` to initialise
+    per-group / per-subject alignment rotors.
+
+    Args:
+        algebra: CliffordAlgebra instance.
+        data_tensor: ``[N, D]`` tensor of raw features.
+
+    Returns:
+        Tuple ``(U, V)`` where *U* is a float (mean commutator norm) and
+        *V* is a ``[D, D]`` Procrustes alignment matrix from SVD.
+    """
+    N, D = data_tensor.shape
+    n = algebra.n
+
+    # 1. Lift data to grade-1 for commutator analysis
+    if D < n:
+        pad = torch.zeros(N, n - D, device=data_tensor.device)
+        x_n = torch.cat([data_tensor, pad], dim=-1)
+    else:
+        x_n = data_tensor[:, :n]
+
+    x = algebra.embed_vector(x_n)  # [N, dim]
+
+    # 2. Mean multivector and commutator [x_i, mu]
+    mu = x.mean(dim=0, keepdim=True)  # [1, dim]
+    x_mu = algebra.geometric_product(x, mu.expand_as(x))
+    mu_x = algebra.geometric_product(mu.expand_as(x), x)
+    commutator = x_mu - mu_x
+
+    U = torch.norm(commutator, p=2, dim=-1).mean().item()
+
+    # 3. Procrustes alignment via SVD
+    x_c = data_tensor - data_tensor.mean(dim=0, keepdim=True)
+    try:
+        x_cpu = x_c.cpu()
+        _, _, V = torch.svd(x_cpu)
+        V = V.to(data_tensor.device)
+    except Exception:
+        V = torch.eye(D, device=data_tensor.device)
+
+    return U, V

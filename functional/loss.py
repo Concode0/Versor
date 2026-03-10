@@ -243,3 +243,65 @@ class PhysicsInformedLoss(nn.Module):
 
         conservation_loss = F.mse_loss(forecast_mean, target_mean)
         return mse_loss + self.physics_weight * conservation_loss
+
+
+class AsymmetryLoss(nn.Module):
+    """Penalizes symmetric behavior in asymmetric predictions.
+
+    Encourages f(P,H) != f(H,P) by penalizing correlation above a margin.
+    Used for entailment probes where premise-hypothesis order matters.
+    """
+
+    def __init__(self, margin: float = 0.1):
+        """Initialize asymmetry loss.
+
+        Args:
+            margin: Maximum allowed correlation between f(P,H) and f(H,P).
+        """
+        super().__init__()
+        self.margin = margin
+
+    def forward(self, logits_fwd: torch.Tensor, logits_rev: torch.Tensor) -> torch.Tensor:
+        """Compute asymmetry penalty.
+
+        Args:
+            logits_fwd: Logits for (premise, hypothesis) order [B, num_classes].
+            logits_rev: Logits for (hypothesis, premise) order [B, num_classes].
+
+        Returns:
+            Scalar loss: max(0, corr(fwd, rev) - margin).
+        """
+        f = logits_fwd.detach().flatten()
+        r = logits_rev.flatten()
+        f_centered = f - f.mean()
+        r_centered = r - r.mean()
+        corr = (f_centered * r_centered).sum() / (
+            f_centered.norm() * r_centered.norm() + 1e-8
+        )
+        return F.relu(corr - self.margin)
+
+
+class InvolutionConsistencyLoss(nn.Module):
+    """Enforces algebraic consistency between grade involution and negation.
+
+    For a model f and negation operator neg:
+        ||involute(f(x)) - f(neg(x))|| should be small.
+
+    This ensures the model uses grade involution as an algebraic automorphism
+    to represent negation, rather than learning ad-hoc heuristics.
+    """
+
+    def forward(self, features: torch.Tensor, features_neg: torch.Tensor,
+                algebra) -> torch.Tensor:
+        """Compute involution consistency loss.
+
+        Args:
+            features: Multivector features for original input [..., dim].
+            features_neg: Multivector features for negated input [..., dim].
+            algebra: CliffordAlgebra instance (provides grade_involution).
+
+        Returns:
+            Scalar MSE loss.
+        """
+        involuted = algebra.grade_involution(features)
+        return F.mse_loss(involuted, features_neg)

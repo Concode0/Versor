@@ -1,0 +1,80 @@
+# @package _global_
+name: "sr"
+
+algebra:
+  p: 4
+  q: 0
+  r: 0
+  device: "cpu"
+  auto: true
+
+dataset:
+  name: "sr"
+  dataset_name: "first_principles_hubble"
+  category: "first_principles"
+  n_samples: 10000
+  noise: 0.0
+  cache_dir: "./data/pmlb_cache"
+  augmentation:
+    enabled: false
+    sigma: 0.0
+
+model:
+  auto_capacity: true
+  use_decomposition: true
+
+training:
+  epochs: 200
+  lr: 0.003
+  batch_size: 128
+  optimizer_type: "riemannian_adam"
+  max_bivector_norm: 10.0
+  sparsity_weight: 0.01
+  scheduler_patience: 10
+
+iterative:
+  max_stages: 5
+  max_retries: 2
+  curvature_weight: 1.0
+  coherence_weight: 0.3
+  mse_weight: 0.1
+  sparsity_weight: 0.01
+  stage_epochs: 30
+  stage_lr: 0.003
+  geodesic_k: 8
+  r2_target: 0.999
+  curvature_threshold: 0.05
+  coherence_degradation_threshold: 0.30
+
+implicit:
+  mode: "auto"
+  probe_epochs: 100
+  jacobian_weight: 0.1
+
+grouping:
+  enabled: true
+  max_groups: 4
+  min_group_size: 2
+
+svd:
+  warmstart: true
+
+rejection:
+  soft_alpha: 10.0
+  soft_threshold: 0.01
+
+mother_algebra:
+  cross_term_threshold: 0.01
+  joint_epochs: 50
+
+basis:
+  enabled: true
+  log: true
+  reciprocal: true
+  sqrt: true
+  exp: true
+  log_target_auto: true
+  corr_threshold: 0.05
+  max_expansion_factor: 3
+  dynamic_range_threshold: 100.0
+  exp_max_input: 700.0

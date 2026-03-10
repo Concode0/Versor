@@ -18,6 +18,8 @@ Reference:
 import pytest
 import torch
 from core.algebra import CliffordAlgebra
+
+pytestmark = pytest.mark.unit
 from core.decomposition import (
     ga_power_iteration,
     differentiable_invariant_decomposition,
@@ -25,17 +27,6 @@ from core.decomposition import (
     exp_decomposed
 )
 
-
-@pytest.fixture
-def algebra_3d():
-    """Creates a 3D Euclidean algebra Cl(3,0)."""
-    return CliffordAlgebra(p=3, q=0, device='cpu')
-
-
-@pytest.fixture
-def algebra_4d():
-    """Creates a 4D Euclidean algebra Cl(4,0)."""
-    return CliffordAlgebra(p=4, q=0, device='cpu')
 
 
 class TestGeometricOperations:

@@ -5,44 +5,43 @@
 # you may not use this file except in compliance with the License.
 #
 # This project is fully open-source, including for commercial use.
-# We believe Geometric Algebra is the future of AI, and we want 
+# We believe Geometric Algebra is the future of AI, and we want
 # the industry to build upon this "unbending" paradigm.
 
 import torch
-import unittest
+import pytest
 from core.cga import ConformalAlgebra
-from layers.gnn import CliffordGraphConv
+
+pytestmark = pytest.mark.unit
+from layers import CliffordGraphConv
 from core.algebra import CliffordAlgebra
 
-class TestExtensions(unittest.TestCase):
-    def setUp(self):
-        self.device = 'cpu'
 
+class TestExtensions:
     def test_cga_null_property(self):
         """
         Test that points embedded in CGA are null vectors (P * P = 0).
         """
-        cga = ConformalAlgebra(euclidean_dim=3, device=self.device)
-        
+        cga = ConformalAlgebra(euclidean_dim=3, device='cpu')
+
         # Random Euclidean points
-        x = torch.randn(5, 3, device=self.device)
-        
+        x = torch.randn(5, 3, device='cpu')
+
         # Embed
         P = cga.to_cga(x)
-        
+
         # Geometric Product P * P
         # Should be scalar 0
         sq = cga.algebra.geometric_product(P, P)
-        
+
         # Check norm of the result (should be 0)
-        # Note: Precision might require loose tolerance
-        self.assertTrue(torch.allclose(sq, torch.zeros_like(sq), atol=1e-5),
-                        f"P^2 should be 0, got {sq[0, :5]}...")
-        
+        assert torch.allclose(sq, torch.zeros_like(sq), atol=1e-5), \
+            f"P^2 should be 0, got {sq[0, :5]}..."
+
         # Check reconstruction
         x_recon = cga.from_cga(P)
-        self.assertTrue(torch.allclose(x, x_recon, atol=1e-5),
-                        "Reconstructed x should match original")
+        assert torch.allclose(x, x_recon, atol=1e-5), \
+            "Reconstructed x should match original"
 
     def test_gnn_layer(self):
         """
@@ -51,10 +50,10 @@ class TestExtensions(unittest.TestCase):
         # Algebra (e.g., 2D)
         algebra = CliffordAlgebra(p=2, q=0, device='cpu')
         gnn = CliffordGraphConv(algebra, in_channels=2, out_channels=4)
-        
+
         # 3 Nodes, 2 Channels, 2^2=4 Dim
         x = torch.randn(3, 2, 4)
-        
+
         # Adjacency (3x3) - e.g., line graph 0-1-2
         adj = torch.tensor([
             [0.0, 1.0, 0.0],
@@ -63,13 +62,10 @@ class TestExtensions(unittest.TestCase):
         ])
         # Normalize (simplified)
         adj = adj / (adj.sum(dim=1, keepdim=True) + 1e-6)
-        
-        out = gnn(x, adj)
-        
-        # Check shape: [3, 4, 4]
-        self.assertEqual(out.shape, (3, 4, 4))
-        # Check values are not NaN
-        self.assertFalse(torch.isnan(out).any())
 
-if __name__ == '__main__':
-    unittest.main()
+        out = gnn(x, adj)
+
+        # Check shape: [3, 4, 4]
+        assert out.shape == (3, 4, 4)
+        # Check values are not NaN
+        assert not torch.isnan(out).any()
