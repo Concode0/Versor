@@ -21,3 +21,5 @@ train_log_*.txt
 
 lorentz_plots/
 zeta_plots/
+
+site/
