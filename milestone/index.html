@@ -11,7 +11,7 @@
         <link rel="canonical" href="https://Concode0.github.io/Versor/milestone/">
       
       
-        <link rel="prev" href="../tutorial/">
+        <link rel="prev" href="../api/optimizers/">
       
       
         <link rel="next" href="../faq/">
@@ -51,6 +51,8 @@
       
     
     
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -86,7 +88,9 @@
     
       
 
-<header class="md-header" data-md-component="header">
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href=".." title="Versor" class="md-header__button md-logo" aria-label="Versor" data-md-component="logo">
       
@@ -161,16 +165,22 @@
       
     
     
+      <div class="md-header__source">
+        <a href="https://github.com/Concode0/Versor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Concode0/Versor
+  </div>
+</a>
+      </div>
+    
   </nav>
   
-</header>
     
-    <div class="md-container" data-md-component="container">
       
-      
-        
-          
-            
 <nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
   <div class="md-grid">
     <ul class="md-tabs__list">
@@ -199,17 +209,18 @@
   
   
   
-    <li class="md-tabs__item">
-      <a href="../philosophy/" class="md-tabs__link">
-        
-  
-  
     
+    
+      <li class="md-tabs__item">
+        <a href="../philosophy/" class="md-tabs__link">
+          
   
-  Philosophy
+  
+  Guide
 
-      </a>
-    </li>
+        </a>
+      </li>
+    
   
 
       
@@ -218,55 +229,18 @@
   
   
   
-    <li class="md-tabs__item">
-      <a href="../mathematical/" class="md-tabs__link">
-        
-  
-  
     
-  
-  Mathematics
-
-      </a>
-    </li>
-  
-
-      
-        
-  
-  
-  
-  
-    <li class="md-tabs__item">
-      <a href="../innovations/" class="md-tabs__link">
-        
-  
-  
     
+      <li class="md-tabs__item">
+        <a href="../api/core/" class="md-tabs__link">
+          
   
-  Innovations
+  
+  API Reference
 
-      </a>
-    </li>
-  
-
-      
-        
-  
-  
-  
-  
-    <li class="md-tabs__item">
-      <a href="../tutorial/" class="md-tabs__link">
-        
-  
-  
+        </a>
+      </li>
     
-  
-  Tutorial
-
-      </a>
-    </li>
   
 
       
@@ -277,43 +251,31 @@
     
   
   
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="./" class="md-tabs__link">
-        
-  
-  
     
-  
-  Roadmap
-
-      </a>
-    </li>
-  
-
-      
-        
-  
-  
-  
-  
-    <li class="md-tabs__item">
-      <a href="../faq/" class="md-tabs__link">
-        
-  
-  
     
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
   
-  FAQ
+  
+  Project
 
-      </a>
-    </li>
+        </a>
+      </li>
+    
   
 
       
     </ul>
   </div>
 </nav>
-          
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
         
       
       <main class="md-main" data-md-component="main">
@@ -340,6 +302,18 @@
     </a>
     Versor
   </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Concode0/Versor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Concode0/Versor
+  </div>
+</a>
+    </div>
   
   <ul class="md-nav__list" data-md-scrollfix>
     
@@ -376,6 +350,58 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href="../philosophy/" class="md-nav__link">
         
@@ -396,9 +422,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -423,9 +450,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -450,9 +478,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -477,9 +506,245 @@
     </li>
   
 
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
     
       
       
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/core/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/layers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/functional/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Functional
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/optimizers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Optimizers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
   
   
     
@@ -634,9 +899,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -658,6 +924,14 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -787,14 +1061,17 @@
                   
 
 
+  
+  
 
-<h1 id="roadmap-versor-gbn">Roadmap: Versor &amp; GBN</h1>
+
+<h1 id="roadmap-versor-gbn">Roadmap: Versor &amp; GBN<a class="headerlink" href="#roadmap-versor-gbn" title="Permanent link">&para;</a></h1>
 <p><strong>Versor</strong> and the <strong>Geometric Blade Network (GBN)</strong> grew from recognizing an invisible ceiling in standard Linear Algebra for Deep Learning. By moving from unconstrained projections to isometric rotations via <strong>Clifford Rotors</strong>, we preserve the geometric structure that matrices can inadvertently discard.</p>
 <p>While the core engine is operational, the vision for a universal Geometric Computing Engine is vast. We are officially opening this roadmap to the global community.</p>
 <blockquote>
 <p>For completed work, see the "What's Built" section in the <a href="../">README</a>.</p>
 </blockquote>
-<h2 id="1-core-architecture-evolution">1. Core Architecture Evolution</h2>
+<h2 id="1-core-architecture-evolution">1. Core Architecture Evolution<a class="headerlink" href="#1-core-architecture-evolution" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Real-time Adaptive Rotors (Online SGD)</strong>: Online learning framework for time-series data (e.g., Finance) where rotors adapt dynamically to streaming inputs.</li>
 <li><strong>Multi-head &amp; Dynamic Rotors</strong>: Input-dependent rotation axes to enable a fully geometric attention mechanism.</li>
@@ -803,14 +1080,14 @@
 <blockquote>
 <p><strong>Partial progress</strong>: <code>GeometricTransformerBlock</code> and <code>GeometricProductAttention</code> already exist in <code>layers/adapters/</code> and are used by the DEAP EEG task.</p>
 </blockquote>
-<h2 id="2-mathematical-rigor-stability-open-research">2. Mathematical Rigor &amp; Stability (Open Research)</h2>
+<h2 id="2-mathematical-rigor-stability-open-research">2. Mathematical Rigor &amp; Stability (Open Research)<a class="headerlink" href="#2-mathematical-rigor-stability-open-research" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Convergence Proofs</strong>: Establishing UUB (Uniformly Ultimately Bounded) stability using Lyapunov Candidate Functions (<span class="arithmatex">\(Z\)</span>-Energy).</li>
 <li><strong>Loss Landscape Analysis</strong>: Investigating the convexity of the Spin Group manifold to prove the absence of traditional local minima in GBN.</li>
 <li><strong>High-Dimensional Lifting &amp; Ambiguity</strong>: Researching the "Flip Ambiguity" and gauge transformations when lifting manifolds to higher dimensions.</li>
 </ul>
-<h2 id="3-performance-hardware-optimization">3. Performance &amp; Hardware Optimization</h2>
-<h3 id="analysis-why-high-ipc-cpus-may-outperform-gpus-for-gbn-inference">Analysis: Why High-IPC CPUs May Outperform GPUs for GBN Inference</h3>
+<h2 id="3-performance-hardware-optimization">3. Performance &amp; Hardware Optimization<a class="headerlink" href="#3-performance-hardware-optimization" title="Permanent link">&para;</a></h2>
+<h3 id="analysis-why-high-ipc-cpus-may-outperform-gpus-for-gbn-inference">Analysis: Why High-IPC CPUs May Outperform GPUs for GBN Inference<a class="headerlink" href="#analysis-why-high-ipc-cpus-may-outperform-gpus-for-gbn-inference" title="Permanent link">&para;</a></h3>
 <p>GBN's computational profile is fundamentally different from standard deep learning:</p>
 <ul>
 <li><strong>Heavy branching</strong>: The geometric product requires per-blade sign lookups (Cayley table), grade-conditional projections (<code>popcount</code>-based masking), and scaling-and-squaring with dynamic iteration counts. These cause GPU warp divergence.</li>
@@ -818,20 +1095,20 @@
 <li><strong>Low arithmetic intensity</strong>: GBN layers are memory-bound. The ratio of FLOPs to bytes transferred is low. CPUs with large caches and high IPC handle this more efficiently.</li>
 <li><strong>Sequential dependencies</strong>: <code>exp(-B/2)</code> via scaling-and-squaring is inherently sequential.</li>
 </ul>
-<h3 id="planned-optimizations">Planned Optimizations</h3>
+<h3 id="planned-optimizations">Planned Optimizations<a class="headerlink" href="#planned-optimizations" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Native CUDA Kernels</strong>: Fused kernels for <span class="arithmatex">\(Cl(3,0)\)</span> and <span class="arithmatex">\(Cl(1,3)\)</span> that minimize warp divergence by precomputing sign tables in shared memory.</li>
 <li><strong>JIT Compilation</strong>: Aggressive loop unrolling and metric-aware operation graph optimization — compile-time specialization for specific <span class="arithmatex">\((p, q)\)</span> signatures.</li>
 <li><strong>CPU-Centric Acceleration</strong>: SIMD (AVX-512/AMX on x86, NEON on ARM) implementations of the geometric product. Exploiting the fixed sparsity pattern of the Cayley table for vectorized execution.</li>
 <li><strong>Formal Benchmarking</strong>: Systematic CPU vs. GPU latency/throughput comparison across signatures, batch sizes, and hardware targets.</li>
 </ul>
-<h2 id="4-next-gen-vector-intelligence-subspace-search">4. Next-Gen Vector Intelligence (Subspace Search)</h2>
+<h2 id="4-next-gen-vector-intelligence-subspace-search">4. Next-Gen Vector Intelligence (Subspace Search)<a class="headerlink" href="#4-next-gen-vector-intelligence-subspace-search" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Geometric Subspace Retrieval</strong>: Moving beyond point-to-point distance (Cosine/L2) to subspace-to-subspace relationship mapping.</li>
 <li><strong>Explainable Search Axes</strong>: Assigning geometric meaning to individual blades (e.g., temporal change vs. spatial gradient).</li>
 <li><strong>Orthogonality-based Indexing</strong>: Utilizing geometric orthogonality as a proxy for "non-similarity" for deterministic explainability.</li>
 </ul>
-<h2 id="5-geometric-integrity-invariance">5. Geometric Integrity &amp; Invariance</h2>
+<h2 id="5-geometric-integrity-invariance">5. Geometric Integrity &amp; Invariance<a class="headerlink" href="#5-geometric-integrity-invariance" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Pure Invariant Design</strong>: Models inherently invariant to rotation and scaling without data augmentation.</li>
 <li><strong>Preservation of Information</strong>: Avoiding information collapse from lossy projections and investigating quantization impact on geometric purity.</li>
@@ -856,6 +1133,12 @@
           
 <script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
         </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
         
       </main>
       
@@ -886,7 +1169,7 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
