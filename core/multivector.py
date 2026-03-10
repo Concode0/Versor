@@ -32,7 +32,7 @@ class Multivector:
         self.tensor = tensor
 
     @classmethod
-    def from_vectors(cls, algebra: CliffordAlgebra, vectors: torch.Tensor):
+    def from_vectors(cls, algebra: CliffordAlgebra, vectors: torch.Tensor) -> "Multivector":
         """Promotes vectors to multivectors (Grade 1).
 
         Args:

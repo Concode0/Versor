@@ -36,7 +36,7 @@ def ga_power_iteration(
     the simple projection ``b_s = sigma * (u ^ v)``.
 
     Args:
-        algebra: CliffordAlgebra instance.
+        algebra (CliffordAlgebra): CliffordAlgebra instance.
         b: Bivector to decompose [..., dim].
         v_init: Initial grade-1 vector (random if None).
         threshold: Convergence tolerance on ``||v - v_prev||``.
@@ -92,7 +92,7 @@ def differentiable_invariant_decomposition(
     residual.
 
     Args:
-        algebra: CliffordAlgebra instance.
+        algebra (CliffordAlgebra): CliffordAlgebra instance.
         b: Bivector [..., dim].
         k: Number of components (auto = n(n-1)/2 if None).
         threshold: Stop when residual norm falls below this.
@@ -131,7 +131,7 @@ def exp_simple_bivector(algebra, b: torch.Tensor) -> torch.Tensor:
     three signature regimes (elliptic, hyperbolic, parabolic).
 
     Args:
-        algebra: CliffordAlgebra instance.
+        algebra (CliffordAlgebra): CliffordAlgebra instance.
         b: Simple bivector [..., dim].
 
     Returns:
@@ -162,7 +162,7 @@ def exp_decomposed(
     This is stable for all bivector magnitudes.
 
     Args:
-        algebra: CliffordAlgebra instance.
+        algebra (CliffordAlgebra): CliffordAlgebra instance.
         b: Bivector [..., dim].
         use_decomposition: Enable decomposition (False -> ``algebra.exp``).
         k: Number of simple components (auto if None).

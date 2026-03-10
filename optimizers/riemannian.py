@@ -27,10 +27,10 @@ class ExponentialSGD(Optimizer):
     Riemannian update on the Spin(n) manifold.
 
     Args:
-        params: Iterable of parameters to optimize
+        params (Iterable): Iterable of parameters to optimize
         lr: Learning rate
         momentum: Momentum factor (default: 0)
-        algebra: CliffordAlgebra instance for exponential map
+        algebra (CliffordAlgebra): CliffordAlgebra instance for exponential map
         max_bivector_norm: Maximum allowed bivector norm for numerical stability.
             If not None, clips bivector norms after each update. (default: 10.0)
 
@@ -72,14 +72,14 @@ class ExponentialSGD(Optimizer):
         self.max_bivector_norm = max_bivector_norm
 
     @torch.no_grad()
-    def step(self, closure=None):
+    def step(self, closure=None) -> Optional[torch.Tensor]:
         """Performs a single optimization step using exponential retraction.
 
         Args:
-            closure: A closure that reevaluates the model and returns the loss.
+            closure (Callable, optional): A closure that reevaluates the model and returns the loss.
 
         Returns:
-            The loss if closure is provided, else None.
+            Optional[torch.Tensor]: The loss if closure is provided, else None.
         """
         loss = None
         if closure is not None:
@@ -133,11 +133,11 @@ class RiemannianAdam(Optimizer):
     forward pass (R = exp(-B/2)) completes the Riemannian update on Spin(n).
 
     Args:
-        params: Iterable of parameters to optimize
+        params (Iterable): Iterable of parameters to optimize
         lr: Learning rate (default: 1e-3)
         betas: Coefficients for computing running averages (default: (0.9, 0.999))
         eps: Term added for numerical stability (default: 1e-8)
-        algebra: CliffordAlgebra instance for exponential map
+        algebra (CliffordAlgebra): CliffordAlgebra instance for exponential map
         max_bivector_norm: Maximum allowed bivector norm for numerical stability.
             If not None, clips bivector norms after each update. (default: 10.0)
     """
@@ -170,14 +170,14 @@ class RiemannianAdam(Optimizer):
         self.max_bivector_norm = max_bivector_norm
 
     @torch.no_grad()
-    def step(self, closure=None):
+    def step(self, closure=None) -> Optional[torch.Tensor]:
         """Performs a single optimization step.
 
         Args:
-            closure: A closure that reevaluates the model and returns the loss.
+            closure (Callable, optional): A closure that reevaluates the model and returns the loss.
 
         Returns:
-            The loss if closure is provided, else None.
+            Optional[torch.Tensor]: The loss if closure is provided, else None.
         """
         loss = None
         if closure is not None:

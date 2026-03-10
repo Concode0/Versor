@@ -658,7 +658,7 @@ class CliffordAlgebra:
 
         Args:
             mv (torch.Tensor): Pure bivector [..., dim].
-            **kwargs: Forwarded to ``core.decomposition.exp_decomposed``.
+            **kwargs (dict): Forwarded to ``core.decomposition.exp_decomposed``.
                 use_decomposition (bool): Enable decomposition. Default True.
                 k (int | None): Number of simple components (auto if None).
                 threshold (float): Convergence threshold. Default 1e-6.
