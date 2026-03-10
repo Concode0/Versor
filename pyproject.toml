@@ -27,8 +27,6 @@ lqa = [
 viz = [
     "matplotlib>=3.8.0",
     "seaborn>=0.13.0",
-    "plotly>=6.5.2",
-    "imageio>=2.37.2",
 ]
 demo = [
     "streamlit>=1.50.0",
@@ -48,3 +46,11 @@ all = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "mkdocs<2.0",
+    "mkdocs-material>=9.7.4",
+    "mkdocstrings[python]>=0.30.1",
+    "pymdown-extensions>=10.21",
+]
