@@ -4,7 +4,7 @@
 
 While the core engine is operational, the vision for a universal Geometric Computing Engine is vast. We are officially opening this roadmap to the global community.
 
-> For completed work, see the "What's Built" section in the [README](../README.md).
+> For completed work, see the "What's Built" section in the [README](index.md).
 
 ## 1. Core Architecture Evolution
 

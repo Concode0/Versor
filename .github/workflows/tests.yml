@@ -1,0 +1,129 @@
+name: Tests
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "0 3 * * *"   # nightly at 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Test suite to run"
+        required: false
+        default: "not-slow"
+        type: choice
+        options:
+          - unit
+          - not-slow
+          - full
+
+jobs:
+  # ── Fast unit tests: runs on every push to non-main branches ──────────────
+  unit:
+    name: Unit tests (push)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install core + sr + md17 + dev extras
+        run: uv sync --extra sr --extra md17 --extra dev
+
+      - name: Run unit tests
+        run: uv run pytest tests/ -m unit -q --tb=short
+
+  # ── PR gate: unit + non-slow tests ────────────────────────────────────────
+  pr-gate:
+    name: PR gate (not slow)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install all task extras + dev
+        run: uv sync --extra sr --extra md17 --extra lqa --extra dev
+
+      - name: Run non-slow tests
+        run: uv run pytest tests/ -m "not slow" -q --tb=short
+
+  # ── Nightly / manual: full suite ──────────────────────────────────────────
+  full:
+    name: Full suite (nightly / manual)
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.suite == 'full')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install all task extras + dev
+        run: uv sync --extra sr --extra md17 --extra lqa --extra dev
+
+      - name: Run full test suite
+        run: uv run pytest tests/ -q --tb=short
+
+  # ── Manual override: run any suite on demand ──────────────────────────────
+  manual:
+    name: Manual (${{ github.event.inputs.suite }})
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.suite != 'full'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install all task extras + dev
+        run: uv sync --extra sr --extra md17 --extra lqa --extra dev
+
+      - name: Run ${{ github.event.inputs.suite }} tests
+        run: |
+          SUITE="${{ github.event.inputs.suite }}"
+          if [ "$SUITE" = "unit" ]; then
+            uv run pytest tests/ -m unit -q --tb=short
+          else
+            uv run pytest tests/ -m "not slow" -q --tb=short
+          fi

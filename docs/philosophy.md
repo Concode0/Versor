@@ -88,11 +88,39 @@ def forward(self, x):
 
 It scales the magnitude via GELU while preserving the direction `x / ||x||`. Standard activations (ReLU, GELU) applied coefficient-wise destroy this directional information.
 
-## The Remaining Challenge: CliffordLinear
+## CliffordLinear: Two Backends, Two Philosophies
 
-While RotorLayers provide pure isometric transformations, the current `CliffordLinear` layer still uses standard scalar weight matrices for channel mixing. This is the last piece that operates above the geometric ceiling — these weights can introduce unconstrained scaling.
+`CliffordLinear` is the channel-mixing layer of the GBN stack. It now supports two backends that embody fundamentally different design philosophies.
 
-Active development is replacing CliffordLinear with compositions of irreducible rotors, moving all weight updates to the Bivector Manifold (Lie Algebra). The goal: a fully geometric network where every parameter has a clear geometric meaning.
+### Traditional Backend (default)
+
+```python
+linear = CliffordLinear(algebra, in_channels=8, out_channels=16)
+# backend='traditional' — O(in × out) scalar weights
+```
+
+A standard learned weight matrix $W \in \mathbb{R}^{C_{out} \times C_{in}}$ applied across channels. Each output channel is an arbitrary linear combination of all input channels. This is maximally expressive: the network can learn any channel-to-channel mapping, including ones with no geometric meaning. The cost is that these weights can introduce unconstrained stretching and scaling — the same geometric side effects that Rotors are designed to avoid. Use this when full cross-channel expressivity matters more than geometric purity, or when the task does not have strong manifold structure in the channel dimension.
+
+### Rotor Backend (RotorGadget)
+
+```python
+linear = CliffordLinear(algebra, in_channels=8, out_channels=16, backend='rotor')
+# O(num_rotor_pairs × n(n-1)/2) bivector parameters — ~63% reduction
+```
+
+Replaces the weight matrix with a **RotorGadget** (`layers/primitives/rotor_gadget.py`): an asymmetric rotor sandwich
+
+$$\psi(x) = r \cdot x \cdot s^\dagger$$
+
+where $r$ and $s$ are independently trained rotors (each parameterized by bivector coefficients alone). Unlike the symmetric sandwich $R x \tilde{R}$ of a `RotorLayer` — which is a pure isometry — the asymmetric product can mix grades and change channel dimensions, making it a geometrically constrained replacement for a linear map.
+
+Channel routing is block-diagonal: each of the $K$ rotor pairs operates on a disjoint partition of the input channels, then aggregated (mean, sum, or learned weights). An optional channel shuffle (`shuffle='fixed'` or `'random'`) breaks the block structure when global interaction is needed.
+
+**When to prefer the rotor backend:** tasks with strong geometric structure in the channel dimension, when parameter efficiency matters (~63% fewer parameters), or when you want every learnable weight to live on the Bivector Manifold — so that Riemannian Adam's Lie algebra updates apply uniformly to the entire network.
+
+**When to keep the traditional backend:** tasks where channels do not carry geometric meaning, where arbitrary cross-channel mixing is essential (e.g., learned attention projections), or where the added inductive bias of rotation-constrained mixing actively hurts convergence.
+
+The two backends are drop-in replacements. The right choice depends on the geometry of the problem, not on a blanket preference for one paradigm over the other.
 
 ## Towards the Unified Geometric Engine
 

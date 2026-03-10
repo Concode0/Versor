@@ -1,0 +1,69 @@
+site_name: Versor
+site_url: https://Concode0.github.io/Versor/
+repo_url: https://github.com/Concode0/Versor
+repo_name: Concode0/Versor
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            inherited_members: false
+            filters:
+              - "!^_"
+              - "^__init__"
+
+nav:
+  - Home: index.md
+  - Guide:
+      - Philosophy: philosophy.md
+      - Mathematics: mathematical.md
+      - Innovations: innovations.md
+      - Tutorial: tutorial.md
+  - API Reference:
+      - Core: api/core.md
+      - Layers: api/layers.md
+      - Functional: api/functional.md
+      - Optimizers: api/optimizers.md
+  - Project:
+      - Roadmap: milestone.md
+      - FAQ: faq.md
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      use_pygments: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true

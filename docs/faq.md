@@ -33,10 +33,8 @@ Any domain where data has geometric structure:
 
 ### What are the dependencies?
 Core: `torch`, `numpy`, `hydra-core`, `tqdm`. Everything else is optional:
-- `uv sync --extra viz` for visualization (matplotlib, seaborn, scikit-learn, plotly, imageio)
-- `uv sync --extra examples` for example tasks (transformers, scikit-learn, matplotlib)
-- `uv sync --extra graph` for molecular GNN tasks (torch-geometric)
-- `uv sync --extra all_tasks` for all task dependencies (graph, pdbbind, weather, cad)
+- `uv sync --extra viz` for visualization (matplotlib, seaborn)
+- `uv sync --extra all_tasks` for all task dependencies (sr, md17, lqa)
 - `uv sync --extra all` for everything
 
 ### Does Versor support GPU?

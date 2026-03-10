@@ -22,15 +22,15 @@ For distinct basis vectors: $e_i e_j = -e_j e_i$ (they anti-commute).
 
 ### Basis Blades
 
-Products of distinct basis vectors form **basis blades**. In $n$ dimensions there are $2^n$ basis blades, one for each subset of {e_1, $\ldots$ e_n}$:
+Products of distinct basis vectors form **basis blades**. In $n$ dimensions there are $2^n$ basis blades, one for each subset of ${e_1, \ldots e_n}$:
 
-| Grade | Count | Example ($n=3$) |
-|-------|-------|----------|
-| 0 (scalar) | $\binom{n}{0} = 1$ | $1$ |
-| 1 (vector) | $\binom{n}{1} = n$ | $e_1, e_2, e_3$ |
-| 2 (bivector) | $\binom{n}{2}$ | $e_{12}, e_{13}, e_{23}$ |
-| 3 (trivector) | $\binom{n}{3}$ | $e_{123}$ |
-| $k$ | $\binom{n}{k}$ | $k$-blade |
+| Grade         | Count              | Example ($n=3$)          |
+| ------------- | ------------------ | ------------------------ |
+| 0 (scalar)    | $\binom{n}{0} = 1$ | $1$                      |
+| 1 (vector)    | $\binom{n}{1} = n$ | $e_1, e_2, e_3$          |
+| 2 (bivector)  | $\binom{n}{2}$     | $e_{12}, e_{13}, e_{23}$ |
+| 3 (trivector) | $\binom{n}{3}$     | $e_{123}$                |
+| $k$           | $\binom{n}{k}$     | $k$-blade                |
 
 A **multivector** is a general element: $M = \sum_{I} m_I e_I$ where $I$ ranges over all subsets.
 
