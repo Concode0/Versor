@@ -3,6 +3,8 @@
 import torch
 import pytest
 from core.algebra import CliffordAlgebra
+
+pytestmark = pytest.mark.unit
 from core.metric import hermitian_norm, hermitian_grade_spectrum
 from models.md17 import MD17ForceNet, MD17InteractionBlock, GaussianRBF, DynamicRotorGenerator
 from functional.loss import ConservativeLoss, HermitianGradeRegularization

@@ -13,6 +13,8 @@
 import pytest
 import torch
 from core.algebra import CliffordAlgebra
+
+pytestmark = pytest.mark.slow
 from core.search import (
     MetricSearch,
     GeodesicFlow,
@@ -25,7 +27,7 @@ from core.search import (
 def small_searcher():
     """Create a small MetricSearch instance for testing."""
     return MetricSearch(
-        device='cpu', probe_epochs=30, num_probes=2, probe_channels=2, k=4,
+        device='cpu', probe_epochs=60, num_probes=2, probe_channels=2, k=4,
     )
 
 
@@ -51,9 +53,14 @@ class TestMetricSearchAPI:
         assert isinstance(r, int)
 
     def test_search_euclidean_data(self, small_searcher):
-        """Verify search identifies Euclidean data correctly."""
-        torch.manual_seed(1)
-        data = torch.randn(20, 2)
+        """Verify search identifies Euclidean data correctly.
+
+        Uses a circle (clear 2D Euclidean manifold) rather than random Gaussian
+        noise, which has no structural signal for the probe to latch onto.
+        """
+        # 2D circle: unambiguous Euclidean manifold structure
+        theta = torch.linspace(0, 2 * 3.141592653589793, 33)[:-1]
+        data = torch.stack([theta.cos(), theta.sin()], dim=-1)
         p, q, r = small_searcher.search(data)
         # Euclidean data should have p >= 1 and p dominates
         assert p >= 1, f"Euclidean data should have p>=1, got p={p}"

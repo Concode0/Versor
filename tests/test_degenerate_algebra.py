@@ -14,6 +14,8 @@ import math
 import pytest
 import torch
 
+pytestmark = pytest.mark.unit
+
 from core.algebra import CliffordAlgebra
 
 

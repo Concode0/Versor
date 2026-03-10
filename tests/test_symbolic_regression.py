@@ -91,6 +91,8 @@ def test_get_dataset_ids():
     assert all_ids == SRBENCH_DATASETS
 
 
+@pytest.mark.slow
+@pytest.mark.integration
 def test_pmlb_dataset_load():
     """Verify _fetch_pmlb_data returns valid data for a blackbox dataset."""
     df = _fetch_pmlb_data(_TEST_DATASET, _TEST_CACHE)
@@ -202,6 +204,7 @@ def test_sparsity_loss(algebra):
     assert torch.isfinite(spl), "sparsity_loss should be finite"
 
 
+@pytest.mark.slow
 def test_task_train_step():
     """Single train_step returns finite (loss, logs) dict."""
     from tasks.symbolic_regression import SRTask

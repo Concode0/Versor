@@ -15,23 +15,8 @@ from core.algebra import CliffordAlgebra
 from layers import RotorGadget
 from layers import CliffordLinear
 
+pytestmark = pytest.mark.unit
 
-@pytest.fixture
-def algebra_2d():
-    """2D Euclidean Clifford algebra Cl(2,0)."""
-    return CliffordAlgebra(p=2, q=0, device='cpu')
-
-
-@pytest.fixture
-def algebra_3d():
-    """3D Euclidean Clifford algebra Cl(3,0)."""
-    return CliffordAlgebra(p=3, q=0, device='cpu')
-
-
-@pytest.fixture
-def algebra_spacetime():
-    """Spacetime Clifford algebra Cl(1,3)."""
-    return CliffordAlgebra(p=1, q=3, device='cpu')
 
 
 class TestRotorGadgetShapes:
@@ -53,31 +38,29 @@ class TestRotorGadgetShapes:
 
         assert out.shape == (batch_size, 8, algebra_2d.dim)
 
-    def test_various_channel_combinations(self, algebra_3d):
+    @pytest.mark.parametrize("in_ch,out_ch,num_pairs", [
+        (1, 1, 1),
+        (1, 10, 2),
+        (10, 1, 2),
+        (5, 5, 3),
+        (16, 32, 4),
+    ])
+    def test_various_channel_combinations(self, algebra_3d, in_ch, out_ch, num_pairs):
         """Test different input/output channel combinations."""
-        test_cases = [
-            (1, 1, 1),    # Minimal
-            (1, 10, 2),   # Expand channels
-            (10, 1, 2),   # Reduce channels
-            (5, 5, 3),    # Same channels
-            (16, 32, 4),  # Larger scale
-        ]
+        layer = RotorGadget(
+            algebra=algebra_3d,
+            in_channels=in_ch,
+            out_channels=out_ch,
+            num_rotor_pairs=num_pairs,
+        )
 
-        for in_ch, out_ch, num_pairs in test_cases:
-            layer = RotorGadget(
-                algebra=algebra_3d,
-                in_channels=in_ch,
-                out_channels=out_ch,
-                num_rotor_pairs=num_pairs,
-            )
+        x = torch.randn(2, in_ch, algebra_3d.dim)
+        out = layer(x)
 
-            x = torch.randn(2, in_ch, algebra_3d.dim)
-            out = layer(x)
+        assert out.shape == (2, out_ch, algebra_3d.dim)
 
-            assert out.shape == (2, out_ch, algebra_3d.dim), \
-                f"Failed for in={in_ch}, out={out_ch}, pairs={num_pairs}"
-
-    def test_batch_dimension_handling(self, algebra_2d):
+    @pytest.mark.parametrize("batch_size", [1, 5, 32])
+    def test_batch_dimension_handling(self, algebra_2d, batch_size):
         """Test different batch sizes."""
         layer = RotorGadget(
             algebra=algebra_2d,
@@ -86,10 +69,9 @@ class TestRotorGadgetShapes:
             num_rotor_pairs=2,
         )
 
-        for batch_size in [1, 5, 32]:
-            x = torch.randn(batch_size, 4, algebra_2d.dim)
-            out = layer(x)
-            assert out.shape == (batch_size, 4, algebra_2d.dim)
+        x = torch.randn(batch_size, 4, algebra_2d.dim)
+        out = layer(x)
+        assert out.shape == (batch_size, 4, algebra_2d.dim)
 
     def test_with_bias(self, algebra_3d):
         """Test layer with bias term."""
@@ -632,42 +614,42 @@ class TestShuffleOptions:
         # But to avoid flaky test, we just check the functionality works
         assert all(out.shape == (2, 8, algebra_3d.dim) for out in outputs)
 
-    def test_shuffle_preserves_output_shape(self, algebra_3d):
+    @pytest.mark.parametrize("shuffle_mode", ['none', 'fixed', 'random'])
+    def test_shuffle_preserves_output_shape(self, algebra_3d, shuffle_mode):
         """Test that shuffle doesn't affect output shape."""
         x = torch.randn(2, 8, algebra_3d.dim)
 
-        for shuffle_mode in ['none', 'fixed', 'random']:
-            layer = RotorGadget(
-                algebra=algebra_3d,
-                in_channels=8,
-                out_channels=16,
-                num_rotor_pairs=2,
-                shuffle=shuffle_mode
-            )
+        layer = RotorGadget(
+            algebra=algebra_3d,
+            in_channels=8,
+            out_channels=16,
+            num_rotor_pairs=2,
+            shuffle=shuffle_mode
+        )
 
-            out = layer(x)
-            assert out.shape == (2, 16, algebra_3d.dim)
+        out = layer(x)
+        assert out.shape == (2, 16, algebra_3d.dim)
 
-    def test_shuffle_gradient_flow(self, algebra_3d):
+    @pytest.mark.parametrize("shuffle_mode", ['none', 'fixed', 'random'])
+    def test_shuffle_gradient_flow(self, algebra_3d, shuffle_mode):
         """Test that gradients flow correctly with shuffle."""
-        for shuffle_mode in ['none', 'fixed', 'random']:
-            layer = RotorGadget(
-                algebra=algebra_3d,
-                in_channels=8,
-                out_channels=8,
-                num_rotor_pairs=2,
-                shuffle=shuffle_mode
-            )
+        layer = RotorGadget(
+            algebra=algebra_3d,
+            in_channels=8,
+            out_channels=8,
+            num_rotor_pairs=2,
+            shuffle=shuffle_mode
+        )
 
-            x = torch.randn(2, 8, algebra_3d.dim, requires_grad=True)
-            out = layer(x)
+        x = torch.randn(2, 8, algebra_3d.dim, requires_grad=True)
+        out = layer(x)
 
-            loss = out.sum()
-            loss.backward()
+        loss = out.sum()
+        loss.backward()
 
-            assert x.grad is not None
-            assert layer.bivector_left.grad is not None
-            assert layer.bivector_right.grad is not None
+        assert x.grad is not None
+        assert layer.bivector_left.grad is not None
+        assert layer.bivector_right.grad is not None
 
     def test_fixed_shuffle_different_per_layer(self, algebra_3d):
         """Test that different layer instances get different fixed permutations."""
@@ -709,19 +691,19 @@ class TestShuffleOptions:
         assert layer.gadget.shuffle == 'fixed'
         assert layer.gadget.channel_permutation is not None
 
-    def test_shuffle_repr(self, algebra_3d):
+    @pytest.mark.parametrize("shuffle_mode", ['none', 'fixed', 'random'])
+    def test_shuffle_repr(self, algebra_3d, shuffle_mode):
         """Test that shuffle appears in string representation."""
-        for shuffle_mode in ['none', 'fixed', 'random']:
-            layer = RotorGadget(
-                algebra=algebra_3d,
-                in_channels=8,
-                out_channels=8,
-                num_rotor_pairs=2,
-                shuffle=shuffle_mode
-            )
+        layer = RotorGadget(
+            algebra=algebra_3d,
+            in_channels=8,
+            out_channels=8,
+            num_rotor_pairs=2,
+            shuffle=shuffle_mode
+        )
 
-            repr_str = repr(layer)
-            assert f'shuffle={shuffle_mode}' in repr_str
+        repr_str = repr(layer)
+        assert f'shuffle={shuffle_mode}' in repr_str
 
 
 class TestCliffordLinearBackend:

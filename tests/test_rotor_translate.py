@@ -8,6 +8,8 @@ import numpy as np
 import torch
 
 from core.algebra import CliffordAlgebra
+
+pytestmark = pytest.mark.unit
 from models.sr.translator import (
     RotorTranslator, SimplePlane, RotorTerm,
     _correlation,
@@ -15,20 +17,12 @@ from models.sr.translator import (
 from models.sr.net import SRGBN
 
 
-@pytest.fixture
-def algebra():
-    return CliffordAlgebra(3, 0, 0, device="cpu")
 
 
-@pytest.fixture
-def algebra4():
-    return CliffordAlgebra(4, 0, 0, device="cpu")
-
-
-def test_import_and_instantiate(algebra):
+def test_import_and_instantiate(algebra_3d):
     """RotorTranslator can be instantiated with an algebra."""
-    translator = RotorTranslator(algebra)
-    assert translator.algebra is algebra
+    translator = RotorTranslator(algebra_3d)
+    assert translator.algebra is algebra_3d
     assert len(translator.symbols) == 3
 
 
@@ -58,9 +52,9 @@ def test_rotor_term_defaults():
     assert term.expr is None
 
 
-def test_translate_trained_model(algebra):
+def test_translate_trained_model(algebra_3d):
     """translate() extracts terms from a trained single-rotor SRGBN."""
-    model = SRGBN.single_rotor(algebra, in_features=2, channels=8)
+    model = SRGBN.single_rotor(algebra_3d, in_features=2, channels=8)
 
     # Manually set a large bivector weight so it's above threshold
     with torch.no_grad():
@@ -68,7 +62,7 @@ def test_translate_trained_model(algebra):
         # Set e12 plane (index 0 in bivector basis for Cl(3,0))
         model.blocks[0].rotor.bivector_weights[:, 0] = 0.5
 
-    translator = RotorTranslator(algebra)
+    translator = RotorTranslator(algebra_3d)
     terms = translator.translate(model)
 
     assert len(terms) >= 1, "Should extract at least one term"
@@ -77,22 +71,22 @@ def test_translate_trained_model(algebra):
     assert terms[0].fn is not None
 
 
-def test_translate_zero_bivectors(algebra):
+def test_translate_zero_bivectors(algebra_3d):
     """translate() returns empty list for zero bivectors."""
-    model = SRGBN.single_rotor(algebra, in_features=2, channels=4)
+    model = SRGBN.single_rotor(algebra_3d, in_features=2, channels=4)
 
     with torch.no_grad():
         model.blocks[0].rotor.bivector_weights.fill_(0.0)
 
-    translator = RotorTranslator(algebra)
+    translator = RotorTranslator(algebra_3d)
     terms = translator.translate(model)
     assert len(terms) == 0
 
 
-def test_plane_to_action_elliptic(algebra):
+def test_plane_to_action_elliptic(algebra_3d):
     """Elliptic plane produces rotation mixing two variables."""
     import sympy
-    translator = RotorTranslator(algebra)
+    translator = RotorTranslator(algebra_3d)
     plane = SimplePlane(var_i=0, var_j=1, sig_type="elliptic", angle=0.3)
     expr = translator._plane_to_action(plane)
 
@@ -107,8 +101,8 @@ def test_plane_to_action_elliptic(algebra):
 def test_plane_to_action_hyperbolic():
     """Hyperbolic plane produces boost mixing two variables."""
     import sympy
-    algebra = CliffordAlgebra(2, 1, 0, device="cpu")
-    translator = RotorTranslator(algebra)
+    algebra_3d = CliffordAlgebra(2, 1, 0, device="cpu")
+    translator = RotorTranslator(algebra_3d)
     plane = SimplePlane(var_i=0, var_j=2, sig_type="hyperbolic", angle=0.4)
     expr = translator._plane_to_action(plane)
 
@@ -119,8 +113,8 @@ def test_plane_to_action_hyperbolic():
 
 def test_plane_to_action_parabolic():
     """Parabolic plane produces linear expression."""
-    algebra = CliffordAlgebra(2, 0, 1, device="cpu")
-    translator = RotorTranslator(algebra)
+    algebra_3d = CliffordAlgebra(2, 0, 1, device="cpu")
+    translator = RotorTranslator(algebra_3d)
     plane = SimplePlane(var_i=0, var_j=1, sig_type="parabolic", angle=0.5)
     expr = translator._plane_to_action(plane)
 
@@ -130,16 +124,16 @@ def test_plane_to_action_parabolic():
     assert "sin" not in expr_str
 
 
-def test_to_formula_empty(algebra):
+def test_to_formula_empty(algebra_3d):
     """to_formula returns 'y = 0' for empty terms."""
-    translator = RotorTranslator(algebra)
+    translator = RotorTranslator(algebra_3d)
     assert translator.to_formula([]) == "y = 0"
 
 
-def test_to_formula_nonempty(algebra):
+def test_to_formula_nonempty(algebra_3d):
     """to_formula returns 'y = ...' for non-empty terms."""
     import sympy
-    translator = RotorTranslator(algebra)
+    translator = RotorTranslator(algebra_3d)
     x1 = sympy.Symbol("x1")
     term = RotorTerm(planes=[], weight=2.0, expr=x1**2)
     formula = translator.to_formula([term])
@@ -147,15 +141,15 @@ def test_to_formula_nonempty(algebra):
     assert "x1" in formula
 
 
-def test_translate_implicit(algebra):
+def test_translate_implicit(algebra_3d):
     """translate_implicit replaces target var with 'y' symbol."""
-    model = SRGBN.single_rotor(algebra, in_features=2, channels=8)
+    model = SRGBN.single_rotor(algebra_3d, in_features=2, channels=8)
 
     with torch.no_grad():
         model.blocks[0].rotor.bivector_weights.fill_(0.0)
         model.blocks[0].rotor.bivector_weights[:, 0] = 0.5
 
-    translator = RotorTranslator(algebra)
+    translator = RotorTranslator(algebra_3d)
     terms = translator.translate_implicit(model, target_var_idx=2)
 
     # Check that terms contain 'y' in their expression
@@ -168,10 +162,10 @@ def test_translate_implicit(algebra):
         assert terms[0].expr is not None
 
 
-def test_evaluate_terms(algebra):
+def test_evaluate_terms(algebra_3d):
     """evaluate_terms produces finite predictions."""
     import sympy
-    translator = RotorTranslator(algebra)
+    translator = RotorTranslator(algebra_3d)
 
     x1, x2, x3 = translator.symbols
     expr = 2.0 * x1 + 3.0 * x2

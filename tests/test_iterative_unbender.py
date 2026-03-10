@@ -8,6 +8,8 @@ import numpy as np
 import torch
 from unittest.mock import patch, MagicMock
 
+pytestmark = pytest.mark.slow
+
 from core.algebra import CliffordAlgebra
 from models.sr.unbender import (
     IterativeUnbender,

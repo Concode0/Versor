@@ -12,6 +12,8 @@ import torch
 
 from core.algebra import CliffordAlgebra
 
+pytestmark = pytest.mark.unit
+
 
 DEVICE = "cpu"
 
