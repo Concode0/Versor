@@ -1,0 +1,1223 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../innovations/">
+      
+      
+        <link rel="next" href="../milestone/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>Tutorial - Versor</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#tutorial-building-with-versor" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Versor" class="md-header__button md-logo" aria-label="Versor" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Versor
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Tutorial
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../philosophy/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Philosophy
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../mathematical/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Mathematics
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../innovations/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Innovations
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../milestone/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../faq/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  FAQ
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Versor" class="md-nav__button md-logo" aria-label="Versor" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Versor
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mathematical/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mathematics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../innovations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Innovations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-create-a-clifford-algebra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Create a Clifford Algebra
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-understand-multivector-tensors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Understand Multivector Tensors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-core-algebra-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Core Algebra Operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-using-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Using Layers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Using Layers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rotorlayer-learned-geometric-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RotorLayer — Learned Geometric Rotation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multirotorlayer-spectral-decomposition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MultiRotorLayer — Spectral Decomposition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cliffordlinear-channel-mixing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CliffordLinear — Channel Mixing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cliffordlayernorm-direction-preserving-normalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CliffordLayerNorm — Direction-Preserving Normalization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#geometricgelu-magnitude-based-activation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GeometricGELU — Magnitude-Based Activation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bladeselector-grade-attention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BladeSelector — Grade Attention
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-composing-a-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Composing a Model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-creating-a-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Creating a Task
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-losses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Losses
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-automatic-metric-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Automatic Metric Search
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../milestone/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-create-a-clifford-algebra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Create a Clifford Algebra
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-understand-multivector-tensors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Understand Multivector Tensors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-core-algebra-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Core Algebra Operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-using-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Using Layers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Using Layers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rotorlayer-learned-geometric-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RotorLayer — Learned Geometric Rotation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multirotorlayer-spectral-decomposition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MultiRotorLayer — Spectral Decomposition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cliffordlinear-channel-mixing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CliffordLinear — Channel Mixing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cliffordlayernorm-direction-preserving-normalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CliffordLayerNorm — Direction-Preserving Normalization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#geometricgelu-magnitude-based-activation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GeometricGELU — Magnitude-Based Activation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bladeselector-grade-attention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BladeSelector — Grade Attention
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-composing-a-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Composing a Model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-creating-a-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Creating a Task
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-losses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Losses
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-automatic-metric-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Automatic Metric Search
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="tutorial-building-with-versor">Tutorial: Building with Versor</h1>
+<p>A step-by-step guide to using Versor's geometric layers in your own models.</p>
+<h2 id="1-create-a-clifford-algebra">1. Create a Clifford Algebra</h2>
+<p>Everything starts with a <code>CliffordAlgebra</code> instance. The signature <span class="arithmatex">\((p, q, r)\)</span> determines the geometry:</p>
+<pre><code class="language-python">from core.algebra import CliffordAlgebra
+
+# 3D Euclidean (rotations in 3-space)
+algebra = CliffordAlgebra(p=3, q=0, r=0, device='cpu')
+print(algebra.dim)  # 8 = 2^3 basis blades
+
+# 2D Minkowski (Lorentz boosts)
+algebra_mink = CliffordAlgebra(p=1, q=1, r=0, device='cpu')
+print(algebra_mink.dim)  # 4 = 2^2 basis blades
+
+# PGA: 3D Euclidean + 1 null dimension for translations
+algebra_pga = CliffordAlgebra(p=3, q=0, r=1, device='cpu')
+print(algebra_pga.dim)  # 16 = 2^4 basis blades
+</code></pre>
+<p>Key properties:
+- <code>algebra.n</code> — total dimensions (<span class="arithmatex">\(p + q + r\)</span>)
+- <code>algebra.dim</code> — total basis blades (<span class="arithmatex">\(2^n\)</span>)
+- <code>algebra.num_grades</code> — number of grades (<span class="arithmatex">\(n + 1\)</span>)</p>
+<h2 id="2-understand-multivector-tensors">2. Understand Multivector Tensors</h2>
+<p>All data in Versor is represented as multivectors with shape <code>[Batch, Channels, 2^n]</code>.</p>
+<pre><code class="language-python">import torch
+
+# Embed raw 3D vectors into multivectors
+vectors = torch.randn(32, 3)  # [Batch, 3]
+mv = algebra.embed_vector(vectors)  # [Batch, 8]
+# Components: [scalar, e1, e2, e12, e3, e13, e23, e123]
+# Indices:      0      1    2   3    4    5     6     7
+
+# Add a channel dimension for neural layers
+mv = mv.unsqueeze(1)  # [32, 1, 8] — 1 channel
+</code></pre>
+<p>Basis blade indexing uses binary representation:
+- Index 0 (<code>000</code>) = scalar (grade 0)
+- Index 1 (<code>001</code>) = <span class="arithmatex">\(e_1\)</span>, Index 2 (<code>010</code>) = <span class="arithmatex">\(e_2\)</span>, Index 4 (<code>100</code>) = <span class="arithmatex">\(e_3\)</span> (grade 1)
+- Index 3 (<code>011</code>) = <span class="arithmatex">\(e_{12}\)</span>, Index 5 (<code>101</code>) = <span class="arithmatex">\(e_{13}\)</span>, Index 6 (<code>110</code>) = <span class="arithmatex">\(e_{23}\)</span> (grade 2)
+- Index 7 (<code>111</code>) = <span class="arithmatex">\(e_{123}\)</span> (grade 3)</p>
+<h2 id="3-core-algebra-operations">3. Core Algebra Operations</h2>
+<pre><code class="language-python">A = torch.randn(4, 8)  # 4 multivectors
+B = torch.randn(4, 8)
+
+# Geometric product
+AB = algebra.geometric_product(A, B)
+
+# Grade projection (extract vectors only)
+vectors_only = algebra.grade_projection(A, grade=1)
+
+# Reverse (Clifford conjugate): flips sign based on grade
+A_rev = algebra.reverse(A)
+
+# Exponentiate a bivector to get a rotor
+bivector = torch.zeros(1, 8)
+bivector[0, 3] = 0.5  # rotation in e12 plane
+R = algebra.exp(bivector)
+</code></pre>
+<h2 id="4-using-layers">4. Using Layers</h2>
+<h3 id="rotorlayer-learned-geometric-rotation">RotorLayer — Learned Geometric Rotation</h3>
+<pre><code class="language-python">from layers.rotor import RotorLayer
+
+rotor = RotorLayer(algebra, channels=4)
+
+x = torch.randn(32, 4, 8)  # [Batch, Channels, Dim]
+y = rotor(x)  # Same shape, rotated
+
+# After training, inspect learned bivectors:
+print(rotor.bivector_weights)  # [4, 3] — 4 channels, 3 bivector planes
+
+# Prune small bivectors for sparsity
+n_pruned = rotor.prune_bivectors(threshold=1e-4)
+</code></pre>
+<h3 id="multirotorlayer-spectral-decomposition">MultiRotorLayer — Spectral Decomposition</h3>
+<pre><code class="language-python">from layers.multi_rotor import MultiRotorLayer
+
+multi = MultiRotorLayer(algebra, channels=4, num_rotors=8)
+
+x = torch.randn(32, 4, 8)
+y = multi(x)  # Superposition of 8 sandwich products
+
+# Get invariant features (grade norms)
+invariants = multi(x, return_invariants=True)  # [32, 4, n+1]
+</code></pre>
+<h3 id="cliffordlinear-channel-mixing">CliffordLinear — Channel Mixing</h3>
+<pre><code class="language-python">from layers.linear import CliffordLinear
+
+linear = CliffordLinear(algebra, in_channels=4, out_channels=8)
+
+x = torch.randn(32, 4, 8)
+y = linear(x)  # [32, 8, 8] — channels mixed, blades preserved
+</code></pre>
+<h3 id="cliffordlayernorm-direction-preserving-normalization">CliffordLayerNorm — Direction-Preserving Normalization</h3>
+<pre><code class="language-python">from layers.normalization import CliffordLayerNorm
+
+norm = CliffordLayerNorm(algebra, channels=4)
+
+x = torch.randn(32, 4, 8)
+y = norm(x)  # Normalized to unit magnitude, direction preserved
+</code></pre>
+<h3 id="geometricgelu-magnitude-based-activation">GeometricGELU — Magnitude-Based Activation</h3>
+<pre><code class="language-python">from functional.activation import GeometricGELU
+
+act = GeometricGELU(algebra, channels=4)
+
+x = torch.randn(32, 4, 8)
+y = act(x)  # Magnitude scaled by GELU, direction preserved
+</code></pre>
+<h3 id="bladeselector-grade-attention">BladeSelector — Grade Attention</h3>
+<pre><code class="language-python">from layers.projection import BladeSelector
+
+selector = BladeSelector(algebra, channels=1)
+
+x = torch.randn(32, 1, 8)
+y = selector(x)  # Soft per-blade gate (learned)
+</code></pre>
+<h2 id="5-composing-a-model">5. Composing a Model</h2>
+<pre><code class="language-python">import torch.nn as nn
+from layers.rotor import RotorLayer
+from layers.linear import CliffordLinear
+from layers.normalization import CliffordLayerNorm
+from functional.activation import GeometricGELU
+
+class MyGBN(nn.Module):
+    def __init__(self, algebra):
+        super().__init__()
+        self.net = nn.Sequential(
+            CliffordLinear(algebra, 1, 4),
+            CliffordLayerNorm(algebra, channels=4),
+            GeometricGELU(algebra, channels=4),
+            RotorLayer(algebra, channels=4),
+            CliffordLinear(algebra, 4, 1),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+algebra = CliffordAlgebra(p=3, q=0, device='cpu')
+model = MyGBN(algebra)
+x = torch.randn(32, 1, 8)
+y = model(x)  # [32, 1, 8]
+</code></pre>
+<h2 id="6-creating-a-task">6. Creating a Task</h2>
+<p>All tasks inherit from <code>BaseTask</code> and implement 7 methods:</p>
+<pre><code class="language-python">from tasks.base import BaseTask
+from core.algebra import CliffordAlgebra
+from functional.loss import GeometricMSELoss
+
+class MyTask(BaseTask):
+    def setup_algebra(self):
+        return CliffordAlgebra(p=3, q=0, device=self.device)
+
+    def setup_model(self):
+        return MyGBN(self.algebra)
+
+    def setup_criterion(self):
+        return GeometricMSELoss(self.algebra)
+
+    def get_data(self):
+        # Return a DataLoader or raw tensor
+        return torch.randn(100, 1, self.algebra.dim).to(self.device)
+
+    def train_step(self, data):
+        self.optimizer.zero_grad()
+        output = self.model(data)
+        loss = self.criterion(output, data)  # autoencoder
+        loss.backward()
+        self.optimizer.step()
+        return loss.item(), {&quot;Loss&quot;: loss.item()}
+
+    def evaluate(self, data):
+        output = self.model(data)
+        loss = self.criterion(output, data)
+        print(f&quot;Eval loss: {loss.item():.4f}&quot;)
+
+    def visualize(self, data):
+        pass  # Optional
+</code></pre>
+<p>Then register it in <code>main.py</code>:</p>
+<pre><code class="language-python"># In main.py task_map:
+'mytask': MyTask,
+</code></pre>
+<p>Create a config <code>conf/task/mytask.yaml</code>:</p>
+<pre><code class="language-yaml"># @package _global_
+name: &quot;mytask&quot;
+algebra:
+  p: 3
+  q: 0
+  device: &quot;cpu&quot;
+training:
+  epochs: 100
+  lr: 0.001
+  batch_size: 32
+  seed: 42
+</code></pre>
+<p>Run it:</p>
+<pre><code class="language-bash">uv run main.py task=mytask training.epochs=200
+</code></pre>
+<h2 id="7-losses">7. Losses</h2>
+<pre><code class="language-python">from functional.loss import (
+    GeometricMSELoss,    # Standard MSE on multivector coefficients
+    SubspaceLoss,        # Penalizes energy outside target blades
+    IsometryLoss,        # Enforces norm preservation
+    BivectorRegularization,  # Forces outputs to be pure bivectors
+)
+
+# SubspaceLoss: keep only vector components
+vec_indices = [1, 2, 4]  # e1, e2, e3 in Cl(3,0)
+loss_fn = SubspaceLoss(algebra, target_indices=vec_indices)
+
+# IsometryLoss: input and output should have same norm
+iso_loss = IsometryLoss(algebra)
+loss = iso_loss(output, input)
+</code></pre>
+<h2 id="8-automatic-metric-search">8. Automatic Metric Search</h2>
+<p>Don't know the right <span class="arithmatex">\((p, q, r)\)</span>? Let Versor find it:</p>
+<pre><code class="language-python">from core.search import MetricSearch
+
+data = torch.randn(100, 6)  # 6D data
+searcher = MetricSearch(device='cpu')
+best_p, best_q, best_r = searcher.search(data)
+print(f&quot;Optimal signature: Cl({best_p}, {best_q}, {best_r})&quot;)
+</code></pre>
+<p>This lifts data into a conformal algebra, trains GBN probes with biased initialization, and analyzes the learned bivector energy to classify each dimension as positive, negative, or null — returning the optimal <code>(p, q, r)</code> 3-tuple.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

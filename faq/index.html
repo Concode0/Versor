@@ -1,0 +1,1727 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../milestone/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>FAQ - Versor</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#frequently-asked-questions" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Versor" class="md-header__button md-logo" aria-label="Versor" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Versor
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              FAQ
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../philosophy/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Philosophy
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../mathematical/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Mathematics
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../innovations/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Innovations
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../milestone/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  FAQ
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Versor" class="md-nav__button md-logo" aria-label="Versor" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Versor
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mathematical/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mathematics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../innovations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Innovations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../milestone/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#general" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        General
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="General">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-is-geometric-algebra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is Geometric Algebra?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-is-this-different-from-regular-pytorch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How is this different from regular PyTorch?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-does-versor-compare-to-e3nn-and-other-geometric-dl-libraries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does Versor compare to e3nn and other geometric DL libraries?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#do-i-need-to-understand-clifford-algebra-to-use-versor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do I need to understand Clifford Algebra to use Versor?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-domains-is-versor-suited-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What domains is Versor suited for?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#setup-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup &amp; Environment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Setup &amp; Environment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-are-the-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What are the dependencies?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#does-versor-support-gpu" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does Versor support GPU?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#i-get-a-cuda-error-on-macos-cpu-only-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        I get a CUDA error on macOS / CPU-only machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-is-a-gbn-geometric-blade-network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is a GBN (Geometric Blade Network)?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-a-multivector-tensor-shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is a multivector tensor shape?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-do-i-embed-regular-vectors-into-multivectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I embed regular vectors into multivectors?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-rotorlayer-actually-learn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does RotorLayer actually learn?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-multirotorlayer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is MultiRotorLayer?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-cliffordlinear" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is CliffordLinear?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-bladeselector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is BladeSelector?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-does-geometricgelu-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does GeometricGELU work?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-many-parameters-does-a-gbn-have-compared-to-a-standard-mlp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How many parameters does a GBN have compared to a standard MLP?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#which-metric-signature-p-q-r-should-i-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which metric signature \((p, q, r)\) should I use?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-metricsearch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is MetricSearch?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-does-the-cayley-table-caching-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does the Cayley table caching work?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tasks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tasks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-tasks-are-included" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What tasks are included?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-do-i-add-a-new-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I add a new task?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-get_data-return" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does get_data() return?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-is-inference-fast-on-cpu" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why is inference fast on CPU?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-is-training-slow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why is training slow?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-lipschitz-by-construction-mean" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does "Lipschitz by construction" mean?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runtimeerror-shapes-are-not-broadcastable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RuntimeError: Shapes ... are not broadcastable
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sr-task-runs-out-of-memory-during-symbolic-translation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SR task runs out of memory during symbolic translation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lqa-task-fails-with-importerror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LQA task fails with ImportError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deap-task-cant-find-data-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DEAP task can't find data files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#md17-task-fails-with-importerror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MD17 task fails with ImportError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkpoint-loading-fails-with-pytorch-version-mismatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkpoint loading fails with PyTorch version mismatch
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#general" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        General
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="General">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-is-geometric-algebra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is Geometric Algebra?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-is-this-different-from-regular-pytorch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How is this different from regular PyTorch?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-does-versor-compare-to-e3nn-and-other-geometric-dl-libraries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does Versor compare to e3nn and other geometric DL libraries?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#do-i-need-to-understand-clifford-algebra-to-use-versor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do I need to understand Clifford Algebra to use Versor?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-domains-is-versor-suited-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What domains is Versor suited for?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#setup-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup &amp; Environment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Setup &amp; Environment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-are-the-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What are the dependencies?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#does-versor-support-gpu" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does Versor support GPU?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#i-get-a-cuda-error-on-macos-cpu-only-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        I get a CUDA error on macOS / CPU-only machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-is-a-gbn-geometric-blade-network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is a GBN (Geometric Blade Network)?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-a-multivector-tensor-shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is a multivector tensor shape?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-do-i-embed-regular-vectors-into-multivectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I embed regular vectors into multivectors?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-rotorlayer-actually-learn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does RotorLayer actually learn?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-multirotorlayer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is MultiRotorLayer?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-cliffordlinear" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is CliffordLinear?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-bladeselector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is BladeSelector?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-does-geometricgelu-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does GeometricGELU work?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-many-parameters-does-a-gbn-have-compared-to-a-standard-mlp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How many parameters does a GBN have compared to a standard MLP?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#which-metric-signature-p-q-r-should-i-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which metric signature \((p, q, r)\) should I use?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-metricsearch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is MetricSearch?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-does-the-cayley-table-caching-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does the Cayley table caching work?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tasks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tasks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-tasks-are-included" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What tasks are included?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-do-i-add-a-new-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I add a new task?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-get_data-return" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does get_data() return?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-is-inference-fast-on-cpu" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why is inference fast on CPU?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-is-training-slow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why is training slow?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-lipschitz-by-construction-mean" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does "Lipschitz by construction" mean?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runtimeerror-shapes-are-not-broadcastable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RuntimeError: Shapes ... are not broadcastable
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sr-task-runs-out-of-memory-during-symbolic-translation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SR task runs out of memory during symbolic translation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lqa-task-fails-with-importerror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LQA task fails with ImportError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deap-task-cant-find-data-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DEAP task can't find data files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#md17-task-fails-with-importerror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MD17 task fails with ImportError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkpoint-loading-fails-with-pytorch-version-mismatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkpoint loading fails with PyTorch version mismatch
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="frequently-asked-questions">Frequently Asked Questions</h1>
+<h2 id="general">General</h2>
+<h3 id="what-is-geometric-algebra">What is Geometric Algebra?</h3>
+<p>Geometric Algebra (Clifford Algebra) is a mathematical framework that unifies vectors, complex numbers, quaternions, and more into a single algebraic system. It provides a coordinate-free way to express rotations, reflections, and projections in any dimension and any metric signature.</p>
+<h3 id="how-is-this-different-from-regular-pytorch">How is this different from regular PyTorch?</h3>
+<p>Standard PyTorch layers operate on flat vectors with matrix multiplication. Versor layers operate on <strong>multivectors</strong> — structured geometric objects with scalar, vector, bivector, and higher-grade components. The key difference: <code>RotorLayer</code> performs pure rotations (isometries) that preserve manifold structure by construction, while <code>nn.Linear</code> applies unconstrained linear maps that may inadvertently stretch, shear, or deform the geometry.</p>
+<h3 id="how-does-versor-compare-to-e3nn-and-other-geometric-dl-libraries">How does Versor compare to e3nn and other geometric DL libraries?</h3>
+<p><strong>e3nn</strong> focuses on <span class="arithmatex">\(SO(3)\)</span>/<span class="arithmatex">\(O(3)\)</span> equivariance for 3D point clouds using spherical harmonics and irreducible representations. Versor takes a different approach:</p>
+<ul>
+<li><strong>Metric-agnostic</strong>: Versor works with any <span class="arithmatex">\((p, q, r)\)</span> signature — Euclidean, Minkowski, Conformal, Degenerate — using the same <code>RotorLayer</code> code. e3nn is specialized for 3D Euclidean symmetry.</li>
+<li><strong>Rotor-native</strong>: GBN layers learn rotations directly as bivector exponentials, not as Wigner-D matrices or CG tensor products.</li>
+<li><strong>Unified algebra</strong>: Scalars, vectors, bivectors, and higher-grade elements coexist in one multivector. There's no separate handling of different representation orders.</li>
+</ul>
+<p>The trade-off: e3nn has a more mature ecosystem and extensive <span class="arithmatex">\(SO(3)\)</span>-equivariant tooling. Versor is a broader paradigm (any metric, any dimension) in its alpha stage.</p>
+<h3 id="do-i-need-to-understand-clifford-algebra-to-use-versor">Do I need to understand Clifford Algebra to use Versor?</h3>
+<p>For basic usage, no. Think of it as: your data gets embedded into a richer representation (multivectors), and the network learns rotations to align it. The algebra handles the math internally. For advanced usage (custom losses, new layers), reading <code>docs/mathematical.md</code> will help.</p>
+<h3 id="what-domains-is-versor-suited-for">What domains is Versor suited for?</h3>
+<p>Any domain where data has geometric structure:</p>
+<ul>
+<li><strong>Symbolic regression</strong>: Cl(4,0) — iterative geometric unbending discovers closed-form formulas from data. Median R² = 0.9984 on Feynman equations.</li>
+<li><strong>Molecular dynamics</strong>: Cl(3,0,1) PGA — energy + force prediction with conservative constraints.</li>
+<li><strong>Logical query answering</strong>: Cl(4,1) CGA — geometric reasoning on frozen LLM embeddings with ~300K params.</li>
+<li><strong>EEG emotion classification</strong>: Cl(3,1) Minkowski — phase-amplitude representation with mother manifold alignment.</li>
+<li><strong>Any manifold-valued data</strong>: If your data lives on a manifold (and it almost always does), rotors align it without deformation.</li>
+</ul>
+<h2 id="setup-environment">Setup &amp; Environment</h2>
+<h3 id="what-are-the-dependencies">What are the dependencies?</h3>
+<p>Core: <code>torch</code>, <code>numpy</code>, <code>hydra-core</code>, <code>tqdm</code>. Everything else is optional:
+- <code>uv sync --extra viz</code> for visualization (matplotlib, seaborn, scikit-learn, plotly, imageio)
+- <code>uv sync --extra examples</code> for example tasks (transformers, scikit-learn, matplotlib)
+- <code>uv sync --extra graph</code> for molecular GNN tasks (torch-geometric)
+- <code>uv sync --extra all_tasks</code> for all task dependencies (graph, pdbbind, weather, cad)
+- <code>uv sync --extra all</code> for everything</p>
+<h3 id="does-versor-support-gpu">Does Versor support GPU?</h3>
+<p>Yes. Pass <code>device='cuda'</code> when creating the algebra:</p>
+<pre><code class="language-python">algebra = CliffordAlgebra(p=3, q=0, device='cuda')
+</code></pre>
+<p>Or via Hydra config: <code>uv run main.py task=sr algebra.device=cuda</code></p>
+<h3 id="i-get-a-cuda-error-on-macos-cpu-only-machine">I get a CUDA error on macOS / CPU-only machine</h3>
+<p>The default device in some configs may be <code>'cuda'</code>. Override it:</p>
+<pre><code class="language-bash">uv run main.py task=sr algebra.device=cpu
+</code></pre>
+<p>Or pass <code>device='cpu'</code> when creating the algebra directly.</p>
+<h2 id="architecture">Architecture</h2>
+<h3 id="what-is-a-gbn-geometric-blade-network">What is a GBN (Geometric Blade Network)?</h3>
+<p>GBN is the model architecture family built with Versor. A GBN is composed of:</p>
+<ol>
+<li><strong>CliffordLinear</strong> — channel mixing (what to rotate)</li>
+<li><strong>RotorLayer</strong> / <strong>MultiRotorLayer</strong> — geometric rotation (how to rotate)</li>
+<li><strong>CliffordLayerNorm</strong> — magnitude normalization (preserves direction)</li>
+<li><strong>GeometricGELU</strong> — non-linear activation (preserves direction)</li>
+<li><strong>BladeSelector</strong> — soft attention over basis blades (what to keep)</li>
+</ol>
+<p>Versor provides several GBN variants: <code>SRGBN</code> (symbolic regression), <code>MD17ForceNet</code> (molecular dynamics), <code>GLRNet</code> (logical query answering), and <code>EEGNet</code> (emotion classification).</p>
+<h3 id="what-is-a-multivector-tensor-shape">What is a multivector tensor shape?</h3>
+<p><code>[Batch, Channels, 2^n]</code> where <span class="arithmatex">\(n = p + q + r\)</span>. For <span class="arithmatex">\(Cl(3,0)\)</span>: <code>[B, C, 8]</code>. For <span class="arithmatex">\(Cl(4,1)\)</span>: <code>[B, C, 32]</code>.</p>
+<h3 id="how-do-i-embed-regular-vectors-into-multivectors">How do I embed regular vectors into multivectors?</h3>
+<p>Use <code>algebra.embed_vector()</code>:</p>
+<pre><code class="language-python">vectors = torch.randn(32, 3)      # [Batch, n]
+mv = algebra.embed_vector(vectors)  # [Batch, 2^n]
+mv = mv.unsqueeze(1)                # [Batch, 1, 2^n] for layers
+</code></pre>
+<h3 id="what-does-rotorlayer-actually-learn">What does RotorLayer actually learn?</h3>
+<p>It learns bivector weights <span class="arithmatex">\(B\)</span> — one scalar per rotation plane. In <span class="arithmatex">\(Cl(3,0)\)</span>, there are 3 planes (<span class="arithmatex">\(e_{12}, e_{13}, e_{23}\)</span>), so each channel learns 3 parameters. The rotor <span class="arithmatex">\(R = \exp(-B/2)\)</span> is computed from these weights, and the sandwich product <span class="arithmatex">\(Rx\tilde{R}\)</span> is applied.</p>
+<h3 id="what-is-multirotorlayer">What is MultiRotorLayer?</h3>
+<p>A single rotor rotates in one plane. <code>MultiRotorLayer</code> uses <span class="arithmatex">\(K\)</span> rotors in parallel with learned mixing weights. Think of it as multi-head attention but for geometric rotations — each "head" rotates in a different plane, and the outputs are combined by weighted superposition.</p>
+<h3 id="what-is-cliffordlinear">What is CliffordLinear?</h3>
+<p>Channel mixing via scalar weights — essentially <code>nn.Linear</code> applied across the channel dimension without mixing blade components. It's the only non-geometric layer: it can scale channels independently but doesn't perform geometric products. Replacing it with pure rotor compositions is on the roadmap (see <code>docs/milestone.md</code>). The <code>RotorGadget</code> backend (<code>CliffordLinear(algebra, in_ch, out_ch, backend='rotor')</code>) already achieves ~63% parameter reduction via rotor pairs.</p>
+<h3 id="what-is-bladeselector">What is BladeSelector?</h3>
+<p>A soft gate over basis blades. Each blade gets a learned sigmoid weight. This lets the network suppress noise in unwanted grades (e.g., keep only vectors, suppress bivectors).</p>
+<h3 id="how-does-geometricgelu-work">How does GeometricGELU work?</h3>
+<p>It computes <code>x * GELU(|x| + bias) / |x|</code>. The magnitude is scaled non-linearly via GELU, but the <strong>direction</strong> (the unit multivector) is preserved. This ensures the activation doesn't rotate the data — only the RotorLayer does that.</p>
+<h3 id="how-many-parameters-does-a-gbn-have-compared-to-a-standard-mlp">How many parameters does a GBN have compared to a standard MLP?</h3>
+<p>Significantly fewer. A RotorLayer in <span class="arithmatex">\(Cl(3,0)\)</span> with <span class="arithmatex">\(C\)</span> channels learns <span class="arithmatex">\(C \times 3\)</span> bivector parameters (one per rotation plane). A standard <code>nn.Linear</code> mapping <span class="arithmatex">\(C\)</span> features would need <span class="arithmatex">\(C^2\)</span> parameters. Rotors parameterize only the geometrically meaningful degrees of freedom.</p>
+<h3 id="which-metric-signature-p-q-r-should-i-use">Which metric signature <span class="arithmatex">\((p, q, r)\)</span> should I use?</h3>
+<ul>
+<li><strong><span class="arithmatex">\(Cl(3,0)\)</span></strong> — 3D spatial data (molecules, point clouds, robotics)</li>
+<li><strong><span class="arithmatex">\(Cl(3,0,1)\)</span></strong> — PGA: SE(3) rigid-body motions (molecular dynamics with translation)</li>
+<li><strong><span class="arithmatex">\(Cl(3,1)\)</span></strong> — Minkowski: spacetime or phase-amplitude data (EEG, physics)</li>
+<li><strong><span class="arithmatex">\(Cl(4,0)\)</span> to <span class="arithmatex">\(Cl(6,0)\)</span></strong> — Higher-dimensional feature alignment (symbolic regression, embedding spaces)</li>
+<li><strong><span class="arithmatex">\(Cl(4,1)\)</span></strong> — Conformal: translations become rotations (logical reasoning, CAD)</li>
+<li><strong>Not sure?</strong> Use <code>MetricSearch</code> to discover the optimal signature for your dataset.</li>
+</ul>
+<h3 id="what-is-metricsearch">What is MetricSearch?</h3>
+<p>It lifts data into a conformal algebra <code>Cl(X+1, 1)</code>, trains GBN probes with biased initialization (euclidean, minkowski, projective), then analyzes the learned bivector energy distribution to classify each base vector as elliptic, hyperbolic, or null — returning an optimal <code>(p, q, r)</code> 3-tuple. See <code>core/search.py</code>.</p>
+<h3 id="how-does-the-cayley-table-caching-work">How does the Cayley table caching work?</h3>
+<p><code>CliffordAlgebra</code> caches multiplication tables by <code>(p, q, r, device)</code>. The first instantiation for a given signature computes the table; subsequent instantiations reuse it. This means creating multiple layers with the same algebra is free.</p>
+<h2 id="tasks">Tasks</h2>
+<h3 id="what-tasks-are-included">What tasks are included?</h3>
+<p><strong>Main tasks</strong> (via <code>main.py</code>):
+- <code>sr</code> — Symbolic regression via iterative geometric unbending (PMLB datasets)
+- <code>md17</code> — Molecular dynamics: energy + force prediction (requires <code>--extra graph</code>)
+- <code>lqa</code> — Logical query answering with geometric reasoning probes (requires <code>--extra examples</code>)
+- <code>deap_eeg</code> — EEG emotion classification with mother manifold alignment</p>
+<p><strong>Example tasks</strong> (via <code>examples/main.py</code>):
+- <code>manifold</code> — Flatten a figure-8 manifold
+- <code>hyperbolic</code> — Reverse a Lorentz boost in <span class="arithmatex">\(Cl(1,1)\)</span>
+- <code>sanity</code> — Identity learning (algebra correctness check)</p>
+<h3 id="how-do-i-add-a-new-task">How do I add a new task?</h3>
+<ol>
+<li>Create <code>tasks/mytask.py</code> inheriting from <code>BaseTask</code></li>
+<li>Implement: <code>setup_algebra</code>, <code>setup_model</code>, <code>setup_criterion</code>, <code>get_data</code>, <code>train_step</code>, <code>evaluate</code>, <code>visualize</code></li>
+<li>Create <code>conf/task/mytask.yaml</code> with algebra and training config</li>
+<li>Add to <code>task_map</code> in <code>main.py</code></li>
+<li>Run: <code>uv run main.py task=mytask</code></li>
+</ol>
+<p>See <code>docs/tutorial.md</code> for a complete example.</p>
+<h3 id="what-does-get_data-return">What does <code>get_data()</code> return?</h3>
+<p>Either a <code>DataLoader</code> (for batched training) or a raw tensor (for in-memory training). The <code>BaseTask.run()</code> method auto-detects which and handles both.</p>
+<h2 id="performance">Performance</h2>
+<h3 id="why-is-inference-fast-on-cpu">Why is inference fast on CPU?</h3>
+<p>GBN's computational profile differs fundamentally from standard deep learning. The core operation (rotor sandwich product in <span class="arithmatex">\(Cl(3,0)\)</span>) is only <span class="arithmatex">\(8 \times 8 = 64\)</span> multiply-accumulates — far below the threshold where GPU parallelism pays off. Additionally, GBN involves heavy branching (Cayley table lookups, grade-conditional projections) that causes GPU warp divergence. High-IPC CPUs with large caches (Apple Silicon, modern x86) handle these small, branchy, memory-bound workloads more efficiently. See <code>docs/milestone.md</code> for detailed analysis.</p>
+<h3 id="why-is-training-slow">Why is training slow?</h3>
+<p>The geometric product has complexity <span class="arithmatex">\(O(2^{2n})\)</span> — it's a full bilinear product over all basis blade pairs. For <span class="arithmatex">\(Cl(3,0)\)</span> this is <span class="arithmatex">\(8 \times 8 = 64\)</span> operations per product. For <span class="arithmatex">\(Cl(6,0)\)</span> it's <span class="arithmatex">\(64 \times 64 = 4096\)</span>. Strategies to mitigate:
+- Use <code>MultiRotorLayer</code> instead of general geometric products (reduces to <span class="arithmatex">\(O(K \cdot n^2)\)</span>)
+- Use <code>prune_bivectors()</code> to zero out unused rotation planes
+- Prefer smaller signatures when possible
+- Use GPU for batch training (<code>algebra.device='cuda'</code>)</p>
+<h3 id="what-does-lipschitz-by-construction-mean">What does "Lipschitz by construction" mean?</h3>
+<p>The rotor sandwich product <span class="arithmatex">\(Rx\tilde{R}\)</span> is an isometry — it preserves norms exactly (<span class="arithmatex">\(\|x'\| = \|x\|\)</span>), giving a Lipschitz constant of exactly 1. Standard networks must use spectral normalization or gradient penalties to approximate this property. In a GBN, it's guaranteed by the algebra.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="runtimeerror-shapes-are-not-broadcastable"><code>RuntimeError: Shapes ... are not broadcastable</code></h3>
+<p>Check your tensor shapes. Multivectors should be <code>[Batch, Channels, 2^n]</code>. Common mistakes:
+- Missing channel dimension (use <code>x.unsqueeze(1)</code>)
+- Wrong algebra dimension (check <code>algebra.dim</code>)</p>
+<h3 id="sr-task-runs-out-of-memory-during-symbolic-translation">SR task runs out of memory during symbolic translation</h3>
+<p>The symbolic trace through the model can produce large sympy expressions. Solutions:
+- Reduce the number of channels in the model
+- The translator automatically caps symbolic channels at 4 (<code>MAX_SYM_CHANNELS</code>)
+- Use <code>translate()</code> (indirect) instead of <code>translate_direct()</code> for simpler expressions</p>
+<h3 id="lqa-task-fails-with-importerror">LQA task fails with ImportError</h3>
+<p>This task requires optional dependencies (<code>transformers</code>, <code>sentence-transformers</code>, <code>datasets</code>). Install them:</p>
+<pre><code class="language-bash">uv sync --extra examples
+</code></pre>
+<h3 id="deap-task-cant-find-data-files">DEAP task can't find data files</h3>
+<p>The DEAP dataset requires manual download from the official source. Place preprocessed <code>.dat</code> files in <code>data/DEAP/data_preprocessed_python/</code>. See <code>docs/tasks/deap_eeg.md</code> for details.</p>
+<h3 id="md17-task-fails-with-importerror">MD17 task fails with ImportError</h3>
+<p>This task requires <code>torch-geometric</code>. Install it:</p>
+<pre><code class="language-bash">uv sync --extra graph
+</code></pre>
+<h3 id="checkpoint-loading-fails-with-pytorch-version-mismatch">Checkpoint loading fails with PyTorch version mismatch</h3>
+<p>Versor uses <code>weights_only=False</code> with a fallback for older PyTorch versions. If you still get errors, ensure your PyTorch version is &gt;= 2.0.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

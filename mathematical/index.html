@@ -1,0 +1,1606 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../philosophy/">
+      
+      
+        <link rel="next" href="../innovations/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>Mathematics - Versor</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mathematical-foundations" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Versor" class="md-header__button md-logo" aria-label="Versor" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Versor
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Mathematics
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../philosophy/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Philosophy
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Mathematics
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../innovations/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Innovations
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../milestone/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../faq/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  FAQ
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Versor" class="md-nav__button md-logo" aria-label="Versor" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Versor
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mathematics
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mathematics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-clifford-algebra-clp-q-r" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Clifford Algebra \(Cl(p, q, r)\)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Clifford Algebra \(Cl(p, q, r)\)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basis-blades" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basis Blades
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#binary-indexing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Binary Indexing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-geometric-product" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The Geometric Product
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. The Geometric Product">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#decomposition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decomposition
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-rotors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Rotors
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Rotors">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#generating-rotors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generating Rotors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-sandwich-product" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Sandwich Product
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parameter-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter Count
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-metric-signatures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Metric Signatures
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Metric Signatures">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#euclidean-clp-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Euclidean \(Cl(p, 0)\)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#minkowski-clp-q" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minkowski \(Cl(p, q)\)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#conformal-cln1-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conformal \(Cl(n+1, 1)\)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-grade-projection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Grade Projection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-exponentiation-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Exponentiation Methods
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Exponentiation Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#closed-form-default-for-bivectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Closed-Form (Default for Bivectors)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decomposed-exponential-non-simple-bivectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decomposed Exponential (Non-Simple Bivectors)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scaling-and-squaring-taylor-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scaling and Squaring (Taylor Fallback)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-multi-rotor-superposition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Multi-Rotor Superposition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-justification-of-the-ok-cdot-n2-approximation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Justification of the \(O(K \cdot n^2)\) Approximation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Justification of the \(O(K \cdot n^2)\) Approximation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#geometric-spectral-decomposition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Geometric Spectral Decomposition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cartan-dieudonne-theorem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cartan-Dieudonné Theorem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#geometric-sparsity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Geometric Sparsity
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-the-power-of-non-orthogonal-rotors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. The Power of Non-Orthogonal Rotors
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. The Power of Non-Orthogonal Rotors">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#geometric-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Geometric Filtering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shared-backbone-effect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared Backbone Effect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redundancy-for-robustness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redundancy for Robustness
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-lipschitz-continuity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Lipschitz Continuity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Lipschitz Continuity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-isometric-advantage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Isometric Advantage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../innovations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Innovations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../milestone/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-clifford-algebra-clp-q-r" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Clifford Algebra \(Cl(p, q, r)\)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Clifford Algebra \(Cl(p, q, r)\)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basis-blades" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basis Blades
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#binary-indexing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Binary Indexing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-geometric-product" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The Geometric Product
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. The Geometric Product">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#decomposition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decomposition
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-rotors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Rotors
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Rotors">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#generating-rotors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generating Rotors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-sandwich-product" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Sandwich Product
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parameter-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter Count
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-metric-signatures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Metric Signatures
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Metric Signatures">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#euclidean-clp-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Euclidean \(Cl(p, 0)\)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#minkowski-clp-q" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minkowski \(Cl(p, q)\)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#conformal-cln1-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conformal \(Cl(n+1, 1)\)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-grade-projection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Grade Projection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-exponentiation-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Exponentiation Methods
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Exponentiation Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#closed-form-default-for-bivectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Closed-Form (Default for Bivectors)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decomposed-exponential-non-simple-bivectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decomposed Exponential (Non-Simple Bivectors)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scaling-and-squaring-taylor-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scaling and Squaring (Taylor Fallback)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-multi-rotor-superposition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Multi-Rotor Superposition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-justification-of-the-ok-cdot-n2-approximation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Justification of the \(O(K \cdot n^2)\) Approximation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Justification of the \(O(K \cdot n^2)\) Approximation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#geometric-spectral-decomposition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Geometric Spectral Decomposition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cartan-dieudonne-theorem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cartan-Dieudonné Theorem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#geometric-sparsity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Geometric Sparsity
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-the-power-of-non-orthogonal-rotors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. The Power of Non-Orthogonal Rotors
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. The Power of Non-Orthogonal Rotors">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#geometric-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Geometric Filtering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shared-backbone-effect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared Backbone Effect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redundancy-for-robustness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redundancy for Robustness
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-lipschitz-continuity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Lipschitz Continuity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Lipschitz Continuity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-isometric-advantage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Isometric Advantage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="mathematical-foundations">Mathematical Foundations</h1>
+<p>A rigorous introduction to the mathematics behind Versor.</p>
+<h2 id="1-clifford-algebra-clp-q-r">1. Clifford Algebra <span class="arithmatex">\(Cl(p, q, r)\)</span></h2>
+<p>A Clifford Algebra is generated by <span class="arithmatex">\(n = p + q + r\)</span> basis vectors {e_1, <span class="arithmatex">\(\ldots\)</span> e_n} satisfying:</p>
+<div class="arithmatex">\[e_i e_j + e_j e_i = 2 g_{ij}\]</div>
+<p>where <span class="arithmatex">\(g\)</span> is the metric tensor with signature <span class="arithmatex">\((p, q, r)\)</span>:</p>
+<div class="arithmatex">\[e_i^2 = \begin{cases}
++1 &amp; i \leq p \\
+-1 &amp; p &lt; i \leq p + q \\
+0 &amp; i &gt; p + q
+\end{cases}\]</div>
+<p>The <span class="arithmatex">\(r\)</span> degenerate (null) dimensions satisfy <span class="arithmatex">\(e_i^2 = 0\)</span>. When a null basis vector appears in a product with itself, the entire term vanishes. This is used for Projective Geometric Algebra (PGA), where translations become rotors in null directions.</p>
+<p>For distinct basis vectors: <span class="arithmatex">\(e_i e_j = -e_j e_i\)</span> (they anti-commute).</p>
+<h3 id="basis-blades">Basis Blades</h3>
+<p>Products of distinct basis vectors form <strong>basis blades</strong>. In <span class="arithmatex">\(n\)</span> dimensions there are <span class="arithmatex">\(2^n\)</span> basis blades, one for each subset of {e_1, <span class="arithmatex">\(\ldots\)</span> e_n}$:</p>
+<table>
+<thead>
+<tr>
+<th>Grade</th>
+<th>Count</th>
+<th>Example (<span class="arithmatex">\(n=3\)</span>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0 (scalar)</td>
+<td><span class="arithmatex">\(\binom{n}{0} = 1\)</span></td>
+<td><span class="arithmatex">\(1\)</span></td>
+</tr>
+<tr>
+<td>1 (vector)</td>
+<td><span class="arithmatex">\(\binom{n}{1} = n\)</span></td>
+<td><span class="arithmatex">\(e_1, e_2, e_3\)</span></td>
+</tr>
+<tr>
+<td>2 (bivector)</td>
+<td><span class="arithmatex">\(\binom{n}{2}\)</span></td>
+<td><span class="arithmatex">\(e_{12}, e_{13}, e_{23}\)</span></td>
+</tr>
+<tr>
+<td>3 (trivector)</td>
+<td><span class="arithmatex">\(\binom{n}{3}\)</span></td>
+<td><span class="arithmatex">\(e_{123}\)</span></td>
+</tr>
+<tr>
+<td><span class="arithmatex">\(k\)</span></td>
+<td><span class="arithmatex">\(\binom{n}{k}\)</span></td>
+<td><span class="arithmatex">\(k\)</span>-blade</td>
+</tr>
+</tbody>
+</table>
+<p>A <strong>multivector</strong> is a general element: <span class="arithmatex">\(M = \sum_{I} m_I e_I\)</span> where <span class="arithmatex">\(I\)</span> ranges over all subsets.</p>
+<h3 id="binary-indexing">Binary Indexing</h3>
+<p>Versor represents basis blades by their binary index. For <span class="arithmatex">\(e_{i_1 \cdots i_k}\)</span>, the index is <span class="arithmatex">\(2^{i_1-1} + \cdots + 2^{i_k-1}\)</span>:</p>
+<ul>
+<li><span class="arithmatex">\(1 \to 0\)</span> (binary <code>000</code>)</li>
+<li><span class="arithmatex">\(e_1 \to 1\)</span> (binary <code>001</code>)</li>
+<li><span class="arithmatex">\(e_2 \to 2\)</span> (binary <code>010</code>)</li>
+<li><span class="arithmatex">\(e_{12} \to 3\)</span> (binary <code>011</code>)</li>
+<li><span class="arithmatex">\(e_3 \to 4\)</span> (binary <code>100</code>)</li>
+</ul>
+<p>The <strong>grade</strong> of a blade equals the popcount (number of set bits) of its index.</p>
+<h2 id="2-the-geometric-product">2. The Geometric Product</h2>
+<p>The fundamental operation. For two multivectors <span class="arithmatex">\(A\)</span> and <span class="arithmatex">\(B\)</span>:</p>
+<div class="arithmatex">\[(AB)_k = \sum_{i \oplus j = k} \sigma(i, j) \cdot A_i \cdot B_j\]</div>
+<p>where <span class="arithmatex">\(i \oplus j\)</span> is XOR (the result blade index), and <span class="arithmatex">\(\sigma(i, j)\)</span> is the sign factor combining:</p>
+<ol>
+<li>
+<p><strong>Commutation sign</strong>: Number of transpositions needed to reorder basis vectors. If basis vector <span class="arithmatex">\(e_a\)</span> in <span class="arithmatex">\(A\)</span> must pass <span class="arithmatex">\(m\)</span> basis vectors in <span class="arithmatex">\(B\)</span> that have lower index, the sign contribution is <span class="arithmatex">\((-1)^m\)</span>.</p>
+</li>
+<li>
+<p><strong>Metric sign</strong>: For each shared basis vector <span class="arithmatex">\(e_k\)</span> (where bit <span class="arithmatex">\(k\)</span> is set in both <span class="arithmatex">\(i\)</span> and <span class="arithmatex">\(j\)</span>), if <span class="arithmatex">\(k &gt; p\)</span> then <span class="arithmatex">\(e_k^2 = -1\)</span>, contributing a factor of <span class="arithmatex">\(-1\)</span>.</p>
+</li>
+</ol>
+<p>Versor precomputes these signs in the <strong>Cayley table</strong> (a <span class="arithmatex">\(2^n \times 2^n\)</span> lookup of indices and signs).</p>
+<h3 id="decomposition">Decomposition</h3>
+<p>The geometric product decomposes into:</p>
+<div class="arithmatex">\[ab = a \cdot b + a \wedge b\]</div>
+<ul>
+<li><strong>Inner product</strong> <span class="arithmatex">\(a \cdot b\)</span>: lowers grade (projection). Symmetric for vectors.</li>
+<li><strong>Outer product</strong> <span class="arithmatex">\(a \wedge b\)</span>: raises grade (area/volume). Anti-symmetric for vectors.</li>
+</ul>
+<h2 id="3-rotors">3. Rotors</h2>
+<p>A <strong>rotor</strong> is an even-grade multivector satisfying <span class="arithmatex">\(R\tilde{R} = 1\)</span> (unit versor condition). The <strong>reversion</strong> <span class="arithmatex">\(\tilde{R}\)</span> reverses the order of basis vectors in each blade:</p>
+<div class="arithmatex">\[\widetilde{e_{i_1 \cdots i_k}} = e_{i_k \cdots i_1} = (-1)^{k(k-1)/2} e_{i_1 \cdots i_k}\]</div>
+<h3 id="generating-rotors">Generating Rotors</h3>
+<p>A rotor for rotation by angle <span class="arithmatex">\(\theta\)</span> in the plane defined by unit bivector <span class="arithmatex">\(\hat{B}\)</span> is:</p>
+<div class="arithmatex">\[R = \exp(-\hat{B}\theta/2) = \cos(\theta/2) - \hat{B}\sin(\theta/2)\]</div>
+<p>In Versor, the <code>RotorLayer</code> learns bivector weights <span class="arithmatex">\(B\)</span> (not necessarily unit) and computes <span class="arithmatex">\(R = \exp(-B/2)\)</span> using a signature-aware closed-form formula:</p>
+<ul>
+<li><strong>Elliptic</strong> (<span class="arithmatex">\(B^2 &lt; 0\)</span>, Euclidean planes): <span class="arithmatex">\(\exp(B) = \cos\theta + \frac{\sin\theta}{\theta} B\)</span> where <span class="arithmatex">\(\theta = \sqrt{-B^2}\)</span></li>
+<li><strong>Hyperbolic</strong> (<span class="arithmatex">\(B^2 &gt; 0\)</span>, Minkowski planes): <span class="arithmatex">\(\exp(B) = \cosh\theta + \frac{\sinh\theta}{\theta} B\)</span> where <span class="arithmatex">\(\theta = \sqrt{B^2}\)</span></li>
+<li><strong>Parabolic</strong> (<span class="arithmatex">\(B^2 \approx 0\)</span>, null planes): <span class="arithmatex">\(\exp(B) \approx 1 + B\)</span></li>
+</ul>
+<p>This is exact for simple bivectors (all bivectors in <span class="arithmatex">\(n \leq 3\)</span>). For non-simple bivectors (<span class="arithmatex">\(n \geq 4\)</span>), Versor provides <code>exp_decomposed()</code> which decomposes via GA power iteration into simple components, exponentiates each in closed form, and composes via geometric product. A Taylor series fallback (<code>_exp_taylor</code>) is retained for edge cases.</p>
+<h3 id="the-sandwich-product">The Sandwich Product</h3>
+<p>A rotor transforms a multivector via the <strong>sandwich product</strong>:</p>
+<div class="arithmatex">\[x' = R x \tilde{R}\]</div>
+<p>Properties:
+- <strong>Grade-preserving</strong>: If <span class="arithmatex">\(x\)</span> is grade-<span class="arithmatex">\(k\)</span>, so is <span class="arithmatex">\(x'\)</span>
+- <strong>Isometric</strong>: <span class="arithmatex">\(|x'| = |x|\)</span> (norm is preserved)
+- <strong>Composable</strong>: <span class="arithmatex">\(R_2(R_1 x \tilde{R}_1)\tilde{R}_2 = (R_2 R_1) x \widetilde{(R_2 R_1)}\)</span>
+- <strong>Smooth</strong>: Continuous in the bivector parameters</p>
+<h3 id="parameter-count">Parameter Count</h3>
+<p>A rotation in <span class="arithmatex">\(n\)</span> dimensions has <span class="arithmatex">\(\binom{n}{2}\)</span> degrees of freedom (one per bivector basis blade). Compare:
+- Rotation matrix: <span class="arithmatex">\(n^2\)</span> parameters (<span class="arithmatex">\(n(n-1)/2\)</span> independent)
+- Rotor: <span class="arithmatex">\(\binom{n}{2}\)</span> parameters (all independent, no redundancy)</p>
+<h2 id="4-metric-signatures">4. Metric Signatures</h2>
+<h3 id="euclidean-clp-0">Euclidean <span class="arithmatex">\(Cl(p, 0)\)</span></h3>
+<p>All basis vectors square to <span class="arithmatex">\(+1\)</span>. Rotors perform standard rotations.</p>
+<ul>
+<li><span class="arithmatex">\(Cl(3, 0)\)</span>: 8 blades, 3 bivectors. Standard 3D rotations (molecular geometry, point clouds).</li>
+<li><span class="arithmatex">\(Cl(6, 0)\)</span>: 64 blades, 15 bivectors. High-dimensional embedding rotations.</li>
+</ul>
+<h3 id="minkowski-clp-q">Minkowski <span class="arithmatex">\(Cl(p, q)\)</span></h3>
+<p>Mixed signature. Basis vectors <span class="arithmatex">\(e_1, \ldots, e_p\)</span> square to <span class="arithmatex">\(+1\)</span>; <span class="arithmatex">\(e_{p+1}, \ldots, e_n\)</span> square to <span class="arithmatex">\(-1\)</span>.</p>
+<ul>
+<li><span class="arithmatex">\(Cl(1, 1)\)</span>: 4 blades, 1 bivector. The bivector <span class="arithmatex">\(e_{12}\)</span> generates <strong>Lorentz boosts</strong> (hyperbolic rotations) instead of circular rotations.</li>
+<li><span class="arithmatex">\(Cl(1, 3)\)</span>: Spacetime algebra. Rotors encode both spatial rotations and Lorentz boosts.</li>
+</ul>
+<h3 id="conformal-cln1-1">Conformal <span class="arithmatex">\(Cl(n+1, 1)\)</span></h3>
+<p>Adds two extra dimensions to represent the point at infinity (<span class="arithmatex">\(e_\infty\)</span>) and the origin (<span class="arithmatex">\(e_o\)</span>). In this representation, translations, rotations, and dilations are all rotors.</p>
+<ul>
+<li><span class="arithmatex">\(Cl(4, 1)\)</span>: Conformal model of 3D Euclidean space.</li>
+</ul>
+<h2 id="5-grade-projection">5. Grade Projection</h2>
+<p>The grade-<span class="arithmatex">\(k\)</span> projection of a multivector extracts only components with exactly <span class="arithmatex">\(k\)</span> basis vectors:</p>
+<div class="arithmatex">\[\langle M \rangle_k = \sum_{\text{popcount}(I)=k} m_I e_I\]</div>
+<p>Versor implements this by masking: for each index <span class="arithmatex">\(I\)</span>, check if <code>popcount(I) == k</code>.</p>
+<h2 id="6-exponentiation-methods">6. Exponentiation Methods</h2>
+<h3 id="closed-form-default-for-bivectors">Closed-Form (Default for Bivectors)</h3>
+<p>For simple bivectors, Versor uses the signature-aware closed-form described in Section 3. This requires zero geometric products and is exact.</p>
+<h3 id="decomposed-exponential-non-simple-bivectors">Decomposed Exponential (Non-Simple Bivectors)</h3>
+<p>For <span class="arithmatex">\(n \geq 4\)</span>, bivectors may be non-simple (cannot be written as a single wedge product <span class="arithmatex">\(u \wedge v\)</span>). Versor decomposes them via GA power iteration (Pence et al. 2025):</p>
+<ol>
+<li>Extract the dominant simple component <span class="arithmatex">\(B_1\)</span> via right-contraction power iteration</li>
+<li>Subtract: <span class="arithmatex">\(B_{\text{residual}} = B - B_1\)</span></li>
+<li>Repeat until residual is negligible</li>
+<li>Exponentiate each simple component in closed form</li>
+<li>Compose via geometric product: <span class="arithmatex">\(\exp(B) \approx \exp(B_1) \cdot \exp(B_2) \cdots\)</span></li>
+</ol>
+<h3 id="scaling-and-squaring-taylor-fallback">Scaling and Squaring (Taylor Fallback)</h3>
+<p>Computing <span class="arithmatex">\(\exp(A)\)</span> directly via Taylor series can be numerically unstable for large <span class="arithmatex">\(\|A\|\)</span>. The fallback uses <strong>scaling and squaring</strong>:</p>
+<ol>
+<li>Find <span class="arithmatex">\(k\)</span> such that <span class="arithmatex">\(\|A\| / 2^k \leq 1\)</span></li>
+<li>Compute <span class="arithmatex">\(E = \exp(A / 2^k)\)</span> via Taylor series (order 8)</li>
+<li>Square <span class="arithmatex">\(k\)</span> times: <span class="arithmatex">\(\exp(A) = E^{2^k}\)</span></li>
+</ol>
+<p>This ensures the Taylor series converges quickly on a small argument, then recovers the full result through repeated squaring.</p>
+<h2 id="7-multi-rotor-superposition">7. Multi-Rotor Superposition</h2>
+<p>A single rotor rotates in one plane. The <code>MultiRotorLayer</code> uses <span class="arithmatex">\(K\)</span> rotors in parallel:</p>
+<div class="arithmatex">\[x' = \sum_{k=1}^{K} w_k R_k x \tilde{R}_k\]</div>
+<p>where <span class="arithmatex">\(w_k\)</span> are learned mixing weights and each <span class="arithmatex">\(R_k = \exp(-B_k/2)\)</span> rotates in a different plane. This is a <strong>spectral decomposition</strong> of the transformation: complex geometric operations are expressed as weighted sums of simple rotations.</p>
+<p>Complexity: <span class="arithmatex">\(O(K \cdot n^2)\)</span> bivector parameters instead of <span class="arithmatex">\(O(2^n)\)</span> for a general multivector transformation.</p>
+<h2 id="8-justification-of-the-ok-cdot-n2-approximation">8. Justification of the <span class="arithmatex">\(O(K \cdot n^2)\)</span> Approximation</h2>
+<p>The complexity reduction from <span class="arithmatex">\(O(2^n)\)</span> (for a full linear map on the multivector space) to <span class="arithmatex">\(O(K \cdot n^2)\)</span> (for <span class="arithmatex">\(K\)</span> rotors) is not merely an algorithmic optimization; it is rooted in deep geometric principles.</p>
+<h3 id="geometric-spectral-decomposition">Geometric Spectral Decomposition</h3>
+<p>Just as any signal can be decomposed into a sum of sinusoids (Fourier Transform), we posit that any <strong>geometrically meaningful</strong> transformation can be approximated by a weighted sum of simple rotations (rotors).
+- A single rotor <span class="arithmatex">\(R = \exp(-B/2)\)</span> represents an atomic geometric operation.
+- The weighted sum <span class="arithmatex">\(\sum w_k R_k x \tilde{R}_k\)</span> effectively constructs a "Fourier series" on the group of rotations (Spin group).
+- By limiting <span class="arithmatex">\(K\)</span>, we regularize the model to learn only the most significant geometric features, filtering out high-frequency noise that would require a dense <span class="arithmatex">\(2^n \times 2^n\)</span> matrix to represent.</p>
+<h3 id="cartan-dieudonne-theorem">Cartan-Dieudonné Theorem</h3>
+<p>The <strong>Cartan-Dieudonné Theorem</strong> states that every orthogonal transformation in an <span class="arithmatex">\(n\)</span>-dimensional space can be composed of at most <span class="arithmatex">\(n\)</span> reflections. Since a rotor is the product of two reflections, any rotation can be decomposed into a sequence of simple rotors.
+- While the theorem applies to composition (<span class="arithmatex">\(R = R_k \dots R_1\)</span>), our additive model <span class="arithmatex">\(\sum w_k (R_k x \tilde{R}_k)\)</span> can be seen as a linearized approximation or an ensemble of these fundamental paths.
+- This theoretical guarantee suggests that the space of rotors is "rich enough" to cover the manifold of interest without needing the full linear group <span class="arithmatex">\(GL(2^n)\)</span>.</p>
+<h3 id="geometric-sparsity">Geometric Sparsity</h3>
+<p>Real-world data is <strong>geometrically sparse</strong>.
+- In a high-dimensional feature space (e.g., <span class="arithmatex">\(n=32 \to 2^{32}\)</span> dimensions), useful transformations rarely involve arbitrary mixings of all <span class="arithmatex">\(2^{32}\)</span> components.
+- Meaningful operations tend to be local in "grade-space" (e.g., rotating vectors to vectors, bivectors to bivectors) and local in "basis-space" (involving only a few related planes).
+- The <span class="arithmatex">\(O(K \cdot n^2)\)</span> parameterization enforces this sparsity. It forces the network to find the specific 2D planes (bivectors) where the action happens, rather than learning a dense matrix that statistically correlates everything with everything.</p>
+<h2 id="9-the-power-of-non-orthogonal-rotors">9. The Power of Non-Orthogonal Rotors</h2>
+<p>While the Cartan-Dieudonné theorem guarantees decomposition into a minimal set of orthogonal planes, Versor intentionally breaks this rigidity. We move from a minimal Basis to an overcomplete Frame</p>
+<h3 id="geometric-filtering">Geometric Filtering</h3>
+<p>When multiple rotors operate in overlapping, non-orthogonal planes, they create complex <strong>geometric interference patterns</strong>. These patterns act as band-pass filters for manifold curvature, effectively pruning non-geometric noise. The network learns to "tune" these interferences to resonate only with the true geometric structure of the data, leading to a much cleaner and more representative latent space.</p>
+<h3 id="shared-backbone-effect">Shared Backbone Effect</h3>
+<p>Non-orthogonal planes form an <strong>overcomplete geometric frame</strong>. This redundancy allows different feature channels to "share" the same latent geometric features, acting as a shared backbone. Much like multi-task learning, this forced sharing regularizes the model and allows it to generalize geometric truths across disparate parts of the input space.</p>
+<h3 id="redundancy-for-robustness">Redundancy for Robustness</h3>
+<p>By moving from rigid orthogonal bases to flexible, overcomplete non-orthogonal frames, Versor achieves significantly higher <strong>resilience against data perturbations</strong>. The redundancy in the frame means that if one part of the input is noisy or corrupted, the remaining overlapping rotors can still reconstruct the underlying geometry. Furthermore, this overparameterization (in terms of planes, not just raw weights) leads to smoother gradient flows during training, as the optimizer has multiple redundant geometric paths to reach the same transformation.</p>
+<h2 id="10-lipschitz-continuity">10. Lipschitz Continuity</h2>
+<p>A function <span class="arithmatex">\(f: X \to Y\)</span> is <strong>Lipschitz continuous</strong> with constant <span class="arithmatex">\(K\)</span> if:</p>
+<div class="arithmatex">\[d_Y(f(x_1), f(x_2)) \leq K d_X(x_1, x_2)\]</div>
+<p>for all <span class="arithmatex">\(x_1, x_2 \in X\)</span>. For neural networks, constraining <span class="arithmatex">\(K\)</span> (usually <span class="arithmatex">\(K \approx 1\)</span>) is crucial for:</p>
+<ol>
+<li><strong>Robustness</strong>: Limiting sensitivity to adversarial perturbations.</li>
+<li><strong>Stability</strong>: Preventing gradient explosion/vanishing in deep networks.</li>
+<li><strong>Generative Modeling</strong>: Ensuring the Kantorovich-Rubinstein duality holds for Wasserstein GANs (WGANs) and other optimal transport methods.</li>
+</ol>
+<h3 id="the-isometric-advantage">The Isometric Advantage</h3>
+<p>In Versor, the core operation is the rotor sandwich product <span class="arithmatex">\(x' = R x \tilde{R}\)</span>. Because rotors are unit versors (<span class="arithmatex">\(R\tilde{R} = 1\)</span>), this operation is an <strong>isometry</strong>:</p>
+<div class="arithmatex">\[\|R x \tilde{R}\| = \|x\|\]</div>
+<p>This means the rotor transformation naturally has a Lipschitz constant of <strong>exactly 1</strong>.</p>
+<p>Unlike standard neural networks, which must use spectral normalization, weight clipping, or gradient penalties to <em>force</em> Lipschitz constraints (often approximately), Versor's RotorLayer satisfy this property <strong>by construction</strong> and GeometricGELU and CliffordLayerNorm only control Radial Direction's Scale.</p>
+<p><strong>Note on Current Implementation:</strong> While rotor operations are strictly isometric, the current <code>CliffordLinear</code> layer uses standard scalar weight matrices for channel mixing, which do not inherently guarantee 1-Lipschitz continuity. Our roadmap includes replacing these with compositions of irreducible rotors to achieve end-to-end geometric Lipschitz guarantees.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
