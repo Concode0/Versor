@@ -68,6 +68,7 @@ class MD17Task(BaseTask):
             decomp_k=self.cfg.model.get('decomp_k', 10),
             use_rotor_backend=self.cfg.model.get('use_rotor_backend', False),
             use_geo_square=self.cfg.model.get('use_geo_square', True),
+            use_checkpoint=self.cfg.model.get('use_checkpoint', False),
         )
 
     def setup_criterion(self):
@@ -105,7 +106,16 @@ class MD17Task(BaseTask):
         pos = batch.pos.clone().requires_grad_(True)
 
         self.optimizer.zero_grad()
-        energy_pred, force_pred = self.model(batch.z, pos, batch.batch, batch.edge_index)
+        # Use forward_energy to avoid retain_graph=True inside forward().
+        # Forces are computed here via a single autograd.grad call; the graph
+        # is freed normally when loss.backward() runs.
+        energy_pred = self.model.forward_energy(batch.z, pos, batch.batch, batch.edge_index)
+        force_pred = -torch.autograd.grad(
+            outputs=energy_pred,
+            inputs=pos,
+            grad_outputs=torch.ones_like(energy_pred),
+            create_graph=True,
+        )[0]
 
         energy_loss = self.criterion(energy_pred, energy_norm)
         force_loss = self.criterion(force_pred, force_norm)

@@ -223,9 +223,11 @@ class MD17ForceNet(CliffordModule):
         decomp_k: int = 10,
         use_rotor_backend: bool = False,
         use_geo_square: bool = True,
+        use_checkpoint: bool = False,
     ):
         super().__init__(algebra)
         self._last_features = None
+        self.use_checkpoint = use_checkpoint
 
         self.atom_embedding = nn.Embedding(max_z, hidden_dim)
 
@@ -253,6 +255,37 @@ class MD17ForceNet(CliffordModule):
             nn.Linear(hidden_dim, 1)
         )
 
+    def _run_layers(self, h, pos, edge_index):
+        """Run interaction layers, optionally with gradient checkpointing."""
+        import torch.utils.checkpoint as cp
+        for layer in self.layers:
+            if self.use_checkpoint and self.training:
+                h = cp.checkpoint(layer, h, pos, edge_index, use_reentrant=False)
+            else:
+                h = layer(h, pos, edge_index)
+        return h
+
+    def forward_energy(self, z, pos, batch, edge_index):
+        """Return only energy. Use in train_step to compute forces externally.
+
+        This avoids retain_graph=True overhead by not running autograd.grad
+        inside the forward pass. The caller computes forces via:
+            force = -autograd.grad(energy_pred, pos, grad_outputs=ones, create_graph=True)[0]
+        """
+        h_scalar = self.atom_embedding(z)  # [N, Hidden]
+        h = torch.zeros(z.size(0), h_scalar.size(1), self.algebra.dim, device=z.device)
+        h[..., 0] = h_scalar
+
+        h = self._run_layers(h, pos, edge_index)
+
+        self._last_features = h.detach()
+
+        h = self.output_norm(self.blade_selector(h))
+        h_flat = h.reshape(h.size(0), -1)  # [N, Hidden * Dim]
+
+        graph_repr = global_add_pool(h_flat, batch)  # [B, Hidden * Dim]
+        return self.energy_head(graph_repr).squeeze(-1)  # [B]
+
     def forward(self, z, pos, batch, edge_index):
         with torch.enable_grad():
             pos.requires_grad_(True)
@@ -261,8 +294,7 @@ class MD17ForceNet(CliffordModule):
             h = torch.zeros(z.size(0), h_scalar.size(1), self.algebra.dim, device=z.device)
             h[..., 0] = h_scalar
 
-            for layer in self.layers:
-                h = layer(h, pos, edge_index)
+            h = self._run_layers(h, pos, edge_index)
 
             self._last_features = h.detach()
 

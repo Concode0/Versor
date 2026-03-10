@@ -20,10 +20,11 @@ model:
   max_z: 100
   num_rbf: 20
   rbf_cutoff: 5.0
-  use_decomposition: true
+  use_decomposition: false
   decomp_k: 8
   use_rotor_backend: true
   use_geo_square: true
+  use_checkpoint: true
 training:
   epochs: 400
   lr: 0.001
