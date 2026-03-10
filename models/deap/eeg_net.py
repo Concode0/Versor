@@ -34,46 +34,26 @@ from layers.primitives.base import CliffordModule
 
 
 class MultiTargetPhaseShiftHead(CliffordModule):
-    """Phase-Shift Head producing multiple output dimensions.
+    """Maps full multivector geometry to target distributions.
 
-    Extends PhaseShiftHead to output ``num_targets`` predictions (e.g. 4 for
-    VADL) by learning a separate phase angle per target dimension.
-
-    Each target mixes Grade-0 (scalar component) and Grade-4 (high-grade
-    component) via a per-channel phase rotation, then aggregates channels
-    through a **learned per-target projection** (not uniform mean).
-
-    The per-target bias decouples baseline prediction from the phase
-    computation, preventing the phase angles from collapsing to encode
-    only the label mean.
+    Projects the flattened multivector (all channels × all blade dimensions)
+    to ``num_targets`` outputs, then applies a learnable scale and bias so
+    each target can independently shift its prediction range.
     """
 
     def __init__(self, algebra: CliffordAlgebra, channels: int, num_targets: int = 4):
         super().__init__(algebra)
         self.channels = channels
         self.num_targets = num_targets
-        self.theta = nn.Parameter(torch.randn(1, channels, num_targets) * 0.1)
-        self.proj = nn.Parameter(
-            torch.full((num_targets, channels), 1.0 / channels)
-        )
+        self.proj = nn.Linear(channels * algebra.dim, num_targets)
+        self.log_scale = nn.Parameter(torch.zeros(num_targets))
         self.bias = nn.Parameter(torch.zeros(num_targets))
 
-        mask_g4 = self.algebra.grade_masks[4]
-        if mask_g4.sum() > 0:
-            self.register_buffer('g4_idx', mask_g4.nonzero(as_tuple=True)[0])
-        else:
-            self.g4_idx = None
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        G0 = x[..., 0:1]  # [B, C, 1]
-
-        if self.g4_idx is not None and len(self.g4_idx) > 0:
-            G4 = x[..., self.g4_idx]
-        else:
-            G4 = torch.zeros_like(G0)
-
-        phase = G0 * torch.cos(self.theta) - G4 * torch.sin(self.theta)  # [B, C, num_targets]
-        return torch.einsum('bct,tc->bt', phase, self.proj) + self.bias
+        B = x.size(0)
+        flat_mv = x.reshape(B, -1)          # [B, channels * dim]
+        raw_logits = self.proj(flat_mv)     # [B, num_targets]
+        return raw_logits * self.log_scale.exp() + self.bias
 
 
 class EEGNet(nn.Module):

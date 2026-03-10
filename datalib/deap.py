@@ -320,7 +320,7 @@ def _collate_deap(batch):
 
 def get_deap_loaders(data_root, subject_id=1, mode='cross_subject',
                      batch_size=32, window_size=512, stride=None,
-                     fold=0, n_folds=5, num_workers=0):
+                     fold=0, n_folds=5, num_workers=0, return_datasets=False):
     """Create DEAP train/val DataLoaders.
 
     Normalization is always **subject-wise**: each subject's DE features are
@@ -390,4 +390,6 @@ def get_deap_loaders(data_root, subject_id=1, mode='cross_subject',
     )
 
     logger.info("Train: %d samples, Val: %d samples", len(train_ds), len(val_ds))
+    if return_datasets:
+        return train_loader, val_loader, train_ds
     return train_loader, val_loader

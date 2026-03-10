@@ -8,7 +8,7 @@
 # We believe Geometric Algebra is the future of AI, and we want
 # the industry to build upon this "unbending" paradigm.
 
-"""DEAP EEG Emotion Classification Task.
+"""DEAP EEG Emotion Regression Task.
 
 Predicts Valence, Arousal, Dominance, and Liking (VADL) from 32-channel EEG
 using Geometric Algebra. Cross-subject (LOSO) validation by default.
@@ -16,7 +16,6 @@ using Geometric Algebra. Cross-subject (LOSO) validation by default.
 Key: emotional states are pushed into Grade-0 (rotor-invariant scalars).
 """
 
-import numpy as np
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
@@ -31,7 +30,7 @@ VADL_NAMES = ['Valence', 'Arousal', 'Dominance', 'Liking']
 
 
 class DEAPEEGTask(BaseTask):
-    """DEAP EEG Emotion Classification Task.
+    """DEAP EEG Emotion Regression Task.
 
     Predicts VADL ratings from 32-channel EEG using a Geometric Algebra
     transformer with Mother embedding and Neutral artifact removal.
@@ -45,7 +44,6 @@ class DEAPEEGTask(BaseTask):
         self.eval_mode = cfg.dataset.get('eval_mode', 'cross_subject')
         self.window_size = cfg.dataset.get('window_size', 512)
         self.stride = cfg.dataset.get('stride', None)
-        self.task_mode = cfg.dataset.get('task_mode', 'regression')
         super().__init__(cfg)
 
     def setup_algebra(self):
@@ -59,7 +57,6 @@ class DEAPEEGTask(BaseTask):
     def setup_model(self):
         group_sizes = get_group_sizes()
 
-        # Optionally compute profiler-based alignment per region
         profiles = None
         if self.cfg.model.get('use_profiler', False):
             profiles = self._compute_profiles(group_sizes)
@@ -72,26 +69,20 @@ class DEAPEEGTask(BaseTask):
         )
 
     def _compute_profiles(self, group_sizes):
-        """Compute uncertainty (U) and Procrustes alignment (V) per region.
-
-        Loads a small sample of the target subject's data and runs the
-        geometric profiler on each brain region group.
-        """
+        """Compute uncertainty (U) and Procrustes alignment (V) per region."""
         try:
             from core.search import compute_uncertainty_and_alignment
-            from datalib.deap import DEAPDataset, REGION_GROUPS
+            from datalib.deap import DEAPDataset
         except ImportError:
             logger.warning("Profiler unavailable, skipping alignment computation.")
             return None
 
-        # Load one subject raw (unnormalized) for profiling
         ds = DEAPDataset(self.data_root, [self.subject_id], self.window_size, self.stride, normalize=False)
         if len(ds) == 0:
             return None
 
         profiles = {}
         for name in sorted(group_sizes.keys()):
-            # Collect all features for this region
             feats = torch.stack([ds[i][0][name] for i in range(len(ds))])  # [N, dim]
             U, V = compute_uncertainty_and_alignment(self.algebra, feats.to(self.device))
             profiles[name] = {'U': U, 'V': V}
@@ -100,12 +91,10 @@ class DEAPEEGTask(BaseTask):
         return profiles
 
     def setup_criterion(self):
-        if self.task_mode == 'regression':
-            return nn.MSELoss()
-        return nn.BCEWithLogitsLoss()
+        return nn.MSELoss()
 
     def get_data(self):
-        return get_deap_loaders(
+        train_loader, val_loader = get_deap_loaders(
             self.data_root,
             subject_id=self.subject_id,
             mode=self.eval_mode,
@@ -113,6 +102,7 @@ class DEAPEEGTask(BaseTask):
             window_size=self.window_size,
             stride=self.stride,
         )
+        return train_loader, val_loader
 
     def train_step(self, batch):
         self.optimizer.zero_grad()
@@ -120,10 +110,6 @@ class DEAPEEGTask(BaseTask):
 
         group_data = {k: v.to(self.device) for k, v in group_data.items()}
         labels = labels.to(self.device)
-
-        if self.task_mode == 'classification':
-            medians = labels.median(dim=0).values
-            labels = (labels > medians).float()
 
         preds = self.model(group_data)  # [B, 4]
         loss = self.criterion(preds, labels)
@@ -145,43 +131,59 @@ class DEAPEEGTask(BaseTask):
                 all_preds.append(preds.cpu())
                 all_labels.append(labels)
 
-        preds = torch.cat(all_preds)
-        labels = torch.cat(all_labels)
-
-        # RMSE per VADL dimension
-        rmse = ((preds - labels) ** 2).mean(dim=0).sqrt()
+        preds_tensor = torch.cat(all_preds)   # [N, 4]
+        labels_tensor = torch.cat(all_labels)  # [N, 4]
 
         metrics = {}
+
+        # RMSE per VADL dimension
+        rmse = ((preds_tensor - labels_tensor) ** 2).mean(dim=0).sqrt()
         for i, name in enumerate(VADL_NAMES):
             metrics[f'{name}_RMSE'] = rmse[i].item()
 
-        # Binary F1 — per-dimension median threshold (Koelstra et al., 2012)
+        # Binary F1 — fixed threshold 0.5 (Koelstra 2012: midpoint of 1-9 scale = (5-1)/8)
         try:
             from sklearn.metrics import f1_score
-            preds_np = preds.numpy()
-            labels_np = labels.numpy()
+            preds_np = preds_tensor.numpy()
+            labels_np = labels_tensor.numpy()
             for i, name in enumerate(VADL_NAMES):
-                threshold_i = float(np.median(labels_np[:, i]))
-                pred_bin = (preds_np[:, i] > threshold_i).astype(int)
-                label_bin = (labels_np[:, i] > threshold_i).astype(int)
-                f1 = f1_score(label_bin, pred_bin, average='binary', zero_division=0)
-                metrics[f'{name}_F1'] = f1
-                metrics[f'{name}_threshold'] = threshold_i
+                pred_bin = (preds_np[:, i] > 0.5).astype(int)
+                label_bin = (labels_np[:, i] > 0.5).astype(int)
+                metrics[f'{name}_F1'] = f1_score(label_bin, pred_bin, average='binary', zero_division=0)
         except ImportError:
             logger.warning("scikit-learn not available, skipping F1 metrics.")
 
         return metrics
 
+    def _log_results_table(self, metrics: dict) -> None:
+        """Log VADL results as a compact ASCII table."""
+        header = f"{'Dimension':<13} {'RMSE':>8} {'F1':>8}"
+        sep = "─" * len(header)
+        logger.info("Final Results (mode=regression, threshold=0.5)")
+        logger.info(sep)
+        logger.info(header)
+        logger.info(sep)
+        for name in VADL_NAMES:
+            rmse = metrics.get(f'{name}_RMSE', float('nan'))
+            f1   = metrics.get(f'{name}_F1',   float('nan'))
+            logger.info(f"{name:<13} {rmse:>8.4f} {f1:>8.4f}")
+        logger.info(sep)
+        mean_rmse = sum(metrics.get(f'{n}_RMSE', 0) for n in VADL_NAMES) / len(VADL_NAMES)
+        mean_f1   = sum(metrics.get(f'{n}_F1',   0) for n in VADL_NAMES) / len(VADL_NAMES)
+        logger.info(f"{'Mean':<13} {mean_rmse:>8.4f} {mean_f1:>8.4f}")
+        logger.info(sep)
+
     def visualize(self, val_loader):
         pass
 
     def run(self):
-        logger.info("Starting Task: DEAP EEG (subject=%d, mode=%s)", self.subject_id, self.eval_mode)
+        logger.info("Starting Task: DEAP EEG (subject=%d, mode=%s)",
+                    self.subject_id, self.eval_mode)
         train_loader, val_loader = self.get_data()
 
         from tqdm import tqdm
         pbar = tqdm(range(self.epochs))
-        best_val_loss = float('inf')
+        best_val_rmse = float('inf')
 
         for epoch in pbar:
             self.model.train()
@@ -195,14 +197,13 @@ class DEAPEEGTask(BaseTask):
 
             avg_loss = total_loss / max(n_batches, 1)
 
-            # Validation
             val_metrics = self.evaluate(val_loader)
             val_rmse_mean = sum(v for k, v in val_metrics.items() if k.endswith('_RMSE')) / 4
 
             self.scheduler.step(val_rmse_mean)
 
-            if val_rmse_mean < best_val_loss:
-                best_val_loss = val_rmse_mean
+            if val_rmse_mean < best_val_rmse:
+                best_val_rmse = val_rmse_mean
                 self.save_checkpoint(f"{self.cfg.name}_best.pt")
 
             display = {
@@ -213,12 +214,10 @@ class DEAPEEGTask(BaseTask):
             desc = " | ".join(f"{k}: {v:.4f}" for k, v in display.items())
             pbar.set_description(desc)
 
-        logger.info("Training Complete. Best Val RMSE: %.4f", best_val_loss)
+        logger.info("Training Complete. Best RMSE: %.4f", best_val_rmse)
 
-        # Load best and final evaluation
         self.load_checkpoint(f"{self.cfg.name}_best.pt")
         final_metrics = self.evaluate(val_loader)
-        for k, v in final_metrics.items():
-            logger.info("FINAL %s: %.4f", k, v)
+        self._log_results_table(final_metrics)
 
         return final_metrics

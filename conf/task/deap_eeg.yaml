@@ -14,7 +14,6 @@ dataset:
   eval_mode: "cross_subject"
   window_size: 512      # 4 seconds at 128 Hz
   stride: null           # null = non-overlapping (= window_size)
-  task_mode: "regression"
 
 model:
   channels: 16
