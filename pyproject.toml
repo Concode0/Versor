@@ -43,6 +43,9 @@ all = [
     "versor[sr,md17,lqa,viz,demo,dev]",
 ]
 
+[tool.setuptools.packages.find]
+include = ["core*", "layers*", "models*", "datalib*", "optimizers*", "functional*", "tasks*", "examples*", "experiments*"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
