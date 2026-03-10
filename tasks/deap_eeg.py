@@ -158,7 +158,7 @@ class DEAPEEGTask(BaseTask):
     def _log_results_table(self, metrics: dict) -> None:
         """Log VADL results as a compact ASCII table."""
         header = f"{'Dimension':<13} {'RMSE':>8} {'F1':>8}"
-        sep = "─" * len(header)
+        sep = "-" * len(header)
         logger.info("Final Results (mode=regression, threshold=0.5)")
         logger.info(sep)
         logger.info(header)

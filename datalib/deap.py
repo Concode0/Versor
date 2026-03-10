@@ -33,7 +33,7 @@ from log import get_logger
 
 logger = get_logger(__name__)
 
-# ── DEAP 10-20 channel order (indices 0-31) ──────────────────────────────────
+# -- DEAP 10-20 channel order (indices 0-31) ----------------------------------
 DEAP_CHANNELS = [
     'Fp1', 'AF3', 'F3', 'F7', 'FC5', 'FC1', 'C3', 'T7',
     'CP5', 'CP1', 'P3', 'P7', 'PO3', 'O1', 'Oz', 'Pz',
@@ -41,7 +41,7 @@ DEAP_CHANNELS = [
     'CP6', 'CP2', 'P4', 'P8', 'PO4', 'O2', 'Fz', 'Cz',
 ]
 
-# ── Brain region groups ───────────────────────────────────────────────────────
+# -- Brain region groups ------------------------------------------------------
 REGION_GROUPS = {
     'frontal':   [0, 1, 2, 3, 4, 5, 16, 17, 18, 19, 20, 21, 30],  # 13 channels
     'central':   [6, 8, 9, 22, 24, 25, 31],                        # 7 channels
@@ -50,7 +50,7 @@ REGION_GROUPS = {
     'occipital': [12, 13, 14, 28, 29],                              # 5 channels
 }
 
-# ── Frequency bands (Hz) ─────────────────────────────────────────────────────
+# -- Frequency bands (Hz) -----------------------------------------------------
 BANDS = {
     'theta': (4.0, 8.0),
     'alpha': (8.0, 14.0),
@@ -157,7 +157,7 @@ def get_group_sizes(region_groups=None, num_bands=NUM_BANDS):
     return {name: len(indices) * num_bands for name, indices in region_groups.items()}
 
 
-# ── Subject-wise normalization ────────────────────────────────────────────────
+# -- Subject-wise normalization ------------------------------------------------
 
 def _normalize_subject_samples(samples):
     """Z-score normalize a single subject's samples using that subject's stats.

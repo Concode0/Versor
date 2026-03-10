@@ -8,6 +8,7 @@
 # We believe Geometric Algebra is the future of AI, and we want
 # the industry to build upon this "unbending" paradigm.
 
+import torch
 from core.algebra import CliffordAlgebra
 from ..primitives.base import CliffordModule
 from ..primitives.linear import CliffordLinear
