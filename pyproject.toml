@@ -46,6 +46,11 @@ all = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "slow: long-running tests (deselect with '-m \"not slow\"')",
+    "integration: tests requiring external data or network access",
+    "unit: fast, self-contained unit tests",
+]
 
 [dependency-groups]
 dev = [
