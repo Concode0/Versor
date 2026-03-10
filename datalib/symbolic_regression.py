@@ -31,8 +31,6 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-import pmlb
-
 logger = logging.getLogger(__name__)
 
 # PMLB GitHub raw URL for datasets not yet in the PyPI index
@@ -116,8 +114,12 @@ def _fetch_pmlb_data(dataset_name: str, cache_dir: str) -> pd.DataFrame:
             return pd.read_csv(cached_path, sep='\t', compression='gzip')
 
     # Try pmlb.fetch_data (works for datasets in the PyPI index)
-    if dataset_name in pmlb.dataset_names:
-        return pmlb.fetch_data(dataset_name, local_cache_dir=cache_dir)
+    try:
+        import pmlb
+        if dataset_name in pmlb.dataset_names:
+            return pmlb.fetch_data(dataset_name, local_cache_dir=cache_dir)
+    except ImportError:
+        pass
 
     # Fallback: fetch directly from PMLB GitHub
     url = f"{_PMLB_GITHUB_RAW}/{dataset_name}/{dataset_name}.tsv.gz"

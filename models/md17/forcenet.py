@@ -18,7 +18,10 @@ from layers import MultiRotorLayer
 from layers import CliffordLayerNorm
 from layers import BladeSelector
 from functional.activation import GeometricGELU, GeometricSquare
-from torch_geometric.nn import global_add_pool
+try:
+    from torch_geometric.nn import global_add_pool
+except ImportError:
+    global_add_pool = None
 
 
 class GaussianRBF(nn.Module):
