@@ -11,9 +11,9 @@
 """Real HuggingFace datasets for Geometric Latent Reasoning (GLR) probes.
 
 Three dataset classes for the three LQA probes:
-1. CLUTRRDataset — CLUTRR/v1 compositional chain reasoning
-2. HANSDataset — SNLI (train) + HANS (eval) asymmetric entailment
-3. BoolQNegDataset — google/boolq with rule-based negation augmentation
+1. CLUTRRDataset -- CLUTRR/v1 compositional chain reasoning
+2. HANSDataset -- SNLI (train) + HANS (eval) asymmetric entailment
+3. BoolQNegDataset -- google/boolq with rule-based negation augmentation
 
 All follow the pattern:
   1. Check for cached .pt embeddings in data_root/lqa/
@@ -75,7 +75,7 @@ def _load_hf_dataset(path: str, name: str = None, split: str = "train",
 
 
 # ---------------------------------------------------------------------------
-# CLUTRR Dataset — Compositional Chain Reasoning (Real)
+# CLUTRR Dataset -- Compositional Chain Reasoning (Real)
 # ---------------------------------------------------------------------------
 
 # CLUTRR relation types (18 total in CLUTRR/v1)
@@ -204,14 +204,14 @@ class CLUTRRDataset(Dataset):
 
 
 # ---------------------------------------------------------------------------
-# HANS Dataset — Asymmetric Entailment (SNLI train + HANS eval)
+# HANS Dataset -- Asymmetric Entailment (SNLI train + HANS eval)
 # ---------------------------------------------------------------------------
 
 class HANSDataset(Dataset):
     """SNLI (train) + HANS (eval) for entailment asymmetry testing.
 
-    Train: stanfordnlp/snli — 550k premise/hypothesis pairs, 3-way labels.
-    Eval: jhu-cogsci/hans — 30k adversarial NLI examples.
+    Train: stanfordnlp/snli -- 550k premise/hypothesis pairs, 3-way labels.
+    Eval: jhu-cogsci/hans -- 30k adversarial NLI examples.
     """
 
     def __init__(self, data_root: str, split: str = "train",
@@ -236,7 +236,7 @@ class HANSDataset(Dataset):
 
                 premises = ds["premise"]
                 hypotheses = ds["hypothesis"]
-                # Binary: 0=entailment → 1.0, {1=neutral, 2=contradiction} → 0.0
+                # Binary: 0=entailment -> 1.0, {1=neutral, 2=contradiction} -> 0.0
                 labels = [1.0 if l == 0 else 0.0 for l in ds["label"]]
             else:
                 logger.info("Downloading HANS validation from HuggingFace...")
@@ -246,7 +246,7 @@ class HANSDataset(Dataset):
 
                 premises = ds["premise"]
                 hypotheses = ds["hypothesis"]
-                # HANS: 0=entailment → 1.0, 1=non-entailment → 0.0
+                # HANS: 0=entailment -> 1.0, 1=non-entailment -> 0.0
                 labels = [1.0 if l == 0 else 0.0 for l in ds["label"]]
 
             logger.info("Encoding %d premise/hypothesis pairs...", len(premises))
@@ -275,7 +275,7 @@ class HANSDataset(Dataset):
 
 
 # ---------------------------------------------------------------------------
-# BoolQ-Neg Dataset — Negation Sensitivity (Real)
+# BoolQ-Neg Dataset -- Negation Sensitivity (Real)
 # ---------------------------------------------------------------------------
 
 _NEGATION_PREFIXES = [

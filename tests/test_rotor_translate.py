@@ -1,7 +1,7 @@
 # Versor: Universal Geometric Algebra Neural Network
 # Copyright (C) 2026 Eunkyum Kim <nemonanconcode@gmail.com>
 #
-# Tests for rotor_translate.py — direct rotor-to-formula translation.
+# Tests for rotor_translate.py -- direct rotor-to-formula translation.
 
 import pytest
 import numpy as np

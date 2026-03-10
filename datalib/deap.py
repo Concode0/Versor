@@ -59,8 +59,8 @@ BANDS = {
 }
 
 SAMPLING_RATE = 128
-BASELINE_SAMPLES = 384   # 3 seconds × 128 Hz
-STIMULUS_SAMPLES = 7680  # 60 seconds × 128 Hz
+BASELINE_SAMPLES = 384   # 3 seconds x 128 Hz
+STIMULUS_SAMPLES = 7680  # 60 seconds x 128 Hz
 
 NUM_BANDS = len(BANDS)
 
@@ -112,7 +112,7 @@ def extract_de_features(eeg, fs=SAMPLING_RATE, bands=None):
     Args:
         eeg: ndarray [num_channels, window_samples]
         fs: Sampling rate.
-        bands: Dict of band_name → (low_hz, high_hz). Defaults to BANDS.
+        bands: Dict of band_name -> (low_hz, high_hz). Defaults to BANDS.
 
     Returns:
         ndarray [num_channels, num_bands] of DE values.
@@ -150,7 +150,7 @@ def get_group_sizes(region_groups=None, num_bands=NUM_BANDS):
     """Compute input dimension per group for model construction.
 
     Returns:
-        Dict mapping region name to input_dim (num_channels_in_group × num_bands).
+        Dict mapping region name to input_dim (num_channels_in_group x num_bands).
     """
     if region_groups is None:
         region_groups = REGION_GROUPS
@@ -259,8 +259,8 @@ class DEAPDataset(Dataset):
                 with open(path, 'rb') as f:
                     dat = pickle.load(f, encoding='latin1')
 
-                data = dat['data']     # (40, 40, 8064) — trials × channels × samples
-                labels = dat['labels'] # (40, 4) — VADL
+                data = dat['data']     # (40, 40, 8064) -- trials x channels x samples
+                labels = dat['labels'] # (40, 4) -- VADL
 
                 subject_samples = []
                 for trial_idx in range(data.shape[0]):
@@ -303,7 +303,7 @@ class DEAPDataset(Dataset):
         grouped, vadl = self.samples[idx]
         group_tensors = {name: torch.from_numpy(feat) for name, feat in grouped.items()}
         label_tensor = torch.from_numpy(vadl)
-        label_tensor = (label_tensor - 1.0) / 8.0  # 1-9 → [0,1]
+        label_tensor = (label_tensor - 1.0) / 8.0  # 1-9 -> [0,1]
         return group_tensors, label_tensor
 
 

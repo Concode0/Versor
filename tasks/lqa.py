@@ -8,7 +8,7 @@
 # We believe Geometric Algebra is the future of AI, and we want
 # the industry to build upon this "unbending" paradigm.
 
-"""Geometric Latent Reasoning (GLR) Task — LQA Redesign.
+"""Geometric Latent Reasoning (GLR) Task -- LQA Redesign.
 
 Three probes testing structural blind spots of flat embeddings:
   1. Chain:      Compositional multi-hop reasoning (CLUTRR-style)
@@ -56,7 +56,7 @@ class LQATask(BaseTask):
         super().__init__(cfg)
 
     def setup_algebra(self):
-        """Cl(4,1) — conformal GA, dim=32, 6 grades."""
+        """Cl(4,1) -- conformal GA, dim=32, 6 grades."""
         p = self.cfg.algebra.get("p", 4)
         q = self.cfg.algebra.get("q", 1)
         r = self.cfg.algebra.get("r", 0)
@@ -307,7 +307,7 @@ class LQATask(BaseTask):
 
     def visualize(self, data=None):
         """Visualization placeholder for GLR probes."""
-        logger.info("GLR probe=%s — visualization not implemented (use evaluate() for metrics)", self.probe)
+        logger.info("GLR probe=%s -- visualization not implemented (use evaluate() for metrics)", self.probe)
 
     def run(self):
         """Full training loop with validation."""

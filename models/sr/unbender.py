@@ -451,7 +451,7 @@ class IterativeUnbender:
         )
         model = model.to(self.device)
 
-        # Break F≡0 dead gradient (see implicit_solver._probe_implicit)
+        # Break F==0 dead gradient (see implicit_solver._probe_implicit)
         with torch.no_grad():
             for m in model.modules():
                 if hasattr(m, 'grade0_bias'):

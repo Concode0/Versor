@@ -123,7 +123,7 @@ class VariableGrouper:
         largest groups to 2 dims each via SVD.
 
         Builds per-group basis vector maps that respect signature ordering:
-        mother basis is [e1+...eP+, e1-...eQ-, e1°...eR°], and each
+        mother basis is [e1+...eP+, e1-...eQ-, e1deg...eRdeg], and each
         group's local positive/negative/null vectors are mapped to the
         correct mother slots.
 

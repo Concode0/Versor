@@ -56,7 +56,7 @@ class DynamicRotorGenerator(CliffordModule):
         self.register_buffer('bivector_indices', bv_mask.nonzero(as_tuple=False).squeeze(-1))
         self.num_bivectors = len(self.bivector_indices)
 
-        # Precompute one-hot projection: [num_bv, D] — avoids in-place scatter_ in forward
+        # Precompute one-hot projection: [num_bv, D] -- avoids in-place scatter_ in forward
         one_hot = torch.zeros(self.num_bivectors, algebra.dim)
         one_hot[torch.arange(self.num_bivectors), self.bivector_indices] = 1.0
         self.register_buffer('bv_one_hot', one_hot)

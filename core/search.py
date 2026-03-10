@@ -603,7 +603,7 @@ class GeodesicFlow:
         return bv.mean(dim=1)                 # [N, dim]
 
     def _coherence_tensor(self, mv: torch.Tensor) -> torch.Tensor:
-        """Differentiable coherence — returns a scalar tensor with grad_fn.
+        """Differentiable coherence -- returns a scalar tensor with grad_fn.
 
         Args:
             mv (torch.Tensor): ``[N, dim]`` multivectors.
@@ -647,7 +647,7 @@ class GeodesicFlow:
         return self._coherence_tensor(mv).item()
 
     def _curvature_tensor(self, mv: torch.Tensor) -> torch.Tensor:
-        """Differentiable curvature — returns a scalar tensor with grad_fn.
+        """Differentiable curvature -- returns a scalar tensor with grad_fn.
 
         Args:
             mv (torch.Tensor): ``[N, dim]`` multivectors.

@@ -141,7 +141,7 @@ class DEAPEEGTask(BaseTask):
         for i, name in enumerate(VADL_NAMES):
             metrics[f'{name}_RMSE'] = rmse[i].item()
 
-        # Binary F1 — fixed threshold 0.5 (Koelstra 2012: midpoint of 1-9 scale = (5-1)/8)
+        # Binary F1 -- fixed threshold 0.5 (Koelstra 2012: midpoint of 1-9 scale = (5-1)/8)
         try:
             from sklearn.metrics import f1_score
             preds_np = preds_tensor.numpy()

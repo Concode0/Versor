@@ -413,10 +413,10 @@ class RotorTranslator:
         """Direct symbolic extraction through the full model structure.
 
         Traces the full block flow per channel:
-          embedding → [norm → linear → activation → rotor → blade → (+skip)] × N
-          → output_blade → output_linear → grade-0
+          embedding -> [norm -> linear -> activation -> rotor -> blade -> (+skip)] x N
+          -> output_blade -> output_linear -> grade-0
 
-        Norm (recover=False) is pure direction normalization — a constant scaling
+        Norm (recover=False) is pure direction normalization -- a constant scaling
         factor absorbed by downstream linear weights. Skipped in symbolic trace.
 
         Intermediate pruning after each operation prevents memory explosion
@@ -456,7 +456,7 @@ class RotorTranslator:
             channel_mvs = averaged
             C = MAX_SYM_CHANNELS
 
-        # 2. For each block, apply full flow: linear → activation → rotor → blade → skip
+        # 2. For each block, apply full flow: linear -> activation -> rotor -> blade -> skip
         for block_idx, block in enumerate(model.blocks):
             # Save pre-block state for skip connection
             pre_block_mvs = channel_mvs
@@ -526,8 +526,8 @@ class RotorTranslator:
             for c in range(len(channel_mvs)):
                 channel_mvs[c] = self._prune_mv(channel_mvs[c])
 
-        # 3. Output head: output_blade → output_linear
-        #    (output_norm skipped — same reasoning as block norm with recover=False)
+        # 3. Output head: output_blade -> output_linear
+        #    (output_norm skipped -- same reasoning as block norm with recover=False)
         channel_mvs = self._symbolic_blade(channel_mvs, model.output_blade)
 
         # output_linear: weight [1, C], bias [1, dim]

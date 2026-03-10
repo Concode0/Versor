@@ -250,7 +250,7 @@ class GeometricProductAttention(CliffordModule):
                     mask_block.unsqueeze(0).unsqueeze(0), float('-inf')
                 )
 
-            # Apply key padding mask: True = padded → -inf
+            # Apply key padding mask: True = padded -> -inf
             if key_padding_mask is not None:
                 # key_padding_mask: [B, L] -> [B, 1, 1, L]
                 scores = scores.masked_fill(

@@ -195,7 +195,7 @@ def exp_decomposed(
     rotors = []
     residual = b
     for b_i_detached in decomp:
-        # Plane direction (unit simple bivector) — detached
+        # Plane direction (unit simple bivector) -- detached
         plane_norm = b_i_detached.norm(dim=-1, keepdim=True).clamp(min=1e-12)
         plane_dir = b_i_detached / plane_norm  # detached unit plane
 

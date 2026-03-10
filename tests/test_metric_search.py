@@ -31,7 +31,7 @@ def small_searcher():
 
 @pytest.fixture(scope="module")
 def alg_conformal():
-    """Create a Cl(3,1) algebra — conformal lift of 2D data."""
+    """Create a Cl(3,1) algebra -- conformal lift of 2D data."""
     return CliffordAlgebra(3, 1, 0, device='cpu')
 
 

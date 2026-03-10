@@ -152,7 +152,7 @@ def get_sr_raw_splits(
         seed: Random seed for splitting and subsampling.
 
     Returns:
-        (X_train, y_train, X_test, y_test, var_names) — all numpy arrays.
+        (X_train, y_train, X_test, y_test, var_names) -- all numpy arrays.
     """
     df = _fetch_pmlb_data(dataset_name, cache_dir)
 

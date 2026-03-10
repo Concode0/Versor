@@ -99,7 +99,7 @@ class ImplicitSolver:
         # Pick better mode. Implicit only wins if explicit loss is high
         # (model struggles with explicit fitting) AND implicit loss is low.
         # For simple relationships (linear, polynomial), explicit is almost
-        # always better — implicit adds complexity (sympy.solve) for no gain.
+        # always better -- implicit adds complexity (sympy.solve) for no gain.
         # Threshold: explicit must fail badly (loss > 0.5) for implicit to
         # even be considered, and implicit must beat explicit outright.
         if (np.isfinite(implicit_loss)
@@ -121,8 +121,8 @@ class ImplicitSolver:
     def train_implicit(self, model, Z_data, algebra, epochs, lr):
         """Train F(Z)=0 where Z=[X,y] with warmup + Eikonal loss.
 
-        Phase 1 (warmup): maximize gradient norm to escape trivial F≡0.
-        Phase 2 (main): Eikonal-normalized loss F/‖∇F‖ → 0.
+        Phase 1 (warmup): maximize gradient norm to escape trivial F==0.
+        Phase 2 (main): Eikonal-normalized loss F/||gradF|| -> 0.
 
         Args:
             model: SRGBN model with in_features=k+1.
@@ -158,7 +158,7 @@ class ImplicitSolver:
             sparsity = model.total_sparsity_loss()
 
             if epoch < warmup_epochs:
-                # Warmup: escape trivial F≡0
+                # Warmup: escape trivial F==0
                 output_mag = pred.pow(2).mean()
                 loss = (-self.jacobian_weight * torch.log(jac_norm_sq + 1e-4)
                         - 0.01 * torch.log(output_mag + 1e-4)
@@ -206,9 +206,9 @@ class ImplicitSolver:
     def _probe_implicit(self, algebra, Z):
         """Short implicit probe with two-phase training.
 
-        Phase 1 (warmup): maximize gradient norm to escape the trivial F≡0
-        state where both F and ∇F are zero (so Eikonal loss gives no signal).
-        Phase 2 (main): Eikonal-normalized loss F/‖∇F‖ → 0 for non-trivial
+        Phase 1 (warmup): maximize gradient norm to escape the trivial F==0
+        state where both F and gradF are zero (so Eikonal loss gives no signal).
+        Phase 2 (main): Eikonal-normalized loss F/||gradF|| -> 0 for non-trivial
         convergence.
 
         Reports raw f_loss for comparison with explicit probe.
@@ -216,8 +216,8 @@ class ImplicitSolver:
         model = SRGBN.single_rotor(algebra, Z.shape[1], channels=16)
         model = model.to(self.device)
 
-        # Break the F≡0 dead gradient: SRGBN initializes grade0_bias to zeros,
-        # making output ≡ 0. With implicit target = 0, gradient = 2*pred*dpred/dθ = 0.
+        # Break the F==0 dead gradient: SRGBN initializes grade0_bias to zeros,
+        # making output == 0. With implicit target = 0, gradient = 2*pred*dpred/dtheta = 0.
         # Non-zero grade0_bias and grade1_proj give a non-trivial starting point.
         with torch.no_grad():
             for m in model.modules():
@@ -246,7 +246,7 @@ class ImplicitSolver:
             jac_norm_sq = (grad_F ** 2).sum(dim=-1).mean()
 
             if epoch < warmup_epochs:
-                # Phase 1: maximize gradient norm to escape F≡0
+                # Phase 1: maximize gradient norm to escape F==0
                 output_mag = pred.pow(2).mean()
                 loss = (-self.jacobian_weight * torch.log(jac_norm_sq + 1e-4)
                         - 0.01 * torch.log(output_mag + 1e-4))

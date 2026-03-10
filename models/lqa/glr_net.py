@@ -121,7 +121,7 @@ class GLRNet(nn.Module):
         # Positional encoding (rotor per position)
         mv = self.pe(mv)
 
-        # Transformer blocks — cross-token attention happens here
+        # Transformer blocks -- cross-token attention happens here
         for block in self.blocks:
             mv = block(mv, key_padding_mask=key_padding_mask)
 
@@ -137,7 +137,7 @@ class GLRNet(nn.Module):
             return self._forward_negation(batch)
 
     def _forward_chain(self, batch: dict) -> dict:
-        """Chain reasoning: per-sentence embeddings → rotor composition → classify.
+        """Chain reasoning: per-sentence embeddings -> rotor composition -> classify.
 
         Each sentence in the chain is a separate token. The transformer
         attends across all chain steps, then the head applies soft-gated
@@ -213,7 +213,7 @@ class GLRNet(nn.Module):
     def _forward_negation(self, batch: dict) -> dict:
         """Negation: stack passage + question as 2-token sequence.
 
-        Same principle as entailment — the transformer cross-attends
+        Same principle as entailment -- the transformer cross-attends
         between passage and question, then the head uses grade involution.
 
         Args:

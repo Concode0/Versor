@@ -14,7 +14,7 @@ Combines the Mother pattern (Procrustes alignment, entropy-gated attention)
 with the Neutral pattern (GeometricNeutralizer) for robust emotion prediction.
 
 Core insight: emotional states are pushed into Grade-0 (scalar), which is
-invariant under rotor sandwich products (R·s·R~ = s). Grade-2 bivectors
+invariant under rotor sandwich products (R*s*R~ = s). Grade-2 bivectors
 capture inter-region phase coupling; Grade-4 pseudoscalar captures global
 brain state. GeometricNeutralizer orthogonalizes Grade-0 from Grade-2
 artifacts before pooling, then MultiTargetPhaseShiftHead mixes Grade-0
@@ -36,7 +36,7 @@ from layers.primitives.base import CliffordModule
 class MultiTargetPhaseShiftHead(CliffordModule):
     """Maps full multivector geometry to target distributions.
 
-    Projects the flattened multivector (all channels × all blade dimensions)
+    Projects the flattened multivector (all channels x all blade dimensions)
     to ``num_targets`` outputs, then applies a learnable scale and bias so
     each target can independently shift its prediction range.
     """
@@ -60,9 +60,9 @@ class EEGNet(nn.Module):
     """Geometric EEG Emotion Classification Network.
 
     Architecture:
-        MotherEmbedding (per region) → stack → GeometricTransformerBlock × N
-        → CliffordLayerNorm → GeometricNeutralizer → mean pool
-        → MultiTargetPhaseShiftHead → [B, num_targets]
+        MotherEmbedding (per region) -> stack -> GeometricTransformerBlock x N
+        -> CliffordLayerNorm -> GeometricNeutralizer -> mean pool
+        -> MultiTargetPhaseShiftHead -> [B, num_targets]
 
     The GeometricNeutralizer is applied **per-token before pooling** so each
     brain region's Grade-0 is cleaned of its own Grade-2 artifacts independently.

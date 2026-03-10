@@ -67,7 +67,7 @@ class GeometricSquare(nn.Module):
     def __init__(self, algebra, channels: int = 1):
         super().__init__()
         self.algebra = algebra
-        # sigmoid(-2) ≈ 0.12 — starts small so GP doesn't dominate
+        # sigmoid(-2) ~= 0.12 -- starts small so GP doesn't dominate
         self.gate_logit = nn.Parameter(torch.full((channels,), -2.0))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

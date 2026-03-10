@@ -101,7 +101,7 @@ class CliffordAlgebra:
     def get_grade_norms(self, mv: torch.Tensor) -> torch.Tensor:
         """Calculates norms per grade. Useful for invariant features.
 
-        Vectorized via scatter_add — no Python loops over grades.
+        Vectorized via scatter_add -- no Python loops over grades.
 
         Args:
             mv (torch.Tensor): Input multivector [..., dim].
@@ -497,10 +497,10 @@ class CliffordAlgebra:
         return mv - self.blade_project(mv, blade)
 
     def grade_involution(self, mv: torch.Tensor) -> torch.Tensor:
-        """Grade involution (main involution): x̂ = Σ (-1)^k ⟨x⟩_k.
+        """Grade involution (main involution): x_hat = sum (-1)^k <x>_k.
 
         Flips sign of all odd-grade components, preserves even-grade.
-        This is an algebra automorphism: (AB)^ = Â B̂.
+        This is an algebra automorphism: (AB)^ = A_hat B_hat.
 
         Args:
             mv (torch.Tensor): Input multivector [..., dim].
@@ -526,7 +526,7 @@ class CliffordAlgebra:
         For n >= 4 the closed-form is exact for simple bivectors and a
         first-order approximation for non-simple ones.  Use
         ``exp_decomposed()`` when exact non-simple handling is needed
-        (inference only — see ``core.decomposition``).
+        (inference only -- see ``core.decomposition``).
 
         Args:
             mv (torch.Tensor): Pure bivector [..., dim].

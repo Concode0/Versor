@@ -43,19 +43,19 @@ class ChainReasoningHead(CliffordModule):
         self.channels = channels
         self.num_relations = num_relations
 
-        # Learned relation rotors — each captures a geometric transformation
+        # Learned relation rotors -- each captures a geometric transformation
         self.relation_rotors = nn.ModuleList([
             RotorLayer(algebra, channels) for _ in range(num_relations)
         ])
 
-        # Gating MLP: grade-0 features → softmax weights over K rotors
+        # Gating MLP: grade-0 features -> softmax weights over K rotors
         self.gate = nn.Sequential(
             nn.Linear(channels, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, num_relations),
         )
 
-        # Grade-0 (scalar) features → classifier
+        # Grade-0 (scalar) features -> classifier
         self.classifier = nn.Sequential(
             nn.Linear(channels, hidden_dim),
             nn.ReLU(),
@@ -141,8 +141,8 @@ class EntailmentHead(CliffordModule):
         H_rev = self.algebra.reverse(hypothesis)
         product = self.algebra.geometric_product(premise, H_rev)  # [B, C, D]
 
-        g0 = product[..., 0]                    # [B, C] — symmetric
-        g2 = product[..., self.g2_idx]           # [B, C, d2] — antisymmetric
+        g0 = product[..., 0]                    # [B, C] -- symmetric
+        g2 = product[..., self.g2_idx]           # [B, C, d2] -- antisymmetric
         g2_norm = g2.norm(dim=-1)                # [B, C]
 
         k = min(self.d2, 4)
