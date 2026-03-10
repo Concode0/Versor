@@ -7,7 +7,7 @@ algebra:
   device: "auto"
 dataset:
   name: "rmd17"
-  molecule: "aspirin"
+  molecule: "ethanol"
   revised: true
   n_train: 1000
   n_val: 1000
@@ -15,7 +15,7 @@ dataset:
 model:
   hidden_dim: 32
   layers: 4
-  num_static_rotors: 8
+  num_static_rotors: 6
   num_dynamic_rotors: 2
   max_z: 100
   num_rbf: 20
@@ -23,16 +23,13 @@ model:
   use_decomposition: false
   decomp_k: 8
   use_rotor_backend: true
-  use_geo_square: false
+  use_geo_square: true
   use_checkpoint: false
 training:
-  epochs: 400
-  lr: 0.0005
-  batch_size: 8
+  epochs: 500
+  lr: 0.0015
+  batch_size: 96
   optimizer_type: "riemannian_adam"
-  scheduler:
-    factor: 0.5
-    patience: 20
   loss_weights:
     energy: 0.1
     force: 100.0
