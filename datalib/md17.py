@@ -19,15 +19,23 @@ Split sizes are configurable via ``n_train`` / ``n_val`` parameters.
 
 Loading priority:
     1. PyTorch Geometric (auto-downloads from official mirror)
-    2. Raw .npz files in ``root/`` (manual download from sgdml.org)
+    2. Raw .npz files in ``root/`` (manual download)
     3. Clear error with install instructions (no synthetic fallback -
        fake molecular dynamics data is meaningless for energy/force training)
 
 Install PyG:
     uv sync --extra graph
 
-Manual download (rMD17 from http://www.sgdml.org/datasets/):
-    curl -O http://www.sgdml.org/datasets/rmd17/rmd17_aspirin.npz
+Manual download (rMD17):
+    Place rmd17_{molecule}.npz files under:
+        data/rMD17/raw/rmd17/npz_data/rmd17_aspirin.npz
+        data/rMD17/raw/rmd17/npz_data/rmd17_benzene.npz
+        data/rMD17/raw/rmd17/npz_data/rmd17_ethanol.npz
+        ...etc
+    PyG's MD17 for revised datasets uses {root}/raw/ (not {root}/{name}/raw/).
+    NOTE: archive.materialscloud.org (record 466) and sgdml.org are
+    currently unavailable. Check https://zenodo.org or the rMD17 paper
+    repository for an alternative mirror.
 """
 
 from __future__ import annotations

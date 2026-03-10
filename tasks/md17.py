@@ -118,7 +118,9 @@ class MD17Task(BaseTask):
         )[0]
 
         energy_loss = self.criterion(energy_pred, energy_norm)
-        force_loss = self.criterion(force_pred, force_norm)
+        # force_pred = -d(E_norm)/d(pos) = -(1/E_std)*F_raw; rescale to match force_norm units
+        force_scale = self.energy_std / (self.force_std + 1e-6)
+        force_loss = self.criterion(force_pred * force_scale, force_norm)
         sparsity_loss = self.model.total_sparsity_loss()
 
         w_conservative = self.loss_weights.get('conservative', 0.0)
@@ -145,10 +147,15 @@ class MD17Task(BaseTask):
                 w_grade_reg * grade_reg_loss)
 
         loss.backward()
+        # Guard: zero out NaN/Inf gradients before clipping (defense in depth)
+        for p in self.model.parameters():
+            if p.grad is not None:
+                torch.nan_to_num_(p.grad, nan=0.0, posinf=0.0, neginf=0.0)
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
         self.optimizer.step()
 
         energy_pred_denorm = energy_pred.detach() * self.energy_std + self.energy_mean
-        force_pred_denorm = force_pred.detach() * self.force_std + self.force_mean
+        force_pred_denorm = force_pred.detach() * self.energy_std
         energy_mae = torch.abs(energy_pred_denorm - energy_target).mean()
         force_mae = torch.abs(force_pred_denorm - force_target).mean()
 
@@ -182,7 +189,8 @@ class MD17Task(BaseTask):
                 )
 
                 energy_pred = energy_pred_norm * self.energy_std + self.energy_mean
-                force_pred = force_pred_norm * self.force_std + self.force_mean
+                # force_pred_norm = -d(E_norm)/d(pos); actual force = E_std * force_pred_norm
+                force_pred = force_pred_norm * self.energy_std
 
                 total_energy_mae += torch.abs(energy_pred - energy_target).sum().item()
                 total_force_mae += torch.abs(force_pred - force_target).sum().item()
@@ -209,7 +217,7 @@ class MD17Task(BaseTask):
                 batch.z, batch.pos, batch.batch, batch.edge_index
             )
             energy_pred = energy_pred_norm * self.energy_std + self.energy_mean
-            force_pred = force_pred_norm * self.force_std + self.force_mean
+            force_pred = force_pred_norm * self.energy_std
 
         try:
             import matplotlib.pyplot as plt
@@ -248,6 +256,13 @@ class MD17Task(BaseTask):
         """Execute the main training loop."""
         variant = "rMD17" if self.revised else "MD17"
         logger.info(f"Starting Task: {variant} ({self.molecule})")
+
+        # CUDA warmup: ensure cuBLAS context is ready before first backward
+        if 'cuda' in str(self.device):
+            _dummy = torch.zeros(1, device=self.device, requires_grad=True)
+            (_dummy.sum()).backward()
+            torch.cuda.synchronize()
+
         train_loader, val_loader, test_loader = self.get_data()
 
         from tqdm import tqdm

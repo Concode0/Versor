@@ -10,6 +10,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from core.algebra import CliffordAlgebra
 from layers import CliffordModule
 from layers import CliffordLinear
@@ -55,6 +56,11 @@ class DynamicRotorGenerator(CliffordModule):
         self.register_buffer('bivector_indices', bv_mask.nonzero(as_tuple=False).squeeze(-1))
         self.num_bivectors = len(self.bivector_indices)
 
+        # Precompute one-hot projection: [num_bv, D] — avoids in-place scatter_ in forward
+        one_hot = torch.zeros(self.num_bivectors, algebra.dim)
+        one_hot[torch.arange(self.num_bivectors), self.bivector_indices] = 1.0
+        self.register_buffer('bv_one_hot', one_hot)
+
         self.net = nn.Sequential(
             nn.Linear(input_dim, input_dim),
             nn.SiLU(),
@@ -68,12 +74,10 @@ class DynamicRotorGenerator(CliffordModule):
         bv_coeffs = self.net(inv_features)  # [E, K_d * num_bv]
         bv_coeffs = bv_coeffs.view(-1, self.num_dynamic_rotors, self.num_bivectors)  # [E, K_d, num_bv]
 
-        E = bv_coeffs.size(0)
-        B = torch.zeros(E, self.num_dynamic_rotors, self.algebra.dim,
-                        device=bv_coeffs.device, dtype=bv_coeffs.dtype)
-        indices = self.bivector_indices.unsqueeze(0).unsqueeze(0).expand(E, self.num_dynamic_rotors, -1)
-        B.scatter_(2, indices, bv_coeffs)
+        # Out-of-place scatter via matmul: [E, K_d, num_bv] x [num_bv, D] -> [E, K_d, D]
+        B = bv_coeffs @ self.bv_one_hot.to(bv_coeffs.dtype)
 
+        E = bv_coeffs.size(0)
         B_flat = B.reshape(E * self.num_dynamic_rotors, self.algebra.dim)
         R_flat = self.algebra.exp(-0.5 * B_flat)
         R = R_flat.reshape(E, self.num_dynamic_rotors, self.algebra.dim)
@@ -171,28 +175,37 @@ class MD17InteractionBlock(CliffordModule):
 
         edge_weights = torch.softmax(self.edge_weight_net(inv_feat), dim=-1)  # [E, K_total]
 
-        R_static, R_static_rev = self.multi_rotor._compute_rotors(psi.device, psi.dtype)
-        R_dynamic, R_dynamic_rev = self.dynamic_rotor_gen(inv_feat)
-
-        # Loop per-rotor to avoid materializing [E, H, K, D, D] intermediates
         gp = self.algebra.geometric_product
-        phi = torch.zeros_like(psi)
+        D = psi.size(-1)
+        device, dtype = psi.device, psi.dtype
+        basis = torch.eye(D, device=device, dtype=dtype)  # [D, D]
 
-        for k in range(self.num_static_rotors):
-            w_k = edge_weights[:, k].unsqueeze(-1).unsqueeze(-1)
-            phi = phi + w_k * gp(gp(R_static[k], psi), R_static_rev[k])
+        # Vectorized sandwich product via precomputed action matrices [K, D, D]
+        R_static, R_static_rev = self.multi_rotor._compute_rotors(device, dtype)
+        if self.num_static_rotors > 0:
+            Rb_s = gp(R_static.unsqueeze(1), basis.unsqueeze(0))   # [K, D, D]
+            M_s = gp(Rb_s, R_static_rev.unsqueeze(1))              # [K, D, D]
+            phi = torch.einsum('ek, kdl, ehd -> ehl',
+                               edge_weights[:, :self.num_static_rotors], M_s, psi)
+        else:
+            phi = torch.zeros_like(psi)
 
-        for k in range(self.num_dynamic_rotors):
-            w_k = edge_weights[:, self.num_static_rotors + k].unsqueeze(-1).unsqueeze(-1)
-            R_k = R_dynamic[:, k, :].unsqueeze(1)
-            R_k_rev = R_dynamic_rev[:, k, :].unsqueeze(1)
-            phi = phi + w_k * gp(gp(R_k, psi), R_k_rev)
+        if self.num_dynamic_rotors > 0:
+            R_dynamic, R_dynamic_rev = self.dynamic_rotor_gen(inv_feat)
+            E_size, K_d = R_dynamic.shape[:2]
+            R_flat = R_dynamic.reshape(E_size * K_d, D)
+            R_rev_flat = R_dynamic_rev.reshape(E_size * K_d, D)
+            Rb_d = gp(R_flat.unsqueeze(1), basis.unsqueeze(0))     # [E*K_d, D, D]
+            M_d = gp(Rb_d, R_rev_flat.unsqueeze(1))                # [E*K_d, D, D]
+            M_d = M_d.reshape(E_size, K_d, D, D)
+            phi = phi + torch.einsum('ek, ekdl, ehd -> ehl',
+                                     edge_weights[:, self.num_static_rotors:], M_d, psi)
 
         gate = self.msg_gate(inv_feat)  # [E, Hidden]
         phi_gated = phi * gate.unsqueeze(-1)
 
-        out_msg = torch.zeros_like(h)
-        out_msg.index_add_(0, row, phi_gated)
+        # Out-of-place index_add to preserve 2nd-order gradient path
+        out_msg = torch.zeros_like(h).index_add(0, row, phi_gated)
 
         return h + out_msg
 
@@ -255,11 +268,16 @@ class MD17ForceNet(CliffordModule):
             nn.Linear(hidden_dim, 1)
         )
 
-    def _run_layers(self, h, pos, edge_index):
-        """Run interaction layers, optionally with gradient checkpointing."""
+    def _run_layers(self, h, pos, edge_index, force_checkpoint=True):
+        """Run interaction layers, optionally with gradient checkpointing.
+
+        Args:
+            force_checkpoint: If False, always skip checkpointing regardless of self.use_checkpoint.
+                Must be False when called inside create_graph=True autograd.grad (they are incompatible).
+        """
         import torch.utils.checkpoint as cp
         for layer in self.layers:
-            if self.use_checkpoint and self.training:
+            if self.use_checkpoint and self.training and force_checkpoint:
                 h = cp.checkpoint(layer, h, pos, edge_index, use_reentrant=False)
             else:
                 h = layer(h, pos, edge_index)
@@ -273,10 +291,10 @@ class MD17ForceNet(CliffordModule):
             force = -autograd.grad(energy_pred, pos, grad_outputs=ones, create_graph=True)[0]
         """
         h_scalar = self.atom_embedding(z)  # [N, Hidden]
-        h = torch.zeros(z.size(0), h_scalar.size(1), self.algebra.dim, device=z.device)
-        h[..., 0] = h_scalar
+        h = F.pad(h_scalar.unsqueeze(-1), (0, self.algebra.dim - 1))  # [N, H, D]
 
-        h = self._run_layers(h, pos, edge_index)
+        # Disable checkpointing: incompatible with create_graph=True in force gradient
+        h = self._run_layers(h, pos, edge_index, force_checkpoint=False)
 
         self._last_features = h.detach()
 
@@ -291,8 +309,7 @@ class MD17ForceNet(CliffordModule):
             pos.requires_grad_(True)
 
             h_scalar = self.atom_embedding(z)  # [N, Hidden]
-            h = torch.zeros(z.size(0), h_scalar.size(1), self.algebra.dim, device=z.device)
-            h[..., 0] = h_scalar
+            h = F.pad(h_scalar.unsqueeze(-1), (0, self.algebra.dim - 1))  # [N, H, D]
 
             h = self._run_layers(h, pos, edge_index)
 
@@ -320,7 +337,8 @@ class MD17ForceNet(CliffordModule):
 
     def total_sparsity_loss(self) -> torch.Tensor:
         """Collects sparsity loss from all MultiRotor layers and dynamic rotor generators."""
-        loss = torch.tensor(0.0)
+        device = next(self.parameters()).device
+        loss = torch.tensor(0.0, device=device)
         for layer in self.layers:
             if hasattr(layer, 'multi_rotor'):
                 loss = loss + layer.multi_rotor.sparsity_loss()

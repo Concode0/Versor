@@ -16,23 +16,26 @@ model:
   hidden_dim: 32
   layers: 4
   num_static_rotors: 8
-  num_dynamic_rotors: 4
+  num_dynamic_rotors: 2
   max_z: 100
   num_rbf: 20
   rbf_cutoff: 5.0
   use_decomposition: false
   decomp_k: 8
   use_rotor_backend: true
-  use_geo_square: true
-  use_checkpoint: true
+  use_geo_square: false
+  use_checkpoint: false
 training:
   epochs: 400
-  lr: 0.001
+  lr: 0.0005
   batch_size: 8
   optimizer_type: "riemannian_adam"
+  scheduler:
+    factor: 0.5
+    patience: 20
   loss_weights:
-    energy: 1.0
-    force: 10.0
+    energy: 0.1
+    force: 100.0
     sparsity: 0.01
     conservative: 0.0
     grade_reg: 0.01
