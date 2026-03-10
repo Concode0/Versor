@@ -331,10 +331,11 @@ class MetricSearch:
         max_energy = total_energy.max().clamp(min=1e-8)
         normalized_energy = total_energy / max_energy
 
-        # Classify base vectors by their bivector participation
+        # Classify base vectors by energy-weighted dominant type.
         n = algebra.n
-        base_type = {}  # base_vector_index -> set of signature types it participates in
-        base_active = {}  # base_vector_index -> max energy
+        # base_type_energy[b] -> accumulated energy per signature type
+        base_type_energy: dict = {}
+        base_active: dict = {}
 
         for bv_idx_pos, blade_idx in enumerate(bv_indices.tolist()):
             energy_val = normalized_energy[bv_idx_pos].item()
@@ -355,24 +356,25 @@ class MetricSearch:
                 sig_type = 'null'
 
             for b in bits:
-                if b not in base_type:
-                    base_type[b] = set()
+                if b not in base_type_energy:
+                    base_type_energy[b] = {'elliptic': 0.0, 'hyperbolic': 0.0, 'null': 0.0}
                     base_active[b] = 0.0
-                base_type[b].add(sig_type)
+                base_type_energy[b][sig_type] += energy_val
                 base_active[b] = max(base_active[b], energy_val)
 
-        # Count active base vectors by dominant type
-        active_positive = 0  # base vectors mostly in elliptic bivectors
-        active_negative = 0  # base vectors in hyperbolic bivectors
-        active_null = 0  # base vectors in null bivectors
+        # Count active base vectors by their dominant (highest cumulative energy) type
+        active_positive = 0  # base vectors whose dominant bivectors are elliptic
+        active_negative = 0  # base vectors whose dominant bivectors are hyperbolic
+        active_null = 0      # base vectors whose dominant bivectors are null
 
         for b_idx in range(n):
             if b_idx not in base_active or base_active[b_idx] < self.energy_threshold:
                 continue
-            types = base_type.get(b_idx, set())
-            if 'null' in types and 'elliptic' not in types and 'hyperbolic' not in types:
+            type_energy = base_type_energy[b_idx]
+            dominant = max(type_energy, key=type_energy.get)
+            if dominant == 'null':
                 active_null += 1
-            elif 'hyperbolic' in types:
+            elif dominant == 'hyperbolic':
                 active_negative += 1
             else:
                 active_positive += 1
