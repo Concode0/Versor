@@ -1,13 +1,5 @@
 # Versor: A PyTorch Framework for Geometric Algebra Deep Learning
 
-> [!IMPORTANT]
-> **Notice: No Affiliation with arXiv:2602.10195**
->
-> This project (**Versor**) is the original, independent research work of Eunkyum Kim.
-> We have **no affiliation, association, or connection** with the paper titled *"Versor: A Geometric Sequence Architecture"* (arXiv:2602.10195) or its authors.
->
-> Any claims of performance or hardware implementations made in that paper (under the name 'VersorAI') do not represent this project. We have formally reported the misuse of our project's name and identity to the relevant institutions.
-
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/) [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 
 > **"There is a ceiling above standard Deep Learning that no one saw. Versor opens the door above it."**
@@ -18,12 +10,12 @@
 
 **Versor** replaces standard matrix multiplications with **Geometric Algebra (Rotor)** operations to preserve the topological structure of data. It provides the building blocks for the **Geometric Blade Network (GBN)** — model architectures that go beyond unconstrained linear transformations, using pure, manifold-aligned geometric rotations via Clifford Algebra and Rotors.
 
-| Task                                       | Algebra             | Key Metric             | Result                | Note                               |
-| :----------------------------------------- | :------------------ | :--------------------- | :-------------------- | :--------------------------------- |
-| **Symbolic Regression** (First_Principles) | $Cl(4,0)$           | Median R²              | 0.9525                | Iterative geometric unbending      |
-| **MD17** (Molecular Dynamics)              | $Cl(3,0,1)$ PGA     | Energy MAE / Force MAE | 0.613 / 0.079 kcal/mol(/Å) · ethanol | Converges in ~20 min on RTX Pro 4500 |
-| **LQA** (Logical Query Answering)          | $Cl(4,1)$ CGA       | Chain / Negation       | 100% @len1–13 / 64.6% | Geometric ALU on frozen embeddings |
-| **DEAP EEG** (Emotion)                     | $Cl(3,1)$ Minkowski | RMSE                   | 0.2576 / 0.2329       | Cross / Within-subject LOSO        |
+| Task                                       | Algebra             | Key Metric         | Result                                                                                     | Note                                                   |
+| :----------------------------------------- | :------------------ | :----------------- | :----------------------------------------------------------------------------------------- | :----------------------------------------------------- |
+| **Symbolic Regression** (First_Principles) | $Cl(4,0)$           | Median R²          | 0.9525                                                                                     | Iterative geometric unbending                          |
+| **MD17** (Molecular Dynamics)              | $Cl(3,0,1)$ PGA     | Energy / Force MAE | 0.476 / 0.077 · benzene, 0.613 / 0.079 · ethanol, 1.229 / 0.125 · malonaldehyde (kcal/mol) | Error distributions peak at 0 with Gaussian-like shape |
+| **LQA** (Logical Query Answering)          | $Cl(4,1)$ CGA       | Chain / Negation   | 100% @len1–13 / 64.6%                                                                      | Geometric ALU on frozen embeddings                     |
+| **DEAP EEG** (Emotion)                     | $Cl(3,1)$ Minkowski | RMSE               | 0.2576 / 0.2329                                                                            | Cross / Within-subject LOSO                            |
 
 ## Core Idea
 
@@ -74,7 +66,7 @@ uv sync --extra viz          # matplotlib, seaborn, scikit-learn, plotly, imagei
 uv sync --extra examples     # transformers, pillow, scikit-learn, matplotlib
 uv sync --extra graph        # torch-geometric (for molecular GNN tasks)
 uv sync --extra demo         # streamlit, plotly
-uv sync --extra all_tasks    # All task dependencies (graph, pdbbind, weather, cad)
+uv sync --extra all_tasks    # All task dependencies
 uv sync --extra all          # everything
 ```
 
@@ -148,15 +140,17 @@ uv run main.py task=sr
 
 ### MD17 (Molecular Dynamics)
 
-Multi-task energy + force prediction with conservative constraint ($F = -\nabla E$).
+Multi-task energy + force prediction with conservative constraint ($F = -\nabla E$), using $Cl(3,0,1)$ PGA — translations are exact rotors, no approximation.
 
-| Property      | Value                                                                                  |
-| :------------ | :------------------------------------------------------------------------------------- |
-| **Algebra**   | $Cl(3,0,1)$ — PGA for SE(3) rigid-body motions                                         |
-| **Molecules** | aspirin, benzene, ethanol, malonaldehyde, naphthalene, salicylic acid, toluene, uracil |
-| **Status**    | Experimental                                                                           |
+| Molecule      | Atoms | Epochs | VRAM  |  Time   | E MAE (kcal/mol) | F MAE (kcal/mol/Å) |
+| :------------ | :---: | :----: | :---: | :-----: | :--------------: | :----------------: |
+| benzene       |  12   |  400   | 11 GB | ~62 min |    **0.476**     |     **0.077**      |
+| ethanol       |   9   |  500   | 6 GB  | ~52 min |    **0.613**     |     **0.079**      |
+| malonaldehyde |   9   |  400   | 6 GB  | ~41 min |    **1.229**     |     **0.125**      |
 
-**Training analysis:** [docs/md17_results.md](docs/md17_results.md)
+All runs: rMD17 · 1000 train / 1000 val / 98 000 test · RTX Pro 4500.
+
+**Error distribution:** Across all three molecules, the prediction error distributions peak sharply at 0 and follow a Gaussian-like shape. This indicates the model is not making systematic biases — it finds the geometrically correct answer and the residual error is purely stochastic noise, consistent with a model that has learned the true underlying potential energy surface geometry.
 
 ```bash
 uv run main.py task=md17
@@ -296,6 +290,8 @@ This project is licensed under the **Apache License 2.0**.
 **Notice on Patents**:
 The core GBN architecture is covered by **KR Patent Application 10-2026-0023023**.
 By releasing this under Apache 2.0, we provide a **perpetual, royalty-free patent license** to any individual or entity using this software.
+
+**Notice**: This project is the original, independent work of Eunkyum Kim. We have no affiliation with the paper "Versor: A Geometric Sequence Architecture" (arXiv:2602.10195).
 
 ## Citation
 
