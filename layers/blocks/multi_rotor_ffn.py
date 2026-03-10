@@ -73,7 +73,7 @@ class MultiRotorFFN(CliffordModule):
         self.contract = CliffordLinear(algebra, ffn_channels, channels, backend=backend)
         self.gate = BladeSelector(algebra, channels)
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         """Applies the geometric toolbox FFN.
 
         Args:
