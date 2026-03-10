@@ -1,8 +1,10 @@
 # Versor: A PyTorch Framework for Geometric Algebra Deep Learning
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/) [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/) [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/) [![Docs](https://img.shields.io/badge/docs-MkDocs-brightgreen)](https://concode0.github.io/Versor/) [![DOI](https://zenodo.org/badge/1149480519.svg)](https://doi.org/10.5281/zenodo.18939518)
 
 > **"There is a ceiling above standard Deep Learning that no one saw. Versor opens the door above it."**
+
+**[Read the Official Documentation](https://concode0.github.io/Versor/)**
 
 ![Manifold Unbending Demo](/demo_manifold_comp.gif)
 
@@ -276,12 +278,14 @@ Versor/
 
 ## Documentation
 
-*   [**Philosophy**](docs/philosophy.md): Why Geometric Algebra? The "unbending" paradigm.
-*   [**Tutorial**](docs/tutorial.md): Step-by-step guide to building with Versor.
-*   [**Mathematics**](docs/mathematical.md): Clifford Algebra, Rotors, Metric Signatures.
-*   [**Innovations (Code Examples)**](docs/innovations.md): 10 code-illustrated innovations that make Versor unique.
-*   [**FAQ**](docs/faq.md): Common questions and troubleshooting.
-*   [**Roadmap**](docs/milestone.md): Upcoming work and research directions.
+**[Official Versor Documentation Website](https://concode0.github.io/Versor/)**
+
+For a deep dive into the framework, please visit our official documentation site, which includes:
+* **Philosophy**: Why Geometric Algebra? The "unbending" paradigm.
+* **Mathematics**: Clifford Algebra, Rotors, Metric Signatures, and proofs.
+* **Tutorial**: Step-by-step guide to building with Versor's geometric layers.
+* **Innovations**: 10 code-illustrated features that make Versor unique.
+* **API Reference**: Full documentation of `core`, `layers`, and `functional` modules.
 
 ## License & Intellectual Property
 
@@ -297,14 +301,15 @@ By releasing this under Apache 2.0, we provide a **perpetual, royalty-free paten
 
 ```bibtex
 @software{kim2026versor,
-  author = {Kim, Eunkyum},
-  title = {Versor: Universal Geometric Algebra Neural Network},
-  url = {https://github.com/Concode0/versor},
-  version = {0.1.0},
-  year = {2026},
-  month = {2},
+  author  = {Kim, Eunkyum},
+  title   = {Versor: Universal Geometric Algebra Neural Network},
+  url     = {[https://github.com/Concode0/versor](https://github.com/Concode0/versor)},
+  version = {1.0.0},
+  year    = {2026},
+  month   = {3},
+  doi     = {10.5281/zenodo.18939519},
   license = {Apache-2.0},
-  note = {ROK Patent Application 10-2026-0023023 (Geometric Blade Networks)}
+  note    = {ROK Patent Application 10-2026-0023023 (Geometric Blade Networks)}
 }
 ```
 

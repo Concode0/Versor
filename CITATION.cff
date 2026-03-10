@@ -6,9 +6,10 @@ authors:
     email: "nemonanconcode@gmail.com"
 title: "Versor: Universal Geometric Algebra Neural Network"
 version: 1.0.0
-date-released: 2026-02-04
+date-released: 2026-03-10
 url: "https://github.com/Concode0/versor"
 repository-code: "https://github.com/Concode0/versor"
+doi: "10.5281/zenodo.18939519"
 keywords:
   - "geometric algebra"
   - "clifford algebra"
@@ -17,6 +18,9 @@ keywords:
   - "unbending"
   - "manifold alignment"
 identifiers:
+  - type: doi
+    value: "10.5281/zenodo.18939519"
+    description: "Zenodo Archive"
   - type: other
     value: "KR Patent Application 10-2026-0023023"
     description: "Geometric Blade Network (GBN) Architecture Patent"

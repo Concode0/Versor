@@ -1,6 +1,6 @@
 [project]
 name = "versor"
-version = "0.1.0"
+version = "1.0.0"
 description = "A PyTorch framework for Geometric Algebra Deep Learning"
 readme = "README.md"
 requires-python = ">=3.9"
