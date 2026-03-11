@@ -1,5 +1,5 @@
 # Versor: Universal Geometric Algebra Neural Network (C) 2026 Eunkyum Kim
-# Licensed under the Apache License, Version 2.0 | "Unbending" Paradigm
+# Licensed under the Apache License, Version 2.0
 
 """Core mathematical kernel for Geometric Algebra.
 

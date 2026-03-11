@@ -18,9 +18,7 @@ from layers import MultiRotorLayer
 from layers import RotorGadget
 
 
-# ============================================================================
 # Fixtures
-# ============================================================================
 
 @pytest.fixture
 def rotor_layer(algebra_3d):
@@ -40,9 +38,7 @@ def rotor_gadget(algebra_3d):
     return RotorGadget(algebra_3d, in_channels=4, out_channels=8)
 
 
-# ============================================================================
 # Unit Tests: Gradient Flow
-# ============================================================================
 
 def test_exponential_sgd_gradient_flow(algebra_3d, rotor_layer):
     """Verify gradients exist and flow correctly."""
@@ -156,9 +152,7 @@ def test_riemannian_adam_momentum(algebra_3d, rotor_layer):
     assert not torch.allclose(state['exp_avg'], torch.zeros_like(state['exp_avg']))
 
 
-# ============================================================================
 # Unit Tests: Parameter Updates
-# ============================================================================
 
 def test_bivector_norm_clipping_sgd(algebra_3d, rotor_layer):
     """Verify bivector norm clipping prevents overflow."""
@@ -237,9 +231,7 @@ def test_no_clipping_when_disabled(algebra_3d, rotor_layer):
     assert not torch.allclose(initial_norms, final_norms)
 
 
-# ============================================================================
 # Convergence Tests
-# ============================================================================
 
 @pytest.mark.slow
 def test_convergence_synthetic_rotation_sgd(algebra_3d):
@@ -353,9 +345,7 @@ def test_compare_sgd_convergence(algebra_3d):
     assert losses2[-1] < losses2[0], "Standard SGD should reduce loss"
 
 
-# ============================================================================
 # Geometric Validation
-# ============================================================================
 
 @pytest.mark.slow
 def test_rotor_manifold_membership_after_optimization(algebra_3d):
@@ -417,9 +407,7 @@ def test_isometry_preservation(algebra_3d):
         assert torch.allclose(x_norms, y_norms, rtol=1e-4, atol=1e-4)
 
 
-# ============================================================================
 # Integration Tests
-# ============================================================================
 
 def test_integration_with_multi_rotor_layer(algebra_3d, multi_rotor_layer):
     """Verify optimizers work with MultiRotorLayer."""
@@ -529,9 +517,7 @@ def test_optimizer_state_dict(algebra_3d, rotor_layer):
             assert 'step' in new_optimizer.state[new_param]
 
 
-# ============================================================================
 # Edge Cases
-# ============================================================================
 
 def test_zero_learning_rate(algebra_3d, rotor_layer):
     """Verify optimizer handles zero learning rate gracefully."""

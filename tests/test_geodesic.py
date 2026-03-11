@@ -16,9 +16,7 @@ from core.search import GeodesicFlow, DimensionLifter, MetricSearch
 pytestmark = pytest.mark.unit
 
 
-# ---------------------------------------------------------------------------
 # Fixtures
-# ---------------------------------------------------------------------------
 
 
 def _circle_data(N: int = 64, noise: float = 0.0) -> torch.Tensor:
@@ -61,9 +59,7 @@ def _random_data(N: int = 64, dim: int = 2) -> torch.Tensor:
     return torch.randn(N, dim)
 
 
-# ---------------------------------------------------------------------------
 # TestGeodesicFlow
-# ---------------------------------------------------------------------------
 
 class TestGeodesicFlow:
     """Tests for GeodesicFlow."""
@@ -248,9 +244,7 @@ class TestGeodesicFlow:
                 assert 'Noisy' in report['label']
 
 
-# ---------------------------------------------------------------------------
 # TestDimensionLifter
-# ---------------------------------------------------------------------------
 
 class TestDimensionLifter:
     """Tests for DimensionLifter."""

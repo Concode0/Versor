@@ -4,9 +4,6 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 #
-# This project is fully open-source, including for commercial use.
-# We believe Geometric Algebra is the future of AI, and we want
-# the industry to build upon this "unbending" paradigm.
 
 """Real HuggingFace datasets for Geometric Latent Reasoning (GLR) probes.
 
@@ -32,9 +29,7 @@ from log import get_logger
 
 logger = get_logger(__name__)
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 def _get_encoder(encoder_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
     """Load a frozen sentence-transformer encoder."""
@@ -74,9 +69,7 @@ def _load_hf_dataset(path: str, name: str = None, split: str = "train",
     return load_dataset(**kwargs)
 
 
-# ---------------------------------------------------------------------------
 # CLUTRR Dataset -- Compositional Chain Reasoning (Real)
-# ---------------------------------------------------------------------------
 
 # CLUTRR relation types (18 total in CLUTRR/v1)
 CLUTRR_RELATIONS = [
@@ -203,9 +196,7 @@ class CLUTRRDataset(Dataset):
         }
 
 
-# ---------------------------------------------------------------------------
 # HANS Dataset -- Asymmetric Entailment (SNLI train + HANS eval)
-# ---------------------------------------------------------------------------
 
 class HANSDataset(Dataset):
     """SNLI (train) + HANS (eval) for entailment asymmetry testing.
@@ -274,9 +265,7 @@ class HANSDataset(Dataset):
         }
 
 
-# ---------------------------------------------------------------------------
 # BoolQ-Neg Dataset -- Negation Sensitivity (Real)
-# ---------------------------------------------------------------------------
 
 _NEGATION_PREFIXES = [
     ("Is", "Isn't"), ("Can", "Can't"), ("Does", "Doesn't"),
@@ -378,9 +367,7 @@ class BoolQNegDataset(Dataset):
         }
 
 
-# ---------------------------------------------------------------------------
 # Loader helper
-# ---------------------------------------------------------------------------
 
 def get_lqa_loaders(
     data_root: str = "data",

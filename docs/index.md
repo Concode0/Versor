@@ -250,6 +250,15 @@ Versor/
 └── main.py             # CLI entry point
 ```
 
+## Contributing
+
+Versor is currently in a **Stabilization Phase** as the lead maintainer focuses on academic milestones. While we are not actively seeking major feature contributions at this moment, we highly value community feedback.
+
+- **Found a Bug?** Please open an [Issue](https://github.com/Concode0/Versor/issues) with a detailed reproduction case.
+- **Have an Idea?** Open an Issue to discuss it before submitting a Pull Request.
+- **Code of Conduct:** All participants are expected to adhere to our [Code of Conduct](../CODE_OF_CONDUCT.md).
+
+
 ## License & Intellectual Property
 
 This project is licensed under the **Apache License 2.0**.

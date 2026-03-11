@@ -1,5 +1,5 @@
 # Versor: Universal Geometric Algebra Neural Network (C) 2026 Eunkyum Kim
-# Licensed under the Apache License, Version 2.0 | "Unbending" Paradigm
+# Licensed under the Apache License, Version 2.0
 
 """Device configuration and backend tuning for Versor.
 
@@ -71,9 +71,7 @@ class DeviceConfig:
         if self.amp and not is_cuda:
             self.amp = False
 
-    # ------------------------------------------------------------------
     # Public helpers
-    # ------------------------------------------------------------------
 
     def apply_backend_settings(self) -> None:
         """Apply ``cudnn.benchmark`` (and future backend knobs)."""

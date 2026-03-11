@@ -4,9 +4,6 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 #
-# This project is fully open-source, including for commercial use.
-# We believe Geometric Algebra is the future of AI, and we want
-# the industry to build upon this "unbending" paradigm.
 
 """Direct rotor-to-formula translation.
 
@@ -213,9 +210,7 @@ class RotorTranslator:
         self.symbols = orig_symbols
         return terms
 
-    # ------------------------------------------------------------------
     # Direct symbolic expansion (translate_direct)
-    # ------------------------------------------------------------------
 
     def _symbolic_gp(self, mv_a: dict, mv_b: dict) -> dict:
         """Compute symbolic geometric product using the Cayley table.

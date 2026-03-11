@@ -4,9 +4,6 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 #
-# This project is fully open-source, including for commercial use.
-# We believe Geometric Algebra is the future of AI, and we want
-# the industry to build upon this "unbending" paradigm.
 
 """Lorentz Transformation Debugger in Spacetime Algebra Cl(3,1).
 
@@ -67,9 +64,7 @@ from optimizers.riemannian import RiemannianAdam
 from functional.orthogonality import StrictOrthogonality, OrthogonalitySettings
 
 
-# =====================================================================
 # Boost Bivector Helpers
-# =====================================================================
 
 def _boost_bivector(algebra, axis: int) -> torch.Tensor:
     """Create a unit boost bivector in Cl(3,1).
@@ -110,9 +105,7 @@ def _rotation_bivector(algebra, plane: int) -> torch.Tensor:
     return bv
 
 
-# =====================================================================
 # Dataset
-# =====================================================================
 
 class LorentzDataset(Dataset):
     """Dataset of spacetime event pairs related by known Lorentz transformations.
@@ -206,9 +199,7 @@ class LorentzDataset(Dataset):
         return self.events[idx], self.rotors[idx], self.rapidities[idx]
 
 
-# =====================================================================
 # Network
-# =====================================================================
 
 class LorentzNet(nn.Module):
     """GA network for learning Lorentz rotors in Cl(3,1).
@@ -312,9 +303,7 @@ class LorentzNet(nn.Module):
         return out, intermediates
 
 
-# =====================================================================
 # Lorentz Debugger
-# =====================================================================
 
 class LorentzDebugger:
     """Physics diagnostics for Lorentz transformations in Cl(3,1).
@@ -685,9 +674,7 @@ class LorentzDebugger:
         return '\n'.join(lines)
 
 
-# =====================================================================
 # Visualization
-# =====================================================================
 
 def _save_plots(history: dict, debugger: LorentzDebugger,
                 events: torch.Tensor, rotors_true: torch.Tensor,
@@ -903,9 +890,7 @@ def _save_plots(history: dict, debugger: LorentzDebugger,
     print(f"  Plots saved to {output_dir}/")
 
 
-# =====================================================================
 # Evaluation
-# =====================================================================
 
 @torch.no_grad()
 def _evaluate(model: LorentzNet, loader: DataLoader,
@@ -945,9 +930,7 @@ def _evaluate(model: LorentzNet, loader: DataLoader,
     return avg_loss, events, rotors_true, rotors_pred, raps, last_intermediates
 
 
-# =====================================================================
 # Training
-# =====================================================================
 
 def train(args):
     """Main training loop with physics diagnostics and history tracking."""
@@ -1160,9 +1143,7 @@ def train(args):
     return model, best_test_loss
 
 
-# =====================================================================
 # CLI
-# =====================================================================
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(

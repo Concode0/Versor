@@ -4,9 +4,6 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 #
-# This project is fully open-source, including for commercial use.
-# We believe Geometric Algebra is the future of AI, and we want
-# the industry to build upon this "unbending" paradigm.
 
 """SRBench-aligned Symbolic Regression Dataset (PMLB).
 
@@ -36,9 +33,7 @@ logger = logging.getLogger(__name__)
 # PMLB GitHub raw URL for datasets not yet in the PyPI index
 _PMLB_GITHUB_RAW = "https://github.com/EpistasisLab/pmlb/raw/master/datasets"
 
-# ---------------------------------------------------------------------------
 # SRBench 2025 dataset lists (24 total)
-# ---------------------------------------------------------------------------
 
 # Phenomenological & first-principles track (12 datasets)
 FIRST_PRINCIPLES_DATASETS = [

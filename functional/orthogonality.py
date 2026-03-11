@@ -4,9 +4,6 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 #
-# This project is fully open-source, including for commercial use.
-# We believe Geometric Algebra is the future of AI, and we want
-# the industry to build upon this "unbending" paradigm.
 
 """Strict Orthogonality Enforcement for Geometric Algebra Networks.
 
@@ -133,9 +130,7 @@ class StrictOrthogonality(nn.Module):
         self.register_buffer('target_mask', target_mask)
         self.register_buffer('parasitic_mask', ~target_mask)
 
-    # ------------------------------------------------------------------
     # Loss / Projection
-    # ------------------------------------------------------------------
 
     def parasitic_energy(self, x: torch.Tensor) -> torch.Tensor:
         """Mean squared energy in non-target grade components.
@@ -181,9 +176,7 @@ class StrictOrthogonality(nn.Module):
 
         return self.settings.weight * self.parasitic_energy(x)
 
-    # ------------------------------------------------------------------
     # Weight Annealing
-    # ------------------------------------------------------------------
 
     def anneal_weight(self, epoch: int, warmup_epochs: int,
                       total_epochs: int) -> float:
@@ -210,9 +203,7 @@ class StrictOrthogonality(nn.Module):
         frac = min(epoch / warmup_epochs, 1.0)
         return self.settings.weight * frac
 
-    # ------------------------------------------------------------------
     # Diagnostics
-    # ------------------------------------------------------------------
 
     def grade_energies(self, x: torch.Tensor) -> Dict[int, float]:
         """Mean squared energy per grade.
@@ -357,9 +348,7 @@ class StrictOrthogonality(nn.Module):
 
         return '\n'.join(lines)
 
-    # ------------------------------------------------------------------
     # Visualization
-    # ------------------------------------------------------------------
 
     def visualize_coupling(self, x: torch.Tensor,
                            title: str = "Cross-Grade Coupling") -> Optional[object]:

@@ -4,9 +4,6 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 #
-# This project is fully open-source, including for commercial use.
-# We believe Geometric Algebra is the future of AI, and we want 
-# the industry to build upon this "unbending" paradigm.
 
 """Interactive Streamlit Demo for Versor.
 
@@ -104,7 +101,7 @@ def plot_3d_manifold(data, title, color_data=None):
     )
     return fig
 
-# --- Main App Logic (Manifold Unbending) ---
+# Main app logic
 
 # 1. Generate Data
 algebra = CliffordAlgebra(3, 0, device='cpu')
@@ -143,7 +140,7 @@ output_placeholder = col2.empty()
 
 # 4. Render Logic
 if start_align:
-    # --- TRAINING MODE ---
+    # Training mode
     class ManifoldNet(torch.nn.Module):
         """Simple rotor-based network for the demo."""
         def __init__(self, alg):
@@ -196,7 +193,7 @@ if start_align:
         st.plotly_chart(plot_3d_manifold(st.session_state.trained_output, "Final Result", color_data=original_z_colors), key="plot_final")
 
 else:
-    # --- STATIC/IDLE MODE ---
+    # Idle mode
     with output_placeholder.container():
         if st.session_state.trained_output is not None:
             st.success("Unbent Manifold (Result)")

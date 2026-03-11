@@ -4,9 +4,6 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 #
-# This project is fully open-source, including for commercial use.
-# We believe Geometric Algebra is the future of AI, and we want
-# the industry to build upon this "unbending" paradigm.
 
 """Riemann Zeta Function Reconstruction via Geometric Algebra.
 
@@ -58,9 +55,7 @@ from optimizers.riemannian import RiemannianAdam
 from functional.orthogonality import StrictOrthogonality, OrthogonalitySettings
 
 
-# =====================================================================
 # Zeta Computation
-# =====================================================================
 
 def _zeta_mpmath(s_complex: complex) -> complex:
     """Compute zeta via mpmath (high accuracy, 15 decimal digits)."""
@@ -151,9 +146,7 @@ def compute_zeta_batch(sigma_arr: np.ndarray,
     return np.stack([zeta.real, zeta.imag], axis=-1)
 
 
-# =====================================================================
 # Dataset
-# =====================================================================
 
 class ZetaDataset(Dataset):
     """Dataset of (s, zeta(s)) pairs encoded as Cl(2,0) multivectors.
@@ -212,9 +205,7 @@ class ZetaDataset(Dataset):
         return self.inputs[idx], self.targets[idx]
 
 
-# =====================================================================
 # Network
-# =====================================================================
 
 class ZetaNet(nn.Module):
     """GA network for zeta function reconstruction in Cl(2,0).
@@ -315,9 +306,7 @@ class ZetaNet(nn.Module):
         return self._intermediates
 
 
-# =====================================================================
 # Evaluation
-# =====================================================================
 
 @torch.no_grad()
 def _evaluate(model: ZetaNet, loader: DataLoader,
@@ -425,9 +414,7 @@ def _check_functional_equation(model: ZetaNet,
     }
 
 
-# =====================================================================
 # Visualization
-# =====================================================================
 
 def _save_plots(history: dict, model: ZetaNet, test_ds: ZetaDataset,
                 input_mean, input_std, target_mean, target_std,
@@ -600,9 +587,7 @@ def _save_plots(history: dict, model: ZetaNet, test_ds: ZetaDataset,
     print(f"  Plots saved to {output_dir}/")
 
 
-# =====================================================================
 # Training
-# =====================================================================
 
 def train(args):
     """Main training loop with orthogonality monitoring and history tracking."""
@@ -837,9 +822,7 @@ def train(args):
     return model, best_test_loss
 
 
-# =====================================================================
 # CLI
-# =====================================================================
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(

@@ -6,7 +6,7 @@
 
 **[Read the Official Documentation](https://concode0.github.io/Versor/)**
 
-![Manifold Unbending Demo](/demo_manifold_comp.gif)
+![Manifold Unbending Demo](assets/demo_manifold_comp.gif)
 
 ## At a Glance
 
@@ -113,7 +113,7 @@ uv run main.py task=sr algebra.p=4 training.lr=0.001
 
 ### Interactive Demo (Streamlit)
 
-![DEMO](demo_manifold_comp.gif)
+![DEMO](assets/demo_manifold_comp.gif)
 
 ```bash
 streamlit run examples/demo.py
@@ -151,6 +151,9 @@ Multi-task energy + force prediction with conservative constraint ($F = -\nabla 
 | malonaldehyde |   9   |  400   | 6 GB  | ~41 min |    **1.229**     |     **0.125**      |
 
 All runs: rMD17 · 1000 train / 1000 val / 98 000 test · RTX Pro 4500.
+
+![ERROR_DISTRIBUTION](assets/md17_prediction_benzene.png)
+
 
 **Error distribution:** Across all three molecules, the prediction error distributions peak sharply at 0 and follow a Gaussian-like shape. This indicates the model is not making systematic biases — it finds the geometrically correct answer and the residual error is purely stochastic noise, consistent with a model that has learned the true underlying potential energy surface geometry.
 
@@ -286,6 +289,16 @@ For a deep dive into the framework, please visit our official documentation site
 * **Tutorial**: Step-by-step guide to building with Versor's geometric layers.
 * **Innovations**: 10 code-illustrated features that make Versor unique.
 * **API Reference**: Full documentation of `core`, `layers`, and `functional` modules.
+
+## Contributing
+
+Versor is currently in a **Stabilization Phase** as the lead maintainer focuses on academic milestones. While we are not actively seeking major feature contributions at this moment, we highly value community feedback.
+
+- **Found a Bug?** Please open an [Issue](https://github.com/Concode0/Versor/issues) with a detailed reproduction case.
+- **Have an Idea?** Open an Issue to discuss it before submitting a Pull Request.
+- **Code of Conduct:** All participants are expected to adhere to our [Code of Conduct](./CODE_OF_CONDUCT.md).
+
+We believe in the power of the community to "unbend" the future of AI together.
 
 ## License & Intellectual Property
 
