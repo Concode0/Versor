@@ -192,9 +192,12 @@ class TestHermitianDistance:
 
 class TestHermitianAngle:
     def test_zero_angle_same(self, algebra_3d):
+        torch.manual_seed(42)
         mv = torch.randn(algebra_3d.dim)
         angle = hermitian_angle(algebra_3d, mv, mv)
-        assert torch.allclose(angle, torch.tensor([0.0]), atol=1e-5)
+        # float32 acos near cos=1 has ~sqrt(2*eps_machine) ≈ 5e-4 rad error;
+        # use atol=1e-3 to be robust across platforms
+        assert torch.allclose(angle, torch.tensor([0.0]), atol=1e-3)
 
     def test_angle_range(self, algebra_3d):
         a = torch.randn(algebra_3d.dim)

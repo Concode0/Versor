@@ -271,10 +271,14 @@ def hermitian_angle(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) 
     Returns:
         Angle in radians [..., 1].
     """
-    ip = hermitian_inner_product(algebra, A, B)
-    norm_a = hermitian_norm(algebra, A)
-    norm_b = hermitian_norm(algebra, B)
-    cos_theta = ip / (norm_a * norm_b).clamp(min=1e-6)
+    signs = _hermitian_signs(algebra).to(device=A.device, dtype=A.dtype)
+    ip = (signs * A * B).sum(dim=-1, keepdim=True)
+    sq_a = (signs * A * A).sum(dim=-1, keepdim=True)
+    sq_b = (signs * B * B).sum(dim=-1, keepdim=True)
+    # Use sqrt(sq_a * sq_b) instead of sqrt(sq_a)*sqrt(sq_b) to avoid
+    # float32 precision loss from two separate sqrt operations.
+    denom = torch.sqrt(torch.abs(sq_a) * torch.abs(sq_b)).clamp(min=1e-6)
+    cos_theta = ip / denom
     cos_theta = torch.clamp(cos_theta, -1.0, 1.0)
     return torch.acos(cos_theta)
 
