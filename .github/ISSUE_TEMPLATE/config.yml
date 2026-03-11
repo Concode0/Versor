@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://concode0.github.io/Versor/
+    about: Read the Versor docs including tutorials and API reference
+  - name: Math Background
+    url: https://concode0.github.io/Versor/mathematical/
+    about: Mathematical foundations of Geometric Algebra and rotors

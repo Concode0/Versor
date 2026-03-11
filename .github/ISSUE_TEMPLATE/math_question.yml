@@ -1,0 +1,46 @@
+name: Math / Theory Question
+description: Questions about Geometric Algebra theory, rotor mechanics, or mathematical correctness
+labels: ["math", "question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for questions about the mathematical foundations: rotor algebra,
+        bivector decomposition, signature selection, conformal models, or manifold properties.
+
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      options:
+        - "Rotor construction — exp(-B/2), sandwich product"
+        - "Bivector decomposition — simple vs. non-simple, power iteration"
+        - "Algebra signature — choosing Cl(p,q,r) for a domain"
+        - "Conformal model — CGA Cl(4,1), point/sphere/plane representation"
+        - "Riemannian optimization — bivector manifold, exp map retraction"
+        - "Grade structure — blade grades, grade projection, blade selection"
+        - "Metric forms — Hermitian metrics, positive-definiteness"
+        - "Exp map numerics — Taylor vs. adaptive, stability"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Describe your mathematical question. LaTeX is supported in GitHub markdown.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / Motivation
+      description: What are you trying to accomplish? What domain or dataset?
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What Have You Tried?
+      description: Any attempts, references consulted, or partial understanding.

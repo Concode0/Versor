@@ -1,0 +1,117 @@
+name: Bug Report
+description: Report a bug in Versor (math kernel, layers, tasks, or training)
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill in as much detail as possible.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of Versor is affected?
+      options:
+        - "core/algebra — CliffordAlgebra, geometric product, exp map"
+        - "core/decomposition — bivector decomposition, power iteration"
+        - "core/metric — Hermitian metrics, signature forms"
+        - "core/search — MetricSearch, signature selection"
+        - "core/cga — Conformal Geometric Algebra Cl(4,1)"
+        - "layers/rotor — RotorLayer, sandwich product"
+        - "layers/multi_rotor — MultiRotorLayer"
+        - "layers/linear — CliffordLinear, RotorGadget backend"
+        - "layers/normalization — CliffordLayerNorm"
+        - "layers/gnn — CliffordGraphConv"
+        - "optimizers — RiemannianAdam, ExponentialSGD"
+        - "functional — GeometricGELU, GradeSwish, loss functions"
+        - "tasks — QM9, MD17, PDBbind, WeatherBench, ABC, SR, LQA, DEAP-EEG"
+        - "datalib — data loading, caching, synthetic fallback"
+        - "models — GBN, SRGBN, GLRNet, or task-specific architectures"
+        - "examples — manifold, hyperbolic, sanity tasks"
+        - "other"
+    validations:
+      required: true
+
+  - type: input
+    id: algebra_signature
+    attributes:
+      label: Algebra Signature
+      description: "Which Clifford algebra are you using? e.g. Cl(3,0), Cl(4,1), Cl(2,1,1)"
+      placeholder: "Cl(p, q, r)"
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal Reproduction
+      description: |
+        Minimal code to reproduce the issue.
+      render: python
+      placeholder: |
+        import torch
+        from versor.core.algebra import CliffordAlgebra
+
+        alg = CliffordAlgebra(3, 0, device='cpu')
+        # ... steps that reproduce the bug
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened? Include the full traceback if applicable.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: tensor_shapes
+    attributes:
+      label: Tensor Shapes (if applicable)
+      description: "Include relevant tensor shapes. Multivectors should be [Batch, Channels, 2^n]."
+      placeholder: |
+        Input:  [32, 8, 8]   (Batch=32, Channels=8, Cl(3,0) → 2^3=8 blades)
+        Output: [32, 8, 8]
+        Bivector B: [32, 8, 3]
+
+  - type: checkboxes
+    id: device
+    attributes:
+      label: Device
+      options:
+        - label: CPU
+        - label: CUDA
+        - label: Apple Silicon (MPS)
+
+  - type: input
+    id: version
+    attributes:
+      label: Versor Version / Commit
+      placeholder: "git rev-parse --short HEAD"
+    validations:
+      required: true
+
+  - type: input
+    id: python_torch
+    attributes:
+      label: Python / PyTorch Version
+      placeholder: "Python 3.11, PyTorch 2.x"
+    validations:
+      required: true

@@ -1,0 +1,94 @@
+name: Performance / Numerical Stability
+description: Report convergence failures, NaN/Inf gradients, slow training, or memory issues
+labels: ["performance", "numerical"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Geometric algebra operations (exp map, decomposition, Riemannian optimizer) can have
+        numerical edge cases. This template is for training instability, NaN gradients,
+        memory pressure, or unexpected slowness.
+
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Issue Type
+      options:
+        - "NaN / Inf in forward pass"
+        - "NaN / Inf in gradients / backward pass"
+        - "Loss not decreasing / training divergence"
+        - "Rotor collapse (exp map near-zero bivector)"
+        - "Slow exp map (large algebra, many blades)"
+        - "Memory explosion (large 2^n blade space)"
+        - "Bivector norm explosion (RiemannianAdam clipping)"
+        - "Power iteration non-convergence (decomposition)"
+        - "Other"
+    validations:
+      required: true
+
+  - type: input
+    id: algebra_signature
+    attributes:
+      label: Algebra Signature
+      placeholder: "Cl(p, q, r) — e.g. Cl(6,0)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Task Config / Hyperparameters
+      description: Paste your Hydra config or relevant overrides.
+      render: yaml
+      placeholder: |
+        task: qm9
+        algebra:
+          p: 3
+          q: 0
+          r: 0
+        training:
+          lr: 0.001
+          epochs: 100
+        model:
+          channels: 64
+          depth: 4
+    validations:
+      required: true
+
+  - type: textarea
+    id: symptoms
+    attributes:
+      label: Symptoms
+      description: Training curves, loss values, error messages, memory usage.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      render: shell
+      placeholder: |
+        uv run main.py task=qm9 algebra.p=6 training.epochs=50
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks Already Tried
+      options:
+        - label: Reduced learning rate
+        - label: Reduced bivector norm clip (`optimizer.bv_clip`)
+        - label: Switched to standard Adam
+        - label: Reduced model depth / channels
+        - label: Used `.reshape()` instead of `.view()` after multi-rotor
+        - label: Passed `device='cpu'` explicitly to CliffordAlgebra
+
+  - type: checkboxes
+    id: device
+    attributes:
+      label: Device
+      options:
+        - label: CPU
+        - label: CUDA
+        - label: Apple Silicon (MPS)

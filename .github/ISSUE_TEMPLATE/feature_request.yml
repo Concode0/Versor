@@ -1,0 +1,68 @@
+name: Feature Request
+description: Propose a new layer, algebra operation, optimizer, or framework capability
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Versor's design is modular: new layers inherit `CliffordModule`, new tasks inherit
+        `BaseTask`. Use this template to propose additions to the framework.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - "New layer (inherits CliffordModule)"
+        - "New algebra operation (core/algebra.py)"
+        - "New activation / functional"
+        - "New loss function"
+        - "New optimizer / manifold retraction"
+        - "New algebra signature support (p, q, r values)"
+        - "New model architecture"
+        - "Hydra config / CLI improvement"
+        - "Benchmarking / evaluation tooling"
+        - "Documentation / tutorial"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What problem does this solve? What domain or task would benefit?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Design
+      description: |
+        Describe the interface, mathematical definition, or pseudocode.
+        For layers, show the expected signature and forward pass.
+      render: python
+      placeholder: |
+        class MyNewLayer(CliffordModule):
+            """Brief description."""
+            def __init__(self, p, q, r=0, channels=...):
+                super().__init__(p, q, r)
+                ...
+
+            def forward(self, x):  # x: [B, C, 2^n]
+                ...
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Other approaches you considered and why this one is better.
+
+  - type: checkboxes
+    id: willing_to_contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to implement this and submit a PR
+        - label: I can provide benchmarks / test cases
