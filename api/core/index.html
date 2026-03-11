@@ -8772,7 +8772,11 @@ Satisfies: non-negativity, symmetry, triangle inequality, identity.</p>
 <span class="normal"><a href="#__codelineno-0-276">276</a></span>
 <span class="normal"><a href="#__codelineno-0-277">277</a></span>
 <span class="normal"><a href="#__codelineno-0-278">278</a></span>
-<span class="normal"><a href="#__codelineno-0-279">279</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="k">def</span><span class="w"> </span><span class="nf">hermitian_angle</span><span class="p">(</span><span class="n">algebra</span><span class="p">:</span> <span class="n">CliffordAlgebra</span><span class="p">,</span> <span class="n">A</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">B</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-279">279</a></span>
+<span class="normal"><a href="#__codelineno-0-280">280</a></span>
+<span class="normal"><a href="#__codelineno-0-281">281</a></span>
+<span class="normal"><a href="#__codelineno-0-282">282</a></span>
+<span class="normal"><a href="#__codelineno-0-283">283</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="k">def</span><span class="w"> </span><span class="nf">hermitian_angle</span><span class="p">(</span><span class="n">algebra</span><span class="p">:</span> <span class="n">CliffordAlgebra</span><span class="p">,</span> <span class="n">A</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">B</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
 <a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Hermitian angle between multivectors.</span>
 <a id="__codelineno-0-263" name="__codelineno-0-263"></a>
 <a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">    cos(theta) = &lt;A, B&gt;_H / (||A||_H * ||B||_H)</span>
@@ -8785,12 +8789,16 @@ Satisfies: non-negativity, symmetry, triangle inequality, identity.</p>
 <a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">        Angle in radians [..., 1].</span>
 <a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a>    <span class="n">ip</span> <span class="o">=</span> <span class="n">hermitian_inner_product</span><span class="p">(</span><span class="n">algebra</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">B</span><span class="p">)</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a>    <span class="n">norm_a</span> <span class="o">=</span> <span class="n">hermitian_norm</span><span class="p">(</span><span class="n">algebra</span><span class="p">,</span> <span class="n">A</span><span class="p">)</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a>    <span class="n">norm_b</span> <span class="o">=</span> <span class="n">hermitian_norm</span><span class="p">(</span><span class="n">algebra</span><span class="p">,</span> <span class="n">B</span><span class="p">)</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>    <span class="n">cos_theta</span> <span class="o">=</span> <span class="n">ip</span> <span class="o">/</span> <span class="p">(</span><span class="n">norm_a</span> <span class="o">*</span> <span class="n">norm_b</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">)</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a>    <span class="n">cos_theta</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="n">cos_theta</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
-<a id="__codelineno-0-279" name="__codelineno-0-279"></a>    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">acos</span><span class="p">(</span><span class="n">cos_theta</span><span class="p">)</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a>    <span class="n">signs</span> <span class="o">=</span> <span class="n">_hermitian_signs</span><span class="p">(</span><span class="n">algebra</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">A</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">A</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a>    <span class="n">ip</span> <span class="o">=</span> <span class="p">(</span><span class="n">signs</span> <span class="o">*</span> <span class="n">A</span> <span class="o">*</span> <span class="n">B</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a>    <span class="n">sq_a</span> <span class="o">=</span> <span class="p">(</span><span class="n">signs</span> <span class="o">*</span> <span class="n">A</span> <span class="o">*</span> <span class="n">A</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a>    <span class="n">sq_b</span> <span class="o">=</span> <span class="p">(</span><span class="n">signs</span> <span class="o">*</span> <span class="n">B</span> <span class="o">*</span> <span class="n">B</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a>    <span class="c1"># Use sqrt(sq_a * sq_b) instead of sqrt(sq_a)*sqrt(sq_b) to avoid</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a>    <span class="c1"># float32 precision loss from two separate sqrt operations.</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a>    <span class="n">denom</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">sq_a</span><span class="p">)</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">sq_b</span><span class="p">))</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">)</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>    <span class="n">cos_theta</span> <span class="o">=</span> <span class="n">ip</span> <span class="o">/</span> <span class="n">denom</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>    <span class="n">cos_theta</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="n">cos_theta</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a>    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">acos</span><span class="p">(</span><span class="n">cos_theta</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -8902,11 +8910,7 @@ in a signature-independent way.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>core/metric.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-282">282</a></span>
-<span class="normal"><a href="#__codelineno-0-283">283</a></span>
-<span class="normal"><a href="#__codelineno-0-284">284</a></span>
-<span class="normal"><a href="#__codelineno-0-285">285</a></span>
-<span class="normal"><a href="#__codelineno-0-286">286</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-286">286</a></span>
 <span class="normal"><a href="#__codelineno-0-287">287</a></span>
 <span class="normal"><a href="#__codelineno-0-288">288</a></span>
 <span class="normal"><a href="#__codelineno-0-289">289</a></span>
@@ -8919,24 +8923,28 @@ in a signature-independent way.</p>
 <span class="normal"><a href="#__codelineno-0-296">296</a></span>
 <span class="normal"><a href="#__codelineno-0-297">297</a></span>
 <span class="normal"><a href="#__codelineno-0-298">298</a></span>
-<span class="normal"><a href="#__codelineno-0-299">299</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="k">def</span><span class="w"> </span><span class="nf">grade_hermitian_norm</span><span class="p">(</span><span class="n">algebra</span><span class="p">:</span> <span class="n">CliffordAlgebra</span><span class="p">,</span> <span class="n">A</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">grade</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Hermitian norm restricted to a single grade.</span>
-<a id="__codelineno-0-284" name="__codelineno-0-284"></a>
-<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="sd">    ||&lt;A&gt;_k||_H = sqrt(Sum_{I: |I|=k} a_I**2)</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">    Measures the energy contribution of a specific grade</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">    in a signature-independent way.</span>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">        algebra: The algebra instance.</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">        A: Multivector [..., Dim].</span>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">        grade: Target grade.</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">        Grade-specific norm [..., 1].</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a>    <span class="n">A_k</span> <span class="o">=</span> <span class="n">algebra</span><span class="o">.</span><span class="n">grade_projection</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">grade</span><span class="p">)</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="k">return</span> <span class="n">hermitian_norm</span><span class="p">(</span><span class="n">algebra</span><span class="p">,</span> <span class="n">A_k</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-299">299</a></span>
+<span class="normal"><a href="#__codelineno-0-300">300</a></span>
+<span class="normal"><a href="#__codelineno-0-301">301</a></span>
+<span class="normal"><a href="#__codelineno-0-302">302</a></span>
+<span class="normal"><a href="#__codelineno-0-303">303</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="k">def</span><span class="w"> </span><span class="nf">grade_hermitian_norm</span><span class="p">(</span><span class="n">algebra</span><span class="p">:</span> <span class="n">CliffordAlgebra</span><span class="p">,</span> <span class="n">A</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">grade</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Hermitian norm restricted to a single grade.</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">    ||&lt;A&gt;_k||_H = sqrt(Sum_{I: |I|=k} a_I**2)</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">    Measures the energy contribution of a specific grade</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">    in a signature-independent way.</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">        algebra: The algebra instance.</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">        A: Multivector [..., Dim].</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">        grade: Target grade.</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">        Grade-specific norm [..., 1].</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a>    <span class="n">A_k</span> <span class="o">=</span> <span class="n">algebra</span><span class="o">.</span><span class="n">grade_projection</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">grade</span><span class="p">)</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>    <span class="k">return</span> <span class="n">hermitian_norm</span><span class="p">(</span><span class="n">algebra</span><span class="p">,</span> <span class="n">A_k</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -9031,11 +9039,7 @@ Uses abs() to ensure non-negative values in mixed signatures.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>core/metric.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-302">302</a></span>
-<span class="normal"><a href="#__codelineno-0-303">303</a></span>
-<span class="normal"><a href="#__codelineno-0-304">304</a></span>
-<span class="normal"><a href="#__codelineno-0-305">305</a></span>
-<span class="normal"><a href="#__codelineno-0-306">306</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-306">306</a></span>
 <span class="normal"><a href="#__codelineno-0-307">307</a></span>
 <span class="normal"><a href="#__codelineno-0-308">308</a></span>
 <span class="normal"><a href="#__codelineno-0-309">309</a></span>
@@ -9050,26 +9054,30 @@ Uses abs() to ensure non-negative values in mixed signatures.</p>
 <span class="normal"><a href="#__codelineno-0-318">318</a></span>
 <span class="normal"><a href="#__codelineno-0-319">319</a></span>
 <span class="normal"><a href="#__codelineno-0-320">320</a></span>
-<span class="normal"><a href="#__codelineno-0-321">321</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="k">def</span><span class="w"> </span><span class="nf">hermitian_grade_spectrum</span><span class="p">(</span><span class="n">algebra</span><span class="p">:</span> <span class="n">CliffordAlgebra</span><span class="p">,</span> <span class="n">A</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Full Hermitian grade spectrum.</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">    Returns |&lt;A_k, A_k&gt;_H| for each grade k = 0, ..., n.</span>
-<a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">    Uses abs() to ensure non-negative values in mixed signatures.</span>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">        algebra: The algebra instance.</span>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">        A: Multivector [..., Dim].</span>
+<span class="normal"><a href="#__codelineno-0-321">321</a></span>
+<span class="normal"><a href="#__codelineno-0-322">322</a></span>
+<span class="normal"><a href="#__codelineno-0-323">323</a></span>
+<span class="normal"><a href="#__codelineno-0-324">324</a></span>
+<span class="normal"><a href="#__codelineno-0-325">325</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="k">def</span><span class="w"> </span><span class="nf">hermitian_grade_spectrum</span><span class="p">(</span><span class="n">algebra</span><span class="p">:</span> <span class="n">CliffordAlgebra</span><span class="p">,</span> <span class="n">A</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Full Hermitian grade spectrum.</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    Returns |&lt;A_k, A_k&gt;_H| for each grade k = 0, ..., n.</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">    Uses abs() to ensure non-negative values in mixed signatures.</span>
 <a id="__codelineno-0-311" name="__codelineno-0-311"></a>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a><span class="sd">        Grade energies [..., n+1]. Each entry &gt;= 0.</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a>    <span class="n">signs</span> <span class="o">=</span> <span class="n">_hermitian_signs</span><span class="p">(</span><span class="n">algebra</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">A</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">A</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a>    <span class="n">spectrum</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a>    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">algebra</span><span class="o">.</span><span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>        <span class="n">A_k</span> <span class="o">=</span> <span class="n">algebra</span><span class="o">.</span><span class="n">grade_projection</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a>        <span class="n">sq</span> <span class="o">=</span> <span class="p">(</span><span class="n">signs</span> <span class="o">*</span> <span class="n">A_k</span> <span class="o">*</span> <span class="n">A_k</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a>        <span class="n">spectrum</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">sq</span><span class="p">))</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">(</span><span class="n">spectrum</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a><span class="sd">        algebra: The algebra instance.</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">        A: Multivector [..., Dim].</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">        Grade energies [..., n+1]. Each entry &gt;= 0.</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>    <span class="n">signs</span> <span class="o">=</span> <span class="n">_hermitian_signs</span><span class="p">(</span><span class="n">algebra</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">A</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">A</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>    <span class="n">spectrum</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">algebra</span><span class="o">.</span><span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a>        <span class="n">A_k</span> <span class="o">=</span> <span class="n">algebra</span><span class="o">.</span><span class="n">grade_projection</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>        <span class="n">sq</span> <span class="o">=</span> <span class="p">(</span><span class="n">signs</span> <span class="o">*</span> <span class="n">A_k</span> <span class="o">*</span> <span class="n">A_k</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a>        <span class="n">spectrum</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">sq</span><span class="p">))</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a>    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">(</span><span class="n">spectrum</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -9184,11 +9192,7 @@ in mixed signatures. Use hermitian_inner_product for optimization.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>core/metric.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-324">324</a></span>
-<span class="normal"><a href="#__codelineno-0-325">325</a></span>
-<span class="normal"><a href="#__codelineno-0-326">326</a></span>
-<span class="normal"><a href="#__codelineno-0-327">327</a></span>
-<span class="normal"><a href="#__codelineno-0-328">328</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-328">328</a></span>
 <span class="normal"><a href="#__codelineno-0-329">329</a></span>
 <span class="normal"><a href="#__codelineno-0-330">330</a></span>
 <span class="normal"><a href="#__codelineno-0-331">331</a></span>
@@ -9205,28 +9209,32 @@ in mixed signatures. Use hermitian_inner_product for optimization.</p>
 <span class="normal"><a href="#__codelineno-0-342">342</a></span>
 <span class="normal"><a href="#__codelineno-0-343">343</a></span>
 <span class="normal"><a href="#__codelineno-0-344">344</a></span>
-<span class="normal"><a href="#__codelineno-0-345">345</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="k">def</span><span class="w"> </span><span class="nf">signature_trace_form</span><span class="p">(</span><span class="n">algebra</span><span class="p">:</span> <span class="n">CliffordAlgebra</span><span class="p">,</span> <span class="n">A</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">B</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Signature-aware trace form: &lt;~A B&gt;_0.</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="sd">    The standard Clifford algebra scalar product. NOT positive-definite</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">    in mixed signatures. Use hermitian_inner_product for optimization.</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">    This form is signature-aware and useful for:</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">    - Rotor normalization (R~R = 1)</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">    - Versor validation</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">    - Spinor norm computation</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="sd">        algebra: The algebra instance.</span>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">        A: First multivector [..., Dim].</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">        B: Second multivector [..., Dim].</span>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a><span class="sd">        Scalar trace form [..., 1]. Can be negative in mixed signatures.</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a>    <span class="n">A_rev</span> <span class="o">=</span> <span class="n">algebra</span><span class="o">.</span><span class="n">reverse</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a>    <span class="n">prod</span> <span class="o">=</span> <span class="n">algebra</span><span class="o">.</span><span class="n">geometric_product</span><span class="p">(</span><span class="n">A_rev</span><span class="p">,</span> <span class="n">B</span><span class="p">)</span>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a>    <span class="k">return</span> <span class="n">prod</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span><span class="mi">1</span><span class="p">]</span>
+<span class="normal"><a href="#__codelineno-0-345">345</a></span>
+<span class="normal"><a href="#__codelineno-0-346">346</a></span>
+<span class="normal"><a href="#__codelineno-0-347">347</a></span>
+<span class="normal"><a href="#__codelineno-0-348">348</a></span>
+<span class="normal"><a href="#__codelineno-0-349">349</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="k">def</span><span class="w"> </span><span class="nf">signature_trace_form</span><span class="p">(</span><span class="n">algebra</span><span class="p">:</span> <span class="n">CliffordAlgebra</span><span class="p">,</span> <span class="n">A</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">B</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Signature-aware trace form: &lt;~A B&gt;_0.</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">    The standard Clifford algebra scalar product. NOT positive-definite</span>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">    in mixed signatures. Use hermitian_inner_product for optimization.</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="sd">    This form is signature-aware and useful for:</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">    - Rotor normalization (R~R = 1)</span>
+<a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="sd">    - Versor validation</span>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">    - Spinor norm computation</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">        algebra: The algebra instance.</span>
+<a id="__codelineno-0-341" name="__codelineno-0-341"></a><span class="sd">        A: First multivector [..., Dim].</span>
+<a id="__codelineno-0-342" name="__codelineno-0-342"></a><span class="sd">        B: Second multivector [..., Dim].</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a><span class="sd">        Scalar trace form [..., 1]. Can be negative in mixed signatures.</span>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a>    <span class="n">A_rev</span> <span class="o">=</span> <span class="n">algebra</span><span class="o">.</span><span class="n">reverse</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>    <span class="n">prod</span> <span class="o">=</span> <span class="n">algebra</span><span class="o">.</span><span class="n">geometric_product</span><span class="p">(</span><span class="n">A_rev</span><span class="p">,</span> <span class="n">B</span><span class="p">)</span>
+<a id="__codelineno-0-349" name="__codelineno-0-349"></a>    <span class="k">return</span> <span class="n">prod</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span><span class="mi">1</span><span class="p">]</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -9323,11 +9331,7 @@ For Cl(p,q) with q&gt;0: sign encodes causal character.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>core/metric.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-348">348</a></span>
-<span class="normal"><a href="#__codelineno-0-349">349</a></span>
-<span class="normal"><a href="#__codelineno-0-350">350</a></span>
-<span class="normal"><a href="#__codelineno-0-351">351</a></span>
-<span class="normal"><a href="#__codelineno-0-352">352</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-352">352</a></span>
 <span class="normal"><a href="#__codelineno-0-353">353</a></span>
 <span class="normal"><a href="#__codelineno-0-354">354</a></span>
 <span class="normal"><a href="#__codelineno-0-355">355</a></span>
@@ -9339,23 +9343,27 @@ For Cl(p,q) with q&gt;0: sign encodes causal character.</p>
 <span class="normal"><a href="#__codelineno-0-361">361</a></span>
 <span class="normal"><a href="#__codelineno-0-362">362</a></span>
 <span class="normal"><a href="#__codelineno-0-363">363</a></span>
-<span class="normal"><a href="#__codelineno-0-364">364</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-348" name="__codelineno-0-348"></a><span class="k">def</span><span class="w"> </span><span class="nf">signature_norm_squared</span><span class="p">(</span><span class="n">algebra</span><span class="p">:</span> <span class="n">CliffordAlgebra</span><span class="p">,</span> <span class="n">A</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-<a id="__codelineno-0-349" name="__codelineno-0-349"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Signature-aware squared norm: &lt;A~A&gt;_0.</span>
-<a id="__codelineno-0-350" name="__codelineno-0-350"></a>
-<a id="__codelineno-0-351" name="__codelineno-0-351"></a><span class="sd">    Can be negative in mixed-signature algebras. Returns the raw value</span>
-<a id="__codelineno-0-352" name="__codelineno-0-352"></a><span class="sd">    without absolute value, preserving causal structure information.</span>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a>
-<a id="__codelineno-0-354" name="__codelineno-0-354"></a><span class="sd">    For Cl(n,0): always non-negative.</span>
-<a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="sd">    For Cl(p,q) with q&gt;0: sign encodes causal character.</span>
-<a id="__codelineno-0-356" name="__codelineno-0-356"></a>
-<a id="__codelineno-0-357" name="__codelineno-0-357"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-358" name="__codelineno-0-358"></a><span class="sd">        algebra: The algebra instance.</span>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a><span class="sd">        A: Multivector [..., Dim].</span>
+<span class="normal"><a href="#__codelineno-0-364">364</a></span>
+<span class="normal"><a href="#__codelineno-0-365">365</a></span>
+<span class="normal"><a href="#__codelineno-0-366">366</a></span>
+<span class="normal"><a href="#__codelineno-0-367">367</a></span>
+<span class="normal"><a href="#__codelineno-0-368">368</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-352" name="__codelineno-0-352"></a><span class="k">def</span><span class="w"> </span><span class="nf">signature_norm_squared</span><span class="p">(</span><span class="n">algebra</span><span class="p">:</span> <span class="n">CliffordAlgebra</span><span class="p">,</span> <span class="n">A</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Signature-aware squared norm: &lt;A~A&gt;_0.</span>
+<a id="__codelineno-0-354" name="__codelineno-0-354"></a>
+<a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="sd">    Can be negative in mixed-signature algebras. Returns the raw value</span>
+<a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="sd">    without absolute value, preserving causal structure information.</span>
+<a id="__codelineno-0-357" name="__codelineno-0-357"></a>
+<a id="__codelineno-0-358" name="__codelineno-0-358"></a><span class="sd">    For Cl(n,0): always non-negative.</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a><span class="sd">    For Cl(p,q) with q&gt;0: sign encodes causal character.</span>
 <a id="__codelineno-0-360" name="__codelineno-0-360"></a>
-<a id="__codelineno-0-361" name="__codelineno-0-361"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-362" name="__codelineno-0-362"></a><span class="sd">        Signed squared norm [..., 1].</span>
-<a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-364" name="__codelineno-0-364"></a>    <span class="k">return</span> <span class="n">signature_trace_form</span><span class="p">(</span><span class="n">algebra</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">A</span><span class="p">)</span>
+<a id="__codelineno-0-361" name="__codelineno-0-361"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-362" name="__codelineno-0-362"></a><span class="sd">        algebra: The algebra instance.</span>
+<a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="sd">        A: Multivector [..., Dim].</span>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="sd">        Signed squared norm [..., 1].</span>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a>    <span class="k">return</span> <span class="n">signature_trace_form</span><span class="p">(</span><span class="n">algebra</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">A</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
