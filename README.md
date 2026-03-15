@@ -4,7 +4,7 @@
 
 > **"There is a ceiling above standard Deep Learning that no one saw. Versor opens the door above it."**
 
-**[Read the Official Documentation](https://concode0.github.io/Versor/)**
+[![Documentation](https://img.shields.io/badge/Documentation-Explore%20Versor%20Docs-8A2BE2?style=for-the-badge&logo=readthedocs)](https://concode0.github.io/Versor/)
 
 ![Manifold Unbending Demo](assets/demo_manifold_comp.gif)
 
@@ -18,6 +18,8 @@
 | **MD17** (Molecular Dynamics)              | $Cl(3,0,1)$ PGA     | Energy / Force MAE | 0.476 / 0.077 · benzene, 0.613 / 0.079 · ethanol, 1.229 / 0.125 · malonaldehyde (kcal/mol) | Error distributions peak at 0 with Gaussian-like shape |
 | **LQA** (Logical Query Answering)          | $Cl(4,1)$ CGA       | Chain / Negation   | 100% @len1–13 / 64.6%                                                                      | Geometric ALU on frozen embeddings                     |
 | **DEAP EEG** (Emotion)                     | $Cl(3,1)$ Minkowski | RMSE               | 0.2576 / 0.2329                                                                            | Cross / Within-subject LOSO                            |
+
+**The Rotor Gadget** was implemented based on the theoretical framework of [Pence et al. (2025)](https://arxiv.org/abs/2507.11688). In particular, the original authors' detailed experiments and implementations regarding LLM parameter efficiency can be found in the [official repository](https://github.com/vsingh-group/ComposingLinearLayers).
 
 ## Core Idea
 
@@ -227,8 +229,6 @@ The mean difference is only **0.025 RMSE units** (9.6% relative), despite cross-
 **Valence anomaly:** cross-subject RMSE (0.2478) is actually *lower* than within-subject (0.2700), a reversal of the usual pattern. This reflects the well-known DEAP valence difficulty — valence labels are highly inter-subject variable, so within-subject training can overfit to individual rating biases, whereas cross-subject training forces the model toward the more stable population-level valence manifold.
 
 **F1 context:** Dominance and Liking show healthy F1 (0.70–0.76) in both modes because their label distributions are less skewed. Valence and arousal F1 collapses to near-zero under cross-subject evaluation, consistent with the class-imbalance literature on DEAP.
-
-
 
 ## Examples (Synthetic/Demo Tasks)
 
