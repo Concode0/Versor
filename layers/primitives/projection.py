@@ -143,13 +143,10 @@ class GeometricNeutralizer(CliffordModule):
 
         # 3. Perform Projection
         # Solve: cur_cov_bb * W = cur_cov_bs  => W = inv(cur_cov_bb) * cur_cov_bs
-        # Use pseudo-inverse for stability
-        if cur_cov_bb.device.type == 'mps':
-            inv_bb = torch.linalg.pinv(cur_cov_bb.cpu()).to(cur_cov_bb.device)
-        else:
-            inv_bb = torch.linalg.pinv(cur_cov_bb)
-
-        weights = torch.matmul(inv_bb, cur_cov_bs)
+        reg = 1e-6 * torch.eye(
+            self.d2, device=cur_cov_bb.device, dtype=cur_cov_bb.dtype
+        ).unsqueeze(0)
+        weights = torch.linalg.solve(cur_cov_bb + reg, cur_cov_bs)
 
         # Center based on current means
         b_centered = bivec - cur_mean_b.unsqueeze(0)
