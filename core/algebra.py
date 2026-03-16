@@ -71,6 +71,12 @@ class CliffordAlgebra:
             self.rc_action,
         ) = CliffordAlgebra._CACHED_TABLES[cache_key]
 
+        self.grade_masks_float = [m.float() for m in self.grade_masks]
+        if self.n >= 2:
+            self._bv_indices = self.grade_masks[2].nonzero(as_tuple=False).squeeze(-1)
+        else:
+            self._bv_indices = torch.zeros(0, dtype=torch.long, device=self.device)
+
     @property
     def num_grades(self) -> int:
         """Counts the number of grades (n + 1).
@@ -304,8 +310,7 @@ class CliffordAlgebra:
         B_gathered = B[..., idx]  # [..., D, D]
 
         # result[..., k] = sum_i A[..., i] * B[..., cayley[i,k]] * signs[i,k]
-        # = sum_i (A[..., i, None] * B_gathered[..., i, :] * signs[i, :])  summed over i
-        return (A.unsqueeze(-1) * B_gathered * self.gp_signs).sum(dim=-2)
+        return torch.matmul(A.unsqueeze(-2), B_gathered * self.gp_signs).squeeze(-2)
 
     def ensure_device(self, device) -> None:
         """Move cached tables to the given device if not already there.
@@ -319,12 +324,19 @@ class CliffordAlgebra:
         self.cayley_signs = self.cayley_signs.to(device)
         self.gp_signs = self.gp_signs.to(device)
         self.grade_masks = [m.to(device) for m in self.grade_masks]
+        self.grade_masks_float = [m.to(device) for m in self.grade_masks_float]
+        self._bv_indices = self._bv_indices.to(device)
         self.rev_signs = self.rev_signs.to(device)
         self.bv_sq_scalar = self.bv_sq_scalar.to(device)
         self.wedge_gp_signs = self.wedge_gp_signs.to(device)
         self.inner_gp_signs = self.inner_gp_signs.to(device)
         self.grade_index = self.grade_index.to(device)
         self.rc_action = self.rc_action.to(device)
+
+        # Clear lazy caches (will be recomputed on next use)
+        self._left_sign_T = None
+        self._ps_source = None
+        self._ps_signs = None
 
         cache_key = (self.p, self.q, self.r, str(self.device))
         CliffordAlgebra._CACHED_TABLES[cache_key] = (
@@ -337,6 +349,9 @@ class CliffordAlgebra:
     def grade_projection(self, mv: torch.Tensor, grade: int) -> torch.Tensor:
         """Isolates a specific grade.
 
+        Uses multiplicative masking (mv * float_mask) instead of boolean
+        indexing to avoid ``nonzero`` calls that break ``torch.compile``.
+
         Args:
             mv (torch.Tensor): Multivector [..., Dim].
             grade (int): Target grade.
@@ -344,12 +359,10 @@ class CliffordAlgebra:
         Returns:
             torch.Tensor: Projected multivector [..., Dim].
         """
-        mask = self.grade_masks[grade]
-        if mask.device != mv.device:
-            mask = mask.to(mv.device)
-        result = torch.zeros_like(mv)
-        result[..., mask] = mv[..., mask]
-        return result
+        mask = self.grade_masks_float[grade]
+        if mask.device != mv.device or mask.dtype != mv.dtype:
+            mask = mask.to(device=mv.device, dtype=mv.dtype)
+        return mv * mask
 
     def reverse(self, mv: torch.Tensor) -> torch.Tensor:
         """Computes the reversion. The Clifford conjugate.
@@ -386,7 +399,7 @@ class CliffordAlgebra:
             self.ensure_device(A.device)
             idx = self.cayley_indices
         B_gathered = B[..., idx]
-        return (A.unsqueeze(-1) * B_gathered * self.wedge_gp_signs).sum(dim=-2)
+        return torch.matmul(A.unsqueeze(-2), B_gathered * self.wedge_gp_signs).squeeze(-2)
 
     def right_contraction(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         """Computes the right contraction: A _| B.
@@ -405,14 +418,20 @@ class CliffordAlgebra:
         Returns:
             torch.Tensor: Right contraction A _| B [..., dim].
         """
-        bv_mask = self.grade_masks[2]
-        if bv_mask.device != A.device:
+        bv_idx = self._bv_indices
+        if bv_idx.device != A.device:
             self.ensure_device(A.device)
-            bv_mask = self.grade_masks[2]
+            bv_idx = self._bv_indices
 
-        bv_coeffs = A[..., bv_mask]                          # [..., num_bv]
-        g1_idx = self.grade_masks[1].nonzero(as_tuple=False).squeeze(-1)
-        v_coeffs = B[..., g1_idx]                            # [..., n]
+        # Use gather instead of boolean indexing (compile-friendly)
+        bv_idx_exp = bv_idx.expand(*A.shape[:-1], -1)
+        bv_coeffs = torch.gather(A, -1, bv_idx_exp)          # [..., num_bv]
+
+        # Grade-1 indices: powers of 2 for basis vectors
+        g1_idx = torch.arange(self.n, device=A.device)
+        g1_idx = (1 << g1_idx).long()                         # [n]
+        g1_idx_exp = g1_idx.expand(*B.shape[:-1], -1)
+        v_coeffs = torch.gather(B, -1, g1_idx_exp)            # [..., n]
 
         rc = self.rc_action
         if rc.device != A.device or rc.dtype != A.dtype:
@@ -423,7 +442,7 @@ class CliffordAlgebra:
         result_v = torch.matmul(M, v_coeffs.unsqueeze(-1)).squeeze(-1)  # [..., n]
 
         result = torch.zeros_like(A)
-        result[..., g1_idx] = result_v
+        result.scatter_(-1, g1_idx_exp, result_v)
         return result
 
     def inner_product(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
@@ -447,7 +466,7 @@ class CliffordAlgebra:
             self.ensure_device(A.device)
             idx = self.cayley_indices
         B_gathered = B[..., idx]
-        return (A.unsqueeze(-1) * B_gathered * self.inner_gp_signs).sum(dim=-2)
+        return torch.matmul(A.unsqueeze(-2), B_gathered * self.inner_gp_signs).squeeze(-2)
 
     def blade_inverse(self, blade: torch.Tensor) -> torch.Tensor:
         """Compute the inverse of a blade: B^{-1} = B_rev / <B * B_rev>_0.
@@ -465,6 +484,83 @@ class CliffordAlgebra:
         blade_sq = self.geometric_product(blade, blade_rev)
         scalar = blade_sq[..., 0:1].clamp(min=1e-12)
         return blade_rev / scalar
+
+    def sandwich_product(self, R: torch.Tensor, x: torch.Tensor,
+                         R_rev: torch.Tensor = None) -> torch.Tensor:
+        """Optimized sandwich product R x R~ via action matrix.
+
+        Builds a [N, D, D] sandwich action matrix from the rotor, then applies
+        it to all C channels via a single batched matmul.  This is much faster
+        than two separate ``geometric_product`` calls when x has extra channel
+        dimensions that R does not.
+
+        Memory: O(N*D*D) where N = batch (without channels).
+        Compare to naive: O(N*C*D*D) — a factor of C improvement.
+
+        Args:
+            R: Rotors [N, D] (2-D, batch-flattened).
+            x: Multivectors [N, C, D] (3-D, C channels per rotor).
+            R_rev: Optional precomputed reverse of R [N, D].
+
+        Returns:
+            Sandwiched result [N, C, D].
+        """
+        D = self.dim
+        self.ensure_device(R.device)
+
+        if R_rev is None:
+            R_rev = self.reverse(R)
+
+        ci = self.cayley_indices  # [D, D], ci[i, j] = i ^ j
+
+        # Precompute left-sign table (lazy, cached per device)
+        if not hasattr(self, '_left_sign_T') or self._left_sign_T is None \
+                or self._left_sign_T.device != R.device:
+            k_range = torch.arange(D, device=R.device)
+            # ls[j, k] = gp_signs[j^k, k]
+            ls = self.gp_signs[ci, k_range.unsqueeze(0).expand(D, D)]
+            self._left_sign_T = ls.T.contiguous()  # [D(k), D(j)]
+
+        # Left-multiplication matrix L_R:  L_R[n, k, j] = R[n, j^k] * gp_signs[j^k, k]
+        R_gathered = R[:, ci]  # [N, D(j), D(k)]
+        L_R = R_gathered.permute(0, 2, 1) * self._left_sign_T.unsqueeze(0)
+
+        # Right-multiplication matrix R_{R~}:  R_Rr[n, k, i] = R~[n, i^k] * gp_signs[i, k]
+        gp_T = self.gp_signs.T
+        Rr_gathered = R_rev[:, ci]  # [N, D(i), D(k)]
+        R_Rr = Rr_gathered.permute(0, 2, 1) * gp_T.unsqueeze(0)
+
+        # Sandwich matrix:  M = R_Rr @ L_R   →   (R x R~)[k] = sum_j M[k, j] * x[j]
+        M = torch.bmm(R_Rr, L_R)  # [N, D, D]
+
+        # Apply to all channels:  result[n, c, k] = sum_j M[n, k, j] * x[n, c, j]
+        return torch.matmul(x, M.transpose(-2, -1))
+
+    def pseudoscalar_product(self, x: torch.Tensor) -> torch.Tensor:
+        """Multiply by the unit pseudoscalar: x * I.
+
+        Maps grade-k to grade-(n-k) (Hodge dual).  Computed as a simple
+        permutation with sign flips — no geometric product needed.
+
+        Args:
+            x: Multivector [..., D].
+
+        Returns:
+            Result [..., D].
+        """
+        D = self.dim
+        if not hasattr(self, '_ps_source') or self._ps_source is None \
+                or self._ps_source.device != x.device:
+            self.ensure_device(x.device)
+            ps_src = torch.arange(D, device=x.device) ^ (D - 1)
+            self._ps_source = ps_src
+            self._ps_signs = self.gp_signs[ps_src, torch.arange(D, device=x.device)]
+
+        ps_signs = self._ps_signs
+        if ps_signs.dtype != x.dtype:
+            ps_signs = ps_signs.to(dtype=x.dtype)
+
+        return x[..., self._ps_source] * ps_signs
 
     def blade_project(self, mv: torch.Tensor, blade: torch.Tensor) -> torch.Tensor:
         """Project multivector onto blade subspace: (mv . B) B^{-1}.
@@ -553,10 +649,11 @@ class CliffordAlgebra:
         Returns:
             torch.Tensor: Rotor exp(B) [..., dim].
         """
-        bv_mask = self.grade_masks[2]
-        if bv_mask.device != B.device:
-            bv_mask = bv_mask.to(B.device)
-        bv_coeffs = B[..., bv_mask]  # [..., num_bivectors]
+        bv_idx = self._bv_indices
+        if bv_idx.device != B.device:
+            bv_idx = bv_idx.to(B.device)
+        idx_expanded = bv_idx.expand(*B.shape[:-1], -1)
+        bv_coeffs = torch.gather(B, -1, idx_expanded)  # [..., num_bivectors]
 
         bv_sq = self.bv_sq_scalar
         if bv_sq.device != B.device:
@@ -599,10 +696,10 @@ class CliffordAlgebra:
             torch.where(is_hyperbolic, sinhc_theta, torch.ones_like(theta))
         )
 
-        result = coeff_part * B
-        result[..., 0] = scalar_part.squeeze(-1)
-
-        return result
+        g0_mask = self.grade_masks_float[0]
+        if g0_mask.device != B.device or g0_mask.dtype != B.dtype:
+            g0_mask = g0_mask.to(device=B.device, dtype=B.dtype)
+        return scalar_part * g0_mask + coeff_part * B
 
     def _exp_taylor(self, mv: torch.Tensor, order: int = 8) -> torch.Tensor:
         """Taylor series exponential with scaling-and-squaring (fallback).

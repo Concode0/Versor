@@ -74,9 +74,12 @@ class DeviceConfig:
     # Public helpers
 
     def apply_backend_settings(self) -> None:
-        """Apply ``cudnn.benchmark`` (and future backend knobs)."""
+        """Apply ``cudnn.benchmark``, TF32 matmul precision, etc."""
         if torch.backends.cudnn.is_available():
             torch.backends.cudnn.benchmark = self.cudnn_benchmark
+        # Enable TF32 tensor cores on Ampere+ GPUs (RTX 30xx, 40xx, Ada)
+        if self.device.startswith("cuda"):
+            torch.set_float32_matmul_precision("high")
 
     def maybe_compile(self, model: nn.Module) -> nn.Module:
         """Optionally wrap *model* with :func:`torch.compile`."""
