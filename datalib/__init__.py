@@ -11,6 +11,7 @@ from .symbolic_regression import (
 from .md17 import get_md17_loaders
 from .deap import DEAPDataset, get_deap_loaders, get_group_sizes
 from .lqa import CLUTRRDataset, HANSDataset, BoolQNegDataset, get_lqa_loaders
+from .arc import ToyARCDataset, ARCDataset, get_arc_loaders
 
 __all__ = [
     "SRDataset",
@@ -27,4 +28,7 @@ __all__ = [
     "HANSDataset",
     "BoolQNegDataset",
     "get_lqa_loaders",
+    "ToyARCDataset",
+    "ARCDataset",
+    "get_arc_loaders",
 ]

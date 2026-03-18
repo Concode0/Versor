@@ -12,6 +12,7 @@ __all__ = [
     "MD17Task",
     "LQATask",
     "DEAPEEGTask",
+    "GTMTask",
 ]
 
 
@@ -28,4 +29,7 @@ def __getattr__(name):
     if name == "DEAPEEGTask":
         from .deap_eeg import DEAPEEGTask
         return DEAPEEGTask
+    if name == "GTMTask":
+        from .gtm import GTMTask
+        return GTMTask
     raise AttributeError(f"module 'tasks' has no attribute {name!r}")
