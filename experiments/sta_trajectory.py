@@ -167,16 +167,25 @@ class IMUTrajectoryDataset(Dataset):
         all_gravity = np.concatenate(gravity_list, axis=0)
         self.R_gravity = compute_gravity_rotation(all_gravity)
 
-        # Compute per-channel normalization stats from full dataset
+        # Sensor normalization stats (global, from full dataset)
         all_sensors = np.concatenate(sensors_list, axis=0)  # [total_T, 7]
         self.sensor_mean = torch.tensor(all_sensors.mean(axis=0), dtype=torch.float32)
         self.sensor_std = torch.tensor(
             all_sensors.std(axis=0).clip(min=1e-6), dtype=torch.float32)
 
-        all_pos = np.concatenate(pos_list, axis=0)
-        self.pos_mean = torch.tensor(all_pos.mean(axis=0), dtype=torch.float32)
+        # Delta position normalization: each window is localized so pos[0]=0.
+        # Compute std from all per-window deltas across all samples.
+        delta_pos_list = []
+        for i in range(n_samples):
+            T = sensors_list[i].shape[0]
+            for start in range(0, T - window_size + 1, stride):
+                end = start + window_size
+                p = pos_list[i][start:end]  # [W, 3]
+                delta_pos_list.append(p - p[0:1])
+        all_delta_pos = np.concatenate(delta_pos_list, axis=0)
+        self.pos_mean = torch.zeros(3, dtype=torch.float32)
         self.pos_std = torch.tensor(
-            all_pos.std(axis=0).clip(min=1e-6), dtype=torch.float32)
+            all_delta_pos.std(axis=0).clip(min=1e-6), dtype=torch.float32)
 
         all_vel = np.concatenate(vel_list, axis=0)
         self.vel_mean = torch.tensor(all_vel.mean(axis=0), dtype=torch.float32)
@@ -209,8 +218,10 @@ class IMUTrajectoryDataset(Dataset):
                 s = torch.tensor(sensors_list[i][start:end], dtype=torch.float32)
                 p = torch.tensor(pos_list[i][start:end], dtype=torch.float32)
                 v = torch.tensor(vel_list[i][start:end], dtype=torch.float32)
+                # Localize: set initial position to origin (delta trajectory)
+                p = p - p[0:1]
                 sensor_windows.append((s - self.sensor_mean) / self.sensor_std)
-                pos_windows.append((p - self.pos_mean) / self.pos_std)
+                pos_windows.append(p / self.pos_std)
                 vel_windows.append((v - self.vel_mean) / self.vel_std)
 
         self.sensors = torch.stack(sensor_windows)     # [N, W, 7]
