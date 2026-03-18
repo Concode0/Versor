@@ -318,6 +318,7 @@ class CliffordAlgebra:
         Args:
             device (torch.device): Target device.
         """
+        device = torch.device(device)
         if self.cayley_indices.device == device:
             return
         self.cayley_indices = self.cayley_indices.to(device)
@@ -338,6 +339,8 @@ class CliffordAlgebra:
         self._ps_source = None
         self._ps_signs = None
 
+        # Update self.device and cache under the NEW device key
+        self.device = device
         cache_key = (self.p, self.q, self.r, str(self.device))
         CliffordAlgebra._CACHED_TABLES[cache_key] = (
             self.cayley_indices, self.cayley_signs, self.gp_signs,
