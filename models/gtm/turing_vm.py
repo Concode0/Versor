@@ -5,12 +5,7 @@
 # you may not use this file except in compliance with the License.
 #
 
-"""Geometric Turing Machine execution engine — ARC-AGI v4.
-
-Chains TuringSteps with dual-state (cpu_state + ctrl_cursor) threading.
-Supports both fixed-step and adaptive computation (PonderNet) modes.
-Optionally threads rule_memory from Phase 1 to each step.
-"""
+"""Geometric Turing Machine execution engine."""
 
 import torch
 import torch.nn as nn
@@ -21,12 +16,7 @@ from .adaptive_halt import AdaptiveHalt
 
 
 class TuringVM(nn.Module):
-    """Geometric Turing Machine execution engine.
-
-    Chains N TuringSteps with dual-state (cpu_state + ctrl_cursor).
-    Supports both fixed-step and adaptive computation modes.
-    Threads rule_memory to each step when provided.
-    """
+    """Chains TuringSteps with dual-state threading and optional PonderNet halting."""
 
     def __init__(self, algebra_cpu: CliffordAlgebra,
                  algebra_ctrl: CliffordAlgebra,
@@ -48,7 +38,6 @@ class TuringVM(nn.Module):
         self.max_steps = max_steps
         self.use_act = use_act
 
-        # Create steps up to max_steps (ACT) or num_steps (fixed)
         effective_steps = max_steps if use_act else num_steps
         self.steps = nn.ModuleList([
             TuringStep(
@@ -60,11 +49,12 @@ class TuringVM(nn.Module):
             for _ in range(effective_steps)
         ])
 
-        # Adaptive halt controller
         self.adaptive_halt = AdaptiveHalt(lambda_p, max_steps) if use_act else None
-
-        # Final normalization on CPU state
         self.final_norm = CliffordLayerNorm(algebra_cpu, 1)
+
+    def set_temperature(self, tau: float):
+        for step in self.steps:
+            step.set_temperature(tau)
 
     def forward(self, cpu_state: torch.Tensor, ctrl_cursor: torch.Tensor,
                 mask: torch.Tensor = None,

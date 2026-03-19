@@ -90,7 +90,7 @@ class GTMAnalyzer:
             attn_head_dim=attn_cfg.get('head_dim', 8),
             num_rule_slots=mcfg.get('num_rule_slots', 8),
         )
-        model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
         return GTMAnalyzer(model, device)
 
     # ------------------------------------------------------------------
@@ -184,7 +184,7 @@ class GTMAnalyzer:
         """
         temps = []
         for step in self.model.vm.steps:
-            tau = step.search.log_temperature.exp().clamp(0.1, 5.0)
+            tau = step.search._temperature.clamp(0.1, 5.0)
             temps.append(tau.item())
 
         temps_t = torch.tensor(temps)
@@ -218,8 +218,6 @@ class GTMAnalyzer:
                 'grid_correct': [B] bool per example
                 'test_masks': [B, N_test] validity mask
         """
-        num_steps = self.model.vm.num_steps
-
         # Run full forward with trace
         with torch.no_grad():
             result = self._run_forward(batch)
@@ -228,9 +226,13 @@ class GTMAnalyzer:
         preds = logits.argmax(dim=-1)
         trace = result['trace']
 
-        # Split trace into Phase 1 and Phase 2
-        phase1_trace = {k: v[:num_steps] for k, v in trace.items()}
-        phase2_trace = {k: v[num_steps:] for k, v in trace.items()}
+        # Split trace into Phase 1 (demo) and Phase 2 (test).
+        # When ACT is enabled, each VM call produces max_steps entries;
+        # when disabled, num_steps entries. Both phases use the same mode.
+        vm = self.model.vm
+        steps_per_phase = vm.max_steps if vm.use_act else vm.num_steps
+        phase1_trace = {k: v[:steps_per_phase] for k, v in trace.items()}
+        phase2_trace = {k: v[steps_per_phase:] for k, v in trace.items()}
 
         # Targets
         test_outputs = batch['test_outputs'].to(self.device)
@@ -354,7 +356,11 @@ class GTMAnalyzer:
         return '\n'.join(lines)
 
     def format_search_report(self, report: dict) -> str:
-        """Human-readable hypothesis selection summary."""
+        """Human-readable hypothesis selection summary.
+
+        Handles both per-cell weights [B, N, K] (v4.1+) and legacy
+        global weights [B, K] via dimension check.
+        """
         lines = ['=== Hypothesis Selection ===', '']
 
         for phase_name, phase_key in [('Phase 1', 'phase1'), ('Phase 2', 'phase2')]:
@@ -364,9 +370,20 @@ class GTMAnalyzer:
             lines.append(f'{phase_name}:')
             for t, w in enumerate(weights_list):
                 w0 = w[0]  # first batch element
-                dominant = w0.argmax().item()
-                w_str = '  '.join(f'H{k}={w0[k]:.3f}' for k in range(w0.shape[0]))
-                lines.append(f'  Step {t}: [{w_str}]  dominant=H{dominant}')
+                if w0.dim() == 2:
+                    # Per-cell weights: [N, K]
+                    K = w0.shape[-1]
+                    mean_w = w0.mean(dim=0)  # [K]
+                    dominant_per_cell = w0.argmax(dim=-1)  # [N]
+                    hist = torch.bincount(dominant_per_cell, minlength=K)
+                    mean_str = '  '.join(f'H{k}={mean_w[k]:.3f}' for k in range(K))
+                    hist_str = '  '.join(f'H{k}:{hist[k].item()}' for k in range(K))
+                    lines.append(f'  Step {t}: mean=[{mean_str}]  cells=[{hist_str}]')
+                else:
+                    # Legacy global weights: [K]
+                    dominant = w0.argmax().item()
+                    w_str = '  '.join(f'H{k}={w0[k]:.3f}' for k in range(w0.shape[0]))
+                    lines.append(f'  Step {t}: [{w_str}]  dominant=H{dominant}')
             lines.append('')
 
         return '\n'.join(lines)

@@ -58,6 +58,21 @@ class ControlPlane(CliffordModule):
             nn.Linear(32, 1),
         )
 
+        # Residual correction for boost-invariant components (scalar, e34)
+        # Sandwich product with e34 bivector only boosts grade-1 (e3, e4);
+        # scalar and pseudoscalar are algebraically invariant. This MLP
+        # provides a learned additive update so those components can evolve.
+        # Outputs 2 values: (delta_scalar, delta_e34), NOT all 4 components,
+        # to avoid double-counting with the boost on e3/e4.
+        self.cursor_residual = nn.Sequential(
+            nn.Linear(channels + 4, 32),
+            nn.Tanh(),
+            nn.Linear(32, 2),
+        )
+        # Initialize near-zero so early training is dominated by the boost
+        nn.init.zeros_(self.cursor_residual[-1].weight)
+        nn.init.zeros_(self.cursor_residual[-1].bias)
+
         # Halt signal from cursor
         self.halt_mlp = nn.Sequential(
             nn.Linear(4, 16),
@@ -115,6 +130,16 @@ class ControlPlane(CliffordModule):
         direction_logit = self.direction_gate(combined)  # [B, 1]
         gate = torch.sigmoid(direction_logit)  # [B, 1]
         new_cursor = gate * cursor_h + (1.0 - gate) * cursor_v  # [B, 4]
+
+        # Residual correction: only update boost-invariant components
+        delta = self.cursor_residual(combined)  # [B, 2] -> (delta_scalar, delta_e34)
+        new_cursor = new_cursor.clone()
+        new_cursor[:, 0] = new_cursor[:, 0] + delta[:, 0]  # scalar
+        new_cursor[:, 3] = new_cursor[:, 3] + delta[:, 1]  # e34
+
+        # Symmlog normalization: prevents unbounded drift across steps
+        # while preserving gradient (grad = 1/(1+|x|), never zero)
+        new_cursor = torch.sign(new_cursor) * torch.log1p(new_cursor.abs())
 
         # Halt probability from grade-0 of cursor
         halt_prob = torch.sigmoid(self.halt_mlp(new_cursor)).squeeze(-1)  # [B]

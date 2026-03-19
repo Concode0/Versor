@@ -50,9 +50,16 @@ class GTMTask(BaseTask):
         self.act_epochs = cfg.training.get('act_epochs', 45)
         self.act_weight = cfg.training.get('act_weight', 0.01)
         self.act_ramp_epochs = cfg.training.get('act_ramp_epochs', 15)
-        self.gate_entropy_weight = cfg.training.get('gate_entropy_weight', 0.001)
+        self.gate_entropy_weight = cfg.training.get('gate_entropy_weight', 0.01)
         self.grad_clip = cfg.training.get('grad_clip', 1.0)
         self.eval_every = cfg.training.get('eval_every', 5)
+
+        # Gumbel temperature annealing schedule
+        self.tau_start = cfg.training.get('tau_start', 1.0)
+        self.tau_end = cfg.training.get('tau_end', 0.1)
+        # Warm restart at Phase 3: steps[num_steps:max_steps] are untrained,
+        # need high tau for exploration before annealing down
+        self.tau_act_restart = cfg.training.get('tau_act_restart', 0.7)
 
         super().__init__(cfg)
 
@@ -295,6 +302,23 @@ class GTMTask(BaseTask):
             else:
                 self._current_act_weight = 0.0
 
+            # Gumbel temperature annealing:
+            #   Phase 1 (warmup): hold at tau_start
+            #   Phase 2 (circuit): anneal tau_start -> tau_act_restart
+            #   Phase 3 (ACT): warm restart at tau_act_restart, anneal -> tau_end
+            # Warm restart needed because ACT activates steps[num_steps:max_steps]
+            # which have untrained weights and need exploration room.
+            if phase == 1:
+                tau = self.tau_start
+            elif phase == 2:
+                progress = min(1.0, (epoch - self.warmup_epochs) / max(self.trim_epochs, 1))
+                tau = self.tau_start + (self.tau_act_restart - self.tau_start) * progress
+            else:  # phase 3
+                act_epoch = epoch - (self.warmup_epochs + self.trim_epochs)
+                progress = min(1.0, act_epoch / max(self.act_epochs, 1))
+                tau = self.tau_act_restart + (self.tau_end - self.tau_act_restart) * progress
+            self.model.set_temperature(tau)
+
             # Training
             self.model.train()
             total_loss = 0
@@ -328,6 +352,7 @@ class GTMTask(BaseTask):
                 'P': phase, 'Loss': avg_loss,
                 metric_key: val_metric,
                 'LR': self.optimizer.param_groups[0]['lr'],
+                'tau': tau,
             }
             if self._current_act_weight > 0:
                 display['ACT_w'] = self._current_act_weight

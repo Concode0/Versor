@@ -1,23 +1,6 @@
 # @package _global_
 name: gtm
 
-# ── RTX Pro 4500 (32 GB VRAM, Ada Lovelace) tuning notes ──────────────
-#
-# VRAM budget breakdown (fp16 activations via AMP):
-#   Phase 1 (demo):  B=24, K=3, grid=30×30 → N_demo = 5400 cells
-#     Attention [B,H,N,N]: 24×4×5400×5400×2B ≈ 5.6 GB
-#     CPU state × 12 steps: 24×5400×16×2B × 12 ≈ 50 MB
-#   Phase 2 (test):  N_test = 900 cells → attention < 150 MB
-#   Model params + optimizer: < 1 GB
-#   Total: ~8–10 GB in fp16, safely within 32 GB
-#
-# Key CUDA flags:
-#   amp: true           — bf16 forward/backward (Ada Lovelace tensor cores)
-#   compile: true       — torch.compile for kernel fusion
-#   cudnn_benchmark: true
-#   pin_memory: true    — async CPU→GPU transfer
-#   num_workers: 4      — parallel data loading
-
 algebra:
   p: 3
   q: 0
@@ -49,12 +32,12 @@ dataset:
   toy_n_examples: 20000
   toy_max_grid_size: 15
   num_demos: 3
-  epoch_samples: 0  # 0 = full dataset shuffle; set >0 for capped-epoch sampling
+  epoch_samples: 4000  # 0 = full dataset shuffle; set >0 for capped-epoch sampling
 
 training:
   epochs: 150
   lr: 0.0005
-  batch_size: 24
+  batch_size: 16
   optimizer_type: riemannian_adam
   max_bivector_norm: 10.0
 
@@ -62,7 +45,7 @@ training:
   num_workers: 4
   pin_memory: true
   amp: true
-  compile: true
+  compile: false
   cudnn_benchmark: true
 
   # Three-phase schedule (scaled for 150 epochs)
@@ -71,6 +54,10 @@ training:
   act_epochs: 70
   act_weight: 0.01
   act_ramp_epochs: 20
-  gate_entropy_weight: 0.001
+  gate_entropy_weight: 0.01
   grad_clip: 1.0
   eval_every: 5
+  tau_start: 1.0
+  tau_act_restart: 0.7
+  tau_end: 0.1
+

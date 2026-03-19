@@ -219,6 +219,10 @@ class GTMNet(nn.Module):
 
         return result
 
+    def set_temperature(self, tau: float):
+        """Set Gumbel-Softmax temperature for all VM steps."""
+        self.vm.set_temperature(tau)
+
     def freeze_vm(self):
         """Freeze all VM parameters (Phase 1: warmup)."""
         for param in self.vm.parameters():
