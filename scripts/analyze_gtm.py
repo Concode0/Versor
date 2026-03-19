@@ -42,11 +42,24 @@ def main():
     # Print static analysis (no data needed)
     print()
     print(analyzer.format_instruction_report())
+
+    # Temperature from checkpoint reflects the buffer state at save time.
+    # During training, temperature is set externally by the annealing schedule
+    # (tau_start -> tau_end over phases 2+3), so the saved value shows the
+    # temperature at the epoch when the best checkpoint was saved.
     temp_info = analyzer.analyze_temperature()
-    print('=== Gumbel Temperature ===')
+    print('=== Gumbel Temperature (at checkpoint save) ===')
     for i, t in enumerate(temp_info['temperatures']):
         sharp = '*' if temp_info['is_sharp'][i] else ''
         print(f'  Step {i}: tau={t:.4f} {sharp}')
+
+    # Show annealing config if available
+    checkpoint = torch.load(args.checkpoint, map_location='cpu', weights_only=False)
+    cfg = checkpoint.get('config', {})
+    tau_start = cfg.get('training', {}).get('tau_start', None)
+    tau_end = cfg.get('training', {}).get('tau_end', None)
+    if tau_start is not None:
+        print(f'  Schedule: {tau_start} -> {tau_end} (linear over phases 2+3)')
     print()
 
     # Load validation data

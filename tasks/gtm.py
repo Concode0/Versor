@@ -302,12 +302,6 @@ class GTMTask(BaseTask):
             else:
                 self._current_act_weight = 0.0
 
-            # Gumbel temperature annealing:
-            #   Phase 1 (warmup): hold at tau_start
-            #   Phase 2 (circuit): anneal tau_start -> tau_act_restart
-            #   Phase 3 (ACT): warm restart at tau_act_restart, anneal -> tau_end
-            # Warm restart needed because ACT activates steps[num_steps:max_steps]
-            # which have untrained weights and need exploration room.
             if phase == 1:
                 tau = self.tau_start
             elif phase == 2:
