@@ -58,6 +58,12 @@ ignoring the topological structure of the loss landscape. We hypothesize that:
      Geodesic equation: d^2 theta / dt^2 + Gamma^k_ij (d theta^i/dt)(d theta^j/dt) = 0
      where Gamma^k_ij are Christoffel symbols from the parameter-space metric G_ij(theta).
      For loss landscapes, a natural metric is G_ij = H_ij + lambda*I (regularized Hessian).
+     Since exact computation of the Christoffel symbols $\Gamma^k_{ij}$ requires
+     3rd-order derivatives, we bypass continuous integration entirely. 
+     Instead, we approximate the natural metric using a pseudo-Hessian diagonal
+     (proportional to gradient magnitude) and interpolate this flow with a straight chord
+     toward the known target. This 'Geodesic Blend' keeps computational complexity
+     strictly $O(N)$ while preserving topological directionality.
      The geodesic is a deterministic trajectory that avoids shortcuts through
      high-curvature barriers.
 
