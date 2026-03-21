@@ -138,6 +138,17 @@ class GTMAnalyzer:
             'discrete_dominant': (gate <= 0.5).sum().item(),
         }
 
+    def analyze_temperature(self) -> dict:
+        """Inspect per-step softmax temperature from SearchPlane buffers."""
+        temps = []
+        for step in self.model.world_model.steps:
+            tau = step.search_plane._temperature.item()
+            temps.append(tau)
+        return {
+            'temperatures': temps,
+            'is_sharp': [t < 0.1 for t in temps],
+        }
+
     def analyze_hypothesis_init(self) -> dict:
         """Inspect initial hypothesis positions in Cl(1,1)."""
         h_init = self.model.world_model.hypothesis_init.detach()
