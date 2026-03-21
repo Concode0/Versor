@@ -67,7 +67,7 @@ training:
   # Temperature schedule
   tau_start: 1.0
   tau_mid: 0.5
-  tau_end: 0.05
+  tau_end: 0.2
 
   # Loss weights
   ortho_weight: 0.005
