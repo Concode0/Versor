@@ -12,16 +12,26 @@ model:
   num_steps: 12
   max_steps: 24
   num_hypotheses: 8
-  top_k: 1
   coord_scale: 1.0
   head_hidden: 128
-  gumbel_temperature: 1.0
   num_rule_slots: 8
-  act:
-    enabled: true
-    lambda_p: 0.5
-  color_unit:
-    K_color: 4
+  num_memory_channels: 4
+  weight_share_steps: false
+
+  log_manifold:
+    gate_init: -5.0
+
+  search_plane:
+    conviction_threshold: 0.9
+    evolve_hidden: 64
+
+  info_geometry:
+    halt_eps: 0.01
+    use_supervised_fim: true
+
+  action_engine:
+    gate_init: 0.0
+
   attention:
     num_heads: 4
     head_dim: 8
@@ -32,7 +42,7 @@ dataset:
   toy_n_examples: 20000
   toy_max_grid_size: 15
   num_demos: 3
-  epoch_samples: 4000  # 0 = full dataset shuffle; set >0 for capped-epoch sampling
+  epoch_samples: 4000
 
 training:
   epochs: 150
@@ -40,6 +50,7 @@ training:
   batch_size: 16
   optimizer_type: riemannian_adam
   max_bivector_norm: 10.0
+  grad_clip: 1.0
 
   # CUDA acceleration
   num_workers: 4
@@ -48,16 +59,18 @@ training:
   compile: false
   cudnn_benchmark: true
 
-  # Three-phase schedule (scaled for 150 epochs)
+  # Three-phase schedule
   warmup_epochs: 8
   trim_epochs: 72
   act_epochs: 70
-  act_weight: 0.01
-  act_ramp_epochs: 20
-  gate_entropy_weight: 0.01
-  grad_clip: 1.0
-  eval_every: 5
-  tau_start: 1.0
-  tau_act_restart: 0.7
-  tau_end: 0.1
 
+  # Temperature schedule
+  tau_start: 1.0
+  tau_mid: 0.5
+  tau_end: 0.05
+
+  # Loss weights
+  ortho_weight: 0.005
+  gate_entropy_weight: 0.01
+  info_gain_weight: 0.01
+  eval_every: 5
