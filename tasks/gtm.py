@@ -5,20 +5,14 @@
 # you may not use this file except in compliance with the License.
 #
 
-"""Geometric Turing Machine Task — ARC-AGI v4.
+"""Geometric Turing Machine Task.
 
 Few-shot format: each training example = (demo_pairs, test_input, test_output).
 The model sees K demo (input,output) pairs to infer the rule, then applies
 it to a test input to produce the test output.
 
-Three-phase training (anti-lazy-optimization):
-1. Warmup: freeze VM, train head + init_cursor + role_embed
-2. Circuit Search: unfreeze VM, fixed steps, gate entropy loss
-3. ACT: enable adaptive computation, KL ramp-up
-
-Two algebras (Mother algebra removed):
-  CPU Cl(3,0,1): PGA computation engine (motor + color)
-  Control Cl(1,1): learnable search
+Three-phase training: warmup (WorldModel frozen), world model training
+(ortho + gate entropy losses), FIM halt + conviction collapse.
 """
 
 import torch
@@ -27,71 +21,76 @@ from tqdm import tqdm
 from core.algebra import CliffordAlgebra
 from tasks.base import BaseTask
 from models.gtm import GTMNet
+from models.gtm.search_plane import SearchPlane
 from log import get_logger
 
 logger = get_logger(__name__)
 
 
-def _gate_entropy_loss(scores: torch.Tensor) -> torch.Tensor:
-    """Entropy of search scores — minimizing this encourages instruction specialization."""
+def _gate_entropy_loss(gate_values: torch.Tensor) -> torch.Tensor:
+    """Entropy of write gate values — encourages decisive gating."""
     eps = 1e-8
-    probs = torch.softmax(scores, dim=-1)
-    entropy = -(probs * torch.log(probs + eps)).sum(dim=-1)
+    p = gate_values.mean(dim=(0, 1))  # [D] average gate per component
+    entropy = -(p * torch.log(p + eps) + (1 - p) * torch.log(1 - p + eps))
     return entropy.mean()
 
 
 class GTMTask(BaseTask):
-    """Geometric Turing Machine task for ARC-AGI v4."""
+    """Geometric Turing Machine task for ARC-AGI."""
 
     def __init__(self, cfg):
         # Training phase config
-        self.warmup_epochs = cfg.training.get('warmup_epochs', 5)
-        self.trim_epochs = cfg.training.get('trim_epochs', 50)
-        self.act_epochs = cfg.training.get('act_epochs', 45)
-        self.act_weight = cfg.training.get('act_weight', 0.01)
-        self.act_ramp_epochs = cfg.training.get('act_ramp_epochs', 15)
-        self.gate_entropy_weight = cfg.training.get('gate_entropy_weight', 0.01)
+        self.warmup_epochs = cfg.training.get('warmup_epochs', 8)
+        self.trim_epochs = cfg.training.get('trim_epochs', 72)
+        self.act_epochs = cfg.training.get('act_epochs', 70)
         self.grad_clip = cfg.training.get('grad_clip', 1.0)
         self.eval_every = cfg.training.get('eval_every', 5)
 
-        # Gumbel temperature annealing schedule
+        # Temperature schedule
         self.tau_start = cfg.training.get('tau_start', 1.0)
-        self.tau_end = cfg.training.get('tau_end', 0.1)
-        # Warm restart at Phase 3: steps[num_steps:max_steps] are untrained,
-        # need high tau for exploration before annealing down
-        self.tau_act_restart = cfg.training.get('tau_act_restart', 0.7)
+        self.tau_mid = cfg.training.get('tau_mid', 0.5)
+        self.tau_end = cfg.training.get('tau_end', 0.05)
+
+        # Loss weights
+        self.ortho_weight = cfg.training.get('ortho_weight', 0.005)
+        self.gate_entropy_weight = cfg.training.get('gate_entropy_weight', 0.01)
+        self.info_gain_weight = cfg.training.get('info_gain_weight', 0.01)
 
         super().__init__(cfg)
 
     def setup_algebra(self):
-        """Initialize CPU and Control algebras. Returns CPU algebra for BaseTask."""
+        """Initialize CPU and Control algebras."""
         self.algebra_cpu = CliffordAlgebra(3, 0, 1, device=self.device)
         self.algebra_ctrl = CliffordAlgebra(1, 1, 0, device=self.device)
         return self.algebra_cpu
 
     def setup_model(self):
         mcfg = self.cfg.model
-        act_cfg = mcfg.get('act', {})
-        color_cfg = mcfg.get('color_unit', {})
         attn_cfg = mcfg.get('attention', {})
+        sp_cfg = mcfg.get('search_plane', {})
+        lm_cfg = mcfg.get('log_manifold', {})
+        ig_cfg = mcfg.get('info_geometry', {})
+        ae_cfg = mcfg.get('action_engine', {})
 
         return GTMNet(
             algebra_cpu=self.algebra_cpu,
             algebra_ctrl=self.algebra_ctrl,
-            channels=mcfg.get('channels', 16),
-            num_steps=mcfg.get('num_steps', 8),
-            max_steps=mcfg.get('max_steps', 20),
-            num_hypotheses=mcfg.get('num_hypotheses', 4),
-            top_k=mcfg.get('top_k', 1),
-            head_hidden=mcfg.get('head_hidden', 64),
-            temperature_init=mcfg.get('gumbel_temperature', 1.0),
-            use_act=act_cfg.get('enabled', True),
-            lambda_p=act_cfg.get('lambda_p', 0.5),
+            channels=mcfg.get('channels', 32),
+            num_steps=mcfg.get('num_steps', 12),
+            max_steps=mcfg.get('max_steps', 24),
+            num_hypotheses=mcfg.get('num_hypotheses', 8),
+            head_hidden=mcfg.get('head_hidden', 128),
             coord_scale=mcfg.get('coord_scale', 1.0),
-            K_color=color_cfg.get('K_color', 4),
             num_attn_heads=attn_cfg.get('num_heads', 4),
             attn_head_dim=attn_cfg.get('head_dim', 8),
             num_rule_slots=mcfg.get('num_rule_slots', 8),
+            num_memory_channels=mcfg.get('num_memory_channels', 4),
+            weight_share_steps=mcfg.get('weight_share_steps', False),
+            log_manifold_gate_init=lm_cfg.get('gate_init', -5.0),
+            evolve_hidden=sp_cfg.get('evolve_hidden', 64),
+            halt_eps=ig_cfg.get('halt_eps', 0.01),
+            use_supervised_fim=ig_cfg.get('use_supervised_fim', True),
+            action_gate_init=ae_cfg.get('gate_init', 0.0),
         )
 
     def _setup_optimizer(self):
@@ -151,10 +150,16 @@ class GTMTask(BaseTask):
         test_masks = batch['test_masks'].to(self.device)
         num_demos = batch['num_demos'].to(self.device)
 
+        # Pass targets for supervised FIM during training
+        test_targets = None
+        if self.model.training and 'test_outputs' in batch:
+            test_targets = batch['test_outputs'].to(self.device)
+
         return self.model(
             demo_inputs, demo_outputs, demo_masks,
             test_inputs, test_masks, num_demos,
             demo_output_masks=demo_output_masks,
+            test_targets=test_targets,
             input_sizes=batch.get('input_sizes'),
             return_trace=return_trace,
         )
@@ -167,30 +172,49 @@ class GTMTask(BaseTask):
 
         logits = result['logits']  # [B, N_grid, 10]
 
-        # Target: test output grid flattened
-        test_outputs = batch['test_outputs'].to(self.device)  # [B, H_max, W_max]
+        # Target
+        test_outputs = batch['test_outputs'].to(self.device)
         B, H_max, W_max = test_outputs.shape
-        targets = test_outputs.reshape(B, H_max * W_max)  # [B, N_grid]
+        targets = test_outputs.reshape(B, H_max * W_max)
 
         loss = self.criterion(
             logits.reshape(-1, 10),
             targets.reshape(-1),
         )
 
-        # ACT KL loss (Phase 3 only)
-        act_kl = torch.tensor(0.0, device=self.device)
-        if 'act_info' in result and result['act_info'] is not None:
-            act_kl = result['act_info']['kl_loss']
-            loss = loss + self._current_act_weight * act_kl
+        wm_info = result.get('world_model_info', {})
 
-        # Gate entropy loss (Phases 2-3)
+        ortho_loss = torch.tensor(0.0, device=self.device)
+        if self._phase >= 2 and self.ortho_weight > 0:
+            # Get Gram from last step's search info via trace
+            if 'trace' in result and result['trace'] is not None:
+                test_trace = result['trace'].get('test')
+                if test_trace and test_trace['search_info']:
+                    last_search = test_trace['search_info'][-1]
+                    gram = last_search.get('gram')
+                    if gram is not None:
+                        ortho_loss = SearchPlane.orthogonality_loss(gram)
+                        loss = loss + self.ortho_weight * ortho_loss
+
         gate_ent = torch.tensor(0.0, device=self.device)
         if need_trace and 'trace' in result and result['trace'] is not None:
-            trace = result['trace']
-            if trace['search_scores']:
-                ent_sum = sum(_gate_entropy_loss(s) for s in trace['search_scores'])
-                gate_ent = ent_sum / len(trace['search_scores'])
+            test_trace = result['trace'].get('test')
+            if test_trace and test_trace['gate_values']:
+                ent_sum = sum(_gate_entropy_loss(g) for g in test_trace['gate_values'])
+                gate_ent = ent_sum / len(test_trace['gate_values'])
                 loss = loss + self.gate_entropy_weight * gate_ent
+
+        # Penalize negative info gain (monotonic progress)
+        info_loss = torch.tensor(0.0, device=self.device)
+        if self._phase >= 3 and self.info_gain_weight > 0:
+            step_deltas = wm_info.get('step_deltas', [])
+            if step_deltas:
+                all_deltas = torch.stack(
+                    [(d).mean() for d in step_deltas]
+                )
+                # Penalize negative information gain (want monotonic progress)
+                info_loss = torch.relu(-all_deltas).mean()
+                loss = loss + self.info_gain_weight * info_loss
 
         self._backward(loss)
 
@@ -202,10 +226,12 @@ class GTMTask(BaseTask):
         self._optimizer_step()
 
         logs = {'Loss': loss.item()}
-        if act_kl.item() > 0:
-            logs['ACT_KL'] = act_kl.item()
+        if ortho_loss.item() > 0:
+            logs['Ortho'] = ortho_loss.item()
         if gate_ent.item() != 0:
             logs['GateEnt'] = gate_ent.item()
+        if info_loss.item() > 0:
+            logs['InfoGain'] = info_loss.item()
         return loss.item(), logs
 
     def evaluate(self, val_loader):
@@ -218,8 +244,8 @@ class GTMTask(BaseTask):
         with torch.no_grad():
             for batch in val_loader:
                 result = self._run_model(batch)
-                logits = result['logits']  # [B, N_grid, 10]
-                preds = logits.argmax(dim=-1)  # [B, N_grid]
+                logits = result['logits']
+                preds = logits.argmax(dim=-1)
 
                 test_outputs = batch['test_outputs'].to(self.device)
                 test_masks = batch['test_masks'].to(self.device)
@@ -227,12 +253,10 @@ class GTMTask(BaseTask):
                 targets = test_outputs.reshape(B, H_max * W_max)
                 valid = test_masks.reshape(B, H_max * W_max)
 
-                # Cell accuracy (non-padded cells only)
                 matches = (preds == targets) & valid
                 cell_correct += matches.sum().item()
                 cell_total += valid.sum().item()
 
-                # Grid accuracy (entire grid must match)
                 test_sizes = batch['test_sizes']
                 for i in range(B):
                     toH, toW = test_sizes[i]
@@ -251,15 +275,14 @@ class GTMTask(BaseTask):
         pass
 
     def run(self):
-        """Three-phase training loop with ACT ramp-up."""
-        logger.info("Starting GTM ARC-AGI v4 Task")
+        """Three-phase training loop with FIM-based computation budget."""
+        logger.info("Starting GTM training")
         train_loader, val_loader = self.get_data()
 
         total_epochs = self.warmup_epochs + self.trim_epochs + self.act_epochs
         self.epochs = total_epochs
 
         self._phase = 0
-        self._current_act_weight = 0.0
         best_val_metric = 0.0
         metric_key = 'cell_accuracy'
 
@@ -276,41 +299,31 @@ class GTMTask(BaseTask):
             if phase != self._phase:
                 self._phase = phase
                 if phase == 1:
-                    logger.info("Phase 1: Warmup (VM frozen, train head + init_cursor)")
-                    self.model.freeze_vm()
-                    self.model.disable_act()
+                    logger.info("Phase 1: Warmup (WorldModel frozen)")
+                    self.model.freeze_world_model()
+                    self.model.disable_fim_halt()
                 elif phase == 2:
-                    logger.info("Phase 2: Circuit Search (fixed steps)")
-                    self.model.unfreeze_vm()
-                    self.model.disable_act()
+                    logger.info("Phase 2: World Model Training")
+                    self.model.unfreeze_world_model()
+                    self.model.disable_fim_halt()
                 elif phase == 3:
-                    act_cfg = self.cfg.model.get('act', {})
-                    if act_cfg.get('enabled', True):
-                        logger.info("Phase 3: ACT activation (adaptive computation)")
-                        self.model.enable_act()
-                    else:
-                        logger.info("Phase 3: Extended training (ACT disabled)")
+                    logger.info("Phase 3: FIM Halt + Conviction Collapse")
+                    self.model.enable_fim_halt()
+                # Rebuild optimizer for new trainable params
                 self.optimizer = self._setup_optimizer()
                 self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
                     self.optimizer, mode='min', factor=0.5, patience=10)
 
-            # ACT weight ramp
-            if phase == 3:
-                act_epoch = epoch - (self.warmup_epochs + self.trim_epochs)
-                ramp = min(1.0, act_epoch / self.act_ramp_epochs) if self.act_ramp_epochs > 0 else 1.0
-                self._current_act_weight = self.act_weight * ramp
-            else:
-                self._current_act_weight = 0.0
-
+            # Temperature schedule
             if phase == 1:
                 tau = self.tau_start
             elif phase == 2:
                 progress = min(1.0, (epoch - self.warmup_epochs) / max(self.trim_epochs, 1))
-                tau = self.tau_start + (self.tau_act_restart - self.tau_start) * progress
+                tau = self.tau_start + (self.tau_mid - self.tau_start) * progress
             else:  # phase 3
                 act_epoch = epoch - (self.warmup_epochs + self.trim_epochs)
                 progress = min(1.0, act_epoch / max(self.act_epochs, 1))
-                tau = self.tau_act_restart + (self.tau_end - self.tau_act_restart) * progress
+                tau = self.tau_mid + (self.tau_end - self.tau_mid) * progress
             self.model.set_temperature(tau)
 
             # Training
@@ -348,8 +361,6 @@ class GTMTask(BaseTask):
                 'LR': self.optimizer.param_groups[0]['lr'],
                 'tau': tau,
             }
-            if self._current_act_weight > 0:
-                display['ACT_w'] = self._current_act_weight
             desc = " | ".join(
                 f"{k}: {v:.4f}" if isinstance(v, float) else f"{k}: {v}"
                 for k, v in display.items()
