@@ -297,6 +297,7 @@ class GTMTask(BaseTask):
                 phase = 3
 
             if phase != self._phase:
+                prev_phase = self._phase
                 self._phase = phase
                 if phase == 1:
                     logger.info("Phase 1: Warmup (WorldModel frozen)")
@@ -309,8 +310,15 @@ class GTMTask(BaseTask):
                 elif phase == 3:
                     logger.info("Phase 3: FIM Halt + Conviction Collapse")
                     self.model.enable_fim_halt()
-                # Rebuild optimizer for new trainable params
+
+                # Preserve LR from previous phase when transitioning 2->3
+                # to avoid destabilizing learned representations
+                prev_lr = (self.optimizer.param_groups[0]['lr']
+                           if prev_phase > 0 else self.cfg.training.lr)
                 self.optimizer = self._setup_optimizer()
+                if prev_phase > 0:
+                    for pg in self.optimizer.param_groups:
+                        pg['lr'] = prev_lr
                 self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
                     self.optimizer, mode='min', factor=0.5, patience=10)
 
@@ -325,6 +333,14 @@ class GTMTask(BaseTask):
                 progress = min(1.0, act_epoch / max(self.act_epochs, 1))
                 tau = self.tau_mid + (self.tau_end - self.tau_mid) * progress
             self.model.set_temperature(tau)
+
+            # FIM mixing ramp: gradually blend in FIM-weighted output over Phase 3
+            if phase == 3:
+                act_epoch = epoch - (self.warmup_epochs + self.trim_epochs)
+                self.model.world_model.fim_mix_ramp = min(
+                    1.0, act_epoch / max(self.act_epochs * 0.5, 1))
+            else:
+                self.model.world_model.fim_mix_ramp = 0.0
 
             # Training
             self.model.train()
