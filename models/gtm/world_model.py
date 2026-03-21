@@ -314,6 +314,8 @@ class WorldModel(nn.Module):
         # FIM adaptive halt
         self.fim_halt = FIMAdaptiveHalt(halt_eps)
         self.use_fim_halt = False
+        # Ramp for gradual FIM mixing blend (0=last-step only, 1=full FIM mix)
+        self.fim_mix_ramp = 0.0
 
         # Final norm
         self.final_norm = CliffordLayerNorm(algebra_cpu, 1)
@@ -400,16 +402,21 @@ class WorldModel(nn.Module):
             output.reshape(B * N, 1, D),
         ).reshape(B, N, D)
 
-        # FIM-weighted mixing during training
+        # FIM-weighted mixing during training: gradually blend between
+        # last-step output and FIM-weighted mix using fim_mix_ramp (0->1)
         mixing_weights = None
         if self.training and self.use_fim_halt and len(step_deltas) > 1:
             halt_result = self.fim_halt(step_deltas, step_weights)
             mixing_weights = halt_result['mixing_weights']  # [B, T]
 
-            # Weighted sum of per-step mantissa outputs
             stacked = torch.stack(step_outputs, dim=1)  # [B, T, N, D]
             mixed_mantissa = torch.einsum('bt,btnd->bnd', mixing_weights, stacked)
-            output = self.log_projector.merge(mixed_mantissa, exponent)
+
+            # Blend: ramp=0 uses last-step, ramp=1 uses full FIM mix
+            ramp = self.fim_mix_ramp
+            blended_mantissa = (1.0 - ramp) * mantissa + ramp * mixed_mantissa
+
+            output = self.log_projector.merge(blended_mantissa, exponent)
             output = self.final_norm(
                 output.reshape(B * N, 1, D),
             ).reshape(B, N, D)
