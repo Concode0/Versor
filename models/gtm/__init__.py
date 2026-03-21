@@ -5,15 +5,15 @@
 # you may not use this file except in compliance with the License.
 #
 
-"""Geometric Turing Machine (GTM) package — ARC-AGI v4."""
+"""Geometric Turing Machine (GTM) package — v5 World Model + Search Plane."""
 
 from .grid_codec import GridCodec
-from .cpu import GeometricCPU, ColorUnit
-from .control_plane import ControlPlane
-from .superposition import GeometricSuperpositionSearch
-from .turing_step import TuringStep
-from .adaptive_halt import AdaptiveHalt
-from .turing_vm import TuringVM
+from .action_engine import ActionEngine, DiscreteActionHead
+from .log_manifold import LogManifoldProjector
+from .info_geometry import FIMEvaluator
+from .search_plane import AlgebraicProjection, AlgebraicLift, SearchPlane
+from .adaptive_halt import FIMAdaptiveHalt
+from .world_model import CellAttention, WorldModelStep, WorldModel
 from .heads import GridReconstructionHead
 from .rule_memory import RuleAggregator
 from .gtm_net import GTMNet
@@ -21,13 +21,17 @@ from .analysis import GTMAnalyzer
 
 __all__ = [
     "GridCodec",
-    "GeometricCPU",
-    "ColorUnit",
-    "ControlPlane",
-    "GeometricSuperpositionSearch",
-    "TuringStep",
-    "AdaptiveHalt",
-    "TuringVM",
+    "ActionEngine",
+    "DiscreteActionHead",
+    "LogManifoldProjector",
+    "FIMEvaluator",
+    "AlgebraicProjection",
+    "AlgebraicLift",
+    "SearchPlane",
+    "FIMAdaptiveHalt",
+    "CellAttention",
+    "WorldModelStep",
+    "WorldModel",
     "GridReconstructionHead",
     "RuleAggregator",
     "GTMNet",

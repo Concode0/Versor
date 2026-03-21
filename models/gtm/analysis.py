@@ -5,7 +5,7 @@
 # you may not use this file except in compliance with the License.
 #
 
-"""GTM Explainability Analysis — post-training inspection tools (v4 PGA).
+"""GTM Explainability Analysis — post-training inspection tools.
 
 Usage (from checkpoint):
     analyzer = GTMAnalyzer.from_checkpoint(
@@ -21,9 +21,6 @@ Usage (from checkpoint):
 Usage (from existing model):
     analyzer = GTMAnalyzer(model, device='cuda')
     report = analyzer.analyze(batch)
-
-Standalone script:
-    uv run python scripts/analyze_gtm.py --checkpoint gtm_arc_best.pt
 """
 
 import math
@@ -33,14 +30,14 @@ from core.algebra import CliffordAlgebra
 
 
 class GTMAnalyzer:
-    """Post-training analysis for pretrained GTM v4 models.
+    """Post-training analysis for pretrained GTM models.
 
     Provides:
         - Instruction template decomposition (rotation + translation motors)
         - Color remapping table inspection
-        - Cursor trajectory through both phases
-        - Hypothesis selection analysis (scores, weights, temperature)
-        - Write gate analysis (per-cell acceptance/rejection)
+        - Hypothesis evolution and conviction analysis
+        - Write gate analysis
+        - FIM traces and information gain
         - Rule memory analysis
         - Per-cell prediction vs target comparison
     """
@@ -51,23 +48,17 @@ class GTMAnalyzer:
 
     @staticmethod
     def from_checkpoint(path: str, device: str = 'cpu') -> 'GTMAnalyzer':
-        """Load GTMAnalyzer from a BaseTask checkpoint.
-
-        Args:
-            path: Path to checkpoint saved by BaseTask.save_checkpoint().
-            device: Target device.
-
-        Returns:
-            GTMAnalyzer instance with loaded model.
-        """
+        """Load GTMAnalyzer from a BaseTask checkpoint."""
         from models.gtm import GTMNet
 
         checkpoint = torch.load(path, map_location=device, weights_only=False)
         cfg = checkpoint['config']
         mcfg = cfg.model
-        act_cfg = mcfg.get('act', {})
-        color_cfg = mcfg.get('color_unit', {})
         attn_cfg = mcfg.get('attention', {})
+        sp_cfg = mcfg.get('search_plane', {})
+        lm_cfg = mcfg.get('log_manifold', {})
+        ig_cfg = mcfg.get('info_geometry', {})
+        ae_cfg = mcfg.get('action_engine', {})
 
         algebra_cpu = CliffordAlgebra(3, 0, 1, device=device)
         algebra_ctrl = CliffordAlgebra(1, 1, 0, device=device)
@@ -75,66 +66,50 @@ class GTMAnalyzer:
         model = GTMNet(
             algebra_cpu=algebra_cpu,
             algebra_ctrl=algebra_ctrl,
-            channels=mcfg.get('channels', 16),
-            num_steps=mcfg.get('num_steps', 8),
-            max_steps=mcfg.get('max_steps', 20),
-            num_hypotheses=mcfg.get('num_hypotheses', 4),
-            top_k=mcfg.get('top_k', 1),
-            head_hidden=mcfg.get('head_hidden', 64),
-            temperature_init=mcfg.get('gumbel_temperature', 1.0),
-            use_act=act_cfg.get('enabled', True),
-            lambda_p=act_cfg.get('lambda_p', 0.5),
+            channels=mcfg.get('channels', 32),
+            num_steps=mcfg.get('num_steps', 12),
+            max_steps=mcfg.get('max_steps', 24),
+            num_hypotheses=mcfg.get('num_hypotheses', 8),
+            head_hidden=mcfg.get('head_hidden', 128),
             coord_scale=mcfg.get('coord_scale', 1.0),
-            K_color=color_cfg.get('K_color', 4),
             num_attn_heads=attn_cfg.get('num_heads', 4),
             attn_head_dim=attn_cfg.get('head_dim', 8),
             num_rule_slots=mcfg.get('num_rule_slots', 8),
+            num_memory_channels=mcfg.get('num_memory_channels', 4),
+            weight_share_steps=mcfg.get('weight_share_steps', False),
+            log_manifold_gate_init=lm_cfg.get('gate_init', -5.0),
+            evolve_hidden=sp_cfg.get('evolve_hidden', 64),
+            halt_eps=ig_cfg.get('halt_eps', 0.01),
+            use_supervised_fim=ig_cfg.get('use_supervised_fim', True),
+            action_gate_init=ae_cfg.get('gate_init', 0.0),
         )
         model.load_state_dict(checkpoint['model_state_dict'], strict=False)
         return GTMAnalyzer(model, device)
 
-    # ------------------------------------------------------------------
-    # Static analysis (no data required)
-    # ------------------------------------------------------------------
-
     def analyze_instructions(self) -> dict:
         """Decompose instruction templates into geometric components.
 
-        For each of the K trainable instruction templates in Cl(3,0,1):
-          - Rotation bivectors (e01, e02, e12) -> rotation angle and plane
-          - Translation bivectors (e03, e13, e23) -> translation vector
-          - Scalar (grade-0) and pseudoscalar (grade-4) -> color control signals
-
         Returns:
-            dict with keys per template index:
-                'templates_raw':        [K, 16] raw parameter values
-                'rotation_angles':      [K] angle in radians (= 2 * ||B_rot||)
-                'rotation_planes':      [K, 3] unit bivector (e01, e02, e12)
-                'rotation_degrees':     [K] angle in degrees
-                'translation_vectors':  [K, 3] translation (e03, e13, e23) magnitudes
-                'translation_norms':    [K] translation magnitude
-                'color_control':        [K, 2] (grade-0, grade-4) values
-                'near_identity':        [K] bool — True if template ~ no-op
+            dict with rotation angles/planes, translation vectors, color control.
         """
         templates = self._get_templates()  # [K, 16]
         K = templates.shape[0]
 
         # Rotation bivectors: e01(idx3), e02(idx5), e12(idx6)
-        bv_rot = templates[:, [3, 5, 6]]  # [K, 3]
-        bv_rot_norm = bv_rot.norm(dim=-1)  # [K]
+        bv_rot = templates[:, [3, 5, 6]]
+        bv_rot_norm = bv_rot.norm(dim=-1)
         rotation_angles = 2.0 * bv_rot_norm
 
         safe_norm = bv_rot_norm.clamp(min=1e-8).unsqueeze(-1)
         rotation_planes = bv_rot / safe_norm
 
         # Translation bivectors: e03(idx9), e13(idx10), e23(idx12)
-        bv_trans = templates[:, [9, 10, 12]]  # [K, 3]
-        trans_norms = bv_trans.norm(dim=-1)    # [K]
+        bv_trans = templates[:, [9, 10, 12]]
+        trans_norms = bv_trans.norm(dim=-1)
 
         # Color control signals
-        color_control = templates[:, [0, 15]]  # [K, 2] (grade-0, grade-4)
+        color_control = templates[:, [0, 15]]
 
-        # Near-identity: small rotation + small translation + small color signal
         near_identity = (
             (rotation_angles < 0.1) &
             (trans_norms < 0.05) &
@@ -152,96 +127,40 @@ class GTMAnalyzer:
             'near_identity': near_identity,
         }
 
-    def analyze_color_unit(self) -> dict:
-        """Inspect ColorUnit remapping tables.
-
-        Returns:
-            dict with:
-                'remap_tables': [K_color, 10, 10] learned tables
-                'table_diag_dominance': [K_color] how close to identity each table is
-        """
-        # Get color unit from first step's search module
-        color_unit = self.model.vm.steps[0].search.pga_cpu.color_unit
-        tables = color_unit.remap_tables.detach()  # [K_color, 10, 10]
-
-        # Diagonal dominance: fraction of mass on diagonal
-        diags = torch.diagonal(tables, dim1=-2, dim2=-1)  # [K_color, 10]
-        row_sums = tables.abs().sum(dim=-1)  # [K_color, 10]
-        diag_dominance = (diags.abs() / row_sums.clamp(min=1e-8)).mean(dim=-1)
-
+    def analyze_action_gate(self) -> dict:
+        """Inspect per-component continuous/discrete blend."""
+        # All steps share the same ActionEngine parameters if weight-shared
+        step0 = self.model.world_model.steps[0]
+        gate = torch.sigmoid(step0.action_engine.action_gate).detach()
         return {
-            'remap_tables': tables,
-            'table_diag_dominance': diag_dominance,
+            'gate_values': gate,
+            'continuous_dominant': (gate > 0.5).sum().item(),
+            'discrete_dominant': (gate <= 0.5).sum().item(),
         }
 
-    def analyze_temperature(self) -> dict:
-        """Analyze Gumbel-Softmax temperature across all steps.
-
-        Returns:
-            dict with:
-                'temperatures': [num_steps] current temperature per step
-                'is_sharp': [num_steps] bool — True if tau < 0.5 (near-discrete)
-        """
-        temps = []
-        for step in self.model.vm.steps:
-            tau = step.search._temperature.clamp(0.1, 5.0)
-            temps.append(tau.item())
-
-        temps_t = torch.tensor(temps)
+    def analyze_hypothesis_init(self) -> dict:
+        """Inspect initial hypothesis positions in Cl(1,1)."""
+        h_init = self.model.world_model.hypothesis_init.detach()
+        labels = ['scalar', 'e+', 'e-', 'e+e-']
         return {
-            'temperatures': temps_t,
-            'is_sharp': temps_t < 0.5,
+            'hypothesis_init': h_init,
+            'component_labels': labels,
         }
-
-    # ------------------------------------------------------------------
-    # Dynamic analysis (requires a batch)
-    # ------------------------------------------------------------------
 
     def analyze(self, batch: dict) -> dict:
-        """Full analysis of one batch through both phases.
-
-        Args:
-            batch: Collated ARC batch from collate_arc.
-
-        Returns:
-            dict with:
-                'instructions': instruction decomposition (static)
-                'color_unit': color remapping analysis (static)
-                'phase1': {cursors, search_scores, search_weights,
-                           gate_values, halt_probs}
-                'phase2': same structure as phase1
-                'cursor_after_phase1': [B, 4]
-                'cursor_after_phase2': [B, 4]
-                'predictions': [B, N_test] predicted colors
-                'targets': [B, N_test] ground truth
-                'cell_accuracy': float
-                'grid_correct': [B] bool per example
-                'test_masks': [B, N_test] validity mask
-        """
-        # Run full forward with trace
+        """Full analysis of one batch through both phases."""
         with torch.no_grad():
             result = self._run_forward(batch)
 
         logits = result['logits']
         preds = logits.argmax(dim=-1)
-        trace = result['trace']
 
-        # Split trace into Phase 1 (demo) and Phase 2 (test).
-        # When ACT is enabled, each VM call produces max_steps entries;
-        # when disabled, num_steps entries. Both phases use the same mode.
-        vm = self.model.vm
-        steps_per_phase = vm.max_steps if vm.use_act else vm.num_steps
-        phase1_trace = {k: v[:steps_per_phase] for k, v in trace.items()}
-        phase2_trace = {k: v[steps_per_phase:] for k, v in trace.items()}
-
-        # Targets
         test_outputs = batch['test_outputs'].to(self.device)
         test_masks = batch['test_masks'].to(self.device)
         B, H_max, W_max = test_outputs.shape
         targets = test_outputs.reshape(B, H_max * W_max)
         valid = test_masks.reshape(B, H_max * W_max)
 
-        # Metrics
         matches = (preds == targets) & valid
         cell_acc = matches.sum().item() / max(valid.sum().item(), 1)
 
@@ -254,11 +173,10 @@ class GTMAnalyzer:
 
         return {
             'instructions': self.analyze_instructions(),
-            'color_unit': self.analyze_color_unit(),
-            'phase1': phase1_trace,
-            'phase2': phase2_trace,
-            'cursor_after_phase1': phase1_trace['cursors'][-1] if phase1_trace['cursors'] else None,
-            'cursor_after_phase2': phase2_trace['cursors'][-1] if phase2_trace['cursors'] else None,
+            'action_gate': self.analyze_action_gate(),
+            'hypothesis_init': self.analyze_hypothesis_init(),
+            'trace': result.get('trace'),
+            'world_model_info': result.get('world_model_info'),
             'predictions': preds,
             'targets': targets,
             'cell_accuracy': cell_acc,
@@ -267,14 +185,7 @@ class GTMAnalyzer:
         }
 
     def predict(self, batch: dict) -> dict:
-        """Lightweight prediction — just logits and accuracy.
-
-        Args:
-            batch: Collated ARC batch.
-
-        Returns:
-            dict with 'predictions', 'targets', 'cell_accuracy', 'grid_correct'.
-        """
+        """Lightweight prediction — just logits and accuracy."""
         with torch.no_grad():
             result = self._run_forward(batch)
 
@@ -303,10 +214,6 @@ class GTMAnalyzer:
             'cell_accuracy': cell_acc,
             'grid_correct': grid_correct,
         }
-
-    # ------------------------------------------------------------------
-    # Report formatting
-    # ------------------------------------------------------------------
 
     def format_instruction_report(self) -> str:
         """Human-readable instruction template summary."""
@@ -334,89 +241,16 @@ class GTMAnalyzer:
 
         return '\n'.join(lines)
 
-    def format_cursor_report(self, report: dict) -> str:
-        """Human-readable cursor trajectory summary."""
-        lines = ['=== Cursor Trajectory ===', '']
-
-        # Cl(1,1) components: {1, e3, e4, e34}
-        labels = ['scalar(confidence)', 'e3(hypothesis)', 'e4(depth)', 'e34(phase)']
-
-        for phase_name, phase_key in [('Phase 1 (Rule Inference)', 'phase1'),
-                                       ('Phase 2 (Rule Application)', 'phase2')]:
-            cursors = report[phase_key]['cursors']
-            if not cursors:
-                continue
-            lines.append(f'{phase_name}:')
-            for t, cursor in enumerate(cursors):
-                vals = cursor[0]  # first batch element
-                components = '  '.join(f'{labels[j]}={vals[j]:+.4f}' for j in range(4))
-                lines.append(f'  Step {t}: {components}')
-            lines.append('')
-
-        return '\n'.join(lines)
-
-    def format_search_report(self, report: dict) -> str:
-        """Human-readable hypothesis selection summary.
-
-        Handles both per-cell weights [B, N, K] (v4.1+) and legacy
-        global weights [B, K] via dimension check.
-        """
-        lines = ['=== Hypothesis Selection ===', '']
-
-        for phase_name, phase_key in [('Phase 1', 'phase1'), ('Phase 2', 'phase2')]:
-            weights_list = report[phase_key]['search_weights']
-            if not weights_list:
-                continue
-            lines.append(f'{phase_name}:')
-            for t, w in enumerate(weights_list):
-                w0 = w[0]  # first batch element
-                if w0.dim() == 2:
-                    # Per-cell weights: [N, K]
-                    K = w0.shape[-1]
-                    mean_w = w0.mean(dim=0)  # [K]
-                    dominant_per_cell = w0.argmax(dim=-1)  # [N]
-                    hist = torch.bincount(dominant_per_cell, minlength=K)
-                    mean_str = '  '.join(f'H{k}={mean_w[k]:.3f}' for k in range(K))
-                    hist_str = '  '.join(f'H{k}:{hist[k].item()}' for k in range(K))
-                    lines.append(f'  Step {t}: mean=[{mean_str}]  cells=[{hist_str}]')
-                else:
-                    # Legacy global weights: [K]
-                    dominant = w0.argmax().item()
-                    w_str = '  '.join(f'H{k}={w0[k]:.3f}' for k in range(w0.shape[0]))
-                    lines.append(f'  Step {t}: [{w_str}]  dominant=H{dominant}')
-            lines.append('')
-
-        return '\n'.join(lines)
-
-    def format_gate_report(self, report: dict) -> str:
-        """Human-readable write gate summary."""
-        lines = ['=== Write Gate Analysis ===', '']
-
-        for phase_name, phase_key in [('Phase 1', 'phase1'), ('Phase 2', 'phase2')]:
-            gates = report[phase_key]['gate_values']
-            if not gates:
-                continue
-            lines.append(f'{phase_name}:')
-            for t, g in enumerate(gates):
-                g0 = g[0].squeeze(-1)  # [N] for first batch element
-                lines.append(
-                    f'  Step {t}: mean={g0.mean():.3f}  '
-                    f'min={g0.min():.3f}  max={g0.max():.3f}  '
-                    f'accept(>0.5)={(g0 > 0.5).float().mean():.1%}'
-                )
-            lines.append('')
-
-        return '\n'.join(lines)
-
     def full_report(self, batch: dict) -> str:
         """Generate complete human-readable analysis report."""
         report = self.analyze(batch)
 
         sections = [
             self.format_instruction_report(),
-            self.format_cursor_report(report),
-            self.format_search_report(report),
-            self.format_gate_report(report),
+            '',
+            '=== Action Gate ===',
+            f'  Continuous-dominant components: {report["action_gate"]["continuous_dominant"]}/16',
+            f'  Discrete-dominant components: {report["action_gate"]["discrete_dominant"]}/16',
             '',
             '=== Prediction Summary ===',
             f'  Cell accuracy: {report["cell_accuracy"]:.4f}',
@@ -424,13 +258,9 @@ class GTMAnalyzer:
         ]
         return '\n'.join(sections)
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
     def _get_templates(self) -> torch.Tensor:
-        """Get instruction templates from the first step (shared across steps)."""
-        return self.model.vm.steps[0].search.instruction_templates.detach()
+        """Get instruction templates from the first WorldModel step."""
+        return self.model.world_model.steps[0].action_engine.instruction_templates.detach()
 
     def _run_forward(self, batch: dict) -> dict:
         """Run model forward with trace, handling device transfer."""
