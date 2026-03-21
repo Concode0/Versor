@@ -151,20 +151,19 @@ class WorldModelStep(nn.Module):
         self.fim_evaluator = FIMEvaluator(algebra_cpu)
         self.use_supervised_fim = use_supervised_fim
 
-        # Write gate — spatial components (grade 1+)
         self.write_gate = nn.Sequential(
             nn.Linear(D * 2, 64),
             nn.ReLU(),
             nn.Linear(64, D),
         )
-        # Separate color write gate for grade-0, so spatial gate can't suppress
-        # color flow. Shared MLP would learn to block grade-0 because motor
-        # transforms can't change scalars, making the blended grade-0 noisy.
+        nn.init.constant_(self.write_gate[-1].bias, -3.0)
+
         self.color_write_gate = nn.Sequential(
             nn.Linear(2, 16),
             nn.ReLU(),
             nn.Linear(16, 1),
         )
+        nn.init.constant_(self.color_write_gate[-1].bias, -3.0)
 
         # Normalization
         self.norm = CliffordLayerNorm(algebra_cpu, 1)
