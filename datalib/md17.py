@@ -23,16 +23,17 @@ Loading priority:
 Install PyG:
     uv sync --extra graph
 
+Manual download (MD17):
+    Download from https://sgdml.org (NumPy format links on main page).
+    URL pattern: https://sgdml.org/secure_proxy.php?file=data/npz/md17_{molecule}.npz
+    Place files under: data/MD17/raw/
+
 Manual download (rMD17):
-    Place rmd17_{molecule}.npz files under:
+    rMD17 NPZ files are auto-downloaded by PyTorch Geometric.
+    For manual download, place rmd17_{molecule}.npz files under:
         data/rMD17/raw/rmd17/npz_data/rmd17_aspirin.npz
-        data/rMD17/raw/rmd17/npz_data/rmd17_benzene.npz
-        data/rMD17/raw/rmd17/npz_data/rmd17_ethanol.npz
         ...etc
     PyG's MD17 for revised datasets uses {root}/raw/ (not {root}/{name}/raw/).
-    NOTE: archive.materialscloud.org (record 466) and sgdml.org are
-    currently unavailable. Check https://zenodo.org or the rMD17 paper
-    repository for an alternative mirror.
 """
 
 from __future__ import annotations
@@ -275,7 +276,7 @@ class VersorMD17NPZ(Dataset):
     """NPZ-based MD17/rMD17 loader (no PyTorch Geometric required).
 
     Expects manually downloaded .npz files in ``root/raw/`` or ``root/``.
-    Download from http://www.sgdml.org/datasets/
+    Download from https://sgdml.org
 
     Produces _GraphData objects compatible with PyG-based task code.
     """
@@ -299,11 +300,17 @@ class VersorMD17NPZ(Dataset):
         npz_path = self._find_npz()
         variant = "rMD17" if revised else "MD17"
         if npz_path is None:
+            hint = (
+                f"  2. Download NPZ from https://sgdml.org\n"
+                f"     Direct: https://sgdml.org/secure_proxy.php?file=data/npz/md17_{molecule}.npz"
+            ) if not revised else (
+                f"  2. rMD17 is best obtained via PyG (option 1)"
+            )
             raise FileNotFoundError(
                 f"{variant} NPZ file for '{molecule}' not found in {root}.\n"
                 f"Options:\n"
                 f"  1. Install PyG:  uv sync --extra graph\n"
-                f"  2. Download NPZ from http://www.sgdml.org/datasets/"
+                f"{hint}"
             )
 
         data = np.load(npz_path)
