@@ -310,6 +310,9 @@ By releasing this under Apache 2.0, we provide a **perpetual, royalty-free paten
 
 **Notice**: This project is the original, independent work of Eunkyum Kim. We have no affiliation with the paper "Versor: A Geometric Sequence Architecture" (arXiv:2602.10195).
 
+**Notice on Naming**: 
+- This project is a PyTorch-native framework for Deep Learning and is not affiliated with the [C++ Versor library](http://versor.mat.ucsb.edu/) (a generic GA library for C++).
+
 ## Citation
 
 ```bibtex
