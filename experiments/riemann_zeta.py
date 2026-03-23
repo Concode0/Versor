@@ -7,9 +7,17 @@
 
 """Riemann Zeta Function Reconstruction via Geometric Algebra.
 
-Uses Cl(2,0) where the even subalgebra {1, e_12} is isomorphic to C.
+Uses Cl(2,0,r) where the even subalgebra {1, e_12} is isomorphic to C.
 Complex numbers s = sigma + it  are encoded as multivectors s = sigma*1 + t*e_12.
 The network learns zeta(s) entirely within this algebra.
+
+When r>=1 (degenerate/null dimensions), the algebra is extended to Cl(2,0,r).
+The null bivectors carry the *dynamic curve tangent* dζ/dt:
+  - Index 5 (e13): Re(dζ/dt) — rate of change of real part along the curve
+  - Index 6 (e23): Im(dζ/dt) — rate of change of imaginary part along the curve
+This is the GA analogue of dual numbers: ζ(s + ε·i) = ζ(s) + ε·(dζ/dt),
+where ε² = 0 in the null subalgebra. The network learns ζ(s) and its
+curve tangent simultaneously in a single forward pass.
 
 Strict orthogonality enforces that representations stay in the even
 subalgebra, penalizing parasitic energy in the odd grades (e_1, e_2).
@@ -25,6 +33,7 @@ Usage:
     uv run python -m experiments.riemann_zeta
     uv run python -m experiments.riemann_zeta --strict-ortho --epochs 300
     uv run python -m experiments.riemann_zeta --strict-ortho --save-plots --output-dir zeta_plots
+    uv run python -m experiments.riemann_zeta --r-dim 1 --strict-ortho --epochs 300
     uv run python -m experiments.riemann_zeta --sigma-min 0.5 --sigma-max 3.0
 """
 
@@ -114,6 +123,19 @@ def compute_zeta(sigma: float, t: float) -> Tuple[float, float]:
     return z.real, z.imag
 
 
+def compute_zeta_deriv_batch(sigma_arr: np.ndarray,
+                              t_arr: np.ndarray,
+                              h: float = 1e-3) -> np.ndarray:
+    """Compute dζ/dt via central differences. Returns [N, 2] of (dRe/dt, dIm/dt).
+
+    Uses compute_zeta_batch at t±h to get a first-order estimate of the
+    dynamic curve tangent along the imaginary axis direction.
+    """
+    zp = compute_zeta_batch(sigma_arr, t_arr + h)
+    zm = compute_zeta_batch(sigma_arr, t_arr - h)
+    return (zp - zm) / (2.0 * h)
+
+
 def compute_zeta_batch(sigma_arr: np.ndarray,
                        t_arr: np.ndarray) -> np.ndarray:
     """Vectorized zeta computation. Returns [N, 2] array of (Re, Im)."""
@@ -149,16 +171,30 @@ def compute_zeta_batch(sigma_arr: np.ndarray,
 # Dataset
 
 class ZetaDataset(Dataset):
-    """Dataset of (s, zeta(s)) pairs encoded as Cl(2,0) multivectors.
+    """Dataset of (s, zeta(s)) pairs encoded as Cl(2,0,r) multivectors.
 
     In Cl(2,0), basis = {1, e1, e2, e12}.
     Complex number z = a + bi encodes as: a*1 + b*e12 (indices 0 and 3).
     The vector components (indices 1, 2) are zero for complex numbers.
+
+    When r_dim=1 (Cl(2,0,1), dim=8), the null bivectors carry the dynamic
+    curve tangent dζ/dt along the imaginary axis:
+      - Index 5 (e13): Re(dζ/dt)
+      - Index 6 (e23): Im(dζ/dt)
+    Input null slots remain zero; the tangent is a learning target only.
+    This encodes ζ and its first-order behaviour along the zeta curve
+    simultaneously, exploiting the dual-number structure ε²=0 of the
+    null subalgebra.
     """
 
     def __init__(self, sigma_range: Tuple[float, float],
                  t_range: Tuple[float, float],
-                 num_samples: int, seed: int = 42):
+                 num_samples: int, seed: int = 42,
+                 r_dim: int = 0):
+        self.r_dim = r_dim
+        # Multivector dimension: 2^(2+r_dim)  — 4 for Cl(2,0), 8 for Cl(2,0,1)
+        dim = 2 ** (2 + r_dim)
+
         rng = np.random.RandomState(seed)
         sigma = rng.uniform(sigma_range[0], sigma_range[1], num_samples)
         t = rng.uniform(t_range[0], t_range[1], num_samples)
@@ -177,15 +213,33 @@ class ZetaDataset(Dataset):
                   f"({n_nan / num_samples:.1%} of total, likely near pole s=1).")
         sigma, t, zeta_vals = sigma[valid_mask], t[valid_mask], zeta_vals[valid_mask]
 
-        # Encode as Cl(2,0) multivectors: [scalar, e1, e2, e12]
-        # Complex z = a + bi -> [a, 0, 0, b]
-        self.inputs = torch.zeros(len(sigma), 4, dtype=torch.float32)
+        # Encode inputs as multivectors: sigma->index 0 (scalar), t->index 3 (e12)
+        # Null input slots (indices 4-7 for r=1) stay zero; the network learns
+        # the null-component outputs from the target encoding below.
+        self.inputs = torch.zeros(len(sigma), dim, dtype=torch.float32)
         self.inputs[:, 0] = torch.tensor(sigma, dtype=torch.float32)  # Re(s) -> scalar
         self.inputs[:, 3] = torch.tensor(t, dtype=torch.float32)      # Im(s) -> e12
 
-        self.targets = torch.zeros(len(sigma), 4, dtype=torch.float32)
+        self.targets = torch.zeros(len(sigma), dim, dtype=torch.float32)
         self.targets[:, 0] = torch.tensor(zeta_vals[:, 0], dtype=torch.float32)
         self.targets[:, 3] = torch.tensor(zeta_vals[:, 1], dtype=torch.float32)
+
+        if r_dim > 0:
+            # Cl(2,0,1) basis (n=3, dim=8) via binary index:
+            #   5 = e13 (null bivector): Re(dζ/dt)
+            #   6 = e23 (null bivector): Im(dζ/dt)
+            # The null subalgebra satisfies ε²=0, encoding the first-order
+            # tangent of the zeta curve along the imaginary (t) direction.
+            print(f"  Computing dζ/dt for dynamic curve encoding (r_dim={r_dim})...")
+            deriv_vals = compute_zeta_deriv_batch(sigma, t)
+            # Propagate any NaN from derivative computation
+            valid_d = ~np.isnan(deriv_vals[:, 0])
+            n_bad = (~valid_d).sum()
+            if n_bad > 0:
+                print(f"  Zeroing {n_bad} NaN derivative samples near pole/boundary.")
+                deriv_vals[~valid_d] = 0.0
+            self.targets[:, 5] = torch.tensor(deriv_vals[:, 0], dtype=torch.float32)
+            self.targets[:, 6] = torch.tensor(deriv_vals[:, 1], dtype=torch.float32)
 
         # Store raw values for diagnostics and visualization
         self.sigma = sigma
@@ -338,7 +392,8 @@ def _evaluate(model: ZetaNet, loader: DataLoader,
 @torch.no_grad()
 def _check_functional_equation(model: ZetaNet,
                                 input_mean, input_std, target_mean, target_std,
-                                device: str, n_tests: int = 200) -> dict:
+                                device: str, algebra,
+                                n_tests: int = 200) -> dict:
     """Validate the functional equation: zeta(s) = chi(s) * zeta(1-s).
 
     chi(s) = 2^s * pi^{s-1} * sin(pi*s/2) * Gamma(1-s)
@@ -377,7 +432,7 @@ def _check_functional_equation(model: ZetaNet,
                (complex(mpmath.zeta(s_conj)).conjugate() + 1e-30))
 
         def _encode_s(sig, ti) -> torch.Tensor:
-            mv = torch.zeros(1, 4, dtype=torch.float32, device=device)
+            mv = torch.zeros(1, algebra.dim, dtype=torch.float32, device=device)
             mv[0, 0] = sig
             mv[0, 3] = ti
             return mv
@@ -536,7 +591,7 @@ def _save_plots(history: dict, model: ZetaNet, test_ds: ZetaDataset,
     valid = ~np.isnan(zeta_crit[:, 0])
     t_crit, zeta_crit = t_crit[valid], zeta_crit[valid]
 
-    crit_inputs = torch.zeros(len(t_crit), 4, dtype=torch.float32)
+    crit_inputs = torch.zeros(len(t_crit), algebra.dim, dtype=torch.float32)
     crit_inputs[:, 0] = 0.5
     crit_inputs[:, 3] = torch.tensor(t_crit, dtype=torch.float32)
 
@@ -595,11 +650,15 @@ def train(args):
     np.random.seed(args.seed)
     device = args.device
 
-    # Algebra: Cl(2,0), dim=4, even subalgebra {1, e12} ~ C
-    algebra = CliffordAlgebra(p=2, q=0, device=device)
+    # Algebra: Cl(2,0,r_dim). r_dim=0: standard complex encoding;
+    # r_dim=1: Cl(2,0,1) adds null bivectors {e13, e23} for dζ/dt (curve tangent).
+    algebra = CliffordAlgebra(p=2, q=0, r=args.r_dim, device=device)
+    alg_str = f"Cl(2,0,{args.r_dim})" if args.r_dim > 0 else "Cl(2,0)"
     print(f"\n{'='*60}")
-    print(f" Riemann Zeta Reconstruction - Cl(2,0)")
+    print(f" Riemann Zeta Reconstruction - {alg_str}  (dim={algebra.dim})")
     print(f" Even subalgebra {{1, e_12}} ~ C")
+    if args.r_dim > 0:
+        print(f" Null blades {{e13, e23}} encode dζ/dt (dynamic curve tangent)")
     print(f" Strict Orthogonality: {'ON' if args.strict_ortho else 'OFF'}"
           f"{f' (weight={args.ortho_weight}, mode={args.ortho_mode})' if args.strict_ortho else ''}")
     print(f"{'='*60}\n")
@@ -623,12 +682,14 @@ def train(args):
         t_range=[args.t_min, args.t_max],
         num_samples=args.num_train,
         seed=args.seed,
+        r_dim=args.r_dim,
     )
     test_ds = ZetaDataset(
         sigma_range=[args.sigma_min, args.sigma_max],
         t_range=[args.t_min, args.t_max],
         num_samples=args.num_test,
         seed=args.seed + 1,
+        r_dim=args.r_dim,
     )
     # Critical line test set: sigma = 0.5
     crit_ds = ZetaDataset(
@@ -636,6 +697,7 @@ def train(args):
         t_range=[args.t_min, args.t_max],
         num_samples=args.num_test // 2,
         seed=args.seed + 2,
+        r_dim=args.r_dim,
     )
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
@@ -790,7 +852,7 @@ def train(args):
     # Functional equation check
     print(f"\n  Functional Equation Validation (zeta(s) = chi(s)*zeta(1-s)):")
     func_eq = _check_functional_equation(
-        model, input_mean, input_std, target_mean, target_std, device
+        model, input_mean, input_std, target_mean, target_std, device, algebra
     )
     if 'note' in func_eq:
         print(f"    {func_eq['note']}")
@@ -835,6 +897,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--t-max', type=float, default=20.0)
     p.add_argument('--num-train', type=int, default=5000)
     p.add_argument('--num-test', type=int, default=1000)
+
+    # Algebra
+    p.add_argument('--r-dim', type=int, default=0,
+                   help='Degenerate (null) dimensions: 0=Cl(2,0), 1=Cl(2,0,1). '
+                        'r=1 adds null bivectors {e13,e23} that encode dζ/dt '
+                        '(dynamic curve tangent) as a joint learning target.')
 
     # Model
     p.add_argument('--hidden-dim', type=int, default=64)
