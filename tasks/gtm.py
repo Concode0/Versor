@@ -91,6 +91,7 @@ class GTMTask(BaseTask):
             halt_eps=ig_cfg.get('halt_eps', 0.01),
             use_supervised_fim=ig_cfg.get('use_supervised_fim', True),
             action_gate_init=ae_cfg.get('gate_init', 0.0),
+            gradient_horizon=mcfg.get('gradient_horizon', 2),
         )
 
     def _setup_optimizer(self):
@@ -218,6 +219,11 @@ class GTMTask(BaseTask):
 
         self._backward(loss)
 
+        # Unscale BEFORE grad clip so clipping operates on real gradient magnitudes.
+        # Without this, AMP's scale factor (65536) makes the effective clip ~1e-5.
+        if self._scaler is not None:
+            self._scaler.unscale_(self.optimizer)
+
         if self.grad_clip > 0:
             trainable = [p for p in self.model.parameters() if p.requires_grad]
             if trainable:
@@ -311,16 +317,23 @@ class GTMTask(BaseTask):
                     logger.info("Phase 3: FIM Halt + Conviction Collapse")
                     self.model.enable_fim_halt()
 
-                # Preserve LR from previous phase when transitioning 2->3
-                # to avoid destabilizing learned representations
+                min_lr = self.cfg.training.get('min_lr', 1e-5)
+
+                # LR handling per phase transition
                 prev_lr = (self.optimizer.param_groups[0]['lr']
                            if prev_phase > 0 else self.cfg.training.lr)
                 self.optimizer = self._setup_optimizer()
-                if prev_phase > 0:
+                if phase == 3 and prev_phase == 2:
+                    # Reset to a viable LR floor in case scheduler killed it
+                    phase3_lr = max(self.cfg.training.lr * 0.1, min_lr)
+                    for pg in self.optimizer.param_groups:
+                        pg['lr'] = phase3_lr
+                elif prev_phase > 0:
                     for pg in self.optimizer.param_groups:
                         pg['lr'] = prev_lr
                 self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                    self.optimizer, mode='min', factor=0.5, patience=10)
+                    self.optimizer, mode='min', factor=0.5, patience=5,
+                    min_lr=min_lr)
 
             # Temperature schedule
             if phase == 1:
@@ -333,6 +346,18 @@ class GTMTask(BaseTask):
                 progress = min(1.0, act_epoch / max(self.act_epochs, 1))
                 tau = self.tau_mid + (self.tau_end - self.tau_mid) * progress
             self.model.set_temperature(tau)
+
+            # Phase 2 LR warmup: ramp from 1/10 to capped peak over first 10 epochs.
+            # Caps at phase2_lr_scale * base_lr to prevent instability in 12-step model.
+            if phase == 2:
+                phase2_epoch = epoch - self.warmup_epochs
+                warmup_len = min(10, max(self.trim_epochs // 4, 1))
+                if phase2_epoch < warmup_len:
+                    base_lr = self.cfg.training.lr
+                    phase2_scale = self.cfg.training.get('phase2_lr_scale', 0.5)
+                    peak_lr = base_lr * phase2_scale
+                    for pg in self.optimizer.param_groups:
+                        pg['lr'] = peak_lr * (phase2_epoch + 1) / warmup_len
 
             # FIM mixing ramp: gradually blend in FIM-weighted output over Phase 3
             if phase == 3:
