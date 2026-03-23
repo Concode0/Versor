@@ -175,7 +175,9 @@ class WorldModelStep(nn.Module):
                 R_accum: torch.Tensor, mask: torch.Tensor = None,
                 rule_memory: torch.Tensor = None,
                 fim_prev: torch.Tensor = None,
-                targets: torch.Tensor = None) -> dict:
+                targets: torch.Tensor = None,
+                step_idx: int = 0, total_steps: int = 12,
+                gradient_horizon: int = 2) -> dict:
         """Execute one world model step.
 
         Args:
@@ -186,6 +188,9 @@ class WorldModelStep(nn.Module):
             rule_memory: Optional rule slots [B, M, D].
             fim_prev: Previous FIM values [B, K] or None.
             targets: Optional target colors [B, N] for supervised FIM.
+            step_idx: Current step index in the loop.
+            total_steps: Total number of steps.
+            gradient_horizon: Allow gradient for last N steps.
 
         Returns:
             dict with world_state, hypotheses, R_accum, fim_values, search_info, gate.
@@ -237,8 +242,8 @@ class WorldModelStep(nn.Module):
             new_state.reshape(B * N, 1, D),
         ).reshape(B, N, D)
 
-        # Detach: chained geometric products create exponentially deep
-        # graphs that amplify gradients. R_accum is memory output only.
+        # R_accum tracks the accumulated rotor for diagnostics but is not
+        # in the loss path, so always detach to save memory.
         self._algebra_cpu.ensure_device(state.device)
         R_t = self.action_engine.get_combined_rotor(weights)  # [B, D]
         R_accum = self._algebra_cpu.geometric_product(R_t, R_accum.detach())
@@ -275,11 +280,13 @@ class WorldModel(nn.Module):
                  log_manifold_gate_init: float = -5.0,
                  halt_eps: float = 0.01,
                  use_supervised_fim: bool = True,
-                 weight_share_steps: bool = False):
+                 weight_share_steps: bool = False,
+                 gradient_horizon: int = 2):
         super().__init__()
         self.num_steps = num_steps
         self.max_steps = max_steps
         self.num_hypotheses = num_hypotheses
+        self.gradient_horizon = gradient_horizon
         self._algebra_cpu = algebra_cpu
 
         D = algebra_cpu.dim
@@ -307,14 +314,32 @@ class WorldModel(nn.Module):
                 for _ in range(num_steps)
             ])
 
-        # Initial hypotheses
+        # Initial hypotheses (base, shared across problems)
         self.hypothesis_init = nn.Parameter(torch.randn(num_hypotheses, 4) * 0.1)
+
+        # Demo-conditioned hypothesis offset: rule_memory -> per-problem initial hypotheses
+        # Creates different starting hypotheses for different problems, enabling
+        # per-problem adaptation instead of fitting one global average.
+        # Zero-initialized so it starts as identity (no offset at init).
+        self.hypothesis_projector = nn.Sequential(
+            nn.Linear(D, 64), nn.ReLU(), nn.Linear(64, num_hypotheses * 4),
+        )
+        nn.init.zeros_(self.hypothesis_projector[-1].weight)
+        nn.init.zeros_(self.hypothesis_projector[-1].bias)
 
         # FIM adaptive halt
         self.fim_halt = FIMAdaptiveHalt(halt_eps)
         self.use_fim_halt = False
         # Ramp for gradual FIM mixing blend (0=last-step only, 1=full FIM mix)
         self.fim_mix_ramp = 0.0
+
+        # Gated exponent update: enables magnitude learning during the step loop
+        self.exponent_update = nn.Sequential(
+            nn.Linear(D, 32), nn.ReLU(), nn.Linear(32, 1),
+        )
+        nn.init.zeros_(self.exponent_update[-1].weight)
+        nn.init.zeros_(self.exponent_update[-1].bias)
+        self.exponent_gate = nn.Parameter(torch.tensor(-5.0))  # sigmoid(-5)≈0.007
 
         # Final norm
         self.final_norm = CliffordLayerNorm(algebra_cpu, 1)
@@ -347,8 +372,14 @@ class WorldModel(nn.Module):
         # Split into mantissa + exponent
         mantissa, exponent = self.log_projector.split(cpu_state)
 
-        # Initialize
-        hypotheses = self.hypothesis_init.unsqueeze(0).expand(B, -1, -1).clone()
+        # Initialize hypotheses — conditioned on rule_memory if available
+        K = self.num_hypotheses
+        if rule_memory is not None:
+            rule_ctx = rule_memory.mean(dim=1)  # [B, D]
+            h_offset = self.hypothesis_projector(rule_ctx).view(B, K, 4)
+            hypotheses = self.hypothesis_init.unsqueeze(0).expand(B, -1, -1) + h_offset
+        else:
+            hypotheses = self.hypothesis_init.unsqueeze(0).expand(B, -1, -1).clone()
         R_accum = _identity_rotor(B, D, device, dtype)
         fim_prev = None
 
@@ -361,15 +392,25 @@ class WorldModel(nn.Module):
             'fim_values': [],
         } if return_trace else None
 
+        num_active_steps = len(self.steps)
+        exp_gate = torch.sigmoid(self.exponent_gate)
+
         for t, step in enumerate(self.steps):
             result = step(
                 mantissa, hypotheses, R_accum, mask,
                 rule_memory, fim_prev, targets,
+                step_idx=t, total_steps=num_active_steps,
+                gradient_horizon=self.gradient_horizon,
             )
             mantissa = result['world_state']
             hypotheses = result['hypotheses']
             R_accum = result['R_accum']
             fim_prev = result['fim_values']
+
+            # Gated exponent update: enables magnitude learning per step
+            # tanh bounds delta to [-1, 1] — max exponent shift per step is ~0.007
+            exp_delta = torch.tanh(self.exponent_update(mantissa.mean(dim=1, keepdim=True)))
+            exponent = exponent + exp_gate * exp_delta
 
             step_outputs.append(mantissa)
 

@@ -17,6 +17,7 @@ model:
   num_rule_slots: 8
   num_memory_channels: 4
   weight_share_steps: false
+  gradient_horizon: 2
 
   log_manifold:
     gate_init: -5.0
@@ -51,13 +52,17 @@ training:
   optimizer_type: riemannian_adam
   max_bivector_norm: 10.0
   grad_clip: 1.0
+  min_lr: 1.0e-5
 
   # CUDA acceleration
   num_workers: 4
   pin_memory: true
-  amp: true
+  amp: false
   compile: false
   cudnn_benchmark: true
+
+  # Phase 2 LR cap (fraction of base LR) — prevents instability in 12-step model
+  phase2_lr_scale: 0.5
 
   # Three-phase schedule
   warmup_epochs: 8

@@ -130,13 +130,16 @@ class SearchPlane(CliffordModule):
         # Initial hypothesis states in Cl(1,1)
         self.hypothesis_init = nn.Parameter(torch.randn(K, 4) * 0.1)
 
-        # Evolution network: context -> boost magnitude
+        # Evolution network: context -> full Cl(1,1) bivector for evolution
         # Input: hypothesis (4) + world_summary projected to 16D -> concatenated
         self.evolve_net = nn.Sequential(
             nn.Linear(4 + 16, evolve_hidden),
             nn.ReLU(),
-            nn.Linear(evolve_hidden, 1),
+            nn.Linear(evolve_hidden, 4),
         )
+
+        # Learnable scale for RMS-normalized hypotheses
+        self._evolve_scale = nn.Parameter(torch.tensor(1.0))
 
         # Temperature buffer (annealed externally)
         self.register_buffer('_temperature', torch.tensor(1.0))
@@ -176,13 +179,10 @@ class SearchPlane(CliffordModule):
         world_exp = world_summary.unsqueeze(1).expand(B, K, -1).reshape(B * K, -1)
         h_flat = hypotheses.reshape(B * K, 4)
         ctx = torch.cat([h_flat, world_exp], dim=-1)  # [B*K, 20]
-        raw_theta = self.evolve_net(ctx).reshape(B, K)
-        # Smooth bounding via tanh: always has gradient, range [-3, 3]
-        theta = torch.tanh(raw_theta) * 3.0
 
-        # Build e+e- bivector (index 3 in Cl(1,1))
-        bv = torch.zeros(B * K, 4, device=device, dtype=hypotheses.dtype)
-        bv[:, 3] = theta.reshape(B * K)
+        # Full 4D bivector evolution (all Cl(1,1) dimensions)
+        bv = self.evolve_net(ctx)  # [B*K, 4]
+        bv = torch.tanh(bv) * 3.0  # bound all components
 
         # Exponentiate and sandwich
         R = self.algebra.exp(-0.5 * bv)  # [B*K, 4]
@@ -190,8 +190,9 @@ class SearchPlane(CliffordModule):
         evolved = self.algebra.geometric_product(
             self.algebra.geometric_product(R, h_flat), R_rev
         )
-        # Symmlog: prevents unbounded drift, gradient = 1/(1+|x|), never zero
-        evolved = torch.sign(evolved) * torch.log1p(evolved.abs())
+        # RMS normalization: O(1) gradient regardless of input magnitude
+        rms = evolved.pow(2).mean(dim=-1, keepdim=True).add(1e-8).sqrt()
+        evolved = evolved / rms * self._evolve_scale
         hypotheses = evolved.reshape(B, K, 4)
 
         delta_info = fim_values - fim_prev if fim_prev is not None else fim_values

@@ -40,7 +40,7 @@ class DiscreteActionHead(nn.Module):
         super().__init__()
         self.spatial_proj = nn.Linear(4, 32)
         self.color_mlp = nn.Sequential(
-            nn.Linear(32 + 16, 64),
+            nn.Linear(32 + 16 + 4, 64),  # +4 for hypothesis state
             nn.ReLU(),
             nn.Linear(64, self._NUM_COLORS),
         )
@@ -51,12 +51,14 @@ class DiscreteActionHead(nn.Module):
         )
 
     def forward(self, state: torch.Tensor,
-                instr: torch.Tensor) -> torch.Tensor:
+                instr: torch.Tensor,
+                hypothesis: torch.Tensor = None) -> torch.Tensor:
         """Apply discrete color update via soft color selection.
 
         Args:
             state: Cell states [L, N, 16].
             instr: Instructions [L, 16].
+            hypothesis: Hypothesis state [L, 4] from SearchPlane.
 
         Returns:
             Updated state [L, N, 16] with modified grade-0.
@@ -64,7 +66,14 @@ class DiscreteActionHead(nn.Module):
         L, N, D = state.shape
         spatial = state[:, :, self._SPATIAL_IDX]  # [L, N, 4]
         feat = F.relu(self.spatial_proj(spatial))  # [L, N, 32]
-        ctx = torch.cat([feat, instr.unsqueeze(1).expand(-1, N, -1)], dim=-1)
+        instr_exp = instr.unsqueeze(1).expand(-1, N, -1)  # [L, N, 16]
+        if hypothesis is not None:
+            h_exp = hypothesis.unsqueeze(1).expand(-1, N, -1)  # [L, N, 4]
+            ctx = torch.cat([feat, instr_exp, h_exp], dim=-1)  # [L, N, 52]
+        else:
+            # Fallback: zero-pad hypothesis dims for compat
+            h_zeros = torch.zeros(L, N, 4, device=state.device, dtype=state.dtype)
+            ctx = torch.cat([feat, instr_exp, h_zeros], dim=-1)  # [L, N, 52]
         color_logits = self.color_mlp(ctx)  # [L, N, 10]
 
         # Soft color selection: differentiable weighted sum of anchor values
@@ -107,6 +116,16 @@ class ActionEngine(nn.Module):
         gate_vals = torch.full((D,), gate_init)
         gate_vals[0] = -2.0  # sigmoid(-2) ≈ 0.12 → mostly discrete for color
         self.action_gate = nn.Parameter(gate_vals)
+
+        # FiLM modulation: hypothesis -> instruction template modulation
+        # Creates the missing gradient path: loss -> candidates -> templates -> hypotheses
+        self.hypothesis_modulator = nn.Sequential(
+            nn.Linear(4, 64), nn.ReLU(), nn.Linear(64, 2 * D),
+        )
+        # Initialize at identity: scale=1, shift=0
+        nn.init.zeros_(self.hypothesis_modulator[-1].weight)
+        nn.init.zeros_(self.hypothesis_modulator[-1].bias)
+        self.hypothesis_modulator[-1].bias.data[:D] = 1.0  # scale starts at 1
 
         # Rule memory modulation
         self.rule_proj = nn.Linear(D, K * D)
@@ -165,15 +184,23 @@ class ActionEngine(nn.Module):
             rule_mod = self.rule_proj(rule_memory.mean(dim=1)).view(B, K, D)
             templates = templates + rule_mod
 
+        # FiLM: modulate templates with hypothesis state
+        # Bounded to prevent runaway amplification: scale ∈ [0, 2], shift ∈ [-0.5, 0.5]
+        h_mod = self.hypothesis_modulator(hypotheses)  # [B, K, 2*D]
+        scale = 1.0 + torch.tanh(h_mod[..., :D] - 1.0)  # init: tanh(0)=0 → scale=1
+        shift = torch.tanh(h_mod[..., D:]) * 0.5          # init: tanh(0)=0 → shift=0
+        templates = templates * scale + shift  # [B, K, D]
+
         # Batch all K hypotheses: [B*K, N, D]
         state_exp = state.unsqueeze(1).expand(B, K, N, D).reshape(B * K, N, D)
         instr_flat = templates.reshape(B * K, D)
+        hyp_flat = hypotheses.reshape(B * K, 4)
 
         # Continuous motor transform (no ColorUnit — pure geometric)
         continuous = self._motor_transform(state_exp, instr_flat)  # [B*K, N, D]
 
-        # Discrete color update
-        discrete = self.discrete_head(state_exp, instr_flat)  # [B*K, N, D]
+        # Discrete color update (hypothesis-conditioned)
+        discrete = self.discrete_head(state_exp, instr_flat, hyp_flat)  # [B*K, N, D]
 
         # Blend via per-component gate
         gate = torch.sigmoid(self.action_gate)  # [D]

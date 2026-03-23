@@ -50,6 +50,7 @@ class GTMNet(nn.Module):
         halt_eps: float = 0.01,
         use_supervised_fim: bool = True,
         action_gate_init: float = 0.0,
+        gradient_horizon: int = 2,
     ):
         super().__init__()
         self.algebra_cpu = algebra_cpu
@@ -88,6 +89,7 @@ class GTMNet(nn.Module):
             halt_eps=halt_eps,
             use_supervised_fim=use_supervised_fim,
             weight_share_steps=weight_share_steps,
+            gradient_horizon=gradient_horizon,
         )
 
         # Reconstruction head
