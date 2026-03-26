@@ -13,6 +13,7 @@ Implements rotor-based transformations using weighted sums of sandwich products.
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
+from core.validation import check_multivector, check_channels
 from .base import CliffordModule
 
 
@@ -111,11 +112,8 @@ class MultiRotorLayer(CliffordModule):
         Returns:
             torch.Tensor: Transformed output [Batch, Channels, Dim].
         """
-        from core.validation import check_multivector, check_channels
         check_multivector(x, self.algebra, "MultiRotorLayer input")
         check_channels(x, self.channels, "MultiRotorLayer input")
-
-        self.algebra.ensure_device(x.device)
 
         if not self.training and self._cached_R is not None:
             R, R_rev = self._cached_R, self._cached_R_rev

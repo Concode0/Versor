@@ -65,13 +65,16 @@ class CliffordLayerNorm(CliffordModule):
         # Affine transform on direction
         out = x_normalized * self.weight.view(1, -1, 1)
 
-        out = out.clone()
-        out[..., 0] = out[..., 0] + self.bias.view(1, -1)
+        # Add bias and optional log-magnitude to grade-0 via mask
+        g0 = self.algebra.grade_masks_float[0]  # [D], 1.0 at index 0
+        if g0.dtype != x.dtype:
+            g0 = g0.to(dtype=x.dtype)
+        out = out + self.bias.view(1, -1, 1) * g0
 
         if self.recover:
             # Push original magnitude into scalar (grade-0) part.
             # log1p keeps the value bounded and well-behaved for gradients.
-            log_norm = torch.log1p(norm.squeeze(-1))  # [B, C]
-            out[..., 0] = out[..., 0] + self.norm_scale.view(1, -1) * log_norm
+            log_norm = torch.log1p(norm.squeeze(-1)).unsqueeze(-1)  # [B, C, 1]
+            out = out + self.norm_scale.view(1, -1, 1) * log_norm * g0
 
         return out

@@ -110,7 +110,7 @@ class GeometricNeutralizer(CliffordModule):
         B, C, _ = scalar.shape
 
         if self.training:
-            # 1. Compute batch statistics
+            # Compute batch statistics
             batch_mean_s = scalar.mean(dim=0)  # [C, D0]
             batch_mean_b = bivec.mean(dim=0)   # [C, D2]
 
@@ -123,7 +123,7 @@ class GeometricNeutralizer(CliffordModule):
             # batch_cov_bs: [C, D2, D0]
             batch_cov_bs = torch.einsum('bci, bcj -> cij', b_centered, s_centered) / (B - 1 + 1e-8)
 
-            # 2. Update EMA buffers
+            # Update EMA buffers
             self.running_mean_scalar = (1 - self.momentum) * self.running_mean_scalar + self.momentum * batch_mean_s
             self.running_mean_bivec = (1 - self.momentum) * self.running_mean_bivec + self.momentum * batch_mean_b
             self.running_cov_bb = (1 - self.momentum) * self.running_cov_bb + self.momentum * batch_cov_bb
@@ -141,7 +141,7 @@ class GeometricNeutralizer(CliffordModule):
             cur_cov_bb = self.running_cov_bb
             cur_cov_bs = self.running_cov_bs
 
-        # 3. Perform Projection
+        # Perform Projection
         # Solve: cur_cov_bb * W = cur_cov_bs  => W = inv(cur_cov_bb) * cur_cov_bs
         reg = 1e-6 * torch.eye(
             self.d2, device=cur_cov_bb.device, dtype=cur_cov_bb.dtype
@@ -157,7 +157,7 @@ class GeometricNeutralizer(CliffordModule):
         # Neutralized scalar
         scalar_n = scalar - projection
 
-        # 4. Construct the output multivector
-        out = x.clone()
-        out[..., self.g0_idx] = scalar_n
-        return out
+        # Construct the output
+        delta = torch.zeros_like(x)
+        delta[..., self.g0_idx] = scalar_n - scalar
+        return x + delta

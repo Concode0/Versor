@@ -13,6 +13,7 @@ Supports traditional matrix-based mixing and parameter-efficient rotor-based bac
 import torch
 import torch.nn as nn
 from typing import Literal, Optional
+from core.validation import check_multivector, check_channels
 from core.algebra import CliffordAlgebra
 from .base import CliffordModule
 
@@ -113,7 +114,6 @@ class CliffordLinear(CliffordModule):
         Returns:
             torch.Tensor: Output [Batch, Out, Dim].
         """
-        from core.validation import check_multivector, check_channels
         check_multivector(x, self.algebra, "CliffordLinear input")
         check_channels(x, self.in_channels, "CliffordLinear input")
 

@@ -8,6 +8,7 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
+from core.validation import check_multivector, check_channels
 from .base import CliffordModule
 
 class RotorLayer(CliffordModule):
@@ -88,11 +89,8 @@ class RotorLayer(CliffordModule):
         Returns:
             torch.Tensor: Rotated input.
         """
-        from core.validation import check_multivector, check_channels
         check_multivector(x, self.algebra, "RotorLayer input")
         check_channels(x, self.channels, "RotorLayer input")
-
-        self.algebra.ensure_device(x.device)
 
         if not self.training and self._cached_R is not None:
             R, R_rev = self._cached_R, self._cached_R_rev
@@ -102,13 +100,7 @@ class RotorLayer(CliffordModule):
                 self._cached_R = R
                 self._cached_R_rev = R_rev
 
-        R_expanded = R.unsqueeze(0)
-        R_rev_expanded = R_rev.unsqueeze(0)
-
-        Rx = self.algebra.geometric_product(R_expanded, x)
-        res = self.algebra.geometric_product(Rx, R_rev_expanded)
-
-        return res
+        return self.algebra.per_channel_sandwich(R, x, R_rev)
 
     def train(self, mode: bool = True):
         """Override to invalidate rotor cache when switching to train mode."""

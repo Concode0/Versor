@@ -12,6 +12,7 @@ Reference:
 import torch
 import torch.nn as nn
 from typing import Literal
+from core.validation import check_multivector, check_channels
 
 from core.algebra import CliffordAlgebra
 from .base import CliffordModule
@@ -155,6 +156,13 @@ class RotorGadget(CliffordModule):
         self.in_indices = in_indices
         self.out_indices = out_indices
 
+        # Precompute channel-to-rotor-pair mapping for vectorized forward
+        ch2pair = torch.zeros(self.in_channels, dtype=torch.long)
+        for i, (s, e) in enumerate(in_indices):
+            if e > s:
+                ch2pair[s:e] = i
+        self.register_buffer('_ch2pair', ch2pair)
+
         # Set up channel shuffle permutation
         if self.shuffle == 'fixed':
             # Create fixed random permutation at initialization
@@ -230,11 +238,8 @@ class RotorGadget(CliffordModule):
         Returns:
             Output tensor of shape [Batch, Out_Channels, Dim]
         """
-        from core.validation import check_multivector, check_channels
         check_multivector(x, self.algebra, "RotorGadget input")
         check_channels(x, self.in_channels, "RotorGadget input")
-
-        self.algebra.ensure_device(x.device)
 
         # Apply input channel shuffle if enabled
         if self.shuffle == 'fixed':
@@ -251,20 +256,9 @@ class RotorGadget(CliffordModule):
             if not self.training:
                 self._cached_rotors = (R_left, R_right_rev)
 
-        # Vectorized sandwich: apply each rotor pair to its channel block
-        # Build expanded rotor tensors [1, in_channels, dim] where each channel
-        # gets the rotor for its assigned pair
-        D = self.algebra.dim
-        R_left_expanded = torch.zeros(1, self.in_channels, D,
-                                       device=x.device, dtype=x.dtype)
-        R_right_expanded = torch.zeros(1, self.in_channels, D,
-                                        device=x.device, dtype=x.dtype)
-
-        for i in range(self.num_rotor_pairs):
-            in_start, in_end = self.in_indices[i]
-            if in_end > in_start:
-                R_left_expanded[0, in_start:in_end] = R_left[i]
-                R_right_expanded[0, in_start:in_end] = R_right_rev[i]
+        # Vectorized sandwich: map each channel to its rotor pair
+        R_left_expanded = R_left[self._ch2pair].unsqueeze(0)         # [1, in_channels, D]
+        R_right_expanded = R_right_rev[self._ch2pair].unsqueeze(0)   # [1, in_channels, D]
 
         # Two batched GPs instead of 2*K sequential GPs
         temp = self.algebra.geometric_product(R_left_expanded, x)
