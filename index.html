@@ -556,6 +556,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Examples (Synthetic / Demo Tasks)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#paper-reimplementations-synthetic-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paper Reimplementations (Synthetic Data)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1279,6 +1296,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Examples (Synthetic / Demo Tasks)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#paper-reimplementations-synthetic-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paper Reimplementations (Synthetic Data)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1716,23 +1750,72 @@
 </tr>
 </tbody>
 </table>
+<h3 id="paper-reimplementations-synthetic-data">Paper Reimplementations (Synthetic Data)<a class="headerlink" href="#paper-reimplementations-synthetic-data" title="Permanent link">&para;</a></h3>
+<p>Three well-known GA deep learning papers reimplemented in Versor — each reduces ~2500–4000 lines of custom GA machinery to ~80–120 lines. All run on <strong>synthetic data</strong> to verify that the architectural structure reproduces each paper's core algebraic properties.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>examples.main<span class="w"> </span><span class="nv">task</span><span class="o">=</span>gatr<span class="w"> </span>training.epochs<span class="o">=</span><span class="m">200</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>examples.main<span class="w"> </span><span class="nv">task</span><span class="o">=</span>cgenn<span class="w"> </span>training.epochs<span class="o">=</span><span class="m">200</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>examples.main<span class="w"> </span><span class="nv">task</span><span class="o">=</span>clifford_pde<span class="w"> </span>training.epochs<span class="o">=</span><span class="m">300</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Example</th>
+<th style="text-align: left;">Paper</th>
+<th style="text-align: left;">Algebra</th>
+<th style="text-align: center;">Original</th>
+<th style="text-align: center;">Versor</th>
+<th style="text-align: left;">Synthetic Task</th>
+<th style="text-align: left;">Structural Verification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>GATr</strong></td>
+<td style="text-align: left;"><a href="https://arxiv.org/abs/2305.18415">Brehmer et al., NeurIPS 2023</a></td>
+<td style="text-align: left;"><span class="arithmatex">\(Cl(3,0,1)\)</span> PGA</td>
+<td style="text-align: center;">~2500 lines</td>
+<td style="text-align: center;">~80 lines</td>
+<td style="text-align: left;">N-body spring dynamics</td>
+<td style="text-align: left;">E(3) equivariance (rotation + translation)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>CGENN</strong></td>
+<td style="text-align: left;"><a href="https://arxiv.org/abs/2305.11141">Ruhe et al., NeurIPS 2023 Oral</a></td>
+<td style="text-align: left;"><span class="arithmatex">\(Cl(3,0)\)</span></td>
+<td style="text-align: center;">~3000 lines</td>
+<td style="text-align: center;">~90 lines</td>
+<td style="text-align: left;">Point cloud invariant regression</td>
+<td style="text-align: left;">O(3) invariance (rotation + reflection)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Clifford PDE</strong></td>
+<td style="text-align: left;"><a href="https://arxiv.org/abs/2209.04934">Brandstetter et al., ICLR 2023</a></td>
+<td style="text-align: left;"><span class="arithmatex">\(Cl(2,0)\)</span></td>
+<td style="text-align: center;">~4000 lines</td>
+<td style="text-align: center;">~120 lines</td>
+<td style="text-align: left;">2D Taylor-Green vortex</td>
+<td style="text-align: left;">Emergent vorticity in grade-2 bivector</td>
+</tr>
+</tbody>
+</table>
+<p>These are <strong>not benchmark reproductions</strong> — they verify that the same algebraic properties hold when built from Versor's composable primitives. See each task file's docstring for detailed paper-vs-Versor comparison.</p>
 <h2 id="project-structure">Project Structure<a class="headerlink" href="#project-structure" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>Versor/
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>├── core/               # Math kernel (CliffordAlgebra, metric, search, decomposition, CGA)
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>├── layers/             # Neural layers (Rotor, MultiRotor, Linear, GNN, Norm, RotorGadget)
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>├── functional/         # Activations (GeometricGELU, GradeSwish, GeometricSquare) &amp; losses
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>├── models/             # Task-specific architectures
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>│   └── sr/             # SR models (SRGBN, translator, unbender, grouper, estimator)
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>├── optimizers/         # Riemannian optimizers (RiemannianAdam, ExponentialSGD)
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>├── tasks/              # Task runners (SR, MD17, LQA, DEAP EEG)
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>├── datalib/            # Data loaders (PMLB, MD17, CLUTRR/HANS/BoolQ, DEAP)
-<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>├── conf/               # Hydra configs for main tasks
-<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>├── examples/           # Synthetic demos and interactive Streamlit app
-<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>│   ├── tasks/          # Manifold, Hyperbolic, Sanity
-<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>│   ├── datasets/       # Synthetic data generators
-<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>│   └── conf/           # Hydra configs for example tasks
-<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>├── tests/              # Unit &amp; property tests
-<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>└── main.py             # CLI entry point
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>Versor/
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>├── core/               # Math kernel (CliffordAlgebra, metric, search, decomposition, CGA)
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>├── layers/             # Neural layers (Rotor, MultiRotor, Linear, GNN, Norm, RotorGadget)
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>├── functional/         # Activations (GeometricGELU, GradeSwish, GeometricSquare) &amp; losses
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>├── models/             # Task-specific architectures
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>│   └── sr/             # SR models (SRGBN, translator, unbender, grouper, estimator)
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>├── optimizers/         # Riemannian optimizers (RiemannianAdam, ExponentialSGD)
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>├── tasks/              # Task runners (SR, MD17, LQA, DEAP EEG)
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>├── datalib/            # Data loaders (PMLB, MD17, CLUTRR/HANS/BoolQ, DEAP)
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>├── conf/               # Hydra configs for main tasks
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>├── examples/           # Synthetic demos, paper reimplementations, interactive Streamlit app
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>│   ├── tasks/          # Manifold, Hyperbolic, Sanity, GATr, CGENN, Clifford PDE
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>│   ├── datasets/       # Synthetic data generators
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>│   └── conf/           # Hydra configs for example tasks
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>├── tests/              # Unit &amp; property tests
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>└── main.py             # CLI entry point
 </code></pre></div>
 <h2 id="contributing">Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h2>
 <p>Versor is currently in a <strong>Stabilization Phase</strong> as the lead maintainer focuses on academic milestones. While we are not actively seeking major feature contributions at this moment, we highly value community feedback.</p>
@@ -1746,16 +1829,16 @@
 <p><strong>Notice on Patents:</strong> The core GBN architecture is covered by <strong>KR Patent Application 10-2026-0023023</strong>. By releasing this under Apache 2.0, we provide a <strong>perpetual, royalty-free patent license</strong> to any individual or entity using this software.</p>
 <p><strong>Notice:</strong> This project is the original, independent work of Eunkyum Kim. We have no affiliation with the paper "Versor: A Geometric Sequence Architecture" (arXiv:2602.10195).</p>
 <h2 id="citation">Citation<a class="headerlink" href="#citation" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nc">@software</span><span class="p">{</span><span class="nl">kim2026versor</span><span class="p">,</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="na">author</span><span class="w">  </span><span class="p">=</span><span class="w"> </span><span class="s">{Kim, Eunkyum}</span><span class="p">,</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="na">title</span><span class="w">   </span><span class="p">=</span><span class="w"> </span><span class="s">{Versor: Universal Geometric Algebra Neural Network}</span><span class="p">,</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span><span class="na">url</span><span class="w">     </span><span class="p">=</span><span class="w"> </span><span class="s">{https://github.com/Concode0/versor}</span><span class="p">,</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">  </span><span class="na">version</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{0.1.0}</span><span class="p">,</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">  </span><span class="na">year</span><span class="w">    </span><span class="p">=</span><span class="w"> </span><span class="s">{2026}</span><span class="p">,</span>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">  </span><span class="na">month</span><span class="w">   </span><span class="p">=</span><span class="w"> </span><span class="s">{2}</span><span class="p">,</span>
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">  </span><span class="na">license</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Apache-2.0}</span><span class="p">,</span>
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">  </span><span class="na">note</span><span class="w">    </span><span class="p">=</span><span class="w"> </span><span class="s">{ROK Patent Application 10-2026-0023023 (Geometric Blade Networks)}</span>
-<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nc">@software</span><span class="p">{</span><span class="nl">kim2026versor</span><span class="p">,</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="na">author</span><span class="w">  </span><span class="p">=</span><span class="w"> </span><span class="s">{Kim, Eunkyum}</span><span class="p">,</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="na">title</span><span class="w">   </span><span class="p">=</span><span class="w"> </span><span class="s">{Versor: Universal Geometric Algebra Neural Network}</span><span class="p">,</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="na">url</span><span class="w">     </span><span class="p">=</span><span class="w"> </span><span class="s">{https://github.com/Concode0/versor}</span><span class="p">,</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">  </span><span class="na">version</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{0.1.0}</span><span class="p">,</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">  </span><span class="na">year</span><span class="w">    </span><span class="p">=</span><span class="w"> </span><span class="s">{2026}</span><span class="p">,</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">  </span><span class="na">month</span><span class="w">   </span><span class="p">=</span><span class="w"> </span><span class="s">{2}</span><span class="p">,</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">  </span><span class="na">license</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Apache-2.0}</span><span class="p">,</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">  </span><span class="na">note</span><span class="w">    </span><span class="p">=</span><span class="w"> </span><span class="s">{ROK Patent Application 10-2026-0023023 (Geometric Blade Networks)}</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="p">}</span>
 </code></pre></div>
 <h2 id="reference">Reference<a class="headerlink" href="#reference" title="Permanent link">&para;</a></h2>
 <p>Pence, T., Yamada, D., &amp; Singh, V. (2025). "Composing Linear Layers from Irreducibles." arXiv:2507.11688v1 [cs.LG]</p>
