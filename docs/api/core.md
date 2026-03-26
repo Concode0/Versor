@@ -5,9 +5,6 @@ The mathematical kernel of Versor.
 ## Algebra
 ::: core.algebra.CliffordAlgebra
 
-## Conformal Algebra
-::: core.cga.ConformalAlgebra
-
 ## Multivector
 ::: core.multivector.Multivector
 
