@@ -560,10 +560,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#paper-reimplementations-synthetic-data" class="md-nav__link">
+  <a href="#paper-counterparts-synthetic-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Paper Reimplementations (Synthetic Data)
+        Paper Counterparts (Synthetic Data)
       
     </span>
   </a>
@@ -1300,10 +1300,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#paper-reimplementations-synthetic-data" class="md-nav__link">
+  <a href="#paper-counterparts-synthetic-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Paper Reimplementations (Synthetic Data)
+        Paper Counterparts (Synthetic Data)
       
     </span>
   </a>
@@ -1750,8 +1750,8 @@
 </tr>
 </tbody>
 </table>
-<h3 id="paper-reimplementations-synthetic-data">Paper Reimplementations (Synthetic Data)<a class="headerlink" href="#paper-reimplementations-synthetic-data" title="Permanent link">&para;</a></h3>
-<p>Three well-known GA deep learning papers reimplemented in Versor — each reduces ~2500–4000 lines of custom GA machinery to ~80–120 lines. All run on <strong>synthetic data</strong> to verify that the architectural structure reproduces each paper's core algebraic properties.</p>
+<h3 id="paper-counterparts-synthetic-data">Paper Counterparts (Synthetic Data)<a class="headerlink" href="#paper-counterparts-synthetic-data" title="Permanent link">&para;</a></h3>
+<p>Three well-known GA deep learning papers approached through Versor's composable primitives. These are <strong>not reimplementations</strong> — each paper has its own construction. They demonstrate that Versor's general-purpose layers achieve the same algebraic guarantees through different mechanisms. All run on <strong>synthetic data</strong> to verify structural properties.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>examples.main<span class="w"> </span><span class="nv">task</span><span class="o">=</span>gatr<span class="w"> </span>training.epochs<span class="o">=</span><span class="m">200</span>
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>examples.main<span class="w"> </span><span class="nv">task</span><span class="o">=</span>cgenn<span class="w"> </span>training.epochs<span class="o">=</span><span class="m">200</span>
 <a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>examples.main<span class="w"> </span><span class="nv">task</span><span class="o">=</span>clifford_pde<span class="w"> </span>training.epochs<span class="o">=</span><span class="m">300</span>
@@ -1765,7 +1765,7 @@
 <th style="text-align: center;">Original</th>
 <th style="text-align: center;">Versor</th>
 <th style="text-align: left;">Synthetic Task</th>
-<th style="text-align: left;">Structural Verification</th>
+<th style="text-align: left;">Property Verified</th>
 </tr>
 </thead>
 <tbody>
@@ -1798,7 +1798,7 @@
 </tr>
 </tbody>
 </table>
-<p>These are <strong>not benchmark reproductions</strong> — they verify that the same algebraic properties hold when built from Versor's composable primitives. See each task file's docstring for detailed paper-vs-Versor comparison.</p>
+<p>Each counterpart credits the paper's contribution, describes Versor's different construction path, and is honest about where the architecture diverges. See each task file's docstring for the detailed comparison.</p>
 <h2 id="project-structure">Project Structure<a class="headerlink" href="#project-structure" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>Versor/
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>├── core/               # Math kernel (CliffordAlgebra, metric, search, decomposition, CGA)
