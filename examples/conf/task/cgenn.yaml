@@ -1,0 +1,17 @@
+# @package _global_
+name: "cgenn"
+
+algebra:
+  p: 3
+  q: 0
+  device: "cpu"
+
+dataset:
+  name: "point_cloud_invariant"
+  n_points: 20
+  n_samples: 256
+
+training:
+  epochs: 200
+  lr: 0.005
+  batch_size: 32

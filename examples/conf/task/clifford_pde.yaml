@@ -1,0 +1,19 @@
+# @package _global_
+name: "clifford_pde"
+
+algebra:
+  p: 2
+  q: 0
+  device: "cpu"
+
+dataset:
+  name: "taylor_green"
+  grid_size: 32
+  n_samples: 128
+  nu: 0.01
+  dt: 0.1
+
+training:
+  epochs: 300
+  lr: 0.003
+  batch_size: 16

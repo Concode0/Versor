@@ -22,6 +22,9 @@ from omegaconf import DictConfig
 from examples.tasks.manifold import ManifoldTask
 from examples.tasks.hyperbolic import HyperbolicTask
 from examples.tasks.sanity_check import SanityCheckTask
+from examples.tasks.gatr import GATrTask
+from examples.tasks.cgenn import CGENNTask
+from examples.tasks.clifford_pde import CliffordPDETask
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig):
@@ -32,6 +35,9 @@ def main(cfg: DictConfig):
         'manifold': ManifoldTask,
         'hyperbolic': HyperbolicTask,
         'sanity': SanityCheckTask,
+        'gatr': GATrTask,
+        'cgenn': CGENNTask,
+        'clifford_pde': CliffordPDETask,
     }
 
     if task_name not in task_map:
