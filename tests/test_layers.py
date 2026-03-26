@@ -11,6 +11,7 @@ from core.algebra import CliffordAlgebra
 from layers import CliffordLinear
 from layers import RotorLayer
 from layers import MultiRotorLayer
+from layers.primitives.reflection import ReflectionLayer
 
 pytestmark = pytest.mark.unit
 
@@ -166,3 +167,56 @@ class TestLayers:
             expected_identity[..., 0] = 1.0
 
             assert torch.allclose(identity, expected_identity, atol=1e-4)
+
+    def test_reflection_shape(self, algebra_3d):
+        B, C = 4, 5
+        layer = ReflectionLayer(algebra_3d, channels=C)
+        x = torch.randn(B, C, 8)
+        y = layer(x)
+        assert y.shape == (B, C, 8)
+
+    def test_reflection_preserves_norm(self, algebra_3d):
+        C = 3
+        layer = ReflectionLayer(algebra_3d, channels=C)
+        x = torch.randn(2, C, 8)
+        y = layer(x)
+        x_norms = algebra_3d.norm_sq(x.reshape(-1, 8))
+        y_norms = algebra_3d.norm_sq(y.reshape(-1, 8))
+        assert torch.allclose(x_norms, y_norms, atol=1e-4)
+
+    def test_reflection_gradient_flow(self, algebra_3d):
+        C = 4
+        layer = ReflectionLayer(algebra_3d, channels=C)
+        x = torch.randn(2, C, 8)
+        y = layer(x)
+        loss = y.sum()
+        loss.backward()
+        assert layer.vector_weights.grad is not None
+        assert not torch.all(layer.vector_weights.grad == 0)
+
+    def test_reflection_eval_caching(self, algebra_3d):
+        C = 3
+        layer = ReflectionLayer(algebra_3d, channels=C)
+        layer.eval()
+        x = torch.randn(2, C, 8)
+        _ = layer(x)
+        assert layer._cached_n is not None
+        assert layer._cached_n_inv is not None
+        layer.train()
+        assert layer._cached_n is None
+        assert layer._cached_n_inv is None
+
+    def test_reflection_different_signatures(self):
+        for p, q in [(2, 0), (3, 0), (2, 1), (3, 1)]:
+            alg = CliffordAlgebra(p, q, device='cpu')
+            C = 2
+            layer = ReflectionLayer(alg, channels=C)
+            x = torch.randn(3, C, alg.dim)
+            y = layer(x)
+            assert y.shape == x.shape
+
+    def test_reflection_sparsity_loss(self, algebra_3d):
+        layer = ReflectionLayer(algebra_3d, channels=4)
+        loss = layer.sparsity_loss()
+        assert loss.dim() == 0
+        assert loss.item() > 0

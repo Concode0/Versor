@@ -24,12 +24,11 @@ class TestHermitianSigns:
         signs = _hermitian_signs(algebra_minkowski)
         assert signs.shape == (algebra_minkowski.dim,)
 
-    def test_caching(self, algebra_minkowski):
+    def test_buffer_registered(self, algebra_minkowski):
+        """Hermitian signs are precomputed as a buffer on the algebra."""
         s1 = _hermitian_signs(algebra_minkowski)
-        # Clear cache and recompute to test we get the same values
-        if hasattr(algebra_minkowski, '_cached_hermitian_signs'):
-            s2 = algebra_minkowski._cached_hermitian_signs
-            assert torch.allclose(s1, s2)
+        assert hasattr(algebra_minkowski, '_hermitian_signs')
+        assert torch.allclose(s1, algebra_minkowski._hermitian_signs)
 
     def test_values_are_pm1(self, algebra_conformal):
         signs = _hermitian_signs(algebra_conformal)
@@ -195,7 +194,7 @@ class TestHermitianAngle:
         torch.manual_seed(42)
         mv = torch.randn(algebra_3d.dim)
         angle = hermitian_angle(algebra_3d, mv, mv)
-        # float32 acos near cos=1 has ~sqrt(2*eps_machine) ≈ 5e-4 rad error;
+        # float32 acos near cos=1 has ~sqrt(2*eps_machine) ~= 5e-4 rad error;
         # use atol=1e-3 to be robust across platforms
         assert torch.allclose(angle, torch.tensor([0.0]), atol=1e-3)
 
