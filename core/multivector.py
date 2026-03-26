@@ -39,14 +39,7 @@ class Multivector:
         Returns:
             Multivector: The wrapper.
         """
-        # Map vectors to multivector coefficients
-        batch_shape = vectors.shape[:-1]
-        mv_tensor = torch.zeros(*batch_shape, algebra.dim, device=vectors.device, dtype=vectors.dtype)
-        
-        for i in range(algebra.n):
-            mv_tensor[..., 1 << i] = vectors[..., i]
-            
-        return cls(algebra, mv_tensor)
+        return cls(algebra, algebra.embed_vector(vectors))
 
     def __repr__(self):
         return f"Multivector(shape={self.tensor.shape}, algebra=Cl({self.algebra.p},{self.algebra.q}))"

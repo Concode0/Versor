@@ -8,7 +8,6 @@ metric functions, bivector decomposition, and signature search utilities.
 """
 
 from .algebra import CliffordAlgebra
-from .cga import ConformalAlgebra
 from .multivector import Multivector
 from .search import MetricSearch, GeodesicFlow, DimensionLifter
 from .device import DeviceConfig, resolve_device
@@ -41,7 +40,6 @@ from .decomposition import (
 __all__ = [
     # algebra
     "CliffordAlgebra",
-    "ConformalAlgebra",
     "Multivector",
     # search
     "MetricSearch",

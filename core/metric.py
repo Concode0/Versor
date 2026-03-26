@@ -16,48 +16,18 @@ from core.algebra import CliffordAlgebra
 
 
 def _hermitian_signs(algebra: CliffordAlgebra) -> torch.Tensor:
-    """Precompute conj_sign_i * metric_sign_i for each basis element.
+    """Return the precomputed Hermitian sign tensor from the algebra.
 
     The Hermitian inner product on Cl(p,q) is:
         <A, B>_H = sum_I (conj_sign_I * metric_sign_I) * a_I * b_I
 
-    where conj_sign_I = (-1)^k * (-1)^{k(k-1)/2} (Clifford conjugation sign)
-    and metric_sign_I = (-1)^{k(k-1)/2} * prod_{j in I} g_{jj} (basis blade self-product scalar part).
-
-    This equals <bar{A} B>_0 computed via the full geometric product.
+    This is precomputed as ``conj_signs * diagonal(cayley_signs)``
+    and registered as a buffer on the algebra in ``_init_derived_tables()``.
 
     Returns:
-        Sign tensor [Dim] with values +1 or -1.
+        Sign tensor [Dim] with values +1, -1, or 0 (null blades).
     """
-    if hasattr(algebra, '_cached_hermitian_signs'):
-        cached = algebra._cached_hermitian_signs
-        if cached.device == algebra.device:
-            return cached
-
-    signs = torch.ones(algebra.dim, device=algebra.device)
-    pq = algebra.p + algebra.q
-    for i in range(algebra.dim):
-        k = bin(i).count('1')  # grade
-        # Clifford conjugation sign: (-1)^k * (-1)^{k(k-1)/2}
-        conj_sign = ((-1) ** k) * ((-1) ** (k * (k - 1) // 2))
-        # Metric sign: (-1)^{k(k-1)/2} * prod g_{jj} for j in I
-        # g_{jj} = +1 if j < p, -1 if p <= j < p+q, 0 if j >= p+q
-        metric_product = 1
-        has_null = False
-        for bit in range(algebra.n):
-            if i & (1 << bit):
-                if bit >= pq:
-                    has_null = True
-                    break
-                metric_product *= (1 if bit < algebra.p else -1)
-        if has_null:
-            signs[i] = 0
-        else:
-            metric_sign = ((-1) ** (k * (k - 1) // 2)) * metric_product
-            signs[i] = conj_sign * metric_sign
-
-    algebra._cached_hermitian_signs = signs
-    return signs
+    return algebra._hermitian_signs
 
 def inner_product(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     """Compute the scalar product via projection onto grade 0.
@@ -219,7 +189,9 @@ def hermitian_inner_product(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.
     Returns:
         Scalar inner product [..., 1].
     """
-    signs = _hermitian_signs(algebra).to(device=A.device, dtype=A.dtype)
+    signs = _hermitian_signs(algebra)
+    if signs.dtype != A.dtype:
+        signs = signs.to(dtype=A.dtype)
     return (signs * A * B).sum(dim=-1, keepdim=True)
 
 
@@ -271,7 +243,9 @@ def hermitian_angle(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) 
     Returns:
         Angle in radians [..., 1].
     """
-    signs = _hermitian_signs(algebra).to(device=A.device, dtype=A.dtype)
+    signs = _hermitian_signs(algebra)
+    if signs.dtype != A.dtype:
+        signs = signs.to(dtype=A.dtype)
     ip = (signs * A * B).sum(dim=-1, keepdim=True)
     sq_a = (signs * A * A).sum(dim=-1, keepdim=True)
     sq_b = (signs * B * B).sum(dim=-1, keepdim=True)
@@ -316,7 +290,9 @@ def hermitian_grade_spectrum(algebra: CliffordAlgebra, A: torch.Tensor) -> torch
     Returns:
         Grade energies [..., n+1]. Each entry >= 0.
     """
-    signs = _hermitian_signs(algebra).to(device=A.device, dtype=A.dtype)
+    signs = _hermitian_signs(algebra)
+    if signs.dtype != A.dtype:
+        signs = signs.to(dtype=A.dtype)
     spectrum = []
     for k in range(algebra.n + 1):
         A_k = algebra.grade_projection(A, k)
