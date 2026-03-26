@@ -1,0 +1,239 @@
+# Versor: Universal Geometric Algebra Neural Network
+# Copyright (C) 2026 Eunkyum Kim <nemonanconcode@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+
+"""GTMNet: World Model + Search Plane architecture.
+
+Two-phase few-shot pipeline with Rule Memory Bank. Phase 1 (Rule Inference)
+encodes demo pairs, processes them through the WorldModel, and compresses
+into rule memory. Phase 2 (Rule Application) encodes the test input,
+processes with rule memory, and predicts color logits.
+"""
+
+import torch
+import torch.nn as nn
+from core.algebra import CliffordAlgebra
+from .grid_codec import GridCodec
+from .world_model import WorldModel
+from .heads import GridReconstructionHead
+from .rule_memory import RuleAggregator
+
+
+class GTMNet(nn.Module):
+    """Grid-native Geometric Turing Machine Network.
+
+    Two sub-algebras:
+        CPU Cl(3,0,1): PGA computation engine (motor + color)
+        Control Cl(1,1): hypothesis search plane
+    """
+
+    def __init__(
+        self,
+        algebra_cpu: CliffordAlgebra,
+        algebra_ctrl: CliffordAlgebra,
+        channels: int = 32,
+        num_steps: int = 12,
+        max_steps: int = 24,
+        num_hypotheses: int = 8,
+        head_hidden: int = 128,
+        coord_scale: float = 1.0,
+        num_attn_heads: int = 4,
+        attn_head_dim: int = 8,
+        num_rule_slots: int = 8,
+        num_memory_channels: int = 4,
+        weight_share_steps: bool = False,
+        log_manifold_gate_init: float = -5.0,
+        evolve_hidden: int = 64,
+        halt_eps: float = 0.01,
+        use_supervised_fim: bool = True,
+        action_gate_init: float = 0.0,
+        gradient_horizon: int = 2,
+    ):
+        super().__init__()
+        self.algebra_cpu = algebra_cpu
+        self.algebra_ctrl = algebra_ctrl
+        self.channels = channels
+        self.num_memory_channels = num_memory_channels
+
+        D_cpu = algebra_cpu.dim  # 16
+
+        # Grid codec (deterministic, no params)
+        self.codec = GridCodec(algebra_cpu, coord_scale)
+
+        # Learnable role markers injected into geometrically reserved slots:
+        #   idx 4 (e2): reserved auxiliary vector
+        #   idx 15 (pseudoscalar e0123): occupancy/role flag
+        # Shape: [3, 2] for (e2_value, pseudoscalar_value) per role
+        #   role 0 = demo input, role 1 = demo output, role 2 = test input
+        self.role_embed = nn.Parameter(torch.randn(3, 2) * 0.01)
+
+        # Rule Memory Aggregator
+        self.rule_aggregator = RuleAggregator(
+            d_cpu=D_cpu, num_slots=num_rule_slots, num_heads=num_attn_heads,
+        )
+
+        self.world_model = WorldModel(
+            algebra_cpu, algebra_ctrl,
+            num_steps=num_steps,
+            max_steps=max_steps,
+            num_hypotheses=num_hypotheses,
+            num_attn_heads=num_attn_heads,
+            attn_head_dim=attn_head_dim,
+            num_rule_slots=num_rule_slots,
+            evolve_hidden=evolve_hidden,
+            gate_init=action_gate_init,
+            log_manifold_gate_init=log_manifold_gate_init,
+            halt_eps=halt_eps,
+            use_supervised_fim=use_supervised_fim,
+            weight_share_steps=weight_share_steps,
+            gradient_horizon=gradient_horizon,
+        )
+
+        # Reconstruction head
+        self.head = GridReconstructionHead(
+            algebra_cpu, head_hidden, num_memory_channels,
+        )
+
+    def forward(self, demo_inputs: torch.Tensor, demo_outputs: torch.Tensor,
+                demo_masks: torch.Tensor,
+                test_inputs: torch.Tensor,
+                test_masks: torch.Tensor, num_demos: torch.Tensor,
+                demo_output_masks: torch.Tensor = None,
+                test_targets: torch.Tensor = None,
+                input_sizes: list = None,
+                return_trace: bool = False) -> dict:
+        """Two-phase forward pass: Rule Inference -> Rule Application.
+
+        Args:
+            demo_inputs:  [B, K, H_max, W_max] padded demo input grids.
+            demo_outputs: [B, K, H_max, W_max] padded demo output grids.
+            demo_masks:   [B, K, H_max, W_max] bool (True=valid input cell).
+            test_inputs:  [B, H_max, W_max] padded test input.
+            test_masks:   [B, H_max, W_max] bool (True=valid).
+            num_demos:    [B] int — actual demo count per example.
+            demo_output_masks: [B, K, H_max, W_max] bool (True=valid output cell).
+            test_targets: [B, H_max, W_max] optional targets for supervised FIM.
+            input_sizes:  Optional list of (H, W) for test inputs.
+            return_trace: Collect per-step diagnostics.
+
+        Returns:
+            dict with 'logits', 'test_flat_masks', 'world_model_info', optionally 'trace'.
+        """
+        B, K, H_max, W_max = demo_inputs.shape
+        N_grid = H_max * W_max
+        device = demo_inputs.device
+        D_cpu = self.algebra_cpu.dim  # 16
+
+        if demo_output_masks is None:
+            demo_output_masks = demo_masks
+
+        di_flat = demo_inputs.reshape(B * K, H_max, W_max)
+        do_flat = demo_outputs.clamp(min=0).reshape(B * K, H_max, W_max)
+        dim_flat = demo_masks.reshape(B * K, H_max, W_max)
+        dom_flat = demo_output_masks.reshape(B * K, H_max, W_max)
+
+        di_mv, di_fm = self.codec.encode_batch(di_flat, dim_flat)
+        do_mv, do_fm = self.codec.encode_batch(do_flat, dom_flat)
+
+        # Add role markers
+        di_mv[:, :, 4] = di_mv[:, :, 4] + self.role_embed[0, 0]
+        di_mv[:, :, 15] = di_mv[:, :, 15] + self.role_embed[0, 1]
+        do_mv[:, :, 4] = do_mv[:, :, 4] + self.role_embed[1, 0]
+        do_mv[:, :, 15] = do_mv[:, :, 15] + self.role_embed[1, 1]
+
+        # Interleave: [B*K, 2*N_grid, 16] -> [B, K*2*N_grid, 16]
+        demo_mv = torch.cat([di_mv, do_mv], dim=1)
+        demo_fm = torch.cat([di_fm, do_fm], dim=1)
+
+        N_demo_per_pair = 2 * N_grid
+        demo_mv = demo_mv.reshape(B, K * N_demo_per_pair, D_cpu)
+        demo_fm = demo_fm.reshape(B, K * N_demo_per_pair)
+
+        # Mask out unused demo pairs
+        total_demo_len = K * N_demo_per_pair
+        pos_idx = torch.arange(total_demo_len, device=device).unsqueeze(0)
+        limit = (num_demos * N_demo_per_pair).unsqueeze(1)
+        valid_demo = pos_idx < limit
+        demo_mv = demo_mv * valid_demo.unsqueeze(-1).float()
+        demo_fm = demo_fm & valid_demo
+
+        test_mv, test_fm = self.codec.encode_batch(test_inputs, test_masks)
+        test_mv[:, :, 4] = test_mv[:, :, 4] + self.role_embed[2, 0]
+        test_mv[:, :, 15] = test_mv[:, :, 15] + self.role_embed[2, 1]
+
+        # Flatten targets for supervised FIM
+        flat_targets = None
+        if test_targets is not None:
+            flat_targets = test_targets.reshape(B, N_grid)
+
+        demo_result = self.world_model(
+            demo_mv, demo_fm, return_trace=return_trace,
+        )
+        demo_state = demo_result['output']
+
+        # Compress demo state into rule memory
+        rule_memory = self.rule_aggregator(demo_state, demo_fm)
+
+        test_result = self.world_model(
+            test_mv, test_fm,
+            rule_memory=rule_memory,
+            targets=flat_targets,
+            return_trace=return_trace,
+        )
+        test_state = test_result['output']
+
+        logits = self.head(test_state, test_fm)
+
+        result = {
+            'logits': logits,
+            'test_flat_masks': test_fm,
+            'world_model_info': {
+                'step_deltas': test_result['step_deltas'],
+                'step_weights': test_result['step_weights'],
+                'mixing_weights': test_result['mixing_weights'],
+                'hypotheses': test_result['hypotheses'],
+                'R_accum': test_result['R_accum'],
+            },
+        }
+
+        # Merge traces
+        if return_trace:
+            result['trace'] = {
+                'demo': demo_result.get('trace'),
+                'test': test_result.get('trace'),
+            }
+
+        return result
+
+    def set_temperature(self, tau: float):
+        """Set softmax temperature for all WorldModel steps."""
+        self.world_model.set_temperature(tau)
+
+    def freeze_world_model(self):
+        """Freeze all WorldModel parameters for warmup."""
+        for param in self.world_model.parameters():
+            param.requires_grad = False
+
+    def unfreeze_world_model(self):
+        """Unfreeze all WorldModel parameters."""
+        for param in self.world_model.parameters():
+            param.requires_grad = True
+
+    def enable_fim_halt(self):
+        """Enable FIM-based adaptive halt."""
+        self.world_model.use_fim_halt = True
+
+    def disable_fim_halt(self):
+        """Disable FIM-based adaptive halt."""
+        self.world_model.use_fim_halt = False
+
+    def trainable_parameters(self):
+        for param in self.parameters():
+            if param.requires_grad:
+                yield param
+
+    def count_trainable_params(self) -> int:
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)

@@ -1,0 +1,81 @@
+# @package _global_
+name: gtm
+
+algebra:
+  p: 3
+  q: 0
+  r: 1
+  device: cuda
+
+model:
+  channels: 32
+  num_steps: 12
+  max_steps: 24
+  num_hypotheses: 8
+  coord_scale: 1.0
+  head_hidden: 128
+  num_rule_slots: 8
+  num_memory_channels: 4
+  weight_share_steps: false
+  gradient_horizon: 2
+
+  log_manifold:
+    gate_init: -5.0
+
+  search_plane:
+    conviction_threshold: 0.9
+    evolve_hidden: 64
+
+  info_geometry:
+    halt_eps: 0.01
+    use_supervised_fim: true
+
+  action_engine:
+    gate_init: 0.0
+
+  attention:
+    num_heads: 4
+    head_dim: 8
+
+dataset:
+  data_dir: data/arc
+  include_toy: true
+  toy_n_examples: 20000
+  toy_max_grid_size: 15
+  num_demos: 3
+  epoch_samples: 4000
+
+training:
+  epochs: 150
+  lr: 0.0005
+  batch_size: 16
+  optimizer_type: riemannian_adam
+  max_bivector_norm: 10.0
+  grad_clip: 1.0
+  min_lr: 1.0e-5
+
+  # CUDA acceleration
+  num_workers: 4
+  pin_memory: true
+  amp: false
+  compile: false
+  cudnn_benchmark: true
+
+  # Phase 2 LR cap (fraction of base LR) — prevents instability in 12-step model
+  phase2_lr_scale: 0.5
+
+  # Three-phase schedule
+  warmup_epochs: 8
+  trim_epochs: 72
+  act_epochs: 70
+
+  # Temperature schedule
+  tau_start: 1.0
+  tau_mid: 0.5
+  tau_end: 0.2
+
+  # Loss weights
+  ortho_weight: 0.005
+  gate_entropy_weight: 0.01
+  info_gain_weight: 0.01
+  eval_every: 5

@@ -144,7 +144,8 @@ class TestHermitianNorm:
     def test_zero_for_zero(self, algebra_3d):
         mv = torch.zeros(algebra_3d.dim)
         n = hermitian_norm(algebra_3d, mv)
-        assert torch.allclose(n, torch.tensor([0.0]))
+        # hermitian_norm clamps at 1e-12 before sqrt for gradient safety
+        assert n < 1e-5
 
     def test_positive_for_nonzero(self, algebra_3d):
         mv = torch.randn(algebra_3d.dim)

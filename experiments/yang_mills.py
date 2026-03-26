@@ -62,6 +62,41 @@ from functional.orthogonality import StrictOrthogonality, OrthogonalitySettings
 
 
 # ============================================================================ #
+# Vectorised Jacobian helper
+# ============================================================================ #
+
+def _batch_jacobian(
+    output: torch.Tensor,
+    inputs: torch.Tensor,
+    create_graph: bool = True,
+    retain_graph: bool = True,
+) -> torch.Tensor:
+    """Per-sample Jacobian via K VJPs.
+
+    Args:
+        output:  [B, K] — each row output[b,:] depends only on inputs[b,:].
+        inputs:  [B, D] leaf tensor with requires_grad=True.
+        create_graph: retain meta-graph for higher-order differentiation.
+        retain_graph: keep the original graph between successive calls.
+
+    Returns:
+        jac: [B, K, D]  where jac[b,k,d] = ∂output[b,k] / ∂inputs[b,d].
+    """
+    B, K = output.shape
+    D = inputs.shape[1]
+    jac = output.new_zeros(B, K, D)
+    for k in range(K):
+        (g,) = torch.autograd.grad(
+            output[:, k].sum(),
+            inputs,
+            create_graph=create_graph,
+            retain_graph=retain_graph or (k < K - 1),
+        )
+        jac[:, k, :] = g
+    return jac
+
+
+# ============================================================================ #
 # 't Hooft Symbols and BPST Instanton
 # ============================================================================ #
 
@@ -254,8 +289,8 @@ class YangMillsNet(nn.Module):
     Returns A_mu [B, 4, 8] and intermediates.
     """
 
-    def __init__(self, algebra, hidden_dim: int = 64, num_layers: int = 6,
-                 num_freqs: int = 32):
+    def __init__(self, algebra, hidden_dim: int = 32, num_layers: int = 4,
+                 num_freqs: int = 16):
         super().__init__()
         self.algebra = algebra
         self.hidden_dim = hidden_dim
@@ -335,9 +370,15 @@ class YangMillsNet(nn.Module):
 # Field Strength Computation
 # ============================================================================ #
 
-def compute_field_strength(algebra, A_mu: torch.Tensor,
-                           coords: torch.Tensor) -> Dict[Tuple[int, int], torch.Tensor]:
-    """Compute Yang-Mills field strength F_μν = ∂_μA_ν - ∂_νA_μ + [A_μ, A_ν].
+def compute_field_strength(
+    algebra,
+    A_mu: torch.Tensor,
+    coords: torch.Tensor,
+) -> Tuple[Dict[Tuple[int, int], torch.Tensor], torch.Tensor]:
+    """Compute F_μν = ∂_μA_ν - ∂_νA_μ + [A_μ, A_ν] and the A-Jacobian.
+
+    Uses a single batch of 32 VJPs (one per A_mu output component) instead of
+    96 separate per-component grad calls, giving ~3× fewer autograd operations.
 
     Args:
         algebra: CliffordAlgebra(3, 0).
@@ -345,43 +386,27 @@ def compute_field_strength(algebra, A_mu: torch.Tensor,
         coords: [B, 4] with requires_grad=True.
 
     Returns:
-        Dict mapping (mu, nu) pairs (mu < nu) to [B, 8] field strength bivectors.
+        F_dict: (mu, nu) → [B, 8] field-strength tensors.
+        jac_A:  [B, 4, 8, 4] — jac_A[:, chan, comp, x_dim].
     """
     B = A_mu.shape[0]
-    F_dict = {}
 
+    # 32 VJPs to get the full Jacobian ∂A/∂x (was 96 per-component calls)
+    A_flat = A_mu.reshape(B, 32)                                    # [B, 32]
+    jac_flat = _batch_jacobian(A_flat, coords,
+                               create_graph=True, retain_graph=True)  # [B, 32, 4]
+    jac_A = jac_flat.reshape(B, 4, 8, 4)                           # [B, chan, comp, x_dim]
+
+    F_dict: Dict[Tuple[int, int], torch.Tensor] = {}
     for mu in range(4):
         for nu in range(mu + 1, 4):
-            # Abelian part: ∂_μA_ν - ∂_νA_μ
-            # Compute ∂A_ν/∂x_μ for each of the 8 components
-            dAnu_dxmu = torch.zeros(B, 8, device=A_mu.device, dtype=A_mu.dtype)
-            dAmu_dxnu = torch.zeros(B, 8, device=A_mu.device, dtype=A_mu.dtype)
-
-            for comp in range(8):
-                # ∂A_ν[comp]/∂x_μ
-                grad_nu = torch.autograd.grad(
-                    A_mu[:, nu, comp].sum(), coords,
-                    create_graph=True, retain_graph=True
-                )[0]  # [B, 4]
-                dAnu_dxmu[:, comp] = grad_nu[:, mu]
-
-                # ∂A_μ[comp]/∂x_ν
-                grad_mu = torch.autograd.grad(
-                    A_mu[:, mu, comp].sum(), coords,
-                    create_graph=True, retain_graph=True
-                )[0]  # [B, 4]
-                dAmu_dxnu[:, comp] = grad_mu[:, nu]
-
-            abelian = dAnu_dxmu - dAmu_dxnu  # [B, 8]
-
-            # Non-abelian part: [A_μ, A_ν] = A_μ A_ν - A_ν A_μ
+            dAnu_dxmu = jac_A[:, nu, :, mu]   # [B, 8]
+            dAmu_dxnu = jac_A[:, mu, :, nu]   # [B, 8]
             AB = algebra.geometric_product(A_mu[:, mu], A_mu[:, nu])
             BA = algebra.geometric_product(A_mu[:, nu], A_mu[:, mu])
-            commutator = AB - BA  # [B, 8]
+            F_dict[(mu, nu)] = (dAnu_dxmu - dAmu_dxnu) + (AB - BA)
 
-            F_dict[(mu, nu)] = abelian + commutator
-
-    return F_dict
+    return F_dict, jac_A
 
 
 def hodge_dual_4d(F_dict: Dict[Tuple[int, int], torch.Tensor]) -> Dict[Tuple[int, int], torch.Tensor]:
@@ -425,6 +450,11 @@ def compute_ym_losses(algebra, model: YangMillsNet, coords: torch.Tensor,
                       rho: float) -> Dict[str, torch.Tensor]:
     """Compute all Yang-Mills loss terms.
 
+    Optimised autograd schedule:
+      • Field strength : 32 VJPs  (was 96  per-component calls)
+      • F Jacobians    : 48 VJPs  (was 224 per-component calls for YM eq + Bianchi)
+      Total            : 80 VJPs  (was 320+)
+
     Args:
         algebra: CliffordAlgebra(3, 0).
         model: YangMillsNet.
@@ -441,8 +471,8 @@ def compute_ym_losses(algebra, model: YangMillsNet, coords: torch.Tensor,
     # --- Supervised loss on A ---
     supervised_loss = nn.functional.mse_loss(A_pred, A_exact)
 
-    # --- Field strength ---
-    F_dict = compute_field_strength(algebra, A_pred, coords)
+    # --- Field strength (32 VJPs via _batch_jacobian) ---
+    F_dict, _ = compute_field_strength(algebra, A_pred, coords)
 
     # --- Self-duality: F = *F ---
     F_dual = hodge_dual_4d(F_dict)
@@ -469,83 +499,77 @@ def compute_ym_losses(algebra, model: YangMillsNet, coords: torch.Tensor,
         purity_loss = purity_loss + (residual ** 2).mean()
     purity_loss = purity_loss / 4.0
 
-    # --- Gauge covariance: <RFR̃, RFR̃>_H = <F, F>_H ---
+    # --- Gauge covariance ---
     gauge_loss = _gauge_covariance_loss(algebra, F_dict)
 
-    # --- YM equation residual: D_μ F^μν = 0 ---
-    # Simplified: check that ∂_μ F^μν + [A_μ, F^μν] ≈ 0 for each ν
+    # --- Precompute F Jacobians once: 48 VJPs for all 6 pairs ---
+    # jac_F[(mu,nu)][b, comp, d] = ∂F_{μν}[b,comp] / ∂coords[b,d]
+    # retain_graph=True on all calls: the same forward graph (A_pred) is also
+    # needed for supervised_loss and commutator terms in loss.backward().
+    # The graph is freed by loss.backward() at the end of the training step.
+    pairs = list(F_dict.keys())  # 6 pairs
+    jac_F: Dict[Tuple[int, int], torch.Tensor] = {}
+    for key in pairs:
+        jac_F[key] = _batch_jacobian(
+            F_dict[key], coords,
+            create_graph=True,
+            retain_graph=True,
+        )  # [B, 8, 4]
+
+    _zeros8 = torch.zeros(coords.shape[0], 8, device=coords.device)
+
+    # --- YM equation: D_μ F^μν = ∂_μ F^μν + [A_μ, F^μν] = 0 ---
     ym_loss = torch.tensor(0.0, device=coords.device)
     for nu_target in range(4):
-        residual_nu = torch.zeros(coords.shape[0], 8, device=coords.device)
+        residual_nu = torch.zeros_like(_zeros8)
         for mu in range(4):
             if mu == nu_target:
                 continue
-            # Get F^μν (with sign convention)
             if mu < nu_target:
-                F_mn = F_dict.get((mu, nu_target), torch.zeros(coords.shape[0], 8, device=coords.device))
+                key = (mu, nu_target)
+                sign = 1.0
             else:
-                F_mn = -F_dict.get((nu_target, mu), torch.zeros(coords.shape[0], 8, device=coords.device))
-
-            # ∂F^μν/∂x_μ
-            for comp in range(8):
-                grad = torch.autograd.grad(
-                    F_mn[:, comp].sum(), coords,
-                    create_graph=True, retain_graph=True
-                )[0]  # [B, 4]
-                residual_nu[:, comp] = residual_nu[:, comp] + grad[:, mu]
-
-            # [A_μ, F^μν]
-            comm = algebra.geometric_product(A_pred[:, mu], F_mn) - \
-                   algebra.geometric_product(F_mn, A_pred[:, mu])
+                key = (nu_target, mu)
+                sign = -1.0
+            F_mn = F_dict.get(key, _zeros8)
+            jac = jac_F.get(key)
+            # ∂_μ F^μν: column mu of the Jacobian
+            dF_dxmu = sign * jac[:, :, mu] if jac is not None else _zeros8
+            residual_nu = residual_nu + dF_dxmu
+            comm = (algebra.geometric_product(A_pred[:, mu], sign * F_mn) -
+                    algebra.geometric_product(sign * F_mn, A_pred[:, mu]))
             residual_nu = residual_nu + comm
-
         ym_loss = ym_loss + (residual_nu ** 2).mean()
     ym_loss = ym_loss / 4.0
 
-    # --- Bianchi identity: D_{[μ} F_{νρ]} = 0 ---
-    # Check for one cyclic triple: (0,1,2)
+    # --- Bianchi identity: D_{[μ}F_{νρ]} = 0 ---
     bianchi_loss = torch.tensor(0.0, device=coords.device)
     triples = [(0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)]
     for mu, nu, rho_idx in triples:
-        F_nu_rho = F_dict.get((nu, rho_idx), torch.zeros(coords.shape[0], 8, device=coords.device))
-        F_rho_mu = F_dict.get((min(rho_idx, mu), max(rho_idx, mu)),
-                              torch.zeros(coords.shape[0], 8, device=coords.device))
-        if rho_idx > mu:
-            pass  # already correct sign
-        else:
-            F_rho_mu = -F_rho_mu
-        F_mu_nu = F_dict.get((mu, nu), torch.zeros(coords.shape[0], 8, device=coords.device))
+        F_nu_rho = F_dict.get((nu, rho_idx), _zeros8)
+        j_nu_rho = jac_F.get((nu, rho_idx))
 
-        # D_μ F_{νρ} = ∂_μ F_{νρ} + [A_μ, F_{νρ}]
-        # Compute ∂_μ F_{νρ} via autograd
-        dF_nu_rho = torch.zeros_like(F_nu_rho)
-        dF_rho_mu = torch.zeros_like(F_rho_mu)
-        dF_mu_nu = torch.zeros_like(F_mu_nu)
-        for comp in range(F_nu_rho.shape[1]):
-            g1 = torch.autograd.grad(
-                F_nu_rho[:, comp].sum(), coords,
-                create_graph=True, retain_graph=True
-            )[0]
-            dF_nu_rho[:, comp] = g1[:, mu]
+        key_rmu = (min(rho_idx, mu), max(rho_idx, mu))
+        sign_rmu = 1.0 if rho_idx < mu else -1.0
+        F_rho_mu_raw = F_dict.get(key_rmu, _zeros8)
+        j_rho_mu_raw = jac_F.get(key_rmu)
+        F_rho_mu = sign_rmu * F_rho_mu_raw
 
-            g2 = torch.autograd.grad(
-                F_rho_mu[:, comp].sum(), coords,
-                create_graph=True, retain_graph=True
-            )[0]
-            dF_rho_mu[:, comp] = g2[:, nu]
+        F_mu_nu = F_dict.get((mu, nu), _zeros8)
+        j_mu_nu = jac_F.get((mu, nu))
 
-            g3 = torch.autograd.grad(
-                F_mu_nu[:, comp].sum(), coords,
-                create_graph=True, retain_graph=True
-            )[0]
-            dF_mu_nu[:, comp] = g3[:, rho_idx]
+        # ∂_μ F_{νρ}, ∂_ν F_{ρμ}, ∂_ρ F_{μν} — reuse precomputed Jacobians
+        dF_nu_rho = j_nu_rho[:, :, mu] if j_nu_rho is not None else _zeros8
+        dF_rho_mu = (sign_rmu * j_rho_mu_raw[:, :, nu]
+                     if j_rho_mu_raw is not None else _zeros8)
+        dF_mu_nu  = j_mu_nu[:, :, rho_idx] if j_mu_nu is not None else _zeros8
 
-        comm1 = algebra.geometric_product(A_pred[:, mu], F_nu_rho) - \
-                algebra.geometric_product(F_nu_rho, A_pred[:, mu])
-        comm2 = algebra.geometric_product(A_pred[:, nu], F_rho_mu) - \
-                algebra.geometric_product(F_rho_mu, A_pred[:, nu])
-        comm3 = algebra.geometric_product(A_pred[:, rho_idx], F_mu_nu) - \
-                algebra.geometric_product(F_mu_nu, A_pred[:, rho_idx])
+        comm1 = (algebra.geometric_product(A_pred[:, mu], F_nu_rho) -
+                 algebra.geometric_product(F_nu_rho, A_pred[:, mu]))
+        comm2 = (algebra.geometric_product(A_pred[:, nu], F_rho_mu) -
+                 algebra.geometric_product(F_rho_mu, A_pred[:, nu]))
+        comm3 = (algebra.geometric_product(A_pred[:, rho_idx], F_mu_nu) -
+                 algebra.geometric_product(F_mu_nu, A_pred[:, rho_idx]))
 
         bianchi_residual = (dF_nu_rho + comm1) + (dF_rho_mu + comm2) + (dF_mu_nu + comm3)
         bianchi_loss = bianchi_loss + (bianchi_residual ** 2).mean()
@@ -1272,18 +1296,18 @@ def parse_args() -> argparse.Namespace:
                    help='Instanton size parameter')
     p.add_argument('--sampling-radius', type=float, default=5.0,
                    help='Maximum sampling radius around instanton core')
-    p.add_argument('--num-train', type=int, default=3000)
-    p.add_argument('--num-test', type=int, default=500)
+    p.add_argument('--num-train', type=int, default=2000)
+    p.add_argument('--num-test', type=int, default=300)
 
     # Model
-    p.add_argument('--hidden-dim', type=int, default=64)
-    p.add_argument('--num-layers', type=int, default=6)
-    p.add_argument('--num-freqs', type=int, default=32)
+    p.add_argument('--hidden-dim', type=int, default=32)
+    p.add_argument('--num-layers', type=int, default=4)
+    p.add_argument('--num-freqs', type=int, default=16)
 
     # Training
     p.add_argument('--epochs', type=int, default=300)
     p.add_argument('--lr', type=float, default=0.001)
-    p.add_argument('--batch-size', type=int, default=128)
+    p.add_argument('--batch-size', type=int, default=64)
     p.add_argument('--seed', type=int, default=42)
     p.add_argument('--device', type=str, default='cpu')
 

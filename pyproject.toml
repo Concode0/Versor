@@ -53,6 +53,9 @@ lqa = [
     "sentence-transformers>=5.1.2",
     "datasets>=2.16.0,<4.0",
 ]
+gtm = [
+    "datasets>=2.16.0,<4.0",
+]
 viz = [
     "matplotlib>=3.8.0",
     "seaborn>=0.13.0",
@@ -66,10 +69,10 @@ dev = [
     "pytest-xdist>=3.8.0",
 ]
 all_tasks = [
-    "versor[sr,md17,lqa]",
+    "versor[sr,md17,lqa,gtm]",
 ]
 all = [
-    "versor[sr,md17,lqa,viz,demo,dev]",
+    "versor[sr,md17,lqa,gtm,viz,demo,dev]",
 ]
 
 [tool.setuptools.packages.find]

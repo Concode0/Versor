@@ -279,8 +279,8 @@ class GaugeFluidNet(nn.Module):
     Returns full multivector encoding pressure, velocity, vorticity, helicity.
     """
 
-    def __init__(self, algebra, hidden_dim: int = 64, num_layers: int = 6,
-                 num_spatial_freqs: int = 8, num_temporal_freqs: int = 16):
+    def __init__(self, algebra, hidden_dim: int = 32, num_layers: int = 4,
+                 num_spatial_freqs: int = 4, num_temporal_freqs: int = 8):
         super().__init__()
         self.algebra = algebra
         self.hidden_dim = hidden_dim
@@ -386,101 +386,81 @@ def compute_ns_residual(model: GaugeFluidNet, coords_raw: torch.Tensor,
                         algebra, nu: float) -> Dict[str, torch.Tensor]:
     """Compute Navier-Stokes PDE residuals via autograd.
 
+    Optimised: uses a single [B,4] leaf tensor for all (x,y,z,t) instead of
+    four separate leaf scalars, reducing first-derivative calls from 15 → 4
+    (one per output variable) and total autograd calls from 25 → 14.
+
     Args:
         model: The gauge fluid network.
-        coords_raw: [B, 5] — (x, y, z, t, log_re). Spatial/temporal coords
-            are re-created as leaf tensors with requires_grad=True.
+        coords_raw: [B, 5] — (x, y, z, t, log_re).
         algebra: CliffordAlgebra(3, 0).
         nu: Kinematic viscosity.
 
     Returns:
-        Dict of loss terms: ns_residual, div_residual, lagrangian, vorticity_consistency.
+        Dict: ns_residual, div_residual, lagrangian, vorticity_consistency, mv.
     """
-    # Create leaf tensors for autograd differentiation
-    x = coords_raw[:, 0:1].detach().requires_grad_(True)
-    y = coords_raw[:, 1:2].detach().requires_grad_(True)
-    z = coords_raw[:, 2:3].detach().requires_grad_(True)
-    t = coords_raw[:, 3:4].detach().requires_grad_(True)
+    # Single leaf tensor for all differentiable coordinates [B, 4]
+    xyzt = coords_raw[:, :4].detach().requires_grad_(True)
     log_re = coords_raw[:, 4:5].detach()
+    coords = torch.cat([xyzt, log_re], dim=-1)  # [B, 5]
 
-    # Reconstruct coords from leaf tensors
-    coords = torch.cat([x, y, z, t, log_re], dim=-1)
-
-    # Forward pass
     mv, _ = model(coords)
 
-    # Extract fields from multivector
-    p = mv[:, 0]     # pressure (grade-0)
-    u1 = mv[:, 1]    # velocity e₁
-    u2 = mv[:, 2]    # velocity e₂
-    u3 = mv[:, 4]    # velocity e₃
-    w3_pred = mv[:, 3]   # vorticity e₁₂ (ω₃)
-    w2_pred = -mv[:, 5]  # vorticity e₁₃: stored as -ω₂, negate to recover ω₂
-    w1_pred = mv[:, 6]   # vorticity e₂₃ (ω₁)
+    p  = mv[:, 0]
+    u1 = mv[:, 1]
+    u2 = mv[:, 2]
+    u3 = mv[:, 4]
+    w3_pred = mv[:, 3]
+    w2_pred = -mv[:, 5]
+    w1_pred = mv[:, 6]
 
-    # --- First derivatives ---
-    # ∂u_i/∂x_j and ∂u_i/∂t
-    du1_dx = torch.autograd.grad(u1.sum(), x, create_graph=True)[0].squeeze(-1)
-    du1_dy = torch.autograd.grad(u1.sum(), y, create_graph=True)[0].squeeze(-1)
-    du1_dz = torch.autograd.grad(u1.sum(), z, create_graph=True)[0].squeeze(-1)
-    du1_dt = torch.autograd.grad(u1.sum(), t, create_graph=True)[0].squeeze(-1)
+    _grad = torch.autograd.grad
 
-    du2_dx = torch.autograd.grad(u2.sum(), x, create_graph=True)[0].squeeze(-1)
-    du2_dy = torch.autograd.grad(u2.sum(), y, create_graph=True)[0].squeeze(-1)
-    du2_dz = torch.autograd.grad(u2.sum(), z, create_graph=True)[0].squeeze(-1)
-    du2_dt = torch.autograd.grad(u2.sum(), t, create_graph=True)[0].squeeze(-1)
+    # --- First derivatives — 4 backward passes (was 15) ---
+    gu1 = _grad(u1.sum(), xyzt, create_graph=True, retain_graph=True)[0]   # [B,4]
+    gu2 = _grad(u2.sum(), xyzt, create_graph=True, retain_graph=True)[0]
+    gu3 = _grad(u3.sum(), xyzt, create_graph=True, retain_graph=True)[0]
+    gp  = _grad(p.sum(),  xyzt, create_graph=True, retain_graph=True)[0]
 
-    du3_dx = torch.autograd.grad(u3.sum(), x, create_graph=True)[0].squeeze(-1)
-    du3_dy = torch.autograd.grad(u3.sum(), y, create_graph=True)[0].squeeze(-1)
-    du3_dz = torch.autograd.grad(u3.sum(), z, create_graph=True)[0].squeeze(-1)
-    du3_dt = torch.autograd.grad(u3.sum(), t, create_graph=True)[0].squeeze(-1)
+    du1_dx, du1_dy, du1_dz, du1_dt = gu1[:,0], gu1[:,1], gu1[:,2], gu1[:,3]
+    du2_dx, du2_dy, du2_dz, du2_dt = gu2[:,0], gu2[:,1], gu2[:,2], gu2[:,3]
+    du3_dx, du3_dy, du3_dz, du3_dt = gu3[:,0], gu3[:,1], gu3[:,2], gu3[:,3]
+    dp_dx, dp_dy, dp_dz             = gp[:,0],  gp[:,1],  gp[:,2]
 
-    # Pressure gradients
-    dp_dx = torch.autograd.grad(p.sum(), x, create_graph=True)[0].squeeze(-1)
-    dp_dy = torch.autograd.grad(p.sum(), y, create_graph=True)[0].squeeze(-1)
-    dp_dz = torch.autograd.grad(p.sum(), z, create_graph=True)[0].squeeze(-1)
+    # --- Second derivatives (Laplacian) — 9 backward passes (unchanged) ---
+    d2u1_dx2 = _grad(gu1[:,0].sum(), xyzt, create_graph=True, retain_graph=True)[0][:,0]
+    d2u1_dy2 = _grad(gu1[:,1].sum(), xyzt, create_graph=True, retain_graph=True)[0][:,1]
+    d2u1_dz2 = _grad(gu1[:,2].sum(), xyzt, create_graph=True, retain_graph=True)[0][:,2]
 
-    # --- Second derivatives (Laplacian) ---
-    d2u1_dx2 = torch.autograd.grad(du1_dx.sum(), x, create_graph=True)[0].squeeze(-1)
-    d2u1_dy2 = torch.autograd.grad(du1_dy.sum(), y, create_graph=True)[0].squeeze(-1)
-    d2u1_dz2 = torch.autograd.grad(du1_dz.sum(), z, create_graph=True)[0].squeeze(-1)
+    d2u2_dx2 = _grad(gu2[:,0].sum(), xyzt, create_graph=True, retain_graph=True)[0][:,0]
+    d2u2_dy2 = _grad(gu2[:,1].sum(), xyzt, create_graph=True, retain_graph=True)[0][:,1]
+    d2u2_dz2 = _grad(gu2[:,2].sum(), xyzt, create_graph=True, retain_graph=True)[0][:,2]
 
-    d2u2_dx2 = torch.autograd.grad(du2_dx.sum(), x, create_graph=True)[0].squeeze(-1)
-    d2u2_dy2 = torch.autograd.grad(du2_dy.sum(), y, create_graph=True)[0].squeeze(-1)
-    d2u2_dz2 = torch.autograd.grad(du2_dz.sum(), z, create_graph=True)[0].squeeze(-1)
-
-    d2u3_dx2 = torch.autograd.grad(du3_dx.sum(), x, create_graph=True)[0].squeeze(-1)
-    d2u3_dy2 = torch.autograd.grad(du3_dy.sum(), y, create_graph=True)[0].squeeze(-1)
-    d2u3_dz2 = torch.autograd.grad(du3_dz.sum(), z, create_graph=True)[0].squeeze(-1)
+    d2u3_dx2 = _grad(gu3[:,0].sum(), xyzt, create_graph=True, retain_graph=True)[0][:,0]
+    d2u3_dy2 = _grad(gu3[:,1].sum(), xyzt, create_graph=True, retain_graph=True)[0][:,1]
+    d2u3_dz2 = _grad(gu3[:,2].sum(), xyzt, create_graph=True, retain_graph=True)[0][:,2]
 
     # --- NS momentum residual ---
-    # R_i = ∂u_i/∂t + u_j·∂u_i/∂x_j + ∂p/∂x_i - ν∇²u_i
-    R1 = du1_dt + u1 * du1_dx + u2 * du1_dy + u3 * du1_dz + dp_dx - nu * (d2u1_dx2 + d2u1_dy2 + d2u1_dz2)
-    R2 = du2_dt + u1 * du2_dx + u2 * du2_dy + u3 * du2_dz + dp_dy - nu * (d2u2_dx2 + d2u2_dy2 + d2u2_dz2)
-    R3 = du3_dt + u1 * du3_dx + u2 * du3_dy + u3 * du3_dz + dp_dz - nu * (d2u3_dx2 + d2u3_dy2 + d2u3_dz2)
+    R1 = du1_dt + u1*du1_dx + u2*du1_dy + u3*du1_dz + dp_dx - nu*(d2u1_dx2+d2u1_dy2+d2u1_dz2)
+    R2 = du2_dt + u1*du2_dx + u2*du2_dy + u3*du2_dz + dp_dy - nu*(d2u2_dx2+d2u2_dy2+d2u2_dz2)
+    R3 = du3_dt + u1*du3_dx + u2*du3_dy + u3*du3_dz + dp_dz - nu*(d2u3_dx2+d2u3_dy2+d2u3_dz2)
+    ns_residual = (R1**2 + R2**2 + R3**2).mean()
 
-    ns_residual = (R1 ** 2 + R2 ** 2 + R3 ** 2).mean()
-
-    # --- Incompressibility (divergence-free) ---
+    # --- Incompressibility ---
     div_u = du1_dx + du2_dy + du3_dz
-    div_residual = (div_u ** 2).mean()
+    div_residual = (div_u**2).mean()
 
-    # --- Vorticity consistency: ω_pred ≈ ∇×u ---
-    # curl(u) components:
-    curl_x = du3_dy - du2_dz   # ω₁
-    curl_y = du1_dz - du3_dx   # ω₂
-    curl_z = du2_dx - du1_dy   # ω₃
+    # --- Vorticity consistency ---
+    curl_x = du3_dy - du2_dz
+    curl_y = du1_dz - du3_dx
+    curl_z = du2_dx - du1_dy
+    vort_consistency = ((w1_pred-curl_x)**2 + (w2_pred-curl_y)**2 + (w3_pred-curl_z)**2).mean()
 
-    vort_consistency = ((w1_pred - curl_x) ** 2 +
-                        (w2_pred - curl_y) ** 2 +
-                        (w3_pred - curl_z) ** 2).mean()
-
-    # --- Lagrangian energy balance: dE/dt + 2ν·Ω = 0 ---
-    # E = ½(u1² + u2² + u3²), Ω = ½(ω1² + ω2² + ω3²) (enstrophy)
-    E = 0.5 * (u1 ** 2 + u2 ** 2 + u3 ** 2)
-    dE_dt = torch.autograd.grad(E.sum(), t, create_graph=True)[0].squeeze(-1)
-    enstrophy = 0.5 * (w1_pred ** 2 + w2_pred ** 2 + w3_pred ** 2)
-    lagrangian = ((dE_dt + 2.0 * nu * enstrophy) ** 2).mean()
+    # --- Lagrangian energy balance — 1 backward pass ---
+    E = 0.5 * (u1**2 + u2**2 + u3**2)
+    dE_dt = _grad(E.sum(), xyzt, create_graph=True)[0][:,3]
+    enstrophy = 0.5 * (w1_pred**2 + w2_pred**2 + w3_pred**2)
+    lagrangian = ((dE_dt + 2.0*nu*enstrophy)**2).mean()
 
     return {
         'ns_residual': ns_residual,
@@ -1117,11 +1097,15 @@ def train(args):
                 mv_ic, intermediates = model(coords_grad[:1])
                 ic_loss = torch.tensor(0.0, device=device)
 
-            # Gauge covariance loss
-            mv_all, intermediates = model(coords_grad)
-            gauge_loss = compute_gauge_covariance_loss(mv_all, algebra)
+            # Gauge covariance loss — reuse mv from residual pass (collocation points)
+            # Avoids a third full-batch forward pass; gauge invariance sampled on
+            # collocation subset which is representative.
+            if colloc_mask.any():
+                gauge_loss = compute_gauge_covariance_loss(residuals['mv'], algebra)
+            else:
+                gauge_loss = torch.tensor(0.0, device=device)
 
-            # Orthogonality loss
+            # Orthogonality loss (uses intermediates from IC pass above)
             ortho_loss = torch.tensor(0.0, device=device)
             if args.strict_ortho and intermediates:
                 eff_weight = ortho.anneal_weight(epoch,
@@ -1260,19 +1244,19 @@ def parse_args() -> argparse.Namespace:
                    help='Maximum Reynolds number (curriculum target)')
     p.add_argument('--t-max', type=float, default=1.0,
                    help='Maximum time')
-    p.add_argument('--num-collocation', type=int, default=3000,
+    p.add_argument('--num-collocation', type=int, default=2000,
                    help='Number of collocation points')
-    p.add_argument('--num-ic', type=int, default=1000,
+    p.add_argument('--num-ic', type=int, default=500,
                    help='Number of initial condition points')
 
     # Model
-    p.add_argument('--hidden-dim', type=int, default=64)
-    p.add_argument('--num-layers', type=int, default=6)
+    p.add_argument('--hidden-dim', type=int, default=32)
+    p.add_argument('--num-layers', type=int, default=4)
 
     # Training
     p.add_argument('--epochs', type=int, default=300)
     p.add_argument('--lr', type=float, default=0.001)
-    p.add_argument('--batch-size', type=int, default=256)
+    p.add_argument('--batch-size', type=int, default=128)
     p.add_argument('--seed', type=int, default=42)
     p.add_argument('--device', type=str, default='mps')
 

@@ -64,8 +64,7 @@ def induced_norm(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor:
     sq_norm = inner_product(algebra, A, A_rev)
     
     # In mixed signatures, sq_norm can be negative.
-    # We return sqrt(|sq_norm|)
-    return torch.sqrt(torch.abs(sq_norm))
+    return torch.sqrt(torch.abs(sq_norm).clamp(min=1e-12))
 
 def geometric_distance(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     """Computes geometric distance.
@@ -210,7 +209,8 @@ def hermitian_norm(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor:
         Norm [..., 1]. Always >= 0.
     """
     sq = hermitian_inner_product(algebra, A, A)
-    return torch.sqrt(torch.abs(sq))
+    # Clamp before sqrt to avoid inf gradient when sq ≈ 0 (e.g. null multivectors in PGA).
+    return torch.sqrt(torch.abs(sq).clamp(min=1e-12))
 
 
 def hermitian_distance(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
@@ -251,7 +251,7 @@ def hermitian_angle(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) 
     sq_b = (signs * B * B).sum(dim=-1, keepdim=True)
     # Use sqrt(sq_a * sq_b) instead of sqrt(sq_a)*sqrt(sq_b) to avoid
     # float32 precision loss from two separate sqrt operations.
-    denom = torch.sqrt(torch.abs(sq_a) * torch.abs(sq_b)).clamp(min=1e-6)
+    denom = torch.sqrt((torch.abs(sq_a) * torch.abs(sq_b)).clamp(min=1e-12)).clamp(min=1e-6)
     cos_theta = ip / denom
     cos_theta = torch.clamp(cos_theta, -1.0, 1.0)
     return torch.acos(cos_theta)

@@ -16,6 +16,7 @@ from tasks.md17 import MD17Task
 from tasks.symbolic_regression import SRTask
 from tasks.lqa import LQATask
 from tasks.deap_eeg import DEAPEEGTask
+from tasks.gtm import GTMTask
 
 EXAMPLE_TASKS = {'manifold', 'hyperbolic', 'sanity'}
 
@@ -33,6 +34,7 @@ def main(cfg: DictConfig):
         'sr': SRTask,
         'lqa': LQATask,
         'deap_eeg': DEAPEEGTask,
+        'gtm': GTMTask,
     }
 
     if task_name in EXAMPLE_TASKS:
