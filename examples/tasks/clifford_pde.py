@@ -5,54 +5,59 @@
 # you may not use this file except in compliance with the License.
 #
 
-"""Reimplementation: Clifford Neural Layers for PDE Modeling
+"""Versor Counterpart: Clifford Neural Layers for PDE Modeling
 Johannes Brandstetter, Rianne van den Berg, Max Welling, Jayesh K. Gupta (ICLR 2023)
 arXiv: https://arxiv.org/abs/2209.04934
 Original: https://github.com/microsoft/cliffordlayers (~4000+ lines)
-Versor: ~120 lines
+Versor counterpart: ~120 lines (synthetic Taylor-Green vortex, not a benchmark reproduction)
 
-Clifford Neural Layers introduce Clifford algebra-aware convolutions and Fourier
-transforms for neural PDE surrogates. The key insight: encoding correlated
-physical fields (velocity, pressure, vorticity) as multivector components and
-using the geometric product to mix them captures inter-field correlations that
-standard architectures miss. The original implementation requires ~4000 lines of
-custom Clifford convolution kernels and Clifford Fourier transforms.
+What the paper contributes:
+  Clifford Neural Layers introduce Clifford algebra-aware convolutions and
+  Fourier transforms for neural PDE surrogates. The key insight: encoding
+  correlated physical fields (velocity, pressure, vorticity) as multivector
+  components and using the geometric product to mix them captures inter-field
+  correlations that standard architectures miss. The original requires ~4000
+  lines of custom Clifford convolution kernels and Clifford Fourier transforms.
 
-In Versor, the architecture factorizes into two clean stages per block:
-  1. Spatial mixing:  standard nn.Conv2d (depthwise) on the grid
-  2. Algebraic mixing: CliffordLinear + RotorLayer on each grid point
+Versor's approach (equivalent factorization, not a structural copy):
+  The original Clifford convolution fuses spatial aggregation and algebraic
+  mixing into a single multivector-valued kernel (K * x)(p). Versor factorizes
+  this into two explicit stages per block:
 
-This factorization is equivalent to the original Clifford convolution because:
-  - Spatial conv aggregates information from neighboring grid points
-    (same as the spatial part of a Clifford conv kernel)
-  - CliffordLinear mixes multivector components via the Cayley table
-    (same as the algebraic part where the kernel is a multivector)
-  - RotorLayer applies a learned rotation in multivector space, coupling
-    velocity and pressure through the geometric product structure
+  1. Spatial mixing: nn.Conv2d (depthwise) on the grid (FAITHFUL)
+     Aggregates information from neighboring grid points — the spatial
+     component of a Clifford conv kernel, separated out.
 
-Key differences from the original paper:
-  1. The original Clifford convolution computes (K * x)(p) where K is a
-     multivector-valued kernel. Versor separates this into spatial
-     (Conv2d) and algebraic (CliffordLinear) stages — mathematically
-     equivalent but composed from existing primitives.
-  2. The original Clifford Fourier transform replaces standard FFT with a
-     GA-aware version. Versor achieves inter-field coupling via RotorLayer
-     (sandwich product) instead — the rotor naturally mixes grades, coupling
-     velocity (grade-1) and pressure (grade-0) through the same algebraic
-     mechanism.
-  3. The original requires separate implementations for 2D (Cl(2,0)) and 3D
-     (Cl(3,0)). Versor's approach generalizes to any signature by changing
-     the algebra parameter — same model code for 2D fluids (Cl(2,0)),
-     3D electromagnetism (Cl(3,0)), or spacetime fields (Cl(3,1)).
-  4. Field encoding: velocity (2-vector) maps to grade-1, pressure (scalar)
-     maps to grade-0. The bivector (grade-2) component emerges during
-     processing and naturally represents vorticity (curl of velocity) —
-     the algebra discovers the right physical quantity without supervision.
+  2. Algebraic mixing: CliffordLinear + RotorLayer per grid point (SUBSTITUTION)
+     CliffordLinear mixes multivector components via the Cayley table,
+     analogous to the algebraic part of the Clifford conv kernel.
+     RotorLayer (sandwich product) replaces the paper's Clifford Fourier
+     transform — the rotor naturally couples velocity (grade-1) and
+     pressure (grade-0) through the geometric product, achieving inter-field
+     mixing through a different mechanism than the GA-aware FFT.
 
-Multivector field encoding in Cl(2,0):
-  grade-0 (index 0): scalar field (pressure)
-  grade-1 (indices 1, 2): vector field (velocity u, v)
-  grade-2 (index 3): pseudoscalar field (vorticity, emergent)
+  This factorization is mathematically motivated but not structurally
+  identical: the paper's fused kernel is a single operation; Versor composes
+  two stages that together cover the same function space.
+
+  The field encoding is shared with the paper:
+    grade-0 (index 0): scalar field (pressure)
+    grade-1 (indices 1, 2): vector field (velocity u, v)
+    grade-2 (index 3): pseudoscalar (vorticity, emergent — not encoded
+      explicitly, but arises during processing as the algebra discovers the
+      physically correct derived quantity without supervision)
+
+  Generalization advantage: the original requires separate implementations
+  for 2D (Cl(2,0)) and 3D (Cl(3,0)). Versor's approach works for any
+  signature — same model code for 2D fluids, 3D electromagnetism, or
+  spacetime fields.
+
+What's verified (synthetic data):
+  2D Taylor-Green vortex (exact Navier-Stokes solution):
+  - Per-field prediction quality (velocity and pressure relative L2 error)
+  - Emergent bivector energy ratio > 0 confirms the model discovers vorticity
+    in grade-2 without supervision
+  These test the field coupling property, not real-world PDE benchmark accuracy.
 """
 
 import torch

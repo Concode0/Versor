@@ -5,39 +5,44 @@
 # you may not use this file except in compliance with the License.
 #
 
-"""Reimplementation: Geometric Algebra Transformer (GATr)
+"""Versor Counterpart: Geometric Algebra Transformer (GATr)
 Johann Brehmer, Pim de Haan, Sönke Behrends, Taco Cohen (NeurIPS 2023)
 arXiv: https://arxiv.org/abs/2305.18415
 Original: https://github.com/Qualcomm-AI-research/geometric-algebra-transformer (~2500+ lines)
-Versor: ~80 lines
+Versor counterpart: ~80 lines (synthetic n-body data, not a benchmark reproduction)
 
-GATr builds E(3)-equivariant transformers in Projective Geometric Algebra Cl(3,0,1).
-The original implementation requires ~2500 lines of custom equivariant primitives:
-separate equivariant linear maps, equivariant attention (geometric product scoring),
-equivariant nonlinearities (gated scalar + squared GP), and equivariant normalization.
+What the paper contributes:
+  GATr builds E(3)-equivariant transformers in Projective Geometric Algebra
+  Cl(3,0,1). The key contribution is a complete set of equivariant primitives —
+  linear maps derived from representation theory, geometric product attention
+  scoring (<QK~>_0 + lambda * ||<QK~>_2||), gated nonlinearities, and
+  join-based normalization — each hand-derived to commute with the PGA group
+  action. The original requires ~2500 lines of custom equivariant code.
 
-In Versor, the entire architecture composes from existing primitives:
-  - ProjectiveEmbedding  ->  GATr's PGA point/direction embedding
-  - GeometricProductAttention  ->  GATr's equivariant attention (GP scoring
-    with grade-0 alignment + grade-2 orientation, the same mechanism)
+Versor's approach (architecturally close, different construction path):
+  This is the most faithful of the three counterparts. The architecture follows
+  GATr's structure: PGA embedding -> lift -> transformer blocks -> project ->
+  extract. Versor's existing primitives map to GATr's components:
+
+  - ProjectiveEmbedding  ->  GATr's PGA point/direction embedding (faithful)
+  - GeometricProductAttention  ->  GATr's equivariant attention (same GP scoring
+    formula, precomputed bilinear tables for memory efficiency)
   - GeometricGELU / MultiRotorFFN  ->  GATr's equivariant nonlinearity
-  - CliffordLayerNorm  ->  GATr's equivariant normalization (join-based)
-  - CliffordLinear  ->  GATr's equivariant linear maps
+  - CliffordLayerNorm  ->  GATr's join-based normalization (different mechanism:
+    norm-preserving vs join computation, same stabilization goal)
+  - CliffordLinear  ->  GATr's equivariant linear maps (different construction:
+    Cayley table coefficient mixing vs representation-theoretic basis derivation)
 
-Key differences from the original paper:
-  1. GATr hand-derives equivariant basis for each linear map via representation
-     theory. Versor's CliffordLinear achieves the same by operating directly
-     on multivector coefficients — the Cayley table enforces equivariance.
-  2. GATr uses a custom "equivariant join" for normalization. Versor's
-     CliffordLayerNorm normalizes multivector norms while preserving direction,
-     achieving the same stabilization without join computation.
-  3. GATr's attention computes <QK~>_0 + lambda * ||<QK~>_2||. Versor's
-     GeometricProductAttention uses the identical scoring formula (see
-     layers/blocks/attention.py), with precomputed bilinear tables for memory
-     efficiency.
-  4. No separate "reference frame" or "auxiliary scalar" channels — the PGA
-     degenerate dimension (e_0^2 = 0) naturally distinguishes finite points
-     (e_0 != 0) from ideal points/directions (e_0 = 0).
+  The architecture is structurally similar, but the equivariance mechanism differs:
+  GATr derives equivariant bases via representation theory; Versor operates
+  directly on multivector coefficients where the Cayley table enforces
+  equivariance by construction. Same guarantee, different derivation.
+
+What's verified (synthetic data):
+  E(3) equivariance on synthetic n-body spring dynamics:
+  - f(Rx, Rv) ≈ R·f(x, v) for SO(3) rotation R
+  - f(x+t, v) ≈ f(x, v) + t for translation t
+  These test the architectural property, not real-world prediction quality.
 
 PGA Convention (Cl(3,0,1)):
   Versor follows the standard PGA convention from Gunn (2011) and

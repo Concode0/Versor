@@ -5,51 +5,53 @@
 # you may not use this file except in compliance with the License.
 #
 
-"""Reimplementation: Clifford Group Equivariant Neural Networks (CGENN)
+"""Versor Counterpart: Clifford Group Equivariant Neural Networks (CGENN)
 David Ruhe, Johannes Brandstetter, Patrick Forré (NeurIPS 2023, Oral)
 arXiv: https://arxiv.org/abs/2305.11141
 Original: https://github.com/DavidRuhe/clifford-group-equivariant-neural-networks (~3000+ lines)
-Versor: ~90 lines
+Versor counterpart: ~90 lines (synthetic point cloud data, not a benchmark reproduction)
 
-CGENN constructs O(n)- and E(n)-equivariant layers by parametrizing equivariant
-maps as polynomial functions of multivectors with grade projections. The key
-theorem: any map f(x) = sum_k alpha_k * <x^k>_grade is automatically equivariant
-under the Clifford group's twisted conjugation action. The original implementation
-requires ~3000 lines with separate per-dimension handling for 3D, 4D, and 5D.
+What the paper contributes:
+  CGENN's key theorem: any map f(x) = sum_k alpha_k * <x^k>_grade is
+  automatically equivariant under the Clifford group's twisted conjugation
+  action. This is an elegant result — equivariance follows from the algebraic
+  structure of polynomial maps combined with hard grade projections, without
+  needing explicit group actions. The original requires ~3000 lines with
+  separate per-dimension handling for 3D, 4D, and 5D.
 
-In Versor, the entire CGENN architecture composes from three primitives:
-  - GeometricSquare  ->  CGENN's polynomial equivariant features
-    (gated GP self-product: x + gate * GP(x, x), creating grade-0 and grade-2
-    cross-terms from grade-1 inputs — the quadratic polynomial in x)
-  - BladeSelector  ->  CGENN's grade projection operators
-    (learned sigmoid gates per basis element, equivalent to soft grade filtering)
-  - RotorLayer  ->  CGENN's Clifford group action
-    (sandwich product R x R~ is the even part of twisted conjugation)
+Versor's approach (same equivariance goal, different mechanism):
+  This is the LEAST faithful of the three counterparts. The paper achieves
+  equivariance through a theorem about polynomial structure; this Versor
+  version achieves it through composition of individually equivariant
+  operations. The mechanisms are genuinely different:
 
-Key differences from the original paper:
-  1. CGENN requires separate implementations per dimension (3D/4D/5D) because
-     their polynomial basis depends on the number of grades. Versor's primitives
-     work for any Cl(p,q,r) — change the algebra signature, same model code.
-  2. CGENN's "twisted conjugation" action rho(w)(x) = w*x^[even]*w^{-1} +
-     alpha(w)*x^[odd]*w^{-1} reduces to the standard sandwich product for
-     even-grade versors (rotors). Versor's RotorLayer directly implements this.
-  3. CGENN manually derives the polynomial basis for equivariant maps and
-     computes them via explicit index manipulation. Versor's GeometricSquare
-     computes GP(x,x) via the Cayley table — the algebra structure automatically
-     produces the correct equivariant polynomial terms.
-  4. The invariant readout uses grade norms ||<x>_k|| which are provably
-     invariant under the full O(n) group (both rotations AND reflections),
-     because ||<RxR~>_k|| = ||<x>_k|| for any versor R. This is verified
-     by both rotation and reflection tests in evaluate().
+  - GeometricSquare  ->  CGENN's polynomial features (FAITHFUL)
+    Gated GP self-product: x + gate * GP(x, x). This IS a degree-2
+    polynomial in x, matching the paper's core construction.
 
-O(n) invariance of grade norms under reflections:
-  For a reflection x' = -n x n^{-1} (n a unit vector):
-    - Scalars (grade-0): invariant (even grade, commutes through sandwich)
-    - Vectors (grade-1): reflected (component parallel to n flips sign)
-    - Bivectors (grade-2): rotated but norm preserved
-  Therefore ||<x'>_k|| = ||<x>_k|| for all grades k — grade norms are
-  O(n)-invariant, not merely SO(n)-invariant. This is the key property
-  that makes the CGENN readout work for the full orthogonal group.
+  - BladeSelector  ->  CGENN's grade projections (GENERALIZED)
+    The paper uses hard grade projections <·>_k as part of the equivariance
+    proof. Versor substitutes learned sigmoid gates per basis blade — strictly
+    more expressive (per-blade vs per-grade), but the equivariance guarantee
+    comes from a different argument (each blade gate commutes with the group
+    action on that component).
+
+  - RotorLayer  ->  NOT IN THE ORIGINAL PAPER
+    CGENN achieves equivariance implicitly via polynomial structure. Adding
+    an explicit sandwich product RxR~ is redundant for equivariance — the
+    polynomial already guarantees it. The rotor adds expressiveness as a
+    Versor design choice, not as a reproduction of the paper.
+
+  The result: O(n) equivariance holds, verified by rotation and reflection
+  tests, but for a different architectural reason than the paper's theorem.
+
+What's verified (synthetic data):
+  O(3) invariance on synthetic point cloud regression:
+  - f(Rx) ≈ f(x) for SO(3) rotation R (rotation invariance)
+  - f(Mx) ≈ f(x) for reflection M with det=-1 (reflection invariance)
+  Grade norms ||<x>_k|| are provably O(n)-invariant (not just SO(n)):
+    ||<RxR~>_k|| = ||<x>_k|| for any versor R, including reflections.
+  These test the algebraic property, not real-world prediction quality.
 """
 
 import torch

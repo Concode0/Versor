@@ -229,9 +229,9 @@ uv run python -m examples.main task=sanity
 | **Hyperbolic** | $Cl(1,1)$ | Reverse a Lorentz boost in Minkowski spacetime          |
 | **Sanity**     | $Cl(3,0)$ | Verify algebra correctness (identity learning)          |
 
-### Paper Reimplementations (Synthetic Data)
+### Paper Counterparts (Synthetic Data)
 
-Three well-known GA deep learning papers reimplemented in Versor — each reduces ~2500–4000 lines of custom GA machinery to ~80–120 lines. All run on **synthetic data** to verify that the architectural structure reproduces each paper's core algebraic properties.
+Three well-known GA deep learning papers approached through Versor's composable primitives. These are **not reimplementations** — each paper has its own construction. They demonstrate that Versor's general-purpose layers achieve the same algebraic guarantees through different mechanisms. All run on **synthetic data** to verify structural properties.
 
 ```bash
 uv run python -m examples.main task=gatr training.epochs=200
@@ -239,13 +239,13 @@ uv run python -m examples.main task=cgenn training.epochs=200
 uv run python -m examples.main task=clifford_pde training.epochs=300
 ```
 
-| Example            | Paper                                                                | Algebra         | Original | Versor  | Synthetic Task                   | Structural Verification                    |
+| Example            | Paper                                                                | Algebra         | Original | Versor  | Synthetic Task                   | Property Verified                          |
 | :----------------- | :------------------------------------------------------------------- | :-------------- | :------: | :-----: | :------------------------------- | :----------------------------------------- |
 | **GATr**           | [Brehmer et al., NeurIPS 2023](https://arxiv.org/abs/2305.18415)     | $Cl(3,0,1)$ PGA | ~2500 lines | ~80 lines  | N-body spring dynamics           | E(3) equivariance (rotation + translation) |
 | **CGENN**          | [Ruhe et al., NeurIPS 2023 Oral](https://arxiv.org/abs/2305.11141)   | $Cl(3,0)$       | ~3000 lines | ~90 lines  | Point cloud invariant regression | O(3) invariance (rotation + reflection)    |
 | **Clifford PDE**   | [Brandstetter et al., ICLR 2023](https://arxiv.org/abs/2209.04934)   | $Cl(2,0)$       | ~4000 lines | ~120 lines | 2D Taylor-Green vortex           | Emergent vorticity in grade-2 bivector     |
 
-These are **not benchmark reproductions** — they verify that the same algebraic properties hold when built from Versor's composable primitives. See each task file's docstring for detailed paper-vs-Versor comparison.
+Each counterpart credits the paper's contribution, describes Versor's different construction path, and is honest about where the architecture diverges. See each task file's docstring for the detailed comparison.
 
 ## Project Structure
 

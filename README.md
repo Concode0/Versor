@@ -247,9 +247,9 @@ uv run python -m examples.main task=sanity
 | **Hyperbolic** | $Cl(1,1)$ | Reverse a Lorentz boost in Minkowski spacetime          |
 | **Sanity**     | $Cl(3,0)$ | Verify algebra correctness (identity learning)          |
 
-### Paper Reimplementations (Synthetic Data)
+### Paper Counterparts (Synthetic Data)
 
-Three well-known GA deep learning papers reimplemented in Versor — each reduces ~2500–4000 lines of custom GA machinery to ~80–120 lines using Versor's composable primitives. All examples run on **synthetic data** to demonstrate that the architectural structure faithfully reproduces each paper's core properties (equivariance, invariance, field coupling) without requiring the original datasets.
+Three well-known GA deep learning papers approached through Versor's composable primitives. These are **not reimplementations** — each paper has its own elegant construction. Instead, they demonstrate that Versor's general-purpose layers achieve the same algebraic guarantees (equivariance, invariance, field coupling) through different mechanisms. All run on **synthetic data** to verify structural properties, not benchmark accuracy.
 
 ```bash
 uv run python -m examples.main task=gatr training.epochs=200
@@ -257,17 +257,17 @@ uv run python -m examples.main task=cgenn training.epochs=200
 uv run python -m examples.main task=clifford_pde training.epochs=300
 ```
 
-| Example            | Paper                                                                                             | Algebra         | Original | Versor  | Synthetic Task                   | Structural Verification                            |
-| :----------------- | :------------------------------------------------------------------------------------------------ | :-------------- | :------: | :-----: | :------------------------------- | :------------------------------------------------- |
-| **GATr**           | [Brehmer et al., NeurIPS 2023](https://arxiv.org/abs/2305.18415)                                  | $Cl(3,0,1)$ PGA | ~2500 lines | ~80 lines  | N-body spring dynamics           | E(3) equivariance (rotation + translation)         |
-| **CGENN**          | [Ruhe et al., NeurIPS 2023 Oral](https://arxiv.org/abs/2305.11141)                                | $Cl(3,0)$       | ~3000 lines | ~90 lines  | Point cloud invariant regression | O(3) invariance (rotation + reflection)            |
-| **Clifford PDE**   | [Brandstetter et al., ICLR 2023](https://arxiv.org/abs/2209.04934)                                | $Cl(2,0)$       | ~4000 lines | ~120 lines | 2D Taylor-Green vortex           | Emergent vorticity in grade-2 bivector             |
+| Example            | Paper                                                                                             | Algebra         | Original | Versor  | Synthetic Task                   | Property Verified                          |
+| :----------------- | :------------------------------------------------------------------------------------------------ | :-------------- | :------: | :-----: | :------------------------------- | :----------------------------------------- |
+| **GATr**           | [Brehmer et al., NeurIPS 2023](https://arxiv.org/abs/2305.18415)                                  | $Cl(3,0,1)$ PGA | ~2500 lines | ~80 lines  | N-body spring dynamics           | E(3) equivariance (rotation + translation) |
+| **CGENN**          | [Ruhe et al., NeurIPS 2023 Oral](https://arxiv.org/abs/2305.11141)                                | $Cl(3,0)$       | ~3000 lines | ~90 lines  | Point cloud invariant regression | O(3) invariance (rotation + reflection)    |
+| **Clifford PDE**   | [Brandstetter et al., ICLR 2023](https://arxiv.org/abs/2209.04934)                                | $Cl(2,0)$       | ~4000 lines | ~120 lines | 2D Taylor-Green vortex           | Emergent vorticity in grade-2 bivector     |
 
-These are **not benchmark reproductions** — they verify that the same algebraic properties hold when built from Versor's composable primitives:
+How each counterpart relates to the original:
 
-- **GATr** → `ProjectiveEmbedding` + `GeometricTransformerBlock` replaces ~2500 lines of custom equivariant primitives. The evaluate step confirms f(Rx, Rv) = R·f(x, v) and f(x+t, v) = f(x, v)+t on synthetic n-body data.
-- **CGENN** → `GeometricSquare` + `BladeSelector` + `RotorLayer` replaces ~3000 lines of per-dimension polynomial basis code. Grade norms provide O(n)-invariant (not just SO(n)) readout — both rotation and reflection invariance are verified.
-- **Clifford PDE** → Spatial mixing (`nn.Conv2d`) + algebraic mixing (`CliffordLinear` + `RotorLayer`) replaces ~4000 lines of Clifford conv kernels. The bivector (grade-2) component emerges during training to represent vorticity — the algebra discovers the correct physical quantity without supervision.
+- **GATr** (architecturally close) — `ProjectiveEmbedding` + `GeometricTransformerBlock` follows GATr's structure. The main difference is *how* equivariant linear maps are constructed: GATr derives equivariant bases via representation theory; Versor's `CliffordLinear` operates on coefficients where the Cayley table enforces equivariance by construction.
+- **CGENN** (same goal, different mechanism) — The paper proves that polynomial maps + hard grade projections = automatic equivariance. Versor achieves O(n) equivariance instead through composition of individually equivariant ops: `GeometricSquare` (faithful polynomial features) + `BladeSelector` (learned per-blade gates, generalizing hard grade projection) + `RotorLayer` (explicit group action, not in the original paper).
+- **Clifford PDE** (equivalent factorization) — The paper's fused Clifford convolution kernel is factorized into spatial mixing (`nn.Conv2d`) + algebraic mixing (`CliffordLinear` + `RotorLayer`). The `RotorLayer` replaces the paper's Clifford Fourier transform for inter-field coupling. The model discovers vorticity (grade-2) without supervision — the same physical insight as the paper.
 
 ## Configuration
 
