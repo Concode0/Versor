@@ -86,9 +86,10 @@ class EntropyGatedAttention(CliffordModule):
         self.H_base = H_base
         self.base_attention = GeometricProductAttention(algebra, channels, num_heads, causal=False)
         
-        # Cache bivector indices to avoid recomputing
+        # Cache bivector indices and float mask for compile-friendly gating
         mask = self.algebra.grade_masks[2]
         self.register_buffer('g2_idx', mask.nonzero(as_tuple=True)[0])
+        self.register_buffer('_g2_float_mask', mask.float())
         
     def forward(self, x: torch.Tensor, key_padding_mask: torch.Tensor = None,
                 return_gating: bool = False) -> torch.Tensor:
@@ -124,8 +125,9 @@ class EntropyGatedAttention(CliffordModule):
         # Scale the rotational components (bivectors)
         lambda_view = lambda_dyn.view(-1, 1, 1, 1)
 
-        x_gated = x.clone()
-        x_gated[..., self.g2_idx] *= lambda_view
+        g2_mask = self._g2_float_mask.to(dtype=x.dtype)
+        scale = 1.0 + (lambda_view - 1.0) * g2_mask  # [B, 1, 1, D]
+        x_gated = x * scale
 
         out = self.base_attention(x_gated, key_padding_mask=key_padding_mask)
 
