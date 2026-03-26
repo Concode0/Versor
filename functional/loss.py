@@ -8,6 +8,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from core.metric import hermitian_grade_spectrum
 
 class GeometricMSELoss(nn.Module):
     """Geometric MSE. Euclidean distance in embedding space.
@@ -48,7 +49,7 @@ class SubspaceLoss(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Penalizes deviations."""
-        penalty_components = x[..., self.penalty_mask.to(x.device)]
+        penalty_components = x[..., self.penalty_mask]
         loss = (penalty_components ** 2).sum(dim=-1).mean()
         return loss
 
@@ -62,7 +63,7 @@ class IsometryLoss(nn.Module):
         """Initialize isometry loss with metric diagonal."""
         super().__init__()
         self.algebra = algebra
-        self.metric_diag = self._compute_metric_diagonal()
+        self.register_buffer('metric_diag', self._compute_metric_diagonal())
 
     def _compute_metric_diagonal(self):
         """Finds the signature."""
@@ -73,7 +74,7 @@ class IsometryLoss(nn.Module):
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compares norms."""
-        metric_diag = self.metric_diag.to(pred.device)
+        metric_diag = self.metric_diag
         pred_sq = (pred ** 2) * metric_diag
         target_sq = (target ** 2) * metric_diag
         
@@ -136,8 +137,6 @@ class HermitianGradeRegularization(nn.Module):
         Returns:
             Scalar loss (MSE between actual and target grade distribution).
         """
-        from core.metric import hermitian_grade_spectrum
-
         # Flatten all dims except last (Dim) for spectrum computation
         original_shape = features.shape
         flat = features.reshape(-1, original_shape[-1])
@@ -151,7 +150,7 @@ class HermitianGradeRegularization(nn.Module):
         mean_dist = dist.mean(dim=0)  # [n+1]
 
         # MSE from target spectrum
-        return F.mse_loss(mean_dist, self.target.to(mean_dist.device))
+        return F.mse_loss(mean_dist, self.target)
 
 
 class ChamferDistance(nn.Module):

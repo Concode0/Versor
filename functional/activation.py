@@ -95,34 +95,12 @@ class GradeSwish(nn.Module):
         super().__init__()
         self.algebra = algebra
         self.n_grades = algebra.n + 1
-        
+
         self.grade_weights = nn.Parameter(torch.ones(self.n_grades))
         self.grade_biases = nn.Parameter(torch.zeros(self.n_grades))
-        
-        self.register_buffer('grade_masks', self._build_masks())
 
-    def _build_masks(self) -> torch.Tensor:
-        """Precompute grade masks.
-
-        Returns:
-            torch.Tensor: Boolean masks for each grade [n_grades, dim].
-        """
-        masks = torch.zeros(self.n_grades, self.algebra.dim, dtype=torch.bool)
-        for i in range(self.algebra.dim):
-            grade = bin(i).count('1')
-            masks[grade, i] = True
-        return masks
-
-    def _build_grade_map(self) -> torch.Tensor:
-        """Precompute per-component grade index for vectorized forward.
-
-        Returns:
-            torch.Tensor: Long tensor of grade indices [dim].
-        """
-        grade_map = torch.zeros(self.algebra.dim, dtype=torch.long)
-        for i in range(self.algebra.dim):
-            grade_map[i] = bin(i).count('1')
-        return grade_map
+        # Reuse algebra's precomputed grade_index instead of building our own
+        self.register_buffer('_grade_index', algebra.grade_index.clone())
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply per-grade gating.
@@ -133,24 +111,13 @@ class GradeSwish(nn.Module):
         Returns:
             torch.Tensor: Activated multivector.
         """
-        # Build grade map buffer on first call or device change
-        if not hasattr(self, '_grade_map') or self._grade_map is None:
-            self.register_buffer('_grade_map', self._build_grade_map())
-        grade_map = self._grade_map
-        if grade_map.device != x.device:
-            grade_map = grade_map.to(x.device)
-            self._grade_map = grade_map
-
-        # Compute per-grade norms via scatter
-        # x: [..., D], grade_map: [D] -> group components by grade
         D = self.algebra.dim
         G = self.n_grades
 
         # Square, scatter-add by grade, sqrt -> per-grade norms
         x_sq = x * x  # [..., D]
-        # Expand grade_map to match x shape for scatter
         batch_shape = x.shape[:-1]
-        grade_idx = grade_map.expand(*batch_shape, D)  # [..., D]
+        grade_idx = self._grade_index.expand(*batch_shape, D)  # [..., D]
 
         norm_sq = torch.zeros(*batch_shape, G, device=x.device, dtype=x.dtype)
         norm_sq.scatter_add_(-1, grade_idx, x_sq)  # [..., G]
