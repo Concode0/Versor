@@ -99,8 +99,8 @@ class BaseTask(ABC):
 
         if opt_type == 'exponential_sgd':
             from optimizers.riemannian import ExponentialSGD
-            return ExponentialSGD(
-                self.model.parameters(),
+            return ExponentialSGD.from_model(
+                self.model,
                 lr=lr,
                 momentum=self.cfg.training.get('momentum', 0.9),
                 algebra=self.algebra,
@@ -108,8 +108,8 @@ class BaseTask(ABC):
             )
         elif opt_type == 'riemannian_adam':
             from optimizers.riemannian import RiemannianAdam
-            return RiemannianAdam(
-                self.model.parameters(),
+            return RiemannianAdam.from_model(
+                self.model,
                 lr=lr,
                 betas=self.cfg.training.get('betas', (0.9, 0.999)),
                 algebra=self.algebra,
