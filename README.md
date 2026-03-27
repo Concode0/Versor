@@ -66,12 +66,11 @@ cd Versor
 uv sync
 
 # Install with optional dependency groups
-uv sync --extra viz          # matplotlib, seaborn, scikit-learn, plotly, imageio
-uv sync --extra examples     # transformers, pillow, scikit-learn, matplotlib
-uv sync --extra graph        # torch-geometric (for molecular GNN tasks)
-uv sync --extra demo         # streamlit, plotly
-uv sync --extra all_tasks    # All task dependencies
-uv sync --extra all          # everything
+uv sync --extra viz           # matplotlib, seaborn, scikit-learn, plotly, imageio
+uv sync --extra [sr,md17,lqa] # task specific
+uv sync --extra demo          # streamlit, plotly
+uv sync --extra all_tasks     # All task dependencies
+uv sync --extra all           # everything
 ```
 
 ## Quick Start
