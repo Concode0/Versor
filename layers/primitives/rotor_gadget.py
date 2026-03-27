@@ -100,10 +100,12 @@ class RotorGadget(CliffordModule):
         self.bivector_left = nn.Parameter(
             torch.randn(num_rotor_pairs, self.num_bivectors) * 0.1
         )
+        self.bivector_left._manifold = 'spin'
         # Right rotors: [num_rotor_pairs, num_bivectors]
         self.bivector_right = nn.Parameter(
             torch.randn(num_rotor_pairs, self.num_bivectors) * 0.1
         )
+        self.bivector_right._manifold = 'spin'
 
         # Channel routing: block diagonal partitioning (paper style)
         # Each rotor pair processes a subset of input channels

@@ -124,6 +124,7 @@ class RotaryBivectorPE(CliffordModule):
 
         if learnable:
             self.bivector_weights = nn.Parameter(init)
+            self.bivector_weights._manifold = 'spin'
         else:
             self.register_buffer('bivector_weights', init)
 

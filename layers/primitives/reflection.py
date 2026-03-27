@@ -45,6 +45,7 @@ class ReflectionLayer(CliffordModule):
         self.num_vectors = algebra.n
 
         self.vector_weights = nn.Parameter(torch.Tensor(channels, self.num_vectors))
+        self.vector_weights._manifold = 'sphere'
 
         # Cache for eval mode
         self._cached_n = None

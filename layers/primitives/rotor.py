@@ -51,6 +51,7 @@ class RotorLayer(CliffordModule):
         self.num_bivectors = len(self.bivector_indices)
 
         self.bivector_weights = nn.Parameter(torch.Tensor(channels, self.num_bivectors))
+        self.bivector_weights._manifold = 'spin'
 
         # Rotor cache for eval mode
         self._cached_R = None

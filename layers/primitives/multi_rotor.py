@@ -62,8 +62,9 @@ class MultiRotorLayer(CliffordModule):
 
         # Overlapping rotors
         self.rotor_bivectors = nn.Parameter(torch.Tensor(num_rotors, self.num_bivectors))
+        self.rotor_bivectors._manifold = 'spin'
 
-        # Mixing weights
+        # Mixing weights (Euclidean — intentionally untagged)
         self.weights = nn.Parameter(torch.Tensor(channels, num_rotors))
 
         # Rotor cache for eval mode
