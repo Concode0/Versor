@@ -5,29 +5,24 @@
 # you may not use this file except in compliance with the License.
 #
 
+
 """
-DISCLAIMER: AHEAD OF THE LITERATURE
+==============================================================================
+VERSOR EXPERIMENT: IDEA INCUBATOR (SPIN-OFF CONCEPT)
+==============================================================================
 
-The theoretical foundations of this Geometric Deterministic Optimizer (GDO)
--- including Lorentz Warp and Topological Signature Annealing
--- are not derived from any existing academic papers.
-They are the pure materialization of my personal geometric intuition and hypotheses.
+This script serves as an early-stage proof-of-concept for radical, non-Euclidean 
+architectures. The concepts demonstrated here are strongly driven by geometric 
+intuition and may currently reside ahead of established academic literature.
 
-No Whining: This is a highly experimental, non-Euclidean architecture.
-If it shatters your standard models or fails on your specific edge cases,
-do not complain. You are just stepping outside the safety of standard SGD.
+Please understand that rigorous mathematical proofs or comprehensive citations 
+might be incomplete at this stage. If this geometric hypothesis proves structurally 
+sound, it is planned to be spun off into a dedicated, independent repository 
+for detailed research.
 
-Complexity: The concepts of dimensional lift-up and manifold unbending are abstract.
-Comprehensive documentation and mathematical proofs are planned for the future.
+==============================================================================
 
-The Truth is in the Code: If you cannot understand the topological mechanics right now,
-wait for the docs. Otherwise, the source code is the ultimate proof. Read it.
-may be fun.
-"""
-
-from __future__ import annotations
-
-"""Geometric Deterministic Optimizer (GDO): Topology-Aware Optimization.
+Geometric Deterministic Optimizer (GDO): Topology-Aware Optimization.
 
 HYPOTHESIS
 ==========
@@ -90,6 +85,8 @@ ignoring the topological structure of the loss landscape. We hypothesize that:
        - Apply Lorentz warp on plateau segments
        - Stop probing, ignore curvature; just follow the path
 """
+
+from __future__ import annotations
 
 import sys
 import os

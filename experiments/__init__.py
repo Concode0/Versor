@@ -5,4 +5,4 @@
 # you may not use this file except in compliance with the License.
 #
 
-"""Experiments: Mathematical debugger and validation suite."""
+"""Experiments: Mathematical debuggers and radical idea incubator."""

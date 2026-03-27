@@ -5,7 +5,24 @@
 # you may not use this file except in compliance with the License.
 #
 
-"""Riemann Zeta Function Reconstruction via Geometric Algebra.
+"""
+==============================================================================
+VERSOR EXPERIMENT: MATHEMATICAL DEBUGGER
+==============================================================================
+
+This script is designed to validate topological and algebraic phenomena 
+rather than to achieve State-of-the-Art (SOTA) on traditional benchmarks. 
+Our primary focus here is to explore pure geometric intuition within the 
+Clifford Algebra framework.
+
+Please kindly note that as an experimental module, formal mathematical proofs 
+and exhaustive literature reviews may still be in progress. We warmly invite 
+you to run the code, test your own hypotheses, and open a GitHub Issue if you 
+discover any fascinating geometric behaviors or encounter structural limitations.
+
+==============================================================================
+
+Riemann Zeta Function Reconstruction via Geometric Algebra.
 
 Uses Cl(2,0,r) where the even subalgebra {1, e_12} is isomorphic to C.
 Complex numbers s = sigma + it  are encoded as multivectors s = sigma*1 + t*e_12.
@@ -28,13 +45,6 @@ Serves as a mathematical debugger prototype:
   - Monitors cross-grade coupling
   - Tests reconstruction on known analytic properties (functional equation,
     location of trivial zeros, behavior near the pole at s=1)
-
-Usage:
-    uv run python -m experiments.riemann_zeta
-    uv run python -m experiments.riemann_zeta --strict-ortho --epochs 300
-    uv run python -m experiments.riemann_zeta --strict-ortho --save-plots --output-dir zeta_plots
-    uv run python -m experiments.riemann_zeta --r-dim 1 --strict-ortho --epochs 300
-    uv run python -m experiments.riemann_zeta --sigma-min 0.5 --sigma-max 3.0
 """
 
 from __future__ import annotations

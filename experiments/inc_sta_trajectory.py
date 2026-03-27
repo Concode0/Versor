@@ -5,7 +5,21 @@
 # you may not use this file except in compliance with the License.
 #
 
-r"""STA Trajectory Reconstruction: 3D Handwriting from Noisy IMU Data.
+"""
+==============================================================================
+VERSOR EXPERIMENT: IDEA INCUBATOR (SPIN-OFF CONCEPT)
+==============================================================================
+
+This script serves as an early-stage proof-of-concept for radical, non-Euclidean 
+architectures. The concepts demonstrated here are strongly driven by geometric 
+intuition and may currently reside ahead of established academic literature.
+
+Please understand that rigorous mathematical proofs or comprehensive citations 
+might be incomplete at this stage. If this geometric hypothesis proves structurally 
+sound, it is planned to be spun off into a dedicated, independent repository 
+for detailed research.
+
+==============================================================================
 
 This project requires data.
 Arbitrary synthetic data may be used.
@@ -23,16 +37,6 @@ reconstruction to:
   - Multi-sensor fusion (magnetometer, UWB)
   
 If you use ideas from this experiment, please cite the Versor framework:
-
-@software{Kim_Versor_Universal_Geometric_2026,
-author = {Kim, Eunkyum},
-doi = {10.5281/zenodo.18939519},
-month = mar,
-title = {{Versor: Universal Geometric Algebra Neural Network}},
-url = {https://github.com/Concode0/versor},
-version = {1.0.0},
-year = {2026}
-}
 """
 
 from __future__ import annotations

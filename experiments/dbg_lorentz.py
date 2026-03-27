@@ -5,7 +5,24 @@
 # you may not use this file except in compliance with the License.
 #
 
-"""Lorentz Transformation Debugger in Spacetime Algebra Cl(3,1).
+"""
+==============================================================================
+VERSOR EXPERIMENT: MATHEMATICAL DEBUGGER
+==============================================================================
+
+This script is designed to validate topological and algebraic phenomena 
+rather than to achieve State-of-the-Art (SOTA) on traditional benchmarks. 
+Our primary focus here is to explore pure geometric intuition within the 
+Clifford Algebra framework.
+
+Please kindly note that as an experimental module, formal mathematical proofs 
+and exhaustive literature reviews may still be in progress. We warmly invite 
+you to run the code, test your own hypotheses, and open a GitHub Issue if you 
+discover any fascinating geometric behaviors or encounter structural limitations.
+
+==============================================================================
+
+Lorentz Transformation Debugger in Spacetime Algebra Cl(3,1).
 
 Validates Versor's geometric algebra operations against known physical
 laws of special relativity. Spacetime events are grade-1 vectors,
@@ -25,13 +42,8 @@ Debugger checks:
   5. Invariant mass: m^2 = -s^2 preserved under transformation
   6. Rapidity extraction: recover phi from learned rotor (pure boost)
   7. Velocity addition: R(phi1)R(phi2) = R(phi1 + phi2)
-
-Usage:
-    uv run python -m experiments.lorentz_debugger --epochs 200
-    uv run python -m experiments.lorentz_debugger --strict-ortho --boost-type combined
-    uv run python -m experiments.lorentz_debugger --save-plots --output-dir my_plots
-    uv run python -m experiments.lorentz_debugger --rapidity-max 2.0 --diag-interval 10
 """
+
 
 from __future__ import annotations
 
@@ -52,7 +64,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from core.algebra import CliffordAlgebra
 from core.metric import (
-    signature_norm_squared, hermitian_distance, hermitian_norm,
+    signature_norm_squared, hermitian_distance,
     hermitian_grade_spectrum, signature_trace_form,
 )
 from layers import CliffordLinear

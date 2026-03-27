@@ -5,7 +5,24 @@
 # you may not use this file except in compliance with the License.
 #
 
-"""Minkowski's Theorem and Lattice Geometry via Geometric Algebra.
+"""
+==============================================================================
+VERSOR EXPERIMENT: MATHEMATICAL DEBUGGER
+==============================================================================
+
+This script is designed to validate topological and algebraic phenomena 
+rather than to achieve State-of-the-Art (SOTA) on traditional benchmarks. 
+Our primary focus here is to explore pure geometric intuition within the 
+Clifford Algebra framework.
+
+Please kindly note that as an experimental module, formal mathematical proofs 
+and exhaustive literature reviews may still be in progress. We warmly invite 
+you to run the code, test your own hypotheses, and open a GitHub Issue if you 
+discover any fascinating geometric behaviors or encounter structural limitations.
+
+==============================================================================
+
+Minkowski's Theorem and Lattice Geometry via Geometric Algebra.
 
 This experiment demonstrates Minkowski's First and Second Fundamental Theorems
 using the Clifford Algebra Cl(n,0). 

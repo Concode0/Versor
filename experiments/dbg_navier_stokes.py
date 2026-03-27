@@ -5,7 +5,24 @@
 # you may not use this file except in compliance with the License.
 #
 
-"""Navier-Stokes as Gauge Theory in Cl(3,0).
+"""
+==============================================================================
+VERSOR EXPERIMENT: MATHEMATICAL DEBUGGER
+==============================================================================
+
+This script is designed to validate topological and algebraic phenomena 
+rather than to achieve State-of-the-Art (SOTA) on traditional benchmarks. 
+Our primary focus here is to explore pure geometric intuition within the 
+Clifford Algebra framework.
+
+Please kindly note that as an experimental module, formal mathematical proofs 
+and exhaustive literature reviews may still be in progress. We warmly invite 
+you to run the code, test your own hypotheses, and open a GitHub Issue if you 
+discover any fascinating geometric behaviors or encounter structural limitations.
+
+==============================================================================
+
+Navier-Stokes as Gauge Theory in Cl(3,0).
 
 Reinterprets fluid dynamics through the lens of gauge theory:
   - Velocity field u is a gauge connection (grade-1 vector)
