@@ -1,7 +1,17 @@
 """Riemannian optimizers for manifold-valued parameters.
 
-Implements optimization on the Spin group manifold using exponential map
-retractions instead of Euclidean updates.
+Implements optimization on product manifolds Spin(p,q) x S^{n-1} x R^d
+using per-parameter retraction dispatch.
+
+Each parameter can be tagged with a manifold type via ``p._manifold``:
+    - ``'spin'``: Lie algebra bivectors — retracted via bivector norm clipping
+      (the forward-pass exp map completes the Riemannian update on Spin(n))
+    - ``'sphere'``: Unit vectors on S^{n-1} — retracted via L2 normalization
+    - ``'euclidean'`` (or untagged): Standard unconstrained parameters
+
+Use ``from_model()`` to auto-group parameters by manifold tag, or pass
+``model.parameters()`` directly for legacy behavior (all params get spin
+retraction).
 
 References:
     - Absil et al. "Optimization Algorithms on Matrix Manifolds" (2008)
@@ -9,8 +19,63 @@ References:
 """
 
 import torch
+import torch.nn as nn
 from torch.optim import Optimizer
-from typing import List, Optional
+from typing import Dict, List, Optional
+
+
+MANIFOLD_SPIN = 'spin'
+MANIFOLD_SPHERE = 'sphere'
+MANIFOLD_EUCLIDEAN = 'euclidean'
+
+_VALID_MANIFOLDS = {MANIFOLD_SPIN, MANIFOLD_SPHERE, MANIFOLD_EUCLIDEAN}
+
+
+def tag_manifold(param: nn.Parameter, manifold: str) -> nn.Parameter:
+    """Tag a parameter with its Riemannian manifold type.
+
+    Layers should call this (or set ``param._manifold`` directly) in their
+    ``__init__`` so that :meth:`RiemannianAdam.from_model` can auto-group
+    parameters for correct per-manifold retraction.
+
+    Args:
+        param: The parameter to tag.
+        manifold: One of ``'spin'``, ``'sphere'``, ``'euclidean'``.
+
+    Returns:
+        The same parameter (for chaining).
+    """
+    if manifold not in _VALID_MANIFOLDS:
+        raise ValueError(
+            f"Unknown manifold '{manifold}'. Must be one of {_VALID_MANIFOLDS}"
+        )
+    param._manifold = manifold
+    return param
+
+
+def group_parameters_by_manifold(
+    model: nn.Module,
+) -> Dict[str, List[nn.Parameter]]:
+    """Group a model's parameters by their ``_manifold`` tag.
+
+    Parameters without a ``_manifold`` attribute are placed in the
+    ``'euclidean'`` group.
+
+    Args:
+        model: The model whose parameters to group.
+
+    Returns:
+        Dict mapping manifold name to list of parameters.
+    """
+    groups: Dict[str, List[nn.Parameter]] = {
+        MANIFOLD_SPIN: [],
+        MANIFOLD_SPHERE: [],
+        MANIFOLD_EUCLIDEAN: [],
+    }
+    for p in model.parameters():
+        manifold = getattr(p, '_manifold', MANIFOLD_EUCLIDEAN)
+        groups[manifold].append(p)
+    return groups
 
 
 class ExponentialSGD(Optimizer):
@@ -71,6 +136,42 @@ class ExponentialSGD(Optimizer):
         self.algebra = algebra
         self.max_bivector_norm = max_bivector_norm
 
+    @classmethod
+    def from_model(
+        cls,
+        model: nn.Module,
+        lr: float = 0.01,
+        momentum: float = 0,
+        algebra=None,
+        max_bivector_norm: Optional[float] = 10.0,
+    ):
+        """Create optimizer with auto-detected manifold parameter groups.
+
+        Inspects ``p._manifold`` tags on each parameter and creates separate
+        groups for spin, sphere, and euclidean parameters so that each group
+        receives the correct retraction in :meth:`step`.
+
+        Args:
+            model: The model to optimize.
+            lr: Learning rate.
+            momentum: Momentum factor.
+            algebra: CliffordAlgebra instance (required).
+            max_bivector_norm: Clip threshold for spin params.
+
+        Returns:
+            ExponentialSGD instance with per-manifold parameter groups.
+        """
+        grouped = group_parameters_by_manifold(model)
+        param_groups = []
+        for manifold in (MANIFOLD_SPIN, MANIFOLD_SPHERE, MANIFOLD_EUCLIDEAN):
+            params = grouped[manifold]
+            if params:
+                param_groups.append({'params': params, 'manifold': manifold})
+        if not param_groups:
+            raise ValueError("Model has no parameters")
+        return cls(param_groups, lr=lr, momentum=momentum, algebra=algebra,
+                   max_bivector_norm=max_bivector_norm)
+
     @torch.no_grad()
     def step(self, closure=None) -> Optional[torch.Tensor]:
         """Performs a single optimization step using exponential retraction.
@@ -89,6 +190,7 @@ class ExponentialSGD(Optimizer):
         for group in self.param_groups:
             lr = group['lr']
             momentum = group['momentum']
+            manifold = group.get('manifold', None)
 
             for p in group['params']:
                 if p.grad is None:
@@ -96,10 +198,7 @@ class ExponentialSGD(Optimizer):
 
                 grad = p.grad
 
-                # For bivector parameters, gradient is already in Lie algebra (tangent space)
-                # Euclidean update in Lie algebra + exp() in forward pass = Riemannian update
-
-                # Apply momentum in Lie algebra (if enabled)
+                # Apply momentum (if enabled)
                 if momentum != 0:
                     param_state = self.state[p]
                     if 'momentum_buffer' not in param_state:
@@ -109,15 +208,24 @@ class ExponentialSGD(Optimizer):
                     buf.mul_(momentum).add_(grad)
                     grad = buf
 
-                # Update bivector parameters in Lie algebra
+                # Update parameters
                 p.add_(grad, alpha=-lr)
 
-                # Clip bivector norm for numerical stability in exp()
-                # This prevents overflow when computing exp(-B/2) in forward pass
-                if self.max_bivector_norm is not None:
-                    p_norm = p.norm(dim=-1, keepdim=True)
-                    scale = torch.clamp(p_norm / self.max_bivector_norm, min=1.0)
-                    p.div_(scale)
+                # Per-manifold retraction
+                if manifold == MANIFOLD_SPHERE:
+                    # Project back to unit sphere: v / ||v||
+                    p_norm = p.norm(dim=-1, keepdim=True).clamp(min=1e-12)
+                    p.div_(p_norm)
+                elif manifold == MANIFOLD_EUCLIDEAN:
+                    pass  # No retraction for Euclidean parameters
+                else:
+                    # 'spin' or None (legacy): bivector norm clipping
+                    if self.max_bivector_norm is not None:
+                        p_norm = p.norm(dim=-1, keepdim=True)
+                        scale = torch.clamp(
+                            p_norm / self.max_bivector_norm, min=1.0
+                        )
+                        p.div_(scale)
 
         return loss
 
@@ -169,9 +277,54 @@ class RiemannianAdam(Optimizer):
         self.algebra = algebra
         self.max_bivector_norm = max_bivector_norm
 
+    @classmethod
+    def from_model(
+        cls,
+        model: nn.Module,
+        lr: float = 1e-3,
+        betas: tuple = (0.9, 0.999),
+        eps: float = 1e-8,
+        algebra=None,
+        max_bivector_norm: Optional[float] = 10.0,
+    ):
+        """Create optimizer with auto-detected manifold parameter groups.
+
+        Inspects ``p._manifold`` tags on each parameter and creates separate
+        groups for spin, sphere, and euclidean parameters so that each group
+        receives the correct retraction in :meth:`step`.
+
+        Args:
+            model: The model to optimize.
+            lr: Learning rate.
+            betas: Coefficients for running averages.
+            eps: Numerical stability term.
+            algebra: CliffordAlgebra instance (required).
+            max_bivector_norm: Clip threshold for spin params.
+
+        Returns:
+            RiemannianAdam instance with per-manifold parameter groups.
+        """
+        grouped = group_parameters_by_manifold(model)
+        param_groups = []
+        for manifold in (MANIFOLD_SPIN, MANIFOLD_SPHERE, MANIFOLD_EUCLIDEAN):
+            params = grouped[manifold]
+            if params:
+                param_groups.append({'params': params, 'manifold': manifold})
+        if not param_groups:
+            raise ValueError("Model has no parameters")
+        return cls(param_groups, lr=lr, betas=betas, eps=eps, algebra=algebra,
+                   max_bivector_norm=max_bivector_norm)
+
     @torch.no_grad()
     def step(self, closure=None) -> Optional[torch.Tensor]:
         """Performs a single optimization step.
+
+        Applies Adam momentum updates to all parameters, then dispatches
+        per-manifold retraction:
+
+        - **spin** (or legacy/untagged): bivector norm clipping
+        - **sphere**: L2 normalization to unit sphere
+        - **euclidean**: no retraction
 
         Args:
             closure (Callable, optional): A closure that reevaluates the model and returns the loss.
@@ -188,6 +341,7 @@ class RiemannianAdam(Optimizer):
             lr = group['lr']
             beta1, beta2 = group['betas']
             eps = group['eps']
+            manifold = group.get('manifold', None)
 
             for p in group['params']:
                 if p.grad is None:
@@ -199,9 +353,7 @@ class RiemannianAdam(Optimizer):
                 # State initialization
                 if len(state) == 0:
                     state['step'] = 0
-                    # Exponential moving average of gradient values
                     state['exp_avg'] = torch.zeros_like(p)
-                    # Exponential moving average of squared gradient values
                     state['exp_avg_sq'] = torch.zeros_like(p)
 
                 exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
@@ -219,17 +371,25 @@ class RiemannianAdam(Optimizer):
                 step_size = lr / bias_correction1
                 bias_correction2_sqrt = bias_correction2 ** 0.5
 
-                # Adam update in Lie algebra (bivector space)
-                # Combined with exp(-B/2) in forward pass, this gives Riemannian update
+                # Adam update in parameter space
                 denom = (exp_avg_sq.sqrt() / bias_correction2_sqrt).add_(eps)
                 p.addcdiv_(exp_avg, denom, value=-step_size)
 
-                # Clip bivector norm for numerical stability in exp()
-                # This prevents overflow when computing exp(-B/2) in forward pass
-                if self.max_bivector_norm is not None:
-                    p_norm = p.norm(dim=-1, keepdim=True)
-                    scale = torch.clamp(p_norm / self.max_bivector_norm, min=1.0)
-                    p.div_(scale)
+                # Per-manifold retraction
+                if manifold == MANIFOLD_SPHERE:
+                    # Project back to unit sphere: v / ||v||
+                    p_norm = p.norm(dim=-1, keepdim=True).clamp(min=1e-12)
+                    p.div_(p_norm)
+                elif manifold == MANIFOLD_EUCLIDEAN:
+                    pass  # No retraction for Euclidean parameters
+                else:
+                    # 'spin' or None (legacy): bivector norm clipping
+                    if self.max_bivector_norm is not None:
+                        p_norm = p.norm(dim=-1, keepdim=True)
+                        scale = torch.clamp(
+                            p_norm / self.max_bivector_norm, min=1.0
+                        )
+                        p.div_(scale)
 
         return loss
 
