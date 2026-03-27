@@ -819,8 +819,7 @@ def train_model(args):
 
     R_gravity = train_ds.R_gravity
 
-    # Algebra — must create on CPU, then ensure_device migrates tables to
-    # accelerator in forward passes (MPS can't generate Cayley tables)
+    # Algebra — create on CPU; model.to(device) moves tables automatically
     algebra = CliffordAlgebra(3, 1, device='cpu')
     print(f"[INFO] Algebra dim: {algebra.dim}")
 
