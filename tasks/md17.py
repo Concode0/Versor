@@ -41,10 +41,10 @@ class MD17Task(BaseTask):
         self.data_root = "./data/rMD17" if self.revised else "./data/MD17"
         self.loss_weights = cfg.training.get('loss_weights', {'energy': 1.0, 'force': 10.0})
         super().__init__(cfg)
-        self.conservative_loss = ConservativeLoss()
+        self.conservative_loss = ConservativeLoss().to(self.device)
         # Hermitian grade regularization for Cl(3,0,1): 5 grades
         target_spectrum = cfg.training.get('target_spectrum', [0.35, 0.30, 0.20, 0.10, 0.05])
-        self.grade_reg = HermitianGradeRegularization(self.algebra, target_spectrum=target_spectrum)
+        self.grade_reg = HermitianGradeRegularization(self.algebra, target_spectrum=target_spectrum).to(self.device)
 
     def setup_algebra(self):
         """Use Cl(3,0,1) PGA for SE(3) rigid-body motions."""
