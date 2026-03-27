@@ -6,13 +6,19 @@ Verifies:
 3. Convergence on synthetic tasks
 4. Geometric properties (rotor manifold membership)
 5. Integration with layers
+6. Multi-manifold dispatch (spin, sphere, euclidean)
 """
 
 import pytest
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from core.algebra import CliffordAlgebra
-from optimizers.riemannian import ExponentialSGD, RiemannianAdam
+from optimizers.riemannian import (
+    ExponentialSGD, RiemannianAdam,
+    tag_manifold, group_parameters_by_manifold,
+    MANIFOLD_SPIN, MANIFOLD_SPHERE, MANIFOLD_EUCLIDEAN,
+)
 from layers import RotorLayer
 from layers import MultiRotorLayer
 from layers import RotorGadget
@@ -564,6 +570,181 @@ def test_empty_parameters(algebra_3d):
     # PyTorch's Optimizer base class raises ValueError for empty params
     with pytest.raises(ValueError, match="empty parameter list"):
         ExponentialSGD([], lr=0.01, algebra=algebra_3d)
+
+
+# Multi-Manifold Dispatch Tests
+
+def test_manifold_tagging(algebra_3d):
+    """Verify layers tag their parameters with correct manifold types."""
+    from layers.primitives.reflection import ReflectionLayer
+
+    rotor = RotorLayer(algebra_3d, channels=4)
+    assert getattr(rotor.bivector_weights, '_manifold', None) == 'spin'
+
+    reflection = ReflectionLayer(algebra_3d, channels=4)
+    assert getattr(reflection.vector_weights, '_manifold', None) == 'sphere'
+
+    multi = MultiRotorLayer(algebra_3d, channels=4, num_rotors=2)
+    assert getattr(multi.rotor_bivectors, '_manifold', None) == 'spin'
+    assert not hasattr(multi.weights, '_manifold')  # Euclidean, untagged
+
+    gadget = RotorGadget(algebra_3d, in_channels=4, out_channels=8)
+    assert getattr(gadget.bivector_left, '_manifold', None) == 'spin'
+    assert getattr(gadget.bivector_right, '_manifold', None) == 'spin'
+
+
+def test_tag_manifold_helper():
+    """Verify tag_manifold utility works correctly."""
+    p = nn.Parameter(torch.randn(3, 4))
+    result = tag_manifold(p, 'spin')
+    assert result is p
+    assert p._manifold == 'spin'
+
+    tag_manifold(p, 'sphere')
+    assert p._manifold == 'sphere'
+
+    with pytest.raises(ValueError, match="Unknown manifold"):
+        tag_manifold(p, 'invalid')
+
+
+def test_from_model_groups(algebra_3d):
+    """Verify from_model creates separate groups per manifold."""
+    from layers.primitives.reflection import ReflectionLayer
+
+    class MixedModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.rotor = RotorLayer(algebra_3d, channels=4)
+            self.reflection = ReflectionLayer(algebra_3d, channels=4)
+            self.linear = nn.Linear(8, 8)
+        def forward(self, x):
+            return x
+
+    model = MixedModel()
+    groups = group_parameters_by_manifold(model)
+
+    assert len(groups['spin']) == 1       # bivector_weights
+    assert len(groups['sphere']) == 1     # vector_weights
+    assert len(groups['euclidean']) >= 2  # linear weight + bias
+
+    opt = RiemannianAdam.from_model(model, lr=0.001, algebra=algebra_3d)
+    manifolds = [g.get('manifold') for g in opt.param_groups]
+    assert 'spin' in manifolds
+    assert 'sphere' in manifolds
+    assert 'euclidean' in manifolds
+
+
+def test_sphere_retraction(algebra_3d):
+    """Verify sphere-tagged params are projected to unit sphere after step."""
+    from layers.primitives.reflection import ReflectionLayer
+
+    layer = ReflectionLayer(algebra_3d, channels=4)
+    opt = RiemannianAdam.from_model(layer, lr=0.01, algebra=algebra_3d)
+
+    # Run several optimizer steps
+    for _ in range(10):
+        opt.zero_grad()
+        x = torch.randn(8, 4, algebra_3d.dim)
+        y = layer(x)
+        loss = y.sum()
+        loss.backward()
+        opt.step()
+
+    # vector_weights should be unit norm after each step
+    norms = layer.vector_weights.norm(dim=-1)
+    assert torch.allclose(norms, torch.ones_like(norms), atol=1e-5), \
+        f"Expected unit norms, got {norms}"
+
+
+def test_euclidean_no_retraction(algebra_3d):
+    """Verify euclidean params get standard Adam with no retraction."""
+    class SimpleModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.w = nn.Parameter(torch.randn(4, 8))
+        def forward(self, x):
+            return x + self.w
+
+    model = SimpleModel()
+    opt = RiemannianAdam.from_model(model, lr=0.1, algebra=algebra_3d)
+
+    # Set large values -- should NOT be clipped
+    with torch.no_grad():
+        model.w.fill_(100.0)
+
+    x = torch.randn(4, 8)
+    loss = model(x).sum()
+    loss.backward()
+    opt.step()
+
+    # Should still be large (Adam step with lr=0.1 changes by ~0.1)
+    assert model.w.abs().min() > 50.0, \
+        "Euclidean params should not be clipped"
+
+
+def test_legacy_backward_compat(algebra_3d):
+    """Verify old-style constructor still applies bivector clip to all params."""
+    layer = RotorLayer(algebra_3d, channels=4)
+    # Old API: pass model.parameters() directly (not from_model)
+    opt = RiemannianAdam(layer.parameters(), lr=0.001, algebra=algebra_3d)
+
+    # No 'manifold' key in param_groups (legacy mode)
+    for g in opt.param_groups:
+        assert 'manifold' not in g
+
+    # Set large bivector norms
+    with torch.no_grad():
+        layer.bivector_weights.fill_(20.0)
+
+    x = torch.randn(8, 4, algebra_3d.dim)
+    y = layer(x)
+    loss = y.sum()
+    loss.backward()
+    opt.step()
+
+    # Bivector norm clipping should still be active (default max_bivector_norm=10.0)
+    norms = layer.bivector_weights.norm(dim=-1)
+    assert norms.max() <= 10.0 + 0.1
+
+
+@pytest.mark.slow
+def test_mixed_model_convergence(algebra_3d):
+    """Verify optimizer converges with mixed manifold parameter groups."""
+    from layers.primitives.reflection import ReflectionLayer
+
+    class MixedModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.rotor = RotorLayer(algebra_3d, channels=4)
+            self.reflection = ReflectionLayer(algebra_3d, channels=4)
+            self.scale = nn.Parameter(torch.ones(4, 1))
+
+        def forward(self, x):
+            x = self.rotor(x)
+            x = self.reflection(x)
+            return x * self.scale
+
+    model = MixedModel()
+    opt = RiemannianAdam.from_model(model, lr=0.01, algebra=algebra_3d)
+
+    x = torch.randn(32, 4, algebra_3d.dim)
+    target = torch.randn(32, 4, algebra_3d.dim)
+
+    losses = []
+    for _ in range(50):
+        opt.zero_grad()
+        y = model(x)
+        loss = F.mse_loss(y, target)
+        loss.backward()
+        opt.step()
+        losses.append(loss.item())
+
+    assert losses[-1] < losses[0], "Loss should decrease"
+
+    # Verify manifold constraints held throughout training
+    norms = model.reflection.vector_weights.norm(dim=-1)
+    assert torch.allclose(norms, torch.ones_like(norms), atol=1e-5), \
+        "Reflection vectors should remain unit norm"
 
 
 if __name__ == "__main__":
