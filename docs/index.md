@@ -239,11 +239,11 @@ uv run python -m examples.main task=cgenn training.epochs=200
 uv run python -m examples.main task=clifford_pde training.epochs=300
 ```
 
-| Example            | Paper                                                                | Algebra         | Original | Versor  | Synthetic Task                   | Property Verified                          |
-| :----------------- | :------------------------------------------------------------------- | :-------------- | :------: | :-----: | :------------------------------- | :----------------------------------------- |
-| **GATr**           | [Brehmer et al., NeurIPS 2023](https://arxiv.org/abs/2305.18415)     | $Cl(3,0,1)$ PGA | ~2500 lines | ~80 lines  | N-body spring dynamics           | E(3) equivariance (rotation + translation) |
-| **CGENN**          | [Ruhe et al., NeurIPS 2023 Oral](https://arxiv.org/abs/2305.11141)   | $Cl(3,0)$       | ~3000 lines | ~90 lines  | Point cloud invariant regression | O(3) invariance (rotation + reflection)    |
-| **Clifford PDE**   | [Brandstetter et al., ICLR 2023](https://arxiv.org/abs/2209.04934)   | $Cl(2,0)$       | ~4000 lines | ~120 lines | 2D Taylor-Green vortex           | Emergent vorticity in grade-2 bivector     |
+| Example          | Paper                                                              | Algebra         |  Original   |   Versor   | Synthetic Task                   | Property Verified                          |
+| :--------------- | :----------------------------------------------------------------- | :-------------- | :---------: | :--------: | :------------------------------- | :----------------------------------------- |
+| **GATr**         | [Brehmer et al., NeurIPS 2023](https://arxiv.org/abs/2305.18415)   | $Cl(3,0,1)$ PGA | ~2500 lines | ~80 lines  | N-body spring dynamics           | E(3) equivariance (rotation + translation) |
+| **CGENN**        | [Ruhe et al., NeurIPS 2023 Oral](https://arxiv.org/abs/2305.11141) | $Cl(3,0)$       | ~3000 lines | ~90 lines  | Point cloud invariant regression | O(3) invariance (rotation + reflection)    |
+| **Clifford PDE** | [Brandstetter et al., ICLR 2023](https://arxiv.org/abs/2209.04934) | $Cl(2,0)$       | ~4000 lines | ~120 lines | 2D Taylor-Green vortex           | Emergent vorticity in grade-2 bivector     |
 
 Each counterpart credits the paper's contribution, describes Versor's different construction path, and is honest about where the architecture diverges. See each task file's docstring for the detailed comparison.
 
@@ -292,12 +292,12 @@ This project is licensed under the **Apache License 2.0**.
   author  = {Kim, Eunkyum},
   title   = {Versor: Universal Geometric Algebra Neural Network},
   url     = {https://github.com/Concode0/versor},
-  version = {0.1.0},
+  version = {1.0.0},
   year    = {2026},
-  month   = {2},
+  month   = {3},
+  doi     = {10.5281/zenodo.18939519},
   license = {Apache-2.0},
   note    = {ROK Patent Application 10-2026-0023023 (Geometric Blade Networks)}
-}
 ```
 
 ## Reference
