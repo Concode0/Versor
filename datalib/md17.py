@@ -109,6 +109,11 @@ if _HAS_PYG:
         toluene, uracil.
         """
 
+        # Override PyG's broken URL (record_id=466 → 404).
+        # Materials Cloud migrated to alphanumeric record IDs.
+        revised_url = ('https://archive.materialscloud.org/api/records/'
+                       'pfffs-fff86/files/rmd17.tar.bz2/content')
+
         def __init__(self, root: str, molecule: str = 'aspirin',
                      radius: float = 5.0, revised: bool = True,
                      transform=None, pre_transform=None):
