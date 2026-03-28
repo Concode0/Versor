@@ -53,9 +53,11 @@ Every GBN model uses a mix of geometric and non-geometric layers. This table sho
 
 | Purpose | Layer | Key property | When to skip |
 |---|---|---|---|
-| Geometric rotation (even versor) | `RotorLayer` | Isometry — preserves lengths, angles; Spin group | No manifold structure in the input |
-| Reflection (odd versor) | `ReflectionLayer` | Learns unit vectors; applies `x' = -nxn⁻¹`; Pin group | Task has no reflection symmetry |
-| Multi-scale rotation | `MultiRotorLayer` | K-rotor superposition | Simple tasks; use `RotorLayer` first |
+| Geometric rotation (even versor) | `RotorLayer(grade=2)` | Isometry via exp(-B/2); Spin group | No manifold structure in the input |
+| Grade-k versor transform | `RotorLayer(grade=k)` | Learns grade-k element V; applies hat(V) x V⁻¹ | Grade-2 (default) covers most cases |
+| Reflection (odd versor, unit-constrained) | `ReflectionLayer` | Learns unit vectors; normalizes before applying `x' = -nxn⁻¹`; Pin group | Task has no reflection symmetry |
+| Multi-scale rotation | `MultiRotorLayer(grade=2)` | K-rotor superposition | Simple tasks; use `RotorLayer` first |
+| Multi-scale grade-k versor | `MultiRotorLayer(grade=k)` | K-versor superposition for arbitrary grade | Grade-2 covers most cases |
 | Channel mixing | `CliffordLinear` (traditional backend) | Standard scalar weight matrix | Never — always needed alongside rotors |
 | Constrained channel mixing | `CliffordLinear(backend='rotor')` | ~63% fewer params, bivector-constrained | Need full cross-channel expressivity |
 | Normalization | `CliffordLayerNorm` | Preserves direction, normalizes magnitude | Very shallow models (1–2 layers) |
