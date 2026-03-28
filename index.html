@@ -12,7 +12,7 @@
       
       
       
-        <link rel="next" href="philosophy/">
+        <link rel="next" href="design_guide/">
       
       
         
@@ -212,7 +212,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="philosophy/" class="md-tabs__link">
+        <a href="design_guide/" class="md-tabs__link">
           
   
   
@@ -697,6 +697,34 @@
   
   
     <li class="md-nav__item">
+      <a href="design_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="philosophy/" class="md-nav__link">
         
   
@@ -789,6 +817,34 @@
     
   
     Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
   
 
     
@@ -1047,34 +1103,6 @@
     
   
     Roadmap
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="faq/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    FAQ
   
 
     
@@ -1396,7 +1424,7 @@
 <p><strong>"There is a ceiling above standard Deep Learning that no one saw. Versor opens the door above it."</strong></p>
 </blockquote>
 <h2 id="at-a-glance">At a Glance<a class="headerlink" href="#at-a-glance" title="Permanent link">&para;</a></h2>
-<p><strong>Versor</strong> replaces standard matrix multiplications with <strong>Geometric Algebra (Rotor)</strong> operations to preserve the topological structure of data. It provides the building blocks for the <strong>Geometric Blade Network (GBN)</strong> — model architectures that go beyond unconstrained linear transformations, using pure, manifold-aligned geometric rotations via Clifford Algebra and Rotors.</p>
+<p><strong>Versor</strong> provides geometrically structured layers — built on <strong>Geometric Algebra versor</strong> operations — that constrain spatial transformations to the rotation group where manifold structure matters, while composing naturally with standard linear algebra for channel mixing and readout. It supplies the building blocks for the <strong>Geometric Blade Network (GBN)</strong>: a hybrid architecture in which <code>CliffordLinear</code> (standard scalar weights) mixes channels, <code>RotorLayer</code> rotates multivectors geometrically, and <code>nn.Linear</code> handles task-specific projection.</p>
 <table>
 <thead>
 <tr>
@@ -1440,6 +1468,7 @@
 </table>
 <h2 id="core-idea">Core Idea<a class="headerlink" href="#core-idea" title="Permanent link">&para;</a></h2>
 <p>Rotors (<span class="arithmatex">\(R = \exp(-B/2)\)</span>) perform pure geometric rotations via the sandwich product (<span class="arithmatex">\(x \to R x \tilde{R}\)</span>), preserving manifold structure where standard weight matrices may inadvertently deform it.</p>
+<p>In practice, GBN models are hybrid: <code>RotorLayer</code> / <code>MultiRotorLayer</code> handle geometric rotation, while <code>CliffordLinear</code> (traditional backend) and <code>nn.Linear</code> handle channel mixing and readout. The two approaches are complementary, not mutually exclusive.</p>
 <h2 id="whats-built">What's Built<a class="headerlink" href="#whats-built" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Cl(p,q,r) kernel</strong> with null dimension support for Projective GA</li>
@@ -1453,6 +1482,8 @@
 <li><strong>Geometric activations</strong> — GeometricGELU, GradeSwish, GeometricSquare</li>
 <li><strong>Rotor-to-symbolic-formula translation</strong> — direct readout of trained weights as equations</li>
 <li><strong>Iterative geometric unbending</strong> — 4-phase SR pipeline with blade rejection</li>
+<li><strong>ReflectionLayer</strong> / Pin group — learns unit vectors, applies the odd versor <code>x' = -nxn⁻¹</code>; composable with <code>RotorLayer</code> for full Pin(p,q,r) group coverage</li>
+<li><strong>Algebraic completeness</strong> — <code>clifford_conjugation</code>, <code>norm_sq</code>, <code>left_contraction</code>, <code>dual</code>, <code>versor_product</code> covering even and odd versor transformations in a unified interface</li>
 <li><strong>CliffordGraphConv</strong> for molecular graphs</li>
 <li><strong>Bivector pruning</strong> for geometric sparsity</li>
 <li><strong>GeometricTransformerBlock</strong> with entropy-gated attention</li>
@@ -1461,7 +1492,7 @@
 <h2 id="key-features">Key Features<a class="headerlink" href="#key-features" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Metric-Agnostic Kernel</strong>: Supports Euclidean <span class="arithmatex">\(Cl(p, 0)\)</span>, Minkowski <span class="arithmatex">\(Cl(p, q)\)</span>, Projective <span class="arithmatex">\(Cl(p, 0, r)\)</span>, and Conformal <span class="arithmatex">\(Cl(n+1, 1)\)</span> algebras out of the box.</li>
-<li><strong>Geometric Layers</strong>: <code>RotorLayer</code>, <code>MultiRotorLayer</code>, <code>CliffordLinear</code>, <code>CliffordGraphConv</code>, <code>CliffordLayerNorm</code>, <code>BladeSelector</code>, <code>RotorGadget</code>.</li>
+<li><strong>Geometric Layers</strong>: <code>RotorLayer</code>, <code>MultiRotorLayer</code>, <code>ReflectionLayer</code>, <code>CliffordLinear</code>, <code>CliffordGraphConv</code>, <code>CliffordLayerNorm</code>, <code>BladeSelector</code>, <code>RotorGadget</code>.</li>
 <li><strong>Novel Activations</strong>: <code>GeometricGELU</code> (magnitude-based), <code>GradeSwish</code> (per-grade gating), <code>GeometricSquare</code> (gated self-product).</li>
 <li><strong>Automatic Metric Search</strong>: Finds optimal <span class="arithmatex">\((p, q, r)\)</span> signature based on data topology via GBN probes.</li>
 <li><strong>Riemannian Optimization</strong>: <code>RiemannianAdam</code> and <code>ExponentialSGD</code> with manifold retraction.</li>

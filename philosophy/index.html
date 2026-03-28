@@ -11,7 +11,7 @@
         <link rel="canonical" href="https://Concode0.github.io/Versor/philosophy/">
       
       
-        <link rel="prev" href="..">
+        <link rel="prev" href="../design_guide/">
       
       
         <link rel="next" href="../mathematical/">
@@ -214,7 +214,7 @@
     
     
       <li class="md-tabs__item md-tabs__item--active">
-        <a href="./" class="md-tabs__link">
+        <a href="../design_guide/" class="md-tabs__link">
           
   
   
@@ -405,6 +405,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../design_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -486,6 +514,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="The Unbending Paradigm">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rotors-reflections-and-the-versor-group" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rotors, Reflections, and the Versor Group
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -661,6 +706,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#authors-vision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Author's Vision
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -741,6 +797,34 @@
     
   
     Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
   
 
     
@@ -1012,34 +1096,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../faq/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    FAQ
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -1092,6 +1148,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="The Unbending Paradigm">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rotors-reflections-and-the-versor-group" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rotors, Reflections, and the Versor Group
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1267,6 +1340,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#authors-vision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Author's Vision
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1293,6 +1377,7 @@
 <div class="arithmatex">\[x' = Wx + b\]</div>
 <p>This operation is unrestricted. A general matrix <span class="arithmatex">\(W\)</span> can stretch, shear, reflect, and rotate all at once. It has no awareness of the geometry of your data. When your data lives on a manifold (and it almost always does), matrix multiplication can inadvertently deform that manifold — and the network must spend additional capacity to compensate.</p>
 <p>The result: parameters that could be learning structure are instead compensating for geometric side effects introduced by unconstrained linear maps.</p>
+<p>This concern applies specifically to layers that process <em>geometrically structured</em> data — spatial coordinates, orientations, phase relationships — where the transformation is expected to respect a known group action. For layers that mix channels without a geometric interpretation (readout projections, attention gates, scalar aggregation), an unconstrained linear map remains appropriate. Versor's design premise is that the two regimes coexist in the same model: rotor operations for geometric transformation, standard linear algebra for the rest.</p>
 <h2 id="the-unbending-paradigm">The Unbending Paradigm<a class="headerlink" href="#the-unbending-paradigm" title="Permanent link">&para;</a></h2>
 <p>Versor takes a different approach. Instead of general linear transformations, we use <strong>Rotors</strong> — elements of Clifford Algebra that perform pure geometric rotations:</p>
 <div class="arithmatex">\[x' = R x \tilde{R}\]</div>
@@ -1314,6 +1399,14 @@
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">algebra</span><span class="o">.</span><span class="n">geometric_product</span><span class="p">(</span><span class="n">Rx</span><span class="p">,</span> <span class="n">R_rev</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
 </code></pre></div>
 <p>Every learnable parameter is a bivector component — a specific rotation plane. The <code>exp(-B/2)</code> maps it to the Spin group; the sandwich product applies the isometry.</p>
+<p>Note that <code>RotorLayer</code> handles only the geometric rotation step. Channel mixing — redistributing features across the channel dimension — is done by <code>CliffordLinear</code>, which by default uses a standard scalar weight matrix (<code>torch.einsum('oi,bid-&gt;bod', self.weight, x)</code>). Both layers are necessary in a GBN stack; a rotor alone cannot change the number of feature channels or learn arbitrary cross-channel relationships.</p>
+<h3 id="rotors-reflections-and-the-versor-group">Rotors, Reflections, and the Versor Group<a class="headerlink" href="#rotors-reflections-and-the-versor-group" title="Permanent link">&para;</a></h3>
+<p>A <strong>versor</strong> is any product of invertible vectors in a Clifford algebra. Versors fall into two cosets by grade parity:</p>
+<ul>
+<li><strong>Even versors (rotors)</strong> — products of an even number of unit vectors. They belong to the Spin group: <span class="arithmatex">\(R\tilde{R} = 1\)</span>, <span class="arithmatex">\(R = \exp(-B/2)\)</span>. A rotor performs a pure rotation with no parity change. This is the primary building block in Versor, because rotations cover the majority of geometric tasks.</li>
+<li><strong>Odd versors (reflections)</strong> — products of an odd number of unit vectors. They belong to the Pin group and apply a hyperplane reflection: <span class="arithmatex">\(x' = -nxn^{-1}\)</span>. Two reflections compose to a rotation. <code>ReflectionLayer</code> (<code>layers/primitives/reflection.py</code>) implements this as a learnable layer.</li>
+</ul>
+<p>The framework is named <strong>Versor</strong> because it supports both cosets. In practice, most GBN architectures use only <code>RotorLayer</code>; <code>ReflectionLayer</code> is available for tasks with explicit reflection symmetry or for constructing Pin group actions by composition.</p>
 <h2 id="why-this-matters">Why This Matters<a class="headerlink" href="#why-this-matters" title="Permanent link">&para;</a></h2>
 <h3 id="geometric-inductive-bias">Geometric Inductive Bias<a class="headerlink" href="#geometric-inductive-bias" title="Permanent link">&para;</a></h3>
 <p>Rotors encode the correct inductive bias for spatial data. A rotation in 3D is parameterized by 3 bivector components (<span class="arithmatex">\(e_{12}, e_{13}, e_{23}\)</span>), not 9 matrix entries. The model <strong>cannot</strong> learn a shear because the parameterization doesn't allow it.</p>
@@ -1371,8 +1464,7 @@
 <p>The ubiquity of matrix operations has led to a fragmentation of our mathematical intuition. In the standard paradigm, a rotation, a projection, and a complex number are treated as disparate mathematical objects, each requiring its own unique data structure and rules. We represent rotations with <span class="arithmatex">\(3 \times 3\)</span> orthogonal matrices, translations with vectors, and logical states with bits. This fragmentation means models must re-learn the relationships between these concepts from scratch, spending compute and data to rediscover fundamental geometric truths that could be axiomatic.</p>
 <p>Matrices are general-purpose containers that carry no geometric semantics by default. The remarkable achievements of modern deep learning were accomplished despite this — imagine what becomes possible when the representation itself encodes geometric meaning.</p>
 <h3 id="the-bridge-to-true-geometric-intelligence">The Bridge to True Geometric Intelligence<a class="headerlink" href="#the-bridge-to-true-geometric-intelligence" title="Permanent link">&para;</a></h3>
-<p>Versor is not just a library; it is a bridge to a <strong>Unified Geometric Engine</strong>. Our current models are the first steps toward an architecture that does not merely process numbers but <em>thinks</em> geometrically. By treating geometric primitives—vectors, bivectors, rotors—as first-class citizens, we move from manipulating arrays to manipulating concepts.</p>
-<p>Current achievements, while significant, are just the beginning. The ambition is to create a model where reasoning is intrinsic to the representation itself. In this future, a "rotation" is not a function learned by a matrix but a fundamental operation of the model's mind, as natural as addition is to a calculator.</p>
+<p>The long-term goal is a unified geometric computing engine where geometric primitives — vectors, bivectors, rotors — are first-class citizens of the model's representation. Current implementations demonstrate that this approach is feasible and competitive; the theoretical machinery is in place for further extension.</p>
 <h3 id="beyond-the-gpu-transition">Beyond the GPU Transition<a class="headerlink" href="#beyond-the-gpu-transition" title="Permanent link">&para;</a></h3>
 <p>Our current reliance on matrix operations reflects the architecture of modern GPUs, which are optimized for dense linear algebra. This is an implementation reality, not a fundamental limit.</p>
 <p>The true essence of Geometric Algebra lies deeper, offering efficiency at the level of bit manipulation. In a native GA hardware architecture, geometric products would be atomic operations, and the sparsity and symmetry of the algebra would be exploited not just for mathematical elegance, but for computational speed beyond current matrix multiplication. We are building the software paradigm for this future today, preparing for the shift from dense linear algebra to elegant, bit-efficient geometric computation.</p>
@@ -1391,6 +1483,11 @@
 <a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>        <span class="k">return</span> <span class="n">xi</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">theta</span> <span class="o">*</span> <span class="n">xj</span>
 </code></pre></div>
 <p>A standard neural network is a black box of millions of uninterpretable scalars. A trained GBN is a composition of named rotation planes with exact symbolic correspondences. This is not post-hoc explanation — it is direct readout from the algebra.</p>
+<hr />
+<h2 id="authors-vision">Author's Vision<a class="headerlink" href="#authors-vision" title="Permanent link">&para;</a></h2>
+<p><em>The following is the author's personal perspective on where this work is headed — speculative, not descriptive of the current implementation.</em></p>
+<p>Versor is not just a library; it is a bridge to a Unified Geometric Engine. Our current models are the first steps toward an architecture that does not merely process numbers but thinks geometrically. By treating geometric primitives — vectors, bivectors, rotors — as first-class citizens, we move from manipulating arrays to manipulating concepts.</p>
+<p>In this future, a "rotation" is not a function learned by a matrix but a fundamental operation of the model's mind, as natural as addition is to a calculator. The remarkable achievements of modern deep learning were accomplished despite the geometric blindness of unconstrained matrices — imagine what becomes possible when the representation itself encodes geometric meaning.</p>
 
 
 
