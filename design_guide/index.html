@@ -1203,21 +1203,33 @@
 <tbody>
 <tr>
 <td>Geometric rotation (even versor)</td>
-<td><code>RotorLayer</code></td>
-<td>Isometry — preserves lengths, angles; Spin group</td>
+<td><code>RotorLayer(grade=2)</code></td>
+<td>Isometry via exp(-B/2); Spin group</td>
 <td>No manifold structure in the input</td>
 </tr>
 <tr>
-<td>Reflection (odd versor)</td>
+<td>Grade-k versor transform</td>
+<td><code>RotorLayer(grade=k)</code></td>
+<td>Learns grade-k element V; applies hat(V) x V⁻¹</td>
+<td>Grade-2 (default) covers most cases</td>
+</tr>
+<tr>
+<td>Reflection (odd versor, unit-constrained)</td>
 <td><code>ReflectionLayer</code></td>
-<td>Learns unit vectors; applies <code>x' = -nxn⁻¹</code>; Pin group</td>
+<td>Learns unit vectors; normalizes before applying <code>x' = -nxn⁻¹</code>; Pin group</td>
 <td>Task has no reflection symmetry</td>
 </tr>
 <tr>
 <td>Multi-scale rotation</td>
-<td><code>MultiRotorLayer</code></td>
+<td><code>MultiRotorLayer(grade=2)</code></td>
 <td>K-rotor superposition</td>
 <td>Simple tasks; use <code>RotorLayer</code> first</td>
+</tr>
+<tr>
+<td>Multi-scale grade-k versor</td>
+<td><code>MultiRotorLayer(grade=k)</code></td>
+<td>K-versor superposition for arbitrary grade</td>
+<td>Grade-2 covers most cases</td>
 </tr>
 <tr>
 <td>Channel mixing</td>
