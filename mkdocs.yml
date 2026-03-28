@@ -36,10 +36,12 @@ plugins:
 nav:
   - Home: index.md
   - Guide:
+      - Design Guide: design_guide.md
       - Philosophy: philosophy.md
       - Mathematics: mathematical.md
       - Innovations: innovations.md
       - Tutorial: tutorial.md
+      - FAQ: faq.md
   - API Reference:
       - Core: api/core.md
       - Layers: api/layers.md
@@ -47,7 +49,6 @@ nav:
       - Optimizers: api/optimizers.md
   - Project:
       - Roadmap: milestone.md
-      - FAQ: faq.md
 
 extra_javascript:
   - javascripts/mathjax.js

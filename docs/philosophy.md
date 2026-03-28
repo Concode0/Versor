@@ -10,6 +10,8 @@ This operation is unrestricted. A general matrix $W$ can stretch, shear, reflect
 
 The result: parameters that could be learning structure are instead compensating for geometric side effects introduced by unconstrained linear maps.
 
+This concern applies specifically to layers that process *geometrically structured* data — spatial coordinates, orientations, phase relationships — where the transformation is expected to respect a known group action. For layers that mix channels without a geometric interpretation (readout projections, attention gates, scalar aggregation), an unconstrained linear map remains appropriate. Versor's design premise is that the two regimes coexist in the same model: rotor operations for geometric transformation, standard linear algebra for the rest.
+
 ## The Unbending Paradigm
 
 Versor takes a different approach. Instead of general linear transformations, we use **Rotors** — elements of Clifford Algebra that perform pure geometric rotations:
@@ -40,6 +42,17 @@ def forward(self, x):
 ```
 
 Every learnable parameter is a bivector component — a specific rotation plane. The `exp(-B/2)` maps it to the Spin group; the sandwich product applies the isometry.
+
+Note that `RotorLayer` handles only the geometric rotation step. Channel mixing — redistributing features across the channel dimension — is done by `CliffordLinear`, which by default uses a standard scalar weight matrix (`torch.einsum('oi,bid->bod', self.weight, x)`). Both layers are necessary in a GBN stack; a rotor alone cannot change the number of feature channels or learn arbitrary cross-channel relationships.
+
+### Rotors, Reflections, and the Versor Group
+
+A **versor** is any product of invertible vectors in a Clifford algebra. Versors fall into two cosets by grade parity:
+
+- **Even versors (rotors)** — products of an even number of unit vectors. They belong to the Spin group: $R\tilde{R} = 1$, $R = \exp(-B/2)$. A rotor performs a pure rotation with no parity change. This is the primary building block in Versor, because rotations cover the majority of geometric tasks.
+- **Odd versors (reflections)** — products of an odd number of unit vectors. They belong to the Pin group and apply a hyperplane reflection: $x' = -nxn^{-1}$. Two reflections compose to a rotation. `ReflectionLayer` (`layers/primitives/reflection.py`) implements this as a learnable layer.
+
+The framework is named **Versor** because it supports both cosets. In practice, most GBN architectures use only `RotorLayer`; `ReflectionLayer` is available for tasks with explicit reflection symmetry or for constructing Pin group actions by composition.
 
 ## Why This Matters
 
@@ -130,9 +143,7 @@ The ubiquity of matrix operations has led to a fragmentation of our mathematical
 Matrices are general-purpose containers that carry no geometric semantics by default. The remarkable achievements of modern deep learning were accomplished despite this — imagine what becomes possible when the representation itself encodes geometric meaning.
 
 ### The Bridge to True Geometric Intelligence
-Versor is not just a library; it is a bridge to a **Unified Geometric Engine**. Our current models are the first steps toward an architecture that does not merely process numbers but *thinks* geometrically. By treating geometric primitives—vectors, bivectors, rotors—as first-class citizens, we move from manipulating arrays to manipulating concepts.
-
-Current achievements, while significant, are just the beginning. The ambition is to create a model where reasoning is intrinsic to the representation itself. In this future, a "rotation" is not a function learned by a matrix but a fundamental operation of the model's mind, as natural as addition is to a calculator.
+The long-term goal is a unified geometric computing engine where geometric primitives — vectors, bivectors, rotors — are first-class citizens of the model's representation. Current implementations demonstrate that this approach is feasible and competitive; the theoretical machinery is in place for further extension.
 
 ### Beyond the GPU Transition
 Our current reliance on matrix operations reflects the architecture of modern GPUs, which are optimized for dense linear algebra. This is an implementation reality, not a fundamental limit.
@@ -158,3 +169,13 @@ def _plane_to_action(self, plane: SimplePlane) -> sympy.Expr:
 ```
 
 A standard neural network is a black box of millions of uninterpretable scalars. A trained GBN is a composition of named rotation planes with exact symbolic correspondences. This is not post-hoc explanation — it is direct readout from the algebra.
+
+---
+
+## Author's Vision
+
+*The following is the author's personal perspective on where this work is headed — speculative, not descriptive of the current implementation.*
+
+Versor is not just a library; it is a bridge to a Unified Geometric Engine. Our current models are the first steps toward an architecture that does not merely process numbers but thinks geometrically. By treating geometric primitives — vectors, bivectors, rotors — as first-class citizens, we move from manipulating arrays to manipulating concepts.
+
+In this future, a "rotation" is not a function learned by a matrix but a fundamental operation of the model's mind, as natural as addition is to a calculator. The remarkable achievements of modern deep learning were accomplished despite the geometric blindness of unconstrained matrices — imagine what becomes possible when the representation itself encodes geometric meaning.

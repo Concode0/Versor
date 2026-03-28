@@ -10,7 +10,7 @@
 
 ## At a Glance
 
-**Versor** replaces standard matrix multiplications with **Geometric Algebra (Rotor)** operations to preserve the topological structure of data. It provides the building blocks for the **Geometric Blade Network (GBN)** — model architectures that go beyond unconstrained linear transformations, using pure, manifold-aligned geometric rotations via Clifford Algebra and Rotors.
+**Versor** provides geometrically structured layers — built on **Geometric Algebra versor** operations — that constrain spatial transformations to the rotation group where manifold structure matters, while composing naturally with standard linear algebra for channel mixing and readout. It supplies the building blocks for the **Geometric Blade Network (GBN)**: a hybrid architecture in which `CliffordLinear` (standard scalar weights) mixes channels, `RotorLayer` rotates multivectors geometrically, and `nn.Linear` handles task-specific projection.
 
 | Task                                       | Algebra             | Key Metric         | Result                                                                                     | Note                                                   |
 | :----------------------------------------- | :------------------ | :----------------- | :----------------------------------------------------------------------------------------- | :----------------------------------------------------- |
@@ -25,6 +25,8 @@
 
 Rotors ( $R = \exp(-B/2)$ ) perform pure geometric rotations via the sandwich product ($x \to R x \tilde{R}$), preserving manifold structure where standard weight matrices may inadvertently deform it.
 
+In practice, GBN models are hybrid: `RotorLayer` / `MultiRotorLayer` handle geometric rotation, while `CliffordLinear` (traditional backend) and `nn.Linear` handle channel mixing and readout. The two approaches are complementary, not mutually exclusive.
+
 ## What's Built
 
 - **Cl(p,q,r) kernel** with null dimension support for Projective GA
@@ -38,6 +40,8 @@ Rotors ( $R = \exp(-B/2)$ ) perform pure geometric rotations via the sandwich pr
 - **Geometric activations** — GeometricGELU, GradeSwish, GeometricSquare
 - **Rotor-to-symbolic-formula translation** — direct readout of trained weights as equations
 - **Iterative geometric unbending** — 4-phase SR pipeline with blade rejection
+- **ReflectionLayer** / Pin group — learns unit vectors, applies the odd versor `x' = -nxn⁻¹`; composable with `RotorLayer` for full Pin(p,q,r) group coverage
+- **Algebraic completeness** — `clifford_conjugation`, `norm_sq`, `left_contraction`, `dual`, `versor_product` covering even and odd versor transformations in a unified interface
 - **CliffordGraphConv** for molecular graphs
 - **Bivector pruning** for geometric sparsity
 - **GeometricTransformerBlock** with entropy-gated attention
@@ -47,7 +51,7 @@ For code examples of each innovation, see [docs/innovations.md](docs/innovations
 ## Key Features
 
 *   **Metric-Agnostic Kernel**: Supports Euclidean $Cl(p, 0)$, Minkowski $Cl(p, q)$, Projective $Cl(p, 0, r)$, and Conformal $Cl(n+1, 1)$ algebras out of the box.
-*   **Geometric Layers**: `RotorLayer`, `MultiRotorLayer`, `CliffordLinear`, `CliffordGraphConv`, `CliffordLayerNorm`, `BladeSelector`, `RotorGadget`.
+*   **Geometric Layers**: `RotorLayer`, `MultiRotorLayer`, `ReflectionLayer`, `CliffordLinear`, `CliffordGraphConv`, `CliffordLayerNorm`, `BladeSelector`, `RotorGadget`.
 *   **Novel Activations**: `GeometricGELU` (magnitude-based), `GradeSwish` (per-grade gating), `GeometricSquare` (gated self-product).
 *   **Automatic Metric Search**: Finds optimal $(p, q, r)$ signature based on data topology via GBN probes.
 *   **Riemannian Optimization**: `RiemannianAdam` and `ExponentialSGD` with manifold retraction.
