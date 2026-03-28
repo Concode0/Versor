@@ -311,6 +311,10 @@ For a deep dive into the framework, please visit our official documentation site
 * **Innovations**: 10 code-illustrated features that make Versor unique.
 * **API Reference**: Full documentation of `core`, `layers`, and `functional` modules.
 
+## Research & Case Studies
+
+* [Research: Geometric Superposition Search (GSS)](https://github.com/Concode0/GSS-Research)
+
 ## Contributing
 
 Versor is currently in a **Stabilization Phase** as the lead maintainer focuses on academic milestones. While we are not actively seeking major feature contributions at this moment, we highly value community feedback.
