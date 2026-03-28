@@ -17,7 +17,6 @@ body:
         - "core/decomposition — bivector decomposition, power iteration"
         - "core/metric — Hermitian metrics, signature forms"
         - "core/search — MetricSearch, signature selection"
-        - "core/cga — Conformal Geometric Algebra Cl(4,1)"
         - "layers/rotor — RotorLayer, sandwich product"
         - "layers/multi_rotor — MultiRotorLayer"
         - "layers/linear — CliffordLinear, RotorGadget backend"
