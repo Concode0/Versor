@@ -1,6 +1,6 @@
 """Versor - Geometric Algebra Deep Learning framework for PyTorch."""
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 from core.algebra import CliffordAlgebra
 from layers import RotorLayer
