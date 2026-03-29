@@ -26,13 +26,13 @@ Versor adds inductive bias: it constrains certain layers to isometries (length- 
 
 The signature $Cl(p, q, r)$ determines what the algebra "knows" about your geometry. Use the table below as a starting point.
 
-| Signature | Geometry | Typical tasks |
-|---|---|---|
-| $Cl(3, 0)$ | Euclidean 3D | Molecules (QM9, MD17), point clouds |
-| $Cl(3, 0, 1)$ | Projective GA / SE(3) | Molecular dynamics with translations, robotics |
-| $Cl(3, 1)$ or $Cl(1, 3)$ | Minkowski / spacetime | EEG phase-amplitude, relativistic physics |
-| $Cl(4, 1)$ | Conformal GA | Logic, CAD, translations-as-rotations |
-| $Cl(n, 0)$ | High-dimensional Euclidean | Semantic embeddings, symbolic regression |
+| Signature                | Geometry                   | Typical tasks                                  |
+| ------------------------ | -------------------------- | ---------------------------------------------- |
+| $Cl(3, 0)$               | Euclidean 3D               | Molecules (QM9, MD17), point clouds            |
+| $Cl(3, 0, 1)$            | Projective GA / SE(3)      | Molecular dynamics with translations, robotics |
+| $Cl(3, 1)$ or $Cl(1, 3)$ | Minkowski / spacetime      | EEG phase-amplitude, relativistic physics      |
+| $Cl(4, 1)$               | Conformal GA               | Logic, CAD, translations-as-rotations          |
+| $Cl(n, 0)$               | High-dimensional Euclidean | Semantic embeddings, symbolic regression       |
 
 **When none of the above fits**, let the data decide:
 
@@ -51,19 +51,19 @@ algebra = CliffordAlgebra(best_p, best_q, best_r, device='cpu')
 
 Every GBN model uses a mix of geometric and non-geometric layers. This table shows which layer to reach for and when to skip it.
 
-| Purpose | Layer | Key property | When to skip |
-|---|---|---|---|
-| Geometric rotation (even versor) | `RotorLayer(grade=2)` | Isometry via exp(-B/2); Spin group | No manifold structure in the input |
-| Grade-k versor transform | `RotorLayer(grade=k)` | Learns grade-k element V; applies hat(V) x V⁻¹ | Grade-2 (default) covers most cases |
-| Reflection (odd versor, unit-constrained) | `ReflectionLayer` | Learns unit vectors; normalizes before applying `x' = -nxn⁻¹`; Pin group | Task has no reflection symmetry |
-| Multi-scale rotation | `MultiRotorLayer(grade=2)` | K-rotor superposition | Simple tasks; use `RotorLayer` first |
-| Multi-scale grade-k versor | `MultiRotorLayer(grade=k)` | K-versor superposition for arbitrary grade | Grade-2 covers most cases |
-| Channel mixing | `CliffordLinear` (traditional backend) | Standard scalar weight matrix | Never — always needed alongside rotors |
-| Constrained channel mixing | `CliffordLinear(backend='rotor')` | ~63% fewer params, bivector-constrained | Need full cross-channel expressivity |
-| Normalization | `CliffordLayerNorm` | Preserves direction, normalizes magnitude | Very shallow models (1–2 layers) |
-| Non-linearity | `GeometricGELU` | Magnitude gating, preserves direction | When coefficient-wise activation is intentional |
-| Grade filtering | `BladeSelector` | Soft attention over basis blades | No a priori grade structure in the task |
-| Task readout | `nn.Linear` on flattened multivector | Unconstrained projection to output space | Never — always use standard linear for readout |
+| Purpose                                   | Layer                                  | Key property                                                             | When to skip                                    |
+| ----------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------- |
+| Geometric rotation (even versor)          | `RotorLayer(grade=2)`                  | Isometry via exp(-B/2); Spin group                                       | No manifold structure in the input              |
+| Grade-k versor transform                  | `RotorLayer(grade=k)`                  | Learns grade-k element V; applies hat(V) x V⁻¹                           | Grade-2 (default) covers most cases             |
+| Reflection (odd versor, unit-constrained) | `ReflectionLayer`                      | Learns unit vectors; normalizes before applying `x' = -nxn⁻¹`; Pin group | Task has no reflection symmetry                 |
+| Multi-scale rotation                      | `MultiRotorLayer(grade=2)`             | K-rotor superposition                                                    | Simple tasks; use `RotorLayer` first            |
+| Multi-scale grade-k versor                | `MultiRotorLayer(grade=k)`             | K-versor superposition for arbitrary grade                               | Grade-2 covers most cases                       |
+| Channel mixing                            | `CliffordLinear` (traditional backend) | Standard scalar weight matrix                                            | Never — always needed alongside rotors          |
+| Constrained channel mixing                | `CliffordLinear(backend='rotor')`      | ~63% fewer params, bivector-constrained                                  | Need full cross-channel expressivity            |
+| Normalization                             | `CliffordLayerNorm`                    | Preserves direction, normalizes magnitude                                | Very shallow models (1–2 layers)                |
+| Non-linearity                             | `GeometricGELU`                        | Magnitude gating, preserves direction                                    | When coefficient-wise activation is intentional |
+| Grade filtering                           | `BladeSelector`                        | Soft attention over basis blades                                         | No a priori grade structure in the task         |
+| Task readout                              | `nn.Linear` on flattened multivector   | Unconstrained projection to output space                                 | Never — always use standard linear for readout  |
 
 The key principle: **`RotorLayer` rotates; `CliffordLinear` mixes channels; `nn.Linear` projects to outputs.** These are three different jobs. Do not conflate them.
 
@@ -301,12 +301,11 @@ print("Done.")
 
 ## 9. Where to Go Next
 
-| If you want... | Read... |
-|---|---|
-| All layers with annotated code examples | `docs/innovations.md` |
-| Step-by-step tutorial with each layer | `docs/tutorial.md` |
-| Formal mathematical definitions | `docs/mathematical.md` |
-| Task-specific configurations (MD17, SR, LQA, EEG) | `docs/tutorial.md` §6 |
-| Design philosophy and motivation | `docs/philosophy.md` |
-| Common errors and troubleshooting | `docs/faq.md` |
-| CLAUDE.md developer reference | `CLAUDE.md` |
+| If you want...                                    | Read...                |
+| ------------------------------------------------- | ---------------------- |
+| All layers with annotated code examples           | `docs/innovations.md`  |
+| Step-by-step tutorial with each layer             | `docs/tutorial.md`     |
+| Formal mathematical definitions                   | `docs/mathematical.md` |
+| Task-specific configurations (MD17, SR, LQA, EEG) | `docs/tutorial.md`     |
+| Design philosophy and motivation                  | `docs/philosophy.md`   |
+| Common errors and troubleshooting                 | `docs/faq.md`          |
