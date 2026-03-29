@@ -78,7 +78,7 @@ class ChainReasoningHead(CliffordModule):
         # Apply all K rotors and weighted-sum their grade-0 outputs
         transformed_g0 = torch.zeros(B, self.num_relations, C, device=x.device, dtype=x.dtype)
         for k, rotor_layer in enumerate(self.relation_rotors):
-            R, R_rev = rotor_layer._compute_rotors(x.device, x.dtype)
+            R, R_rev = rotor_layer._compute_versors(x.device, x.dtype)
             Rx = self.algebra.geometric_product(R.unsqueeze(0), x)
             RxRr = self.algebra.geometric_product(Rx, R_rev.unsqueeze(0))
             transformed_g0[:, k] = RxRr[..., 0]  # [B, C]

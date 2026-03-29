@@ -181,7 +181,7 @@ class MD17InteractionBlock(CliffordModule):
         basis = torch.eye(D, device=device, dtype=dtype)  # [D, D]
 
         # Vectorized sandwich product via precomputed action matrices [K, D, D]
-        R_static, R_static_rev = self.multi_rotor._compute_rotors(device, dtype)
+        R_static, R_static_rev = self.multi_rotor._compute_versors(device, dtype)
         if self.num_static_rotors > 0:
             Rb_s = gp(R_static.unsqueeze(1), basis.unsqueeze(0))   # [K, D, D]
             M_s = gp(Rb_s, R_static_rev.unsqueeze(1))              # [K, D, D]
