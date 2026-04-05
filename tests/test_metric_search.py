@@ -12,12 +12,8 @@ import torch
 from core.algebra import CliffordAlgebra
 
 pytestmark = pytest.mark.slow
-from core.search import (
-    MetricSearch,
-    GeodesicFlow,
-    _SignatureProbe,
-    _apply_biased_init,
-)
+from core.analysis import MetricSearch, GeodesicFlow
+from core.analysis.signature import _SignatureProbe, _apply_biased_init
 
 
 @pytest.fixture(scope="module")

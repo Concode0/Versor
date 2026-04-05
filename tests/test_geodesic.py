@@ -1,4 +1,4 @@
-"""Tests for GeodesicFlow and DimensionLifter in core/search.py.
+"""Tests for GeodesicFlow and DimensionLifter in core/analysis/.
 
 Covers:
 - GeodesicFlow: flow bivectors, coherence, curvature, interpolation,
@@ -11,7 +11,7 @@ import math
 import pytest
 import torch
 from core.algebra import CliffordAlgebra
-from core.search import GeodesicFlow, DimensionLifter, MetricSearch
+from core.analysis import GeodesicFlow, DimensionLifter, MetricSearch
 
 pytestmark = pytest.mark.unit
 
