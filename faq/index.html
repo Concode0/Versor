@@ -1917,7 +1917,7 @@ Or pass <code>device='cpu'</code> when creating the algebra directly.</p>
 <li><strong>Not sure?</strong> Use <code>MetricSearch</code> to discover the optimal signature for your dataset.</li>
 </ul>
 <h3 id="what-is-metricsearch">What is MetricSearch?<a class="headerlink" href="#what-is-metricsearch" title="Permanent link">&para;</a></h3>
-<p>It lifts data into a conformal algebra <code>Cl(X+1, 1)</code>, trains GBN probes with biased initialization (euclidean, minkowski, projective), then analyzes the learned bivector energy distribution to classify each base vector as elliptic, hyperbolic, or null — returning an optimal <code>(p, q, r)</code> 3-tuple. See <code>core/search.py</code>.</p>
+<p>It lifts data into a conformal algebra <code>Cl(X+1, 1)</code>, trains GBN probes with biased initialization (euclidean, minkowski, projective), then analyzes the learned bivector energy distribution to classify each base vector as elliptic, hyperbolic, or null — returning an optimal <code>(p, q, r)</code> 3-tuple. See <code>core/analysis/signature.py</code>.</p>
 <h3 id="how-does-the-cayley-table-caching-work">How does the Cayley table caching work?<a class="headerlink" href="#how-does-the-cayley-table-caching-work" title="Permanent link">&para;</a></h3>
 <p><code>CliffordAlgebra</code> caches multiplication tables by <code>(p, q, r, device)</code>. The first instantiation for a given signature computes the table; subsequent instantiations reuse it. This means creating multiple layers with the same algebra is free.</p>
 <h2 id="tasks">Tasks<a class="headerlink" href="#tasks" title="Permanent link">&para;</a></h2>

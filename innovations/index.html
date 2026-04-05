@@ -1254,7 +1254,7 @@
 <h2 id="5-automatic-metric-search">5. Automatic Metric Search<a class="headerlink" href="#5-automatic-metric-search" title="Permanent link">&para;</a></h2>
 <p><strong>What it does</strong>: Lifts data into a conformal algebra <code>Cl(X+1, 1)</code>, trains multiple GBN probes with biased initialization, then reads the learned bivector energy distribution to infer the optimal <code>(p, q, r)</code> signature.</p>
 <p><strong>How standard DL differs</strong>: Architecture hyperparameters (hidden sizes, attention heads) are manually chosen or grid-searched with no geometric interpretation.</p>
-<p>From <code>core/search.py</code> — <code>MetricSearch._analyze_bivector_energy</code>:</p>
+<p>From <code>core/analysis/signature.py</code> — <code>MetricSearch._analyze_bivector_energy</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># For each basis bivector e_ab, look up bv_sq_scalar:</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1">#   -1 -&gt; elliptic, +1 -&gt; hyperbolic, 0 -&gt; null</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">sq_val</span> <span class="o">=</span> <span class="n">bv_sq</span><span class="p">[</span><span class="n">bv_idx_pos</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
