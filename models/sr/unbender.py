@@ -25,7 +25,7 @@ import torch
 import torch.nn.functional as F
 
 from core.algebra import CliffordAlgebra
-from core.search import GeodesicFlow, MetricSearch
+from core.analysis import GeodesicFlow, MetricSearch
 from models.sr.translator import RotorTranslator, RotorTerm
 from models.sr.net import SRGBN
 from models.sr.utils import (

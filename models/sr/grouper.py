@@ -212,7 +212,7 @@ class VariableGrouper:
 
     def _single_group(self, X, y, var_names):
         """Create a single group encompassing all variables."""
-        from core.search import MetricSearch
+        from core.analysis import MetricSearch
 
         n_vars = X.shape[1]
         indices = list(range(n_vars))
@@ -256,7 +256,7 @@ class VariableGrouper:
 
     def _build_group(self, X, y, indices, var_names):
         """Build a VariableGroup for a subset of variable indices."""
-        from core.search import MetricSearch
+        from core.analysis import MetricSearch
 
         X_sub = X[:, indices]
         names_sub = [var_names[i] for i in indices]
