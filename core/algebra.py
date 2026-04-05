@@ -74,6 +74,7 @@ class CliffordAlgebra(nn.Module):
             cayley_indices, cayley_signs, gp_signs, grade_masks_list,
             rev_signs, bv_sq_scalar, wedge_gp_signs, inner_gp_signs,
             grade_index, rc_action, lc_gp_signs, conj_signs,
+            comm_gp_signs, anti_comm_gp_signs,
         ) = CliffordAlgebra._CACHED_TABLES[cache_key]
 
         # Register all tables as non-persistent buffers so .to(device) moves them
@@ -88,6 +89,8 @@ class CliffordAlgebra(nn.Module):
         self.register_buffer('rc_action', rc_action, persistent=False)
         self.register_buffer('lc_gp_signs', lc_gp_signs, persistent=False)
         self.register_buffer('conj_signs', conj_signs, persistent=False)
+        self.register_buffer('comm_gp_signs', comm_gp_signs, persistent=False)
+        self.register_buffer('anti_comm_gp_signs', anti_comm_gp_signs, persistent=False)
 
         # Grade involution signs: (-1)^k per basis element
         inv_signs = ((-1.0) ** grade_index.float()).to(dtype=conj_signs.dtype)
@@ -181,7 +184,7 @@ class CliffordAlgebra(nn.Module):
     def get_grade_norms(self, mv: torch.Tensor) -> torch.Tensor:
         """Calculates norms per grade. Useful for invariant features.
 
-        Vectorized via scatter_add -- no Python loops over grades.
+        Vectorized via scatter_add.
 
         Args:
             mv (torch.Tensor): Input multivector [..., dim].
@@ -258,6 +261,13 @@ class CliffordAlgebra(nn.Module):
         wedge_gp_signs = torch.gather(wedge_cayley_signs, 1, cayley_indices)
         inner_gp_signs = torch.gather(inner_cayley_signs, 1, cayley_indices)
 
+        # Precomputed signs for commutator [A,B] = AB - BA and
+        # anti-commutator {A,B} = AB + BA (no 1/2 factor).
+        comm_cayley_signs = cayley_signs - cayley_signs.T
+        anti_comm_cayley_signs = cayley_signs + cayley_signs.T
+        comm_gp_signs = torch.gather(comm_cayley_signs, 1, cayley_indices)
+        anti_comm_gp_signs = torch.gather(anti_comm_cayley_signs, 1, cayley_indices)
+
         # Precomputed right-contraction action matrices for bivector-vector case
         # rc_action[b, i, j] encodes how basis bivector b acts on grade-1 vectors
         if self.n >= 2:
@@ -297,7 +307,8 @@ class CliffordAlgebra(nn.Module):
 
         return (cayley_indices, cayley_signs, gp_signs, grade_masks,
                 rev_signs, bv_sq_scalar, wedge_gp_signs, inner_gp_signs,
-                grade_index, rc_action, lc_gp_signs, conj_signs)
+                grade_index, rc_action, lc_gp_signs, conj_signs,
+                comm_gp_signs, anti_comm_gp_signs)
 
     def _compute_signs(self, indices: torch.Tensor, device) -> torch.Tensor:
         """Compute the sign matrix from commutation parity and metric signature.
@@ -372,7 +383,7 @@ class CliffordAlgebra(nn.Module):
     def geometric_product(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         """Computes the Geometric Product.
 
-        Uses vectorized gather + broadcast multiply + sum. No Python loops.
+        Uses vectorized gather + broadcast multiply + sum.
 
         Args:
             A (torch.Tensor): Left operand [..., Dim].
@@ -498,6 +509,38 @@ class CliffordAlgebra(nn.Module):
         """
         B_gathered = B[..., self.cayley_indices]
         return torch.matmul(A.unsqueeze(-2), B_gathered * self.inner_gp_signs).squeeze(-2)
+
+    def commutator(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        """Computes the commutator (Lie bracket): [A, B] = AB - BA.
+
+        Single-pass implementation using precomputed antisymmetric signs
+        (same structure as :meth:`wedge` but without the 1/2 factor).
+
+        Args:
+            A (torch.Tensor): Left operand [..., dim].
+            B (torch.Tensor): Right operand [..., dim].
+
+        Returns:
+            torch.Tensor: Commutator [A, B] [..., dim].
+        """
+        B_gathered = B[..., self.cayley_indices]
+        return torch.matmul(A.unsqueeze(-2), B_gathered * self.comm_gp_signs).squeeze(-2)
+
+    def anti_commutator(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        """Computes the anti-commutator: {A, B} = AB + BA.
+
+        Single-pass implementation using precomputed symmetric signs
+        (same structure as :meth:`inner_product` but without the 1/2 factor).
+
+        Args:
+            A (torch.Tensor): Left operand [..., dim].
+            B (torch.Tensor): Right operand [..., dim].
+
+        Returns:
+            torch.Tensor: Anti-commutator {A, B} [..., dim].
+        """
+        B_gathered = B[..., self.cayley_indices]
+        return torch.matmul(A.unsqueeze(-2), B_gathered * self.anti_comm_gp_signs).squeeze(-2)
 
     def blade_inverse(self, blade: torch.Tensor) -> torch.Tensor:
         """Compute the inverse of a blade: B^{-1} = B_rev / <B * B_rev>_0.
