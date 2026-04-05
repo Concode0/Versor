@@ -68,7 +68,7 @@ class DEAPEEGTask(BaseTask):
     def _compute_profiles(self, group_sizes):
         """Compute uncertainty (U) and Procrustes alignment (V) per region."""
         try:
-            from core.search import compute_uncertainty_and_alignment
+            from core.analysis import compute_uncertainty_and_alignment
             from datalib.deap import DEAPDataset
         except ImportError:
             logger.warning("Profiler unavailable, skipping alignment computation.")

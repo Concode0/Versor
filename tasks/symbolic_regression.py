@@ -113,7 +113,7 @@ class SRTask(BaseTask):
 
     def _run_metric_search(self, cfg):
         """Auto-discover optimal (p,q,r) via MetricSearch."""
-        from core.search import MetricSearch
+        from core.analysis import MetricSearch
         import numpy as np
 
         cache_dir = cfg.dataset.get("cache_dir", "./data/pmlb_cache")
