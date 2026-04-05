@@ -37,7 +37,7 @@ The signature $Cl(p, q, r)$ determines what the algebra "knows" about your geome
 **When none of the above fits**, let the data decide:
 
 ```python
-from core.search import MetricSearch
+from core.analysis import MetricSearch
 
 best_p, best_q, best_r = MetricSearch(device='cpu').search(your_data_tensor)
 algebra = CliffordAlgebra(best_p, best_q, best_r, device='cpu')

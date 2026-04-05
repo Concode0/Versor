@@ -270,7 +270,7 @@ loss = iso_loss(output, input)
 Don't know the right $(p, q, r)$? Let Versor find it:
 
 ```python
-from core.search import MetricSearch
+from core.analysis import MetricSearch
 
 data = torch.randn(100, 6)  # 6D data
 searcher = MetricSearch(device='cpu')

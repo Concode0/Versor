@@ -102,7 +102,7 @@ Significantly fewer. A RotorLayer in $Cl(3,0)$ with $C$ channels learns $C \time
 - **Not sure?** Use `MetricSearch` to discover the optimal signature for your dataset.
 
 ### What is MetricSearch?
-It lifts data into a conformal algebra `Cl(X+1, 1)`, trains GBN probes with biased initialization (euclidean, minkowski, projective), then analyzes the learned bivector energy distribution to classify each base vector as elliptic, hyperbolic, or null — returning an optimal `(p, q, r)` 3-tuple. See `core/search.py`.
+It lifts data into a conformal algebra `Cl(X+1, 1)`, trains GBN probes with biased initialization (euclidean, minkowski, projective), then analyzes the learned bivector energy distribution to classify each base vector as elliptic, hyperbolic, or null — returning an optimal `(p, q, r)` 3-tuple. See `core/analysis/signature.py`.
 
 ### How does the Cayley table caching work?
 `CliffordAlgebra` caches multiplication tables by `(p, q, r, device)`. The first instantiation for a given signature computes the table; subsequent instantiations reuse it. This means creating multiple layers with the same algebra is free.

@@ -14,7 +14,12 @@ The mathematical kernel of Versor.
 ## Decomposition
 ::: core.decomposition
 
-## Signature Search
-::: core.search.MetricSearch
-::: core.search.GeodesicFlow
-::: core.search.DimensionLifter
+## Analysis
+::: core.analysis.MetricSearch
+::: core.analysis.GeodesicFlow
+::: core.analysis.DimensionLifter
+::: core.analysis.GeometricAnalyzer
+::: core.analysis.SpectralAnalyzer
+::: core.analysis.SymmetryDetector
+::: core.analysis.CommutatorAnalyzer
+::: core.analysis.EffectiveDimensionAnalyzer

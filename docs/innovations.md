@@ -143,7 +143,7 @@ The key insight: because Versor parameterizes rotors via bivectors (the Lie alge
 
 **How standard DL differs**: Architecture hyperparameters (hidden sizes, attention heads) are manually chosen or grid-searched with no geometric interpretation.
 
-From `core/search.py` — `MetricSearch._analyze_bivector_energy`:
+From `core/analysis/signature.py` — `MetricSearch._analyze_bivector_energy`:
 
 ```python
 # For each basis bivector e_ab, look up bv_sq_scalar:
