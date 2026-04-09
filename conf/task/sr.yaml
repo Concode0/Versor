@@ -45,6 +45,8 @@ iterative:
   r2_target: 0.999
   curvature_threshold: 0.05
   coherence_degradation_threshold: 0.30
+  graph_guided: true
+  cross_edge_top_k: 5
 
 implicit:
   mode: "auto"
@@ -55,6 +57,10 @@ grouping:
   enabled: true
   max_groups: 4
   min_group_size: 2
+  sample_size: 500
+  commutator_weight: 0.4
+  coherence_weight: 0.3
+  spectral_weight: 0.3
 
 svd:
   warmstart: true

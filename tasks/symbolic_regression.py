@@ -89,6 +89,7 @@ class SRTask(BaseTask):
             'soft_rejection_threshold': cfg.get("rejection", {}).get("soft_threshold", 0.01),
             'mother_cross_threshold': cfg.get("mother_algebra", {}).get("cross_term_threshold", 0.01),
             'basis_config': dict(cfg.get("basis", {})),
+            'grouping_config': dict(cfg.get("grouping", {})),
         })
 
         super().__init__(cfg)

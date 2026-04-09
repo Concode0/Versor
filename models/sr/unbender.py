@@ -86,6 +86,7 @@ class UnbendingResult:
 class _PrepResult:
     """Internal result of Phase 0 data preparation."""
     groups: list
+    relationship_graph: object  # RelationshipGraph or None
     implicit_form: object  # ImplicitFormulation or None
     svd_Vt: np.ndarray
     svd_S: np.ndarray
@@ -123,6 +124,9 @@ class IterativeUnbender:
         soft_rejection_threshold=0.01,
         mother_cross_threshold=0.01,
         basis_config=None,
+        graph_guided=True,
+        cross_edge_top_k=5,
+        grouping_config=None,
     ):
         self.in_features = in_features
         self.device = device
@@ -147,6 +151,9 @@ class IterativeUnbender:
         self.soft_rejection_threshold = soft_rejection_threshold
         self.mother_cross_threshold = mother_cross_threshold
         self.basis_config = basis_config or {}
+        self.graph_guided = graph_guided
+        self.cross_edge_top_k = cross_edge_top_k
+        self.grouping_config = grouping_config or {}
         # Populated by basis expansion (if any) for formula assembly
         self._basis_result = None
 
@@ -227,12 +234,12 @@ class IterativeUnbender:
             all_ops.extend(["sub"] * len(terms))
             all_stages.extend(stages)
 
-        # Phase 2: Mother algebra cross-terms
+        # Phase 2: Mother algebra cross-terms (graph-guided)
         mother_cross_energy = 0.0
         if len(prep.groups) > 1:
             logger.info("Phase 2: Mother algebra cross-term discovery")
             cross_terms, cross_energy = self._mother_algebra_joint(
-                prep.groups, X_orig, y_orig, X_norm,
+                prep.groups, X_orig, y_orig, X_norm, prep,
             )
             all_terms.extend(cross_terms)
             all_ops.extend(["sub"] * len(cross_terms))
@@ -264,7 +271,8 @@ class IterativeUnbender:
                 target_var_idx=X_norm.shape[1], mode="implicit",
             )
             fallback_prep = _PrepResult(
-                groups=prep.groups, implicit_form=fallback_form,
+                groups=prep.groups, relationship_graph=prep.relationship_graph,
+                implicit_form=fallback_form,
                 svd_Vt=prep.svd_Vt, svd_S=prep.svd_S,
             )
             impl_terms, impl_stages = self._process_group_implicit(
@@ -309,24 +317,37 @@ class IterativeUnbender:
     # =======================================================================
 
     def _prepare_data(self, X_orig, y_orig, X_norm, y_norm, var_names):
-        """SVD alignment, variable grouping, implicit mode probe."""
+        """SVD alignment, variable grouping (with relationship graph),
+        implicit mode probe with geometric criteria."""
         # SVD align
         X_c = X_orig - X_orig.mean(axis=0)
         S, Vt = safe_svd(X_c)
         if S is None:
             S, Vt = np.ones(X_orig.shape[1]), np.eye(X_orig.shape[1])
 
-        # Variable grouping
+        # Variable grouping — now returns (groups, relationship_graph)
+        rel_graph = None
         if self.grouping_enabled:
             from models.sr.grouper import VariableGrouper
+            gcfg = self.grouping_config
             grouper = VariableGrouper(
                 max_groups=self.max_groups, device=self.device,
+                sample_size=gcfg.get("sample_size", 500),
+                commutator_weight=gcfg.get("commutator_weight", 0.4),
+                coherence_weight=gcfg.get("coherence_weight", 0.3),
+                spectral_weight=gcfg.get("spectral_weight", 0.3),
             )
-            groups = grouper.group(X_orig, y_orig, var_names)
+            groups, rel_graph = grouper.group(X_orig, y_orig, var_names)
         else:
             groups = [self._single_group_fallback(X_orig, y_orig, var_names, Vt)]
 
-        # Implicit mode probe
+        # Build geometric report from relationship graph for implicit solver
+        geo_report = None
+        if rel_graph is not None:
+            geo_report = rel_graph.geometric_report()
+            geo_report["ambient_dim"] = X_orig.shape[1] + 1  # +1 for target y
+
+        # Implicit mode probe (now with geometric criteria)
         implicit_form = None
         if self.implicit_mode != 'explicit' and len(groups) == 1:
             try:
@@ -337,12 +358,14 @@ class IterativeUnbender:
                     jacobian_weight=self.probe_config.get("jacobian_weight", 0.1),
                 )
                 algebra = groups[0].algebra
-                # Subsample for faster/more responsive probing
                 probe_data = torch.cat([X_norm, y_norm], dim=-1)
                 probe_data = subsample(probe_data, 500)
                 X_probe = probe_data[:, :-1]
                 y_probe = probe_data[:, -1:]
-                solver_result = solver.probe_best_mode(algebra, X_probe, y_probe)
+                solver_result = solver.probe_best_mode(
+                    algebra, X_probe, y_probe,
+                    geometric_report=geo_report,
+                )
                 if self.implicit_mode == 'auto':
                     implicit_form = solver_result
                 elif self.implicit_mode == 'implicit':
@@ -351,8 +374,10 @@ class IterativeUnbender:
             except Exception as e:
                 logger.warning(f"Implicit probe failed: {e}")
 
-        return _PrepResult(groups=groups, implicit_form=implicit_form,
-                          svd_Vt=Vt, svd_S=S)
+        return _PrepResult(
+            groups=groups, relationship_graph=rel_graph,
+            implicit_form=implicit_form, svd_Vt=Vt, svd_S=S,
+        )
 
     def _single_group_fallback(self, X_orig, y_orig, var_names, Vt):
         """Create a single VariableGroup without importing VariableGrouper."""
@@ -552,6 +577,10 @@ class IterativeUnbender:
                                  X_norm, y_norm):
         """Explicit single-rotor iterative extraction for one variable group.
 
+        Uses the relationship graph (if available) to guide extraction
+        ordering: strongest edges are extracted first, and rotor bivectors
+        are biased toward the target plane for faster convergence.
+
         Returns:
             (list[RotorTerm], list[StageResult])
         """
@@ -578,6 +607,19 @@ class IterativeUnbender:
             self._measure_coherence(X_group, residual, algebra), 0.5,
         )
 
+        # Graph-guided extraction ordering
+        extraction_order = []
+        if self.graph_guided and prep.relationship_graph is not None:
+            group_edges = prep.relationship_graph.edges_for_group(group_idx)
+            extraction_order = self._plan_extraction_order(
+                group_edges, group,
+            )
+            if extraction_order:
+                logger.info(
+                    f"  Group {group_idx}: graph-guided order with "
+                    f"{len(extraction_order)} target planes"
+                )
+
         terms = []
         stages = []
         ss_tot = np.sum((y_orig - y_orig.mean()) ** 2) + 1e-12
@@ -597,8 +639,14 @@ class IterativeUnbender:
             )
             model = model.to(self.device)
 
-            # SVD warm-start
-            if self.svd_warmstart and group.svd_Vt is not None:
+            # Warm-start: prefer graph-guided plane bias, fall back to SVD
+            plane_biased = False
+            if (self.graph_guided and stage_idx < len(extraction_order)):
+                target = extraction_order[stage_idx]
+                plane_biased = self._bias_rotor_to_plane(
+                    model, target[0], target[1], target[2], algebra,
+                )
+            if not plane_biased and self.svd_warmstart and group.svd_Vt is not None:
                 model.svd_warmstart(group.svd_Vt, algebra)
 
             # Normalize residual for training
@@ -712,6 +760,110 @@ class IterativeUnbender:
 
         return terms, stages
 
+    def _plan_extraction_order(self, group_edges, group):
+        """Plan extraction order from strongest to weakest edges.
+
+        Converts global variable indices in edges to group-local indices
+        and returns a sorted list of (local_var_i, local_var_j, edge_type)
+        tuples for biasing rotor initialization.
+
+        Args:
+            group_edges: list[VariableEdge] for this group, sorted by strength.
+            group: VariableGroup with var_indices.
+
+        Returns:
+            list of (local_i, local_j, edge_type) tuples.
+        """
+        if not group_edges:
+            return []
+
+        # Map global var index -> local index within group
+        global_to_local = {
+            gi: li for li, gi in enumerate(group.var_indices)
+        }
+
+        order = []
+        seen_planes = set()
+        for edge in group_edges:
+            li = global_to_local.get(edge.var_i)
+            lj = global_to_local.get(edge.var_j)
+            if li is None or lj is None:
+                continue
+            plane_key = (min(li, lj), max(li, lj))
+            if plane_key in seen_planes:
+                continue
+            seen_planes.add(plane_key)
+            order.append((li, lj, edge.edge_type))
+
+        return order
+
+    def _bias_rotor_to_plane(self, model, var_i, var_j, edge_type, algebra):
+        """Initialize rotor bivector weights to favor a specific plane.
+
+        Sets the e_{var_i} ^ e_{var_j} component higher than others,
+        giving the optimizer a warm start toward the expected interaction.
+
+        Args:
+            model: SRGBN single-rotor model.
+            var_i: Local variable index (within group).
+            var_j: Local variable index (within group).
+            edge_type: "elliptic", "hyperbolic", or "parabolic".
+            algebra: CliffordAlgebra for this group.
+
+        Returns:
+            True if bias was applied, False otherwise.
+        """
+        if var_i >= algebra.n or var_j >= algebra.n:
+            return False
+
+        # Find the RotorLayer's bivector parameter
+        rotor_layer = None
+        for m in model.modules():
+            if hasattr(m, 'bivector') and isinstance(
+                getattr(m, 'bivector', None), torch.nn.Parameter
+            ):
+                rotor_layer = m
+                break
+
+        if rotor_layer is None:
+            return False
+
+        # Compute the bivector basis index for e_i ^ e_j
+        bv_target = (1 << var_i) | (1 << var_j)
+
+        # Find position of this bivector in the grade-2 subset
+        grade2_mask = algebra.grade_masks[2]
+        grade2_indices = grade2_mask.nonzero(as_tuple=True)[0]
+        target_pos = None
+        for pos, idx in enumerate(grade2_indices):
+            if int(idx) == bv_target:
+                target_pos = pos
+                break
+
+        if target_pos is None:
+            return False
+
+        with torch.no_grad():
+            bv = rotor_layer.bivector  # [C, n_bv] or [n_bv]
+            # Set initial angle based on edge type
+            init_angle = 0.3  # moderate rotation for elliptic
+            if edge_type == "hyperbolic":
+                init_angle = 0.2  # smaller for boosts (exponential growth)
+            elif edge_type == "parabolic":
+                init_angle = 0.5  # larger for shears (linear effect)
+
+            if bv.ndim == 2:
+                # Per-channel: set target plane for all channels
+                bv[:, target_pos] = init_angle
+            elif bv.ndim == 1:
+                bv[target_pos] = init_angle
+
+        logger.info(
+            f"    Biased rotor to plane e{var_i}^e{var_j} "
+            f"({edge_type}, angle={init_angle:.2f})"
+        )
+        return True
+
     def _orthogonal_eliminate(self, data_mv, blade, algebra):
         """Soft GA rejection: preserve subtle terms near threshold.
 
@@ -761,31 +913,224 @@ class IterativeUnbender:
     # Phase 2: Mother Algebra Cross-Terms
     # =======================================================================
 
-    def _mother_algebra_joint(self, groups, X_orig, y_orig, X_norm):
-        """Check cross-group interactions via geometric product in mother algebra.
+    def _mother_algebra_joint(self, groups, X_orig, y_orig, X_norm, prep=None):
+        """Graph-guided cross-term discovery between variable groups.
+
+        Instead of brute-force GP energy checking, uses the relationship
+        graph's cross-group edges to identify which specific group pairs
+        have significant coupling, then trains focused sub-mother algebras
+        for each significant pair.
+
+        Falls back to the legacy full-mother-algebra approach if the
+        relationship graph is unavailable.
 
         Returns:
-            (list[RotorTerm], float): Cross-terms and cross-energy.
+            (list[RotorTerm], float): Cross-terms and total cross-energy.
         """
         if len(groups) < 2:
             return [], 0.0
 
         from models.sr.grouper import VariableGrouper
-        grouper = VariableGrouper(max_groups=self.max_groups, device=self.device)
+        gcfg = self.grouping_config
+        grouper = VariableGrouper(
+            max_groups=self.max_groups, device=self.device,
+            sample_size=gcfg.get("sample_size", 500),
+            commutator_weight=gcfg.get("commutator_weight", 0.4),
+            coherence_weight=gcfg.get("coherence_weight", 0.3),
+            spectral_weight=gcfg.get("spectral_weight", 0.3),
+        )
 
+        # Graph-guided path: use cross-group edges to identify significant pairs
+        graph = prep.relationship_graph if prep is not None else None
+        if graph is not None and self.graph_guided:
+            return self._mother_algebra_graph_guided(
+                groups, X_orig, y_orig, X_norm, graph, grouper,
+            )
+
+        # Legacy fallback: brute-force GP energy check
+        return self._mother_algebra_legacy(
+            groups, X_orig, y_orig, X_norm, grouper,
+        )
+
+    def _mother_algebra_graph_guided(self, groups, X_orig, y_orig, X_norm,
+                                      graph, grouper):
+        """Targeted cross-term discovery using relationship graph edges.
+
+        Only explores group pairs that the graph identifies as having
+        significant cross-group coupling, and biases rotors toward the
+        specific coupling planes.
+        """
+        cross_edges = graph.cross_group_edges()
+        if not cross_edges:
+            logger.info("  No cross-group edges, skipping Phase 2")
+            return [], 0.0
+
+        # Filter to significant edges
+        significant = [
+            e for e in cross_edges if e.strength > self.mother_cross_threshold
+        ]
+        if not significant:
+            logger.info(
+                f"  {len(cross_edges)} cross-edges all below threshold "
+                f"({self.mother_cross_threshold}), skipping"
+            )
+            return [], 0.0
+
+        # Group significant edges by group-pair
+        group_pairs = {}
+        for e in significant:
+            ga = graph.group_assignments.get(e.var_i)
+            gb = graph.group_assignments.get(e.var_j)
+            if ga is None or gb is None or ga == gb:
+                continue
+            pair_key = (min(ga, gb), max(ga, gb))
+            group_pairs.setdefault(pair_key, []).append(e)
+
+        if not group_pairs:
+            return [], 0.0
+
+        # Limit to top-k group pairs by max edge strength
+        pair_list = sorted(
+            group_pairs.items(),
+            key=lambda kv: max(e.strength for e in kv[1]),
+            reverse=True,
+        )[:self.cross_edge_top_k]
+
+        logger.info(
+            f"  Graph-guided Phase 2: {len(pair_list)} group pairs "
+            f"from {len(significant)} significant cross-edges"
+        )
+
+        all_cross_terms = []
+        total_cross_energy = 0.0
+
+        for (g_a, g_b), pair_edges in pair_list:
+            terms, energy = self._train_focused_cross_rotor(
+                groups[g_a], groups[g_b], pair_edges,
+                X_orig, y_orig, X_norm, grouper,
+            )
+            all_cross_terms.extend(terms)
+            total_cross_energy += energy
+
+        return all_cross_terms, total_cross_energy
+
+    def _train_focused_cross_rotor(self, group_a, group_b, pair_edges,
+                                    X_orig, y_orig, X_norm, grouper):
+        """Train a joint rotor for a specific group pair.
+
+        Builds a focused 2-group sub-mother algebra and biases the rotor
+        toward the strongest cross-edge plane.
+
+        Returns:
+            (list[RotorTerm], float): Cross-terms and cross-energy.
+        """
+        try:
+            sub_mother, _ = grouper.build_mother_algebra([group_a, group_b])
+        except Exception as e:
+            logger.warning(f"Sub-mother algebra failed for groups: {e}")
+            return [], 0.0
+
+        # Embed both groups into sub-mother
+        N = X_orig.shape[0]
+        mother_mvs = []
+        for g in [group_a, group_b]:
+            X_g = X_orig[:, g.var_indices]
+            X_g_std = standardize(X_g)
+            n_g = g.algebra.n
+            if X_g_std.shape[1] < n_g:
+                X_g_std = np.column_stack([
+                    X_g_std, np.zeros((N, n_g - X_g_std.shape[1]))
+                ])
+            elif X_g_std.shape[1] > n_g:
+                X_g_std = X_g_std[:, :n_g]
+
+            local_mv = g.algebra.embed_vector(
+                torch.tensor(X_g_std, dtype=torch.float32, device=self.device)
+            )
+            mother_mv = grouper.inject_to_mother(local_mv, g, sub_mother)
+            mother_mvs.append(mother_mv)
+
+        # Check GP grade-2 energy between the two groups
+        gp = sub_mother.geometric_product(mother_mvs[0], mother_mvs[1])
+        bv_mask = sub_mother.grade_masks[2]
+        if bv_mask.device != gp.device:
+            bv_mask = bv_mask.to(gp.device)
+        cross_bv = gp[..., bv_mask]
+        cross_energy = cross_bv.pow(2).mean().item()
+
+        if cross_energy < self.mother_cross_threshold:
+            return [], cross_energy
+
+        logger.info(
+            f"  Cross-energy {cross_energy:.4f} for groups "
+            f"{group_a.var_names} x {group_b.var_names}, training focused rotor"
+        )
+
+        try:
+            n_combined = len(group_a.var_indices) + len(group_b.var_indices)
+            auto = SRGBN.auto_config(N, n_combined, sub_mother.dim)
+            model = SRGBN.single_rotor(
+                sub_mother, n_combined,
+                channels=max(auto["channels"], 8),
+            )
+            model = model.to(self.device)
+
+            # Bias rotor toward strongest cross-edge plane
+            if pair_edges:
+                strongest = pair_edges[0]
+                # Map global var indices to sub-mother local indices
+                combined_indices = group_a.var_indices + group_b.var_indices
+                g2l = {gi: li for li, gi in enumerate(combined_indices)}
+                li = g2l.get(strongest.var_i)
+                lj = g2l.get(strongest.var_j)
+                if li is not None and lj is not None:
+                    self._bias_rotor_to_plane(
+                        model, li, lj, strongest.edge_type, sub_mother,
+                    )
+
+            residual_t = torch.tensor(
+                y_orig, dtype=torch.float32, device=self.device,
+            ).unsqueeze(-1)
+            res_mean = residual_t.mean()
+            res_std = residual_t.std().clamp(min=1e-8)
+            residual_norm = (residual_t - res_mean) / res_std
+
+            # Build input from combined group variables
+            combined_X = np.column_stack([
+                X_orig[:, group_a.var_indices],
+                X_orig[:, group_b.var_indices],
+            ])
+            X_combined_norm = standardize(
+                torch.tensor(combined_X, dtype=torch.float32, device=self.device)
+            )
+
+            model, _, _ = self._train_stage(
+                model, X_combined_norm, residual_norm, sub_mother,
+            )
+
+            translator = RotorTranslator(sub_mother)
+            cross_terms = translator.translate_direct(model)
+            if not cross_terms:
+                cross_terms = translator.translate(model)
+            return cross_terms, cross_energy
+
+        except Exception as e:
+            logger.warning(f"Focused cross-rotor training failed: {e}")
+            return [], cross_energy
+
+    def _mother_algebra_legacy(self, groups, X_orig, y_orig, X_norm, grouper):
+        """Legacy brute-force cross-term discovery (fallback when no graph)."""
         try:
             mother_alg, offsets = grouper.build_mother_algebra(groups)
         except Exception as e:
             logger.warning(f"Mother algebra construction failed: {e}")
             return [], 0.0
 
-        # Embed each group's data into mother algebra
         N = X_orig.shape[0]
         mother_mvs = []
         for g in groups:
             X_g = X_orig[:, g.var_indices]
             X_g_std = standardize(X_g)
-            # Pad to group algebra dim
             n_g = g.algebra.n
             if X_g_std.shape[1] < n_g:
                 X_g_std = np.column_stack([
@@ -800,11 +1145,9 @@ class IterativeUnbender:
             mother_mv = grouper.inject_to_mother(local_mv, g, mother_alg)
             mother_mvs.append(mother_mv)
 
-        # Compute GP between groups -> check grade-2 energy
         cross_energy = 0.0
         if len(mother_mvs) >= 2:
             gp = mother_alg.geometric_product(mother_mvs[0], mother_mvs[1])
-            # Grade-2 energy of cross product
             bv_mask = mother_alg.grade_masks[2]
             if bv_mask.device != gp.device:
                 bv_mask = bv_mask.to(gp.device)
@@ -815,7 +1158,6 @@ class IterativeUnbender:
             logger.info(f"  Cross-energy {cross_energy:.4f} < threshold, no cross-terms")
             return [], cross_energy
 
-        # Train joint single-rotor in mother algebra
         logger.info(f"  Cross-energy {cross_energy:.4f} detected, training joint rotor")
         try:
             auto = SRGBN.auto_config(X_orig.shape[0], self.in_features, mother_alg.dim)
