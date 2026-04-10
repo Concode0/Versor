@@ -16,7 +16,7 @@ intuition and may currently reside ahead of established academic literature.
 
 Please understand that rigorous mathematical proofs or comprehensive citations 
 might be incomplete at this stage. If this geometric hypothesis proves structurally 
-sound, it is planned to be spun off into a dedicated, independent repository 
+sound, it is planned to be spin off into a dedicated, independent repository 
 for detailed research.
 
 ==============================================================================
