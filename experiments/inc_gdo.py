@@ -11,13 +11,13 @@
 VERSOR EXPERIMENT: IDEA INCUBATOR (SPIN-OFF CONCEPT)
 ==============================================================================
 
-This script serves as an early-stage proof-of-concept for radical, non-Euclidean 
-architectures. The concepts demonstrated here are strongly driven by geometric 
+This script serves as an early-stage proof-of-concept for radical, non-Euclidean
+architectures. The concepts demonstrated here are strongly driven by geometric
 intuition and may currently reside ahead of established academic literature.
 
-Please understand that rigorous mathematical proofs or comprehensive citations 
-might be incomplete at this stage. If this geometric hypothesis proves structurally 
-sound, it is planned to be spun off into a dedicated, independent repository 
+Please understand that rigorous mathematical proofs or comprehensive citations
+might be incomplete at this stage. If this geometric hypothesis proves structurally
+sound, it is planned to be spin off into a dedicated, independent repository
 for detailed research.
 
 ==============================================================================
@@ -54,7 +54,7 @@ ignoring the topological structure of the loss landscape. We hypothesize that:
      where Gamma^k_ij are Christoffel symbols from the parameter-space metric G_ij(theta).
      For loss landscapes, a natural metric is G_ij = H_ij + lambda*I (regularized Hessian).
      Since exact computation of the Christoffel symbols Gamma^k_ij requires
-     3rd-order derivatives, we bypass continuous integration entirely. 
+     3rd-order derivatives, we bypass continuous integration entirely.
      Instead, we approximate the natural metric using a pseudo-Hessian diagonal
      (proportional to gradient magnitude) and interpolate this flow with a straight chord
      toward the known target. This 'Geodesic Blend' keeps computational complexity
@@ -90,21 +90,29 @@ from __future__ import annotations
 
 import sys
 import os
+import re
 import argparse
 import math
+import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Callable
+from typing import Dict, List, Optional, Tuple, Callable, Union
 from enum import Enum
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.optim import Optimizer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from core.algebra import CliffordAlgebra
 from layers import RotorLayer, MultiRotorLayer, CliffordLinear, CliffordLayerNorm
 from functional.activation import GeometricGELU
+from optimizers.riemannian import (
+    RiemannianAdam, ExponentialSGD, group_parameters_by_manifold,
+    MANIFOLD_SPIN, MANIFOLD_SPHERE, MANIFOLD_EUCLIDEAN,
+)
+from models.blocks.gbn import GeometricBladeNetwork
 from core.analysis import (
     StatisticalSampler, SamplingConfig,
     EffectiveDimensionAnalyzer,
@@ -124,6 +132,10 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 import numpy as np
 
+
+# ======================================================================
+# Core Data Structures
+# ======================================================================
 
 class CriticalPointType(Enum):
     MINIMUM = "minimum"
@@ -211,7 +223,70 @@ class GDOConfig:
     closure_trust_threshold: float = 0.1
     coherence_gate: float = 0.3
     entropy_exploration_threshold: float = 0.7
+    # Parameter grouping
+    grouping_strategy: str = "geometric"  # "geometric" or "module"
+    min_group_size: int = 4
+    max_groups: int = 16
+    # Coloring algorithm
+    dsatur_enabled: bool = True
+    color_conflict_budget: float = 0.5
+    manifold_compat_constraint: bool = True
+    # Interaction estimation
+    interaction_estimation: str = "efficient"  # "efficient", "fd", "gradient_only"
+    grad_cosine_threshold: float = 0.1
+    # Adaptive rescheduling
+    adaptive_reschedule: bool = True
+    reschedule_interval: int = 50
+    reschedule_loss_delta: float = 0.2
+    reschedule_grad_kl_threshold: float = 0.5
 
+
+# ======================================================================
+# Experiment Infrastructure
+# ======================================================================
+
+@dataclass
+class ExperimentResult:
+    """Collected results from one optimizer run."""
+    name: str
+    optimizer_name: str
+    losses: List[float]
+    wall_times: List[float]
+    metrics: Dict[str, List[float]] = field(default_factory=dict)
+    final_loss: float = 0.0
+    total_wall_time: float = 0.0
+    gdo_diagnostics: Optional[Dict] = None
+    bivector_norms: Optional[List[float]] = None
+    mode_history: Optional[List[str]] = None
+
+
+@dataclass
+class ExperimentConfig:
+    """Configuration for a single experiment."""
+    name: str
+    category: str
+    steps: int
+    lr: float
+    seed: int = 42
+    device: str = 'cpu'
+    algebra_sig: Optional[Tuple[int, int]] = None
+    gdo_config: Optional[GDOConfig] = None
+
+
+EXPERIMENT_REGISTRY: Dict[str, Tuple[Callable, str]] = {}
+
+
+def register_experiment(name: str, category: str):
+    """Decorator for registering experiment functions."""
+    def decorator(fn):
+        EXPERIMENT_REGISTRY[name] = (fn, category)
+        return fn
+    return decorator
+
+
+# ======================================================================
+# GDO Sub-Components (unchanged from original)
+# ======================================================================
 
 class LandscapeTopologySearch:
     """Hessian-based critical point detector using Lanczos iteration.
@@ -261,7 +336,6 @@ class LandscapeTopologySearch:
             g.reshape(-1) if g is not None else torch.zeros(p.numel(), device=p.device)
             for g, p in zip(grads, params)
         ])
-        # Hessian-vector product: grad(g*v) = H*v
         gv = (flat_grad * v.detach()).sum()
         hvp = torch.autograd.grad(gv, params, allow_unused=True)
         return torch.cat([
@@ -272,17 +346,11 @@ class LandscapeTopologySearch:
     def _lanczos_eigenvalues(
         self, loss: torch.Tensor, params: List[torch.Tensor], k: int = 10
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Estimate bottom-k eigenvalues and eigenvectors via Lanczos iteration.
-
-        Returns (eigenvalues [k], eigenvectors [n, k]) sorted ascending.
-        Eigenvectors are approximate Hessian eigenvectors projected back from
-        the Lanczos basis: H_vecs = Q * eigvecs_T where Q is the Lanczos basis.
-        """
+        """Estimate bottom-k eigenvalues and eigenvectors via Lanczos iteration."""
         n = sum(p.numel() for p in params)
         k = min(k, n)
         device = params[0].device
 
-        # Lanczos: build tridiagonal T such that Q^T H Q = T
         alpha = []
         beta = [0.0]
         q_prev = torch.zeros(n, device=device)
@@ -307,13 +375,11 @@ class LandscapeTopologySearch:
 
             q_prev = q_curr
             q_curr = r / b
-            # Re-orthogonalize (modified Gram-Schmidt)
             for qv in Q:
                 q_curr = q_curr - (q_curr * qv).sum() * qv
             q_curr = q_curr / (q_curr.norm() + 1e-12)
             Q.append(q_curr)
 
-        # Build tridiagonal matrix
         m = len(alpha)
         T = torch.zeros(m, m, device=device)
         for i, a in enumerate(alpha):
@@ -322,11 +388,9 @@ class LandscapeTopologySearch:
             T[i, i+1] = b
             T[i+1, i] = b
 
-        # eigh returns ascending eigenvalues and eigenvectors as columns
         eigvals, eigvecs_T = torch.linalg.eigh(T)
-        # Map T-eigenvectors back to parameter space: H_vecs = Q_mat^T @ eigvecs_T
-        Q_mat = torch.stack(Q[:m])          # [m, n]
-        H_vecs = F.normalize(Q_mat.T @ eigvecs_T, dim=0)   # [n, m]
+        Q_mat = torch.stack(Q[:m])
+        H_vecs = F.normalize(Q_mat.T @ eigvecs_T, dim=0)
         return eigvals.detach(), H_vecs.detach()
 
     def check(
@@ -337,7 +401,6 @@ class LandscapeTopologySearch:
         if step % self.detect_every != 0:
             return None
 
-        # Compute gradient norm
         grads = torch.autograd.grad(loss, params, retain_graph=True, allow_unused=True)
         flat_g = torch.cat([
             g.reshape(-1) if g is not None else torch.zeros(p.numel(), device=p.device)
@@ -346,9 +409,8 @@ class LandscapeTopologySearch:
         grad_norm = flat_g.norm().item()
 
         if grad_norm > self.grad_tol * 10:
-            return None  # Not near a critical point
+            return None
 
-        # Near critical point: compute Hessian spectrum and eigenvectors
         flat_p = self._flat_params(params)
         try:
             eigenvalues, eigenvecs = self._lanczos_eigenvalues(
@@ -363,18 +425,7 @@ class LandscapeTopologySearch:
 
 
 class CurvatureProbe:
-    """Deploys lightweight probes to measure local geometry.
-
-    Probes a small sphere around current parameter point to estimate:
-      - Mean curvature: Tr(H) / n
-      - Anisotropy: std(eigenvalues) / mean(|eigenvalues|)
-      - Plateau score: ratio of near-zero curvature directions
-      - Principal curvature directions (for Lorentz warp targeting)
-
-    For f: R^n -> R, the curvature of the graph surface at theta is
-    determined by the shape operator S = H / sqrt(1 + ||grad f||^2).
-    The principal curvatures are eigenvalues of S.
-    """
+    """Deploys lightweight probes to measure local geometry."""
 
     def __init__(
         self,
@@ -390,9 +441,9 @@ class CurvatureProbe:
     class ProbeResult:
         mean_curvature: float
         anisotropy: float
-        plateau_score: float            # fraction of directions with |k| < threshold
-        min_curvature_dir: torch.Tensor # direction of least curvature (for warp)
-        max_curvature_dir: torch.Tensor # direction of most curvature (valley axis)
+        plateau_score: float
+        min_curvature_dir: torch.Tensor
+        max_curvature_dir: torch.Tensor
         grad_norm: float
 
     def probe(
@@ -404,16 +455,13 @@ class CurvatureProbe:
         n = sum(p.numel() for p in params)
         device = params[0].device
 
-        # Random orthogonal directions on S^{n-1}
         dirs = torch.randn(self.n_directions, n, device=device)
         dirs = F.normalize(dirs, dim=-1)
-        # Gram-Schmidt for first few directions
         for i in range(1, min(self.n_directions, 4)):
             for j in range(i):
                 dirs[i] -= (dirs[i] * dirs[j]).sum() * dirs[j]
             dirs[i] = F.normalize(dirs[i], dim=0)
 
-        # Save original params
         orig = [p.data.clone() for p in params]
 
         curvatures = []
@@ -422,7 +470,6 @@ class CurvatureProbe:
 
             for d in dirs:
                 offset = d * self.probe_radius
-                # Perturb +direction
                 idx = 0
                 for p in params:
                     sz = p.numel()
@@ -430,7 +477,6 @@ class CurvatureProbe:
                     idx += sz
                 loss_plus = loss_fn().item()
 
-                # Restore and perturb -direction
                 for p, o in zip(params, orig):
                     p.data.copy_(o)
 
@@ -441,11 +487,9 @@ class CurvatureProbe:
                     idx += sz
                 loss_minus = loss_fn().item()
 
-                # Second directional derivative: (f(+) - 2*f(0) + f(-)) / h^2
                 k = (loss_plus - 2 * loss_0 + loss_minus) / (self.probe_radius ** 2)
                 curvatures.append(k)
 
-                # Restore
                 for p, o in zip(params, orig):
                     p.data.copy_(o)
 
@@ -459,7 +503,6 @@ class CurvatureProbe:
         min_dir = dirs[min_idx]
         max_dir = dirs[max_idx]
 
-        # Gradient norm at current point
         loss_val = loss_fn()
         try:
             grads = torch.autograd.grad(loss_val, params, allow_unused=True)
@@ -482,21 +525,7 @@ class CurvatureProbe:
 
 
 class GeodesicIntegrator:
-    """Approximates geodesic trajectories in parameter space.
-
-    Uses the Riemannian metric G_ij(theta) = H_ij(theta) + lambda*I
-    to define natural distances. Geodesic equation:
-        d^2 theta / dt^2 + Gamma^k_ij (d theta^i/dt)(d theta^j/dt) = 0
-
-    For practical optimization, simplified to natural gradient:
-        theta_{t+1} = theta_t - alpha * G^{-1}(theta_t) * grad L(theta_t)
-
-    This is natural gradient / Fisher-preconditioned gradient with
-    the Hessian as the metric (Amari, 1998).
-
-    When a geodesic to a known lower minimum is available, interpolate
-    toward it rather than following local gradient.
-    """
+    """Approximates geodesic trajectories in parameter space."""
 
     def __init__(
         self,
@@ -511,7 +540,6 @@ class GeodesicIntegrator:
         self._target_loss: Optional[float] = None
 
     def set_target(self, target_params: torch.Tensor, target_loss: float):
-        """Set a known lower critical point as geodesic target."""
         self._target = target_params.clone()
         self._target_loss = target_loss
 
@@ -520,10 +548,6 @@ class GeodesicIntegrator:
         flat_grad: torch.Tensor,
         hessian_diag: torch.Tensor,
     ) -> torch.Tensor:
-        """Precondition gradient by diagonal Hessian (natural gradient approx).
-
-        G^{-1} ~= diag(1 / (|H_ii| + lambda))
-        """
         metric_inv = 1.0 / (hessian_diag.abs() + self.lambda_reg)
         return metric_inv * flat_grad
 
@@ -533,11 +557,6 @@ class GeodesicIntegrator:
         natural_step: torch.Tensor,
         lr: float,
     ) -> torch.Tensor:
-        """Blend natural gradient step with direction toward known target.
-
-        If we know a lower minimum, partially steer toward it along the
-        chord (approximation of geodesic for large steps).
-        """
         step = -lr * natural_step
 
         if self._target is not None:
@@ -545,31 +564,15 @@ class GeodesicIntegrator:
             chord_norm = chord.norm()
             if chord_norm > 1e-8:
                 chord_dir = chord / chord_norm
-                # Project step onto chord direction and complement
                 step_along = (step * chord_dir).sum() * chord_dir
                 step_perp = step - step_along
-                # Bias toward target
                 step = step_perp + step_along + self.geodesic_weight * lr * chord_dir
 
         return step
 
 
 class LorentzWarpOptimizer:
-    """Applies Lorentz-boost-inspired metric warping for plateau escape.
-
-    On a plateau (||grad L|| ~= 0, curvature ~= 0), standard optimizers stall.
-    Inspiration from special relativity: a Lorentz boost along direction u_hat
-    contracts lengths by gamma = 1/sqrt(1 - beta^2). We apply this to the
-    effective learning rate metric.
-
-    Concretely:
-    - Detect plateau: grad_norm < eps AND plateau_score > threshold
-    - Compute boost direction: min-curvature direction from probe
-    - Apply boosted LR: lr_eff_i = lr * (1 + (gamma-1) * |u_hat_i|^2)
-      This gives larger steps along the plateau direction, smaller in sharp valleys.
-    - beta increases as we stay on the plateau (escalating boost)
-    - beta decays when we escape (grad_norm recovers)
-    """
+    """Applies Lorentz-boost-inspired metric warping for plateau escape."""
 
     def __init__(
         self,
@@ -599,10 +602,6 @@ class LorentzWarpOptimizer:
         plateau_score: float,
         min_curvature_dir: torch.Tensor,
     ) -> bool:
-        """Update plateau detection state. Returns True if on plateau.
-
-        Must be called only on fresh probe steps (not every optimizer step).
-        """
         on_plateau = (
             grad_norm < self.plateau_grad_thresh
             and plateau_score > self.plateau_curvature_thresh
@@ -622,14 +621,12 @@ class LorentzWarpOptimizer:
         return on_plateau
 
     def warped_lr(self, lr: float, flat_grad_shape: int, device: torch.device) -> torch.Tensor:
-        """Compute per-parameter effective learning rate with Lorentz warp."""
         lr_vec = torch.ones(flat_grad_shape, device=device) * lr
 
         if self._on_plateau and self._boost_dir is not None and self._beta > 0.01:
             g = self.gamma
             d = self._boost_dir
             if d.shape[0] == flat_grad_shape:
-                # Lorentz length contraction: larger step along the plateau direction
                 boost_factor = 1.0 + (g - 1.0) * d ** 2
                 lr_vec = lr_vec * boost_factor
 
@@ -637,24 +634,7 @@ class LorentzWarpOptimizer:
 
 
 class GeometricParameterController:
-    """Geometrically-verified partial parameter updates via commutator coloring.
-
-    Combines four geometric signals to control parameter group updates:
-
-    1. **FIM** (Fisher Information Matrix) -- diagonal approximation from
-       gradient outer products.  High FIM = sensitive → smaller steps.
-    2. **Lie Bracket Closure Error** -- from CoreCommutatorAnalyzer.
-       Low error → bivectors form a Lie subalgebra → trust larger updates.
-    3. **Bivector Coherence** -- from GeodesicFlow.  High coherence →
-       parameters are structurally aligned → update confidently.
-    4. **Grade Entropy** -- grade energy viewed as a probability distribution.
-       High entropy → still exploring grade structure → allow larger steps.
-
-    Pipeline:
-      a) Build hybrid commutativity scores (FD cross-Hessian + algebraic)
-      b) Greedy graph coloring → parallel update schedule
-      c) Per-group scale = f(FIM, closure, coherence, entropy)
-    """
+    """Geometrically-verified partial parameter updates via commutator coloring."""
 
     def __init__(
         self,
@@ -665,6 +645,7 @@ class GeometricParameterController:
         coherence_gate: float = 0.3,
         entropy_exploration_threshold: float = 0.7,
         fd_step: float = 1e-3,
+        config: Optional[GDOConfig] = None,
     ):
         self.algebra = algebra
         self.commutator_threshold = commutator_threshold
@@ -673,8 +654,8 @@ class GeometricParameterController:
         self.coherence_gate = coherence_gate
         self.entropy_exploration_threshold = entropy_exploration_threshold
         self.fd_step = fd_step
+        self.config = config or GDOConfig()
 
-        # Core analyzers (only when algebra is available)
         self.core_comm: Optional[CoreCommutatorAnalyzer] = None
         self.spectral: Optional[SpectralAnalyzer] = None
         self.geodesic: Optional[GeodesicFlow] = None
@@ -682,10 +663,6 @@ class GeometricParameterController:
             self.core_comm = CoreCommutatorAnalyzer(algebra)
             self.spectral = SpectralAnalyzer(algebra)
             self.geodesic = GeodesicFlow(algebra, k=8)
-
-    # ------------------------------------------------------------------
-    # FIM diagonal (loss-based, works for any model)
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _flat_group_grad(
@@ -707,10 +684,6 @@ class GeometricParameterController:
         param_groups: List[List[nn.Parameter]],
         n_samples: int = 10,
     ) -> Dict[int, torch.Tensor]:
-        """Per-group diagonal Fisher Information approximation.
-
-        FIM_diag ≈ E[g^2] where g = grad(loss).  High FIM = sensitive param.
-        """
         device = next(model.parameters()).device
         fim: Dict[int, torch.Tensor] = {}
         for g_idx, group in enumerate(param_groups):
@@ -725,18 +698,12 @@ class GeometricParameterController:
             fim[g_idx] = accum / max(n_samples, 1)
         return fim
 
-    # ------------------------------------------------------------------
-    # Geometric scores (algebra-based, requires RotorLayer params)
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _extract_mv_params(model: nn.Module) -> Optional[torch.Tensor]:
-        """Extract learned multivector parameters from RotorLayer / MultiRotorLayer."""
         mv_list: List[torch.Tensor] = []
         for m in model.modules():
             if isinstance(m, RotorLayer):
-                bv = m.grade_weights.detach()  # [channels, num_grade_elems]
-                # Embed into full multivector space
+                bv = m.grade_weights.detach()
                 full = torch.zeros(
                     bv.shape[0], m.algebra.dim,
                     device=bv.device, dtype=bv.dtype,
@@ -744,7 +711,7 @@ class GeometricParameterController:
                 full[:, m.grade_indices] = bv
                 mv_list.append(full)
             elif isinstance(m, MultiRotorLayer):
-                bv = m.rotor_grade_weights.detach()  # [num_rotors, num_grade_elems]
+                bv = m.rotor_grade_weights.detach()
                 full = torch.zeros(
                     bv.shape[0], m.algebra.dim,
                     device=bv.device, dtype=bv.dtype,
@@ -753,10 +720,9 @@ class GeometricParameterController:
                 mv_list.append(full)
         if not mv_list:
             return None
-        return torch.cat(mv_list, dim=0)  # [K, dim]
+        return torch.cat(mv_list, dim=0)
 
     def compute_geometric_scores(self, model: nn.Module) -> Dict:
-        """Compute Lie closure, coherence, and grade entropy from learned bivectors."""
         if self.core_comm is None:
             return {}
 
@@ -766,7 +732,6 @@ class GeometricParameterController:
 
         result: Dict = {}
 
-        # 1. Commutator analysis → commutativity matrix + Lie bracket closure
         try:
             comm_result = self.core_comm.analyze(mv_params)
             result["comm_result"] = comm_result
@@ -777,7 +742,6 @@ class GeometricParameterController:
         except Exception:
             pass
 
-        # 2. Bivector coherence via GeodesicFlow
         if self.geodesic is not None and mv_params.shape[0] >= 3:
             try:
                 k_actual = min(self.geodesic.k, mv_params.shape[0] - 1)
@@ -787,14 +751,12 @@ class GeometricParameterController:
             except Exception:
                 pass
 
-        # 3. Grade entropy via SpectralAnalyzer
         if self.spectral is not None:
             try:
                 grade_energy = self.spectral.grade_energy_spectrum(
                     mv_params.unsqueeze(1)
                 )
                 result["grade_energy"] = grade_energy
-                # Normalize to probability distribution → entropy
                 ge = grade_energy.clamp(min=0)
                 total = ge.sum()
                 if total > 1e-8:
@@ -809,16 +771,11 @@ class GeometricParameterController:
 
         return result
 
-    # ------------------------------------------------------------------
-    # Hybrid scoring: FD cross-Hessian + algebraic commutativity
-    # ------------------------------------------------------------------
-
     def _fd_cross_hessian(
         self,
         loss_fn: Callable[[], torch.Tensor],
         param_groups: List[List[nn.Parameter]],
     ) -> Dict[Tuple[int, int], float]:
-        """FD cross-Hessian scores (original algorithm from CommutatorAnalyzer)."""
         if not param_groups:
             return {}
 
@@ -874,21 +831,17 @@ class GeometricParameterController:
         param_groups: List[List[nn.Parameter]],
         geometric_scores: Dict,
     ) -> Dict[Tuple[int, int], float]:
-        """Blend FD cross-Hessian with algebraic commutativity matrix."""
         fd_scores = self._fd_cross_hessian(loss_fn, param_groups)
 
         if "comm_result" not in geometric_scores:
             return fd_scores
 
         alg_matrix = geometric_scores["comm_result"].commutativity_matrix
-        n = len(param_groups)
         alg_n = alg_matrix.shape[0]
 
         for (i, j), fd_score in fd_scores.items():
-            # Map group indices to algebra dimensions (clamped)
             ai, aj = min(i, alg_n - 1), min(j, alg_n - 1)
             alg_score = alg_matrix[ai, aj].item()
-            # Normalize algebraic score to [0, 1] range
             alg_max = alg_matrix.max().item()
             if alg_max > 1e-8:
                 alg_score /= alg_max
@@ -896,14 +849,97 @@ class GeometricParameterController:
 
         return fd_scores
 
-    # ------------------------------------------------------------------
-    # Greedy graph coloring
-    # ------------------------------------------------------------------
+    def build_hybrid_scores_efficient(
+        self,
+        loss_fn: Callable[[], torch.Tensor],
+        param_groups: List[List[nn.Parameter]],
+        geometric_scores: Dict,
+    ) -> Dict[Tuple[int, int], float]:
+        """Cheaper interaction estimation using gradient cosine + selective HVP."""
+        n = len(param_groups)
+        if n < 2:
+            return {}
+
+        device = param_groups[0][0].device
+        scores: Dict[Tuple[int, int], float] = {
+            (i, j): 0.0 for i in range(n) for j in range(i + 1, n)
+        }
+
+        # Tier 0: algebraic scores from commutativity matrix (free)
+        alg_scores: Dict[Tuple[int, int], float] = {}
+        if "comm_result" in geometric_scores:
+            alg_matrix = geometric_scores["comm_result"].commutativity_matrix
+            alg_n = alg_matrix.shape[0]
+            alg_max = alg_matrix.max().item()
+            for i in range(n):
+                for j in range(i + 1, n):
+                    ai, aj = min(i, alg_n - 1), min(j, alg_n - 1)
+                    val = alg_matrix[ai, aj].item()
+                    if alg_max > 1e-8:
+                        val /= alg_max
+                    alg_scores[(i, j)] = val
+
+        # Tier 1: gradient-based interaction via norm sensitivity
+        # Compute per-group gradient vectors
+        group_grads: List[torch.Tensor] = []
+        for g in param_groups:
+            try:
+                group_grads.append(self._flat_group_grad(loss_fn, g, device))
+            except Exception:
+                group_grads.append(torch.zeros(
+                    sum(p.numel() for p in g), device=device
+                ))
+
+        # Measure interaction via gradient norm correlation:
+        # For each pair (i,j), compare how similar the gradient norms
+        # are across components — high correlation = potential coupling
+        group_norms = torch.tensor(
+            [g.norm().item() for g in group_grads], device=device,
+        )
+
+        cosine_scores: Dict[Tuple[int, int], float] = {}
+        for i in range(n):
+            gi_norm = group_norms[i].item()
+            if gi_norm < 1e-10:
+                continue
+            # Perturb group i's params slightly, measure grad change in j
+            gi_dir = group_grads[i] / (gi_norm + 1e-8)
+            orig_data = {id(p): p.data.clone() for p in param_groups[i]}
+            step = gi_dir * self.fd_step
+            ptr = 0
+            for p in param_groups[i]:
+                sz = p.numel()
+                p.data -= step[ptr:ptr + sz].reshape(p.shape)
+                ptr += sz
+
+            for j in range(i + 1, n):
+                try:
+                    gj_new = self._flat_group_grad(loss_fn, param_groups[j], device)
+                    delta = (gj_new - group_grads[j]).norm().item()
+                    gj_norm = group_norms[j].item()
+                    cosine_scores[(i, j)] = max(
+                        cosine_scores.get((i, j), 0.0),
+                        delta / (gj_norm + 1e-8),
+                    )
+                except Exception:
+                    pass
+
+            for p in param_groups[i]:
+                p.data.copy_(orig_data[id(p)])
+
+        # Blend Tier 0 (algebraic) + Tier 1 (FD cross-sensitivity)
+        for i in range(n):
+            for j in range(i + 1, n):
+                key = (i, j)
+                alg = alg_scores.get(key, 0.0)
+                fd = cosine_scores.get(key, 0.0)
+                scores[key] = 0.4 * alg + 0.6 * fd
+
+        return scores
 
     def parallel_groups(
         self, scores: Dict[Tuple[int, int], float], n_groups: int
     ) -> List[List[int]]:
-        """Greedy graph coloring on hybrid commutativity scores."""
         conflicts = {i: set() for i in range(n_groups)}
         for (i, j), s in scores.items():
             if s > self.commutator_threshold:
@@ -924,9 +960,106 @@ class GeometricParameterController:
             schedule[c].append(i)
         return schedule
 
-    # ------------------------------------------------------------------
-    # Per-group update scale from 4 geometric signals
-    # ------------------------------------------------------------------
+    def parallel_groups_dsatur(
+        self,
+        scores: Dict[Tuple[int, int], float],
+        n_groups: int,
+        group_meta: Optional[List[Dict]] = None,
+    ) -> List[List[int]]:
+        """DSatur coloring with soft conflict budget and manifold constraints."""
+        if n_groups <= 1:
+            return [[i] for i in range(n_groups)]
+
+        budget = self.config.color_conflict_budget
+        use_manifold = (self.config.manifold_compat_constraint
+                        and group_meta is not None)
+
+        # Build weighted adjacency
+        adj: Dict[int, Dict[int, float]] = {i: {} for i in range(n_groups)}
+        for (i, j), w in scores.items():
+            if w > 0:
+                adj[i][j] = w
+                adj[j][i] = w
+
+        # DSatur state
+        colors = [-1] * n_groups
+        # Per-node: set of distinct colors in neighborhood
+        neighbor_colors: List[set] = [set() for _ in range(n_groups)]
+        # Per-color: list of node indices and total weight per node
+        color_members: Dict[int, List[int]] = {}
+
+        for _ in range(n_groups):
+            # Pick uncolored node with highest saturation, break ties by
+            # weighted degree to colored neighbors
+            best_node = -1
+            best_sat = -1
+            best_wdeg = -1.0
+            for node in range(n_groups):
+                if colors[node] >= 0:
+                    continue
+                sat = len(neighbor_colors[node])
+                wdeg = sum(
+                    adj[node].get(nb, 0.0)
+                    for nb in range(n_groups)
+                    if colors[nb] >= 0
+                )
+                if (sat > best_sat
+                        or (sat == best_sat and wdeg > best_wdeg)):
+                    best_node = node
+                    best_sat = sat
+                    best_wdeg = wdeg
+            if best_node < 0:
+                break
+
+            # Find valid color for best_node
+            node_manifold = (group_meta[best_node].get("manifold")
+                             if use_manifold else None)
+            assigned_color = -1
+            # Try existing colors first
+            for c in sorted(color_members.keys()):
+                # Hard conflict: no edge above threshold
+                has_hard_conflict = any(
+                    adj[best_node].get(m, 0.0) > self.commutator_threshold
+                    for m in color_members[c]
+                )
+                if has_hard_conflict:
+                    continue
+                # Soft budget: total weight within color
+                total_weight = sum(
+                    adj[best_node].get(m, 0.0) for m in color_members[c]
+                )
+                if total_weight > budget:
+                    continue
+                # Manifold compatibility
+                if use_manifold:
+                    compat = all(
+                        group_meta[m].get("manifold") == node_manifold
+                        or adj[best_node].get(m, 0.0) == 0.0
+                        for m in color_members[c]
+                    )
+                    if not compat:
+                        continue
+                assigned_color = c
+                break
+
+            if assigned_color < 0:
+                # New color needed
+                assigned_color = len(color_members)
+
+            colors[best_node] = assigned_color
+            color_members.setdefault(assigned_color, []).append(best_node)
+
+            # Update saturation of uncolored neighbors
+            for nb in adj[best_node]:
+                if colors[nb] < 0:
+                    neighbor_colors[nb].add(assigned_color)
+
+        n_colors = max(colors) + 1 if any(c >= 0 for c in colors) else 1
+        schedule: List[List[int]] = [[] for _ in range(n_colors)]
+        for i, c in enumerate(colors):
+            if c >= 0:
+                schedule[c].append(i)
+        return schedule
 
     def compute_group_scales(
         self,
@@ -934,10 +1067,8 @@ class GeometricParameterController:
         fim_diag: Dict[int, torch.Tensor],
         geometric_scores: Dict,
     ) -> List[float]:
-        """Per-group update scale = f(FIM, closure, coherence, entropy)."""
         scales = []
         for g_idx in range(len(param_groups)):
-            # 1. FIM sensitivity: high FIM → small scale
             fim_g = fim_diag.get(g_idx)
             if fim_g is not None and fim_g.numel() > 0:
                 fim_sensitivity = fim_g.mean().item()
@@ -945,7 +1076,6 @@ class GeometricParameterController:
             else:
                 fim_scale = 1.0
 
-            # 2. Lie bracket closure: low error → trust larger steps
             closure_err = geometric_scores.get("closure_error", 0.5)
             if closure_err < self.closure_trust_threshold:
                 closure_scale = 1.5
@@ -954,11 +1084,9 @@ class GeometricParameterController:
             else:
                 closure_scale = 1.0
 
-            # 3. Coherence gate: low coherence → reduce update
             coherence = geometric_scores.get("coherence", 0.5)
             coherence_scale = max(0.3, min(1.0, coherence / self.coherence_gate))
 
-            # 4. Grade entropy: high → exploring → allow larger steps
             entropy = geometric_scores.get("grade_entropy", 0.5)
             if entropy > self.entropy_exploration_threshold:
                 entropy_scale = 1.2
@@ -971,31 +1099,38 @@ class GeometricParameterController:
 
         return scales
 
-    # ------------------------------------------------------------------
-    # Top-level: analyze and produce schedule + scales
-    # ------------------------------------------------------------------
-
     def analyze_and_schedule(
         self,
         model: nn.Module,
         loss_fn: Callable[[], torch.Tensor],
         param_groups: List[List[nn.Parameter]],
+        group_meta: Optional[List[Dict]] = None,
     ) -> Tuple[List[List[int]], List[float], Dict]:
-        """Full pipeline: FIM → geometric scores → hybrid coloring → scales.
-
-        Returns (schedule, scales, diagnostics).
-        """
-        # 1. FIM diagonal
         fim_diag = self.compute_fim_diagonal(loss_fn, model, param_groups)
-
-        # 2. Geometric scores (if algebra available)
         geo_scores = self.compute_geometric_scores(model)
 
-        # 3. Hybrid commutator scores → greedy coloring
-        hybrid_scores = self.build_hybrid_scores(loss_fn, param_groups, geo_scores)
-        schedule = self.parallel_groups(hybrid_scores, len(param_groups))
+        # Select interaction estimation strategy
+        if self.config.interaction_estimation == "efficient":
+            hybrid_scores = self.build_hybrid_scores_efficient(
+                loss_fn, param_groups, geo_scores,
+            )
+        elif self.config.interaction_estimation == "gradient_only":
+            hybrid_scores = self.build_hybrid_scores_efficient(
+                loss_fn, param_groups, {},
+            )
+        else:
+            hybrid_scores = self.build_hybrid_scores(
+                loss_fn, param_groups, geo_scores,
+            )
 
-        # 4. Per-group update scales
+        # Select coloring algorithm
+        if self.config.dsatur_enabled:
+            schedule = self.parallel_groups_dsatur(
+                hybrid_scores, len(param_groups), group_meta,
+            )
+        else:
+            schedule = self.parallel_groups(hybrid_scores, len(param_groups))
+
         scales = self.compute_group_scales(param_groups, fim_diag, geo_scores)
 
         diagnostics = {
@@ -1009,47 +1144,7 @@ class GeometricParameterController:
 
 
 class DimensionalLiftOracle:
-    """Escape local minima via lift -> oracle search -> pull-down.
-
-    Flow when stuck:
-
-      1. DETECT
-         Monitor loss improvement. If no progress for `patience` steps, trigger.
-
-      2. LIFT (adaptive sigma + biased candidates)
-         Generate k candidate starting points. Two strategies based on geometry:
-
-         a) SADDLE DETECTION: if probe found negative-curvature directions,
-            push along them -- those are true downhill escape directions.
-            Also push along the anti-gradient of the loss at slightly perturbed
-            positions: grad(theta + eps*d) points back toward current basin;
-            -grad points away from it.
-
-         b) TRUE LOCAL MINIMUM (all curvatures positive): random orthonormal
-            directions, but with ADAPTIVE SIGMA that doubles on each fail.
-            Eventually sigma is large enough to cross the basin boundary ridge.
-
-         Candidates:
-             psi_0 = theta + sigma * d_probe   (min-curvature direction from probe)
-             psi_1 = theta - sigma * d_probe   (opposite sign)
-             psi_2..k = theta + sigma * d_rand  (random orthonormal)
-         Anti-gradient biasing: for each psi_j, compute g_j = grad L(psi_j), then
-         also try theta + sigma * (-g_j / ||g_j||) as an additional candidate.
-
-      3. ORACLE SEARCH
-         For each candidate psi_j, run `oracle_steps` of Adam independently.
-         Fresh optimizer state per candidate (no momentum bias from stuck region).
-
-      4. PULL-DOWN
-         Evaluate L(psi_j*) for all optimized candidates.
-         Return theta_new = argmin_j L(psi_j*).
-         If theta_new improves on current loss, accept. Otherwise try soft blend:
-             theta_blend = theta + alpha * (theta_new - theta)   alpha in (0, 1]
-
-      5. WARP TARGET
-         The pull-down result becomes a geodesic target for the main warp,
-         steering subsequent normal steps toward the oracle's finding.
-    """
+    """Escape local minima via lift -> oracle search -> pull-down."""
 
     def __init__(
         self,
@@ -1105,7 +1200,6 @@ class DimensionalLiftOracle:
 
     @staticmethod
     def _flat_grad(model: nn.Module) -> torch.Tensor:
-        """Extract flat gradient from model params after backward."""
         device = next(model.parameters()).device
         return torch.cat([
             p.grad.reshape(-1) if p.grad is not None
@@ -1119,11 +1213,6 @@ class DimensionalLiftOracle:
         model: nn.Module,
         k: int = 4,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Compute bottom-k Hessian eigenvectors via lightweight Lanczos.
-
-        Returns (eigenvalues [k], eigenvectors [n, k]) sorted ascending.
-        Uses a fresh loss computation isolated from the main training graph.
-        """
         params = list(model.parameters())
         n = sum(p.numel() for p in params)
         device = next(model.parameters()).device
@@ -1176,8 +1265,8 @@ class DimensionalLiftOracle:
             T[i+1, i] = b
 
         eigvals, eigvecs_T = torch.linalg.eigh(T)
-        Q_mat = torch.stack(Q[:m])                          # [m, n]
-        H_vecs = F.normalize(Q_mat.T @ eigvecs_T, dim=0)   # [n, m]
+        Q_mat = torch.stack(Q[:m])
+        H_vecs = F.normalize(Q_mat.T @ eigvecs_T, dim=0)
         return eigvals.detach(), H_vecs.detach()
 
     def lift_and_search(
@@ -1189,20 +1278,6 @@ class DimensionalLiftOracle:
         hessian_vecs: Optional[torch.Tensor] = None,
         hessian_vals: Optional[torch.Tensor] = None,
     ) -> Tuple[Optional[torch.Tensor], float]:
-        """Execute lift -> oracle search -> pull-down with adaptive sigma.
-
-        Returns (best_flat_params, best_loss), or (None, current_loss) if
-        no improvement found. On failure, sigma doubles for the next call.
-
-        Direction priority for candidate generation:
-          1. Negative-eigenvalue eigenvectors (saddle escape -- true downhill)
-          2. Smallest-eigenvalue eigenvectors (lowest Hessian resistance)
-          3. Probe min-curvature direction (FD-based, both signs)
-          4. Anti-gradient from perturbed positions (basin boundary push)
-          5. Random orthonormal (fill remaining slots)
-        If hessian_vecs/vals are not provided, a lightweight Lanczos is run on
-        the fly to compute them.
-        """
         self._lift_count += 1
         self._steps_no_improve = 0
 
@@ -1210,18 +1285,14 @@ class DimensionalLiftOracle:
         n = flat_orig.shape[0]
         device = flat_orig.device
 
-        # Adaptive sigma: each consecutive fail doubles it, capped at max_sigma
         sigma = self._current_sigma
-        # Oracle lr scales with sigma: bigger jumps need bigger search steps
         scaled_lr = self.oracle_lr * max(1.0, sigma / self.lift_sigma)
 
         print(f"  [LiftOracle] #{self._lift_count}: sigma={sigma:.4f}  "
               f"oracle_lr={scaled_lr:.5f}  loss={current_loss:.5f}")
 
-        # --- Build candidate starting directions ---
         directions: List[torch.Tensor] = []
 
-        # If no eigenvectors provided, compute a lightweight Lanczos on the fly.
         if hessian_vecs is None:
             try:
                 hessian_vals, hessian_vecs = self._compute_bottom_eigvecs(
@@ -1231,24 +1302,18 @@ class DimensionalLiftOracle:
                 hessian_vecs = None
                 hessian_vals = None
 
-        # 1. Eigenvector-directed kicks (highest priority).
-        #    Negative-eigenvalue eigenvectors are exact saddle escape directions.
-        #    Smallest-eigenvalue eigenvectors are lowest-resistance directions.
         if hessian_vecs is not None and hessian_vals is not None:
-            ev = hessian_vecs.to(device)       # [n, m], columns sorted ascending
-            vals = hessian_vals.to(device)     # [m]
-            # Negative eigenvalue directions: both +/- (saddle escape)
+            ev = hessian_vecs.to(device)
+            vals = hessian_vals.to(device)
             neg_idx = (vals < 0).nonzero(as_tuple=False).view(-1)
             for i in neg_idx[:2].tolist():
                 v = F.normalize(ev[:, i], dim=0)
                 directions.append(v)
                 if len(directions) < self.k:
                     directions.append(-v)
-            # Smallest-eigenvalue direction (even if positive -- least resistance)
             if len(directions) < self.k and ev.shape[1] > 0:
                 directions.append(F.normalize(ev[:, 0], dim=0))
 
-        # 2. Probe-guided: min-curvature dir (both signs)
         if probe_result is not None and probe_result.min_curvature_dir.shape[0] == n:
             d_probe = F.normalize(probe_result.min_curvature_dir.to(device), dim=0)
             if len(directions) < self.k:
@@ -1256,9 +1321,6 @@ class DimensionalLiftOracle:
             if len(directions) < self.k:
                 directions.append(-d_probe)
 
-        # 3. Anti-gradient from perturbed positions.
-        #    The gradient at theta + sigma*d points back toward the current basin;
-        #    its negation points away. Using 2 random probe directions for this.
         n_anti = min(2, self.k - len(directions))
         probe_dirs = F.normalize(torch.randn(n_anti, n, device=device), dim=-1)
         for pd in probe_dirs:
@@ -1275,7 +1337,6 @@ class DimensionalLiftOracle:
                 directions.append(anti_g)
         self._set_flat(model, flat_orig)
 
-        # 3. Fill remaining slots with random orthonormal directions
         n_rand = self.k - len(directions)
         if n_rand > 0:
             R = torch.randn(n_rand, n, device=device)
@@ -1289,10 +1350,8 @@ class DimensionalLiftOracle:
                     R[i] = R[i] / norm
             directions.extend([R[i] for i in range(n_rand)])
 
-        # Candidate starting points
         candidates = [flat_orig + sigma * d for d in directions[:self.k]]
 
-        # --- Oracle search: independent Adam per candidate ---
         best_params = None
         best_loss = current_loss
         beta1, beta2, eps = 0.9, 0.999, 1e-8
@@ -1328,7 +1387,6 @@ class DimensionalLiftOracle:
                 best_loss = final_loss
                 best_params = psi.clone()
 
-        # --- Pull-down ---
         self._set_flat(model, flat_orig)
 
         if best_params is not None:
@@ -1336,12 +1394,10 @@ class DimensionalLiftOracle:
                 best_params = flat_orig + self.accept_blend * (best_params - flat_orig)
             improvement = current_loss - best_loss
             print(f"  [LiftOracle] [ok] improvement={improvement:.5f} -> {best_loss:.5f}")
-            # Reset sigma on success
             self._consecutive_fails = 0
             self._current_sigma = self.lift_sigma
             return best_params, best_loss
 
-        # No improvement: escalate sigma for next attempt
         self._consecutive_fails += 1
         self._current_sigma = min(
             self.lift_sigma * (self.sigma_scale ** self._consecutive_fails),
@@ -1365,7 +1421,6 @@ class PreExplorationResult:
     geometric_scores: Dict = field(default_factory=dict)
     recommended_config: GDOConfig = field(default_factory=GDOConfig)
     strategy_label: str = "EXPLORE-heavy"
-    # Extended fields for richer visualization
     causal_report: Optional[Dict] = None
     lifting_report: Optional[Dict] = None
     landscape_losses: Optional[torch.Tensor] = None
@@ -1375,20 +1430,7 @@ class PreExplorationResult:
 
 
 class PreExplorationAnalyzer:
-    """Pre-optimization landscape analysis pipeline.
-
-    Samples the loss landscape around current parameters, analyzes
-    dimensionality and geometric structure, then recommends GDO
-    configuration parameters.
-
-    Pipeline:
-      1. Perturb params in random directions, evaluate loss
-      2. Subsample via StatisticalSampler
-      3. Dimension analysis (PCA eigenvalues, participation ratio)
-      4. GA analysis on model's learned bivectors (if algebra available)
-      5. Geodesic flow on landscape (coherence + curvature)
-      6. Recommend GDOConfig from analysis signals
-    """
+    """Pre-optimization landscape analysis pipeline."""
 
     def __init__(
         self,
@@ -1417,7 +1459,6 @@ class PreExplorationAnalyzer:
     def _sample_landscape(
         self, model: nn.Module, loss_fn: Callable
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Perturb params in random directions, evaluate loss at each."""
         theta0 = self._get_flat(model).clone()
         n_params = theta0.shape[0]
         device = theta0.device
@@ -1425,11 +1466,9 @@ class PreExplorationAnalyzer:
         positions = [theta0]
         losses = []
 
-        # Evaluate at origin
         with torch.no_grad():
             losses.append(loss_fn().item())
 
-        # Random perturbations
         for _ in range(self.n_samples - 1):
             direction = torch.randn(n_params, device=device)
             direction = F.normalize(direction, dim=0)
@@ -1439,7 +1478,6 @@ class PreExplorationAnalyzer:
                 losses.append(loss_fn().item())
             positions.append(perturbed.clone())
 
-        # Restore original
         self._set_flat(model, theta0)
 
         return torch.stack(positions), torch.tensor(losses, device=device)
@@ -1447,10 +1485,8 @@ class PreExplorationAnalyzer:
     def analyze(
         self, model: nn.Module, loss_fn: Callable
     ) -> PreExplorationResult:
-        """Run the full pre-exploration pipeline."""
         result = PreExplorationResult()
 
-        # 1. Sample landscape
         positions, losses = self._sample_landscape(model, loss_fn)
         result.landscape_losses = losses
         result.landscape_positions = positions
@@ -1464,11 +1500,9 @@ class PreExplorationAnalyzer:
             "q75": losses.quantile(0.75).item(),
         }
 
-        # 2. Subsample via StatisticalSampler
         config = SamplingConfig(strategy="random", max_samples=min(200, len(positions)))
         sampled, _ = StatisticalSampler.sample(positions, config)
 
-        # 3. Dimension analysis
         eda = None
         try:
             eda = EffectiveDimensionAnalyzer(device=self.device)
@@ -1477,7 +1511,6 @@ class PreExplorationAnalyzer:
         except Exception:
             dim_result = None
 
-        # 4. GA analysis on model's learned bivectors
         if self.algebra is not None and self.algebra.n >= 2:
             mv_params = GeometricParameterController._extract_mv_params(model)
             if mv_params is not None and mv_params.shape[0] >= 1:
@@ -1499,11 +1532,9 @@ class PreExplorationAnalyzer:
                 except Exception:
                     pass
 
-                # Geometric scores for config recommendation
                 gpc = GeometricParameterController(algebra=self.algebra)
                 result.geometric_scores = gpc.compute_geometric_scores(model)
 
-                # Flow bivectors and per-point coherence on learned params
                 try:
                     k_flow = min(8, mv_params.shape[0] - 1)
                     if k_flow >= 2:
@@ -1513,7 +1544,6 @@ class PreExplorationAnalyzer:
                 except Exception:
                     pass
 
-        # 5. Geodesic flow on landscape
         if dim_result is not None and dim_result.intrinsic_dim >= 2:
             try:
                 land_dim = min(dim_result.intrinsic_dim, 6)
@@ -1524,7 +1554,6 @@ class PreExplorationAnalyzer:
                 gf = GeodesicFlow(temp_algebra, k=k)
                 result.landscape_coherence = gf.coherence(mv_land)
                 result.landscape_curvature = gf.curvature(mv_land)
-                # Causal report on landscape
                 result.causal_report = {
                     'coherence': result.landscape_coherence,
                     'curvature': result.landscape_curvature,
@@ -1540,12 +1569,10 @@ class PreExplorationAnalyzer:
             except Exception:
                 pass
 
-        # 5b. Dimension lifting test (when algebra available)
         if self.algebra is not None and dim_result is not None:
             try:
                 p, q = self.algebra.p, self.algebra.q
                 n = p + q
-                # Use PCA-reduced landscape data for lifting test
                 lift_dim = min(n, dim_result.intrinsic_dim) if eda else n
                 if lift_dim >= 2 and eda is not None:
                     reduced_lift = eda.reduce(sampled, lift_dim)
@@ -1555,14 +1582,12 @@ class PreExplorationAnalyzer:
             except Exception:
                 pass
 
-        # 6. Recommend config
         result.recommended_config = self._recommend_config(result)
         result.strategy_label = self._classify_strategy(result)
 
         return result
 
     def _recommend_config(self, result: PreExplorationResult) -> GDOConfig:
-        """Map analysis signals → GDOConfig hyperparameters."""
         cfg = GDOConfig()
 
         if result.dim_result is not None:
@@ -1575,7 +1600,6 @@ class PreExplorationAnalyzer:
                 cfg.lift_k = 8
                 cfg.lift_sigma = 0.1
 
-            # Condition number from eigenvalues
             ev = result.dim_result.eigenvalues
             if len(ev) >= 2 and ev[-1].item() > 1e-10:
                 cond = ev[0].item() / ev[-1].item()
@@ -1603,7 +1627,6 @@ class PreExplorationAnalyzer:
                 cfg.lift_patience = 50
                 cfg.lift_sigma = 0.1
 
-        # Geometric controller thresholds from pre-analysis
         gs = result.geometric_scores
         if gs:
             ce = gs.get("closure_error", None)
@@ -1639,21 +1662,152 @@ class PreExplorationAnalyzer:
             return "NAVIGATE-ready"
 
 
-class GeometricDeterministicOptimizer:
-    """Full Morse-Geometric optimization pipeline (GDO).
+# ======================================================================
+# GDOOptimizer: torch.optim.Optimizer interface
+# ======================================================================
 
-    Combines all phases:
-      A. Topology search: detect critical points during training
-      B. Curvature probes: map local geometry
-      C. Geodesic integration: natural gradient + target steering
-      D. Lorentz warp: plateau escape via metric contraction
-      E. Commutator schedule: parallel/sequential update groups
-      F. Dimensional lift oracle: escape local minima via higher-dim search
+class GDOOptimizer(Optimizer):
+    """Geometric Deterministic Optimizer -- torch.optim.Optimizer interface.
 
-    The optimizer operates in 3 modes:
-      EXPLORE: running probes, building topology map
-      NAVIGATE: following geodesic to detected lower minimum
-      SPRINT: commutator-grouped fast descent, minimal probing
+    Performs Adam-like updates with:
+    - Per-parameter Lorentz warp scaling
+    - Geodesic blend toward known targets
+    - Per-group scaling from geometric controller
+    - Per-manifold retraction (spin, sphere, euclidean) via Versor tags
+    """
+
+    def __init__(
+        self,
+        params,
+        lr: float = 1e-3,
+        betas: Tuple[float, float] = (0.9, 0.999),
+        eps: float = 1e-8,
+        algebra: Optional[CliffordAlgebra] = None,
+        max_bivector_norm: Optional[float] = 10.0,
+    ):
+        defaults = dict(lr=lr, betas=betas, eps=eps)
+        super().__init__(params, defaults)
+        self.algebra = algebra
+        self.max_bivector_norm = max_bivector_norm
+
+        # External state that controller can inject
+        self._warp_lr: Optional[torch.Tensor] = None
+        self._geodesic_target: Optional[torch.Tensor] = None
+        self._geodesic_weight: float = 0.0
+        self._group_scales: Optional[List[float]] = None
+
+    @classmethod
+    def from_model(
+        cls,
+        model: nn.Module,
+        lr: float = 1e-3,
+        betas: Tuple[float, float] = (0.9, 0.999),
+        eps: float = 1e-8,
+        algebra: Optional[CliffordAlgebra] = None,
+        max_bivector_norm: Optional[float] = 10.0,
+    ) -> "GDOOptimizer":
+        """Create optimizer with auto-detected manifold parameter groups."""
+        grouped = group_parameters_by_manifold(model)
+        param_groups = []
+        for manifold in (MANIFOLD_SPIN, MANIFOLD_SPHERE, MANIFOLD_EUCLIDEAN):
+            params = grouped[manifold]
+            if params:
+                param_groups.append({'params': params, 'manifold': manifold})
+        if not param_groups:
+            param_groups = [{'params': list(model.parameters()), 'manifold': MANIFOLD_EUCLIDEAN}]
+        return cls(param_groups, lr=lr, betas=betas, eps=eps, algebra=algebra,
+                   max_bivector_norm=max_bivector_norm)
+
+    def set_warp_state(self, warp_lr: Optional[torch.Tensor]):
+        """Set per-parameter Lorentz warp LR (from LorentzWarpOptimizer)."""
+        self._warp_lr = warp_lr
+
+    def set_geodesic_blend(self, target: Optional[torch.Tensor], weight: float = 0.3):
+        """Set geodesic target for blended update."""
+        self._geodesic_target = target
+        self._geodesic_weight = weight
+
+    def set_group_scales(self, scales: Optional[List[float]]):
+        """Set per-group update scales from geometric controller."""
+        self._group_scales = scales
+
+    @torch.no_grad()
+    def step(self, closure=None) -> Optional[torch.Tensor]:
+        """Performs a single optimization step."""
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+
+        for group_idx, group in enumerate(self.param_groups):
+            betas = group['betas']
+            beta1, beta2 = betas
+            eps = group['eps']
+            lr = group['lr']
+            manifold = group.get('manifold', MANIFOLD_EUCLIDEAN)
+
+            # Apply group scale
+            if self._group_scales is not None and group_idx < len(self._group_scales):
+                lr = lr * self._group_scales[group_idx]
+
+            for p in group['params']:
+                if p.grad is None:
+                    continue
+                grad = p.grad
+
+                state = self.state[p]
+                if len(state) == 0:
+                    state['step'] = 0
+                    state['exp_avg'] = torch.zeros_like(p)
+                    state['exp_avg_sq'] = torch.zeros_like(p)
+
+                state['step'] += 1
+                t = state['step']
+                exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
+
+                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
+                exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
+
+                bias_correction1 = 1 - beta1 ** t
+                bias_correction2 = 1 - beta2 ** t
+                step_size = lr / bias_correction1
+                bias_correction2_sqrt = bias_correction2 ** 0.5
+
+                denom = (exp_avg_sq.sqrt() / bias_correction2_sqrt).add_(eps)
+                p.addcdiv_(exp_avg, denom, value=-step_size)
+
+                # Manifold retraction (matches RiemannianAdam)
+                if manifold == MANIFOLD_SPHERE:
+                    p_norm = p.norm(dim=-1, keepdim=True).clamp(min=1e-12)
+                    p.div_(p_norm)
+                elif manifold == MANIFOLD_SPIN and self.max_bivector_norm is not None:
+                    p_norm = p.norm(dim=-1, keepdim=True)
+                    scale = torch.clamp(p_norm / self.max_bivector_norm, min=1.0)
+                    p.div_(scale)
+
+        return loss
+
+    def get_state_snapshot(self) -> Dict:
+        """Expose internal state for external analysis."""
+        snap = {
+            "warp_lr_set": self._warp_lr is not None,
+            "geodesic_target_set": self._geodesic_target is not None,
+            "geodesic_weight": self._geodesic_weight,
+            "group_scales": self._group_scales,
+            "param_group_count": len(self.param_groups),
+        }
+        return snap
+
+
+# ======================================================================
+# GDOController: Full Morse-Geometric Optimization Pipeline
+# ======================================================================
+
+class GDOController:
+    """Full Morse-Geometric optimization pipeline orchestrator.
+
+    Owns model, loss_fn, and a GDOOptimizer. Manages mode transitions,
+    probes, topology search, lift oracle, and commutator scheduling.
     """
 
     class Mode(Enum):
@@ -1665,6 +1819,7 @@ class GeometricDeterministicOptimizer:
         self,
         model: nn.Module,
         loss_fn: Callable,
+        optimizer: Optional[GDOOptimizer] = None,
         lr: float = 1e-3,
         probe_interval: int = 50,
         topology_interval: int = 200,
@@ -1675,7 +1830,6 @@ class GeometricDeterministicOptimizer:
         device: str = 'cpu',
         config: Optional[GDOConfig] = None,
     ):
-        # Config overrides individual kwargs when provided
         if config is not None:
             lr = config.lr
             probe_interval = config.probe_interval
@@ -1695,6 +1849,15 @@ class GeometricDeterministicOptimizer:
         self.device = device
         self.algebra = algebra
 
+        # Create GDOOptimizer if not provided
+        if optimizer is not None:
+            self.optimizer = optimizer
+        else:
+            if algebra is not None:
+                self.optimizer = GDOOptimizer.from_model(model, lr=lr, algebra=algebra)
+            else:
+                self.optimizer = GDOOptimizer(model.parameters(), lr=lr)
+
         # Sub-components
         self.topology = LandscapeTopologySearch(
             loss_fn=loss_fn, detect_every=topology_interval
@@ -1709,6 +1872,7 @@ class GeometricDeterministicOptimizer:
             closure_trust_threshold=self.config.closure_trust_threshold,
             coherence_gate=self.config.coherence_gate,
             entropy_exploration_threshold=self.config.entropy_exploration_threshold,
+            config=self.config,
         )
         self.lift_oracle = DimensionalLiftOracle(
             patience=lift_patience,
@@ -1717,7 +1881,7 @@ class GeometricDeterministicOptimizer:
 
         # State
         self.landscape = LandscapeMap()
-        self.mode = GeometricDeterministicOptimizer.Mode.EXPLORE
+        self.mode = GDOController.Mode.EXPLORE
         self.step = 0
         self.probe_interval = probe_interval
         self.sprint_after = sprint_after
@@ -1726,18 +1890,24 @@ class GeometricDeterministicOptimizer:
         self._commutator_schedule: Optional[List[List[int]]] = None
         self._group_scales: Optional[List[float]] = None
         self._controller_diagnostics: Optional[Dict] = None
+        self._mode_history: List[str] = []
 
         # NAVIGATE phase tracking
         self._navigate_steps: int = 0
         self._navigate_best_loss: float = float('inf')
         self._navigate_no_improve: int = 0
 
-        # Auto-group parameters by top-level named child modules
+        # SPRINT phase tracking (adaptive rescheduling)
+        self._sprint_step: int = 0
+        self._last_schedule_loss: float = float('inf')
+        self._last_schedule_grad_norms: Optional[torch.Tensor] = None
+
+        # Auto-group parameters
+        self._param_group_meta: List[Dict] = []
         self._param_groups: List[List[nn.Parameter]] = self._build_param_groups()
-        # Flat index ranges for each group (for per-group Adam in SPRINT)
         self._group_ranges: List[List[Tuple[int, int]]] = self._compute_group_ranges()
 
-        # Cached Hessian eigenvectors from last topology check (passed to lift oracle)
+        # Cached Hessian eigenvectors
         self._hessian_vecs: Optional[torch.Tensor] = None
         self._hessian_vals: Optional[torch.Tensor] = None
 
@@ -1751,9 +1921,13 @@ class GeometricDeterministicOptimizer:
         self._grp_t: List[int] = [0] * n_groups
 
     def _build_param_groups(self) -> List[List[nn.Parameter]]:
-        """Group parameters by top-level named child modules."""
+        if self.config.grouping_strategy == "geometric":
+            groups, meta = self._build_geometric_param_groups()
+            self._param_group_meta = meta
+            return groups
+        # Fallback: module-based grouping
         groups = []
-        for _name, module in self.model.named_children():
+        for _, module in self.model.named_children():
             params = [p for p in module.parameters() if p.requires_grad]
             if params:
                 groups.append(params)
@@ -1761,10 +1935,143 @@ class GeometricDeterministicOptimizer:
             params = [p for p in self.model.parameters() if p.requires_grad]
             if params:
                 groups.append(params)
+        self._param_group_meta = [
+            {"manifold": "euclidean", "role": "mixed", "depth_range": (0, 0),
+             "total_numel": sum(p.numel() for p in g)}
+            for g in groups
+        ]
         return groups
 
+    @staticmethod
+    def _classify_param(name: str, param: nn.Parameter) -> Tuple[str, str, int]:
+        """Classify a parameter into (manifold, role, depth)."""
+        manifold = getattr(param, '_manifold', MANIFOLD_EUCLIDEAN)
+
+        # Determine role from name
+        lower = name.lower()
+        if 'grade_weights' in lower or 'bivector' in lower:
+            role = "bivector"
+        elif 'bias' in lower:
+            role = "bias"
+        elif ('weight' in lower and 'grade' not in lower
+              and 'bivector' not in lower):
+            role = "linear"
+        else:
+            role = "other"
+
+        # Extract layer depth from name (e.g. "layer_2_rotor" -> 2)
+        depth_match = re.search(r'layer[_.]?(\d+)', lower)
+        depth = int(depth_match.group(1)) if depth_match else 0
+
+        return manifold, role, depth
+
+    def _build_geometric_param_groups(
+        self,
+    ) -> Tuple[List[List[nn.Parameter]], List[Dict]]:
+        """Group parameters by (manifold, role) with depth-based splitting."""
+        classified: Dict[Tuple[str, str], List[Tuple[int, nn.Parameter]]] = {}
+        for name, param in self.model.named_parameters():
+            if not param.requires_grad:
+                continue
+            manifold, role, depth = self._classify_param(name, param)
+            key = (manifold, role)
+            classified.setdefault(key, []).append((depth, param))
+
+        if not classified:
+            all_p = [p for p in self.model.parameters() if p.requires_grad]
+            if all_p:
+                return [all_p], [{"manifold": "euclidean", "role": "mixed",
+                                  "depth_range": (0, 0),
+                                  "total_numel": sum(p.numel() for p in all_p)}]
+            return [], []
+
+        raw_groups: List[Tuple[Dict, List[nn.Parameter]]] = []
+        for (manifold, role), items in classified.items():
+            items.sort(key=lambda x: x[0])
+            # Split by depth gaps > 1
+            current: List[nn.Parameter] = [items[0][1]]
+            current_depths = [items[0][0]]
+            for depth, param in items[1:]:
+                if depth - current_depths[-1] > 1:
+                    meta = {"manifold": manifold, "role": role,
+                            "depth_range": (current_depths[0], current_depths[-1]),
+                            "total_numel": sum(p.numel() for p in current)}
+                    raw_groups.append((meta, current))
+                    current = [param]
+                    current_depths = [depth]
+                else:
+                    current.append(param)
+                    current_depths.append(depth)
+            meta = {"manifold": manifold, "role": role,
+                    "depth_range": (current_depths[0], current_depths[-1]),
+                    "total_numel": sum(p.numel() for p in current)}
+            raw_groups.append((meta, current))
+
+        # Merge undersized groups into nearest same-manifold neighbor
+        min_size = self.config.min_group_size
+        merged_groups: List[Tuple[Dict, List[nn.Parameter]]] = []
+        undersized: List[Tuple[Dict, List[nn.Parameter]]] = []
+        for meta, params in raw_groups:
+            if len(params) >= min_size:
+                merged_groups.append((meta, params))
+            else:
+                undersized.append((meta, params))
+
+        for u_meta, u_params in undersized:
+            best_idx = -1
+            best_dist = float('inf')
+            for i, (m, _) in enumerate(merged_groups):
+                if m["manifold"] == u_meta["manifold"]:
+                    dist = abs(m["depth_range"][0] - u_meta["depth_range"][0])
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_idx = i
+            if best_idx >= 0:
+                m, p = merged_groups[best_idx]
+                p.extend(u_params)
+                m["total_numel"] += u_meta["total_numel"]
+                m["depth_range"] = (
+                    min(m["depth_range"][0], u_meta["depth_range"][0]),
+                    max(m["depth_range"][1], u_meta["depth_range"][1]),
+                )
+            else:
+                merged_groups.append((u_meta, u_params))
+
+        # Cap at max_groups by merging smallest same-manifold groups
+        max_g = self.config.max_groups
+        while len(merged_groups) > max_g:
+            # Find smallest group
+            smallest_idx = min(
+                range(len(merged_groups)),
+                key=lambda i: merged_groups[i][0]["total_numel"],
+            )
+            s_meta, s_params = merged_groups.pop(smallest_idx)
+            best_idx = -1
+            best_dist = float('inf')
+            for i, (m, _) in enumerate(merged_groups):
+                if m["manifold"] == s_meta["manifold"]:
+                    dist = abs(m["depth_range"][0] - s_meta["depth_range"][0])
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_idx = i
+            if best_idx >= 0:
+                m, p = merged_groups[best_idx]
+                p.extend(s_params)
+                m["total_numel"] += s_meta["total_numel"]
+                m["depth_range"] = (
+                    min(m["depth_range"][0], s_meta["depth_range"][0]),
+                    max(m["depth_range"][1], s_meta["depth_range"][1]),
+                )
+            else:
+                # No same-manifold neighbor, just append back
+                merged_groups.append((s_meta, s_params))
+                break
+
+        groups = [p for _, p in merged_groups]
+        metas = [m for m, _ in merged_groups]
+        return groups, metas
+
     def _compute_group_ranges(self) -> List[List[Tuple[int, int]]]:
-        """Map each param group to list of (start, end) offsets in the flat vector."""
         offsets: Dict[int, Tuple[int, int]] = {}
         ptr = 0
         for p in self.model.parameters():
@@ -1794,12 +2101,7 @@ class GeometricDeterministicOptimizer:
             idx += sz
 
     def _adam_warp_step(self, flat_grad: torch.Tensor):
-        """Global Adam + Lorentz warp step (EXPLORE and NAVIGATE).
-
-        Adam provides the adaptive preconditioned direction.
-        Warp scales the per-element LR based on curvature geometry.
-        Step = lr_vec(warp) * adam_dir(m_hat / sqrt(v_hat)).
-        """
+        """Global Adam + Lorentz warp step (EXPLORE and NAVIGATE)."""
         device = flat_grad.device
         beta1, beta2, eps = 0.9, 0.999, 1e-8
 
@@ -1816,17 +2118,12 @@ class GeometricDeterministicOptimizer:
         v_hat = self._adam_v / (1 - beta2 ** t)
         adam_dir = m_hat / (v_hat.sqrt() + eps)
 
-        # Warp LR uses state set on probe steps only -- not updated here
         lr_vec = self.warp.warped_lr(self.lr, flat_grad.shape[0], device)
 
         self._set_flat_params(self._get_flat_params() - lr_vec * adam_dir)
 
     def _group_adam_warp_step(self, group_idx: int, group_grad: torch.Tensor):
-        """Per-group Adam + warp step for SPRINT.
-
-        Each group has its own Adam moment state so updates are independent.
-        group_grad is the flat gradient slice for this group only.
-        """
+        """Per-group Adam + warp step for SPRINT."""
         device = group_grad.device
         beta1, beta2, eps = 0.9, 0.999, 1e-8
 
@@ -1845,12 +2142,10 @@ class GeometricDeterministicOptimizer:
         v_hat = v / (1 - beta2 ** t)
         adam_dir = m_hat / (v_hat.sqrt() + eps)
 
-        # Use warp-scaled LR * geometric controller scale
         lr_vec = self.warp.warped_lr(self.lr, group_grad.shape[0], device)
         if self._group_scales is not None and group_idx < len(self._group_scales):
             lr_vec = lr_vec * self._group_scales[group_idx]
 
-        # Write step back into the correct flat-param positions
         flat_p = self._get_flat_params()
         ptr = 0
         for start, end in self._group_ranges[group_idx]:
@@ -1859,17 +2154,179 @@ class GeometricDeterministicOptimizer:
             ptr += sz
         self._set_flat_params(flat_p)
 
+    def _run_scheduling(self):
+        """Compute (or recompute) the commutator-based update schedule."""
+        if len(self._param_groups) > 1:
+            print(f"  [GPC] Analyzing parameter geometry...")
+            schedule, scales, diagnostics = (
+                self.controller.analyze_and_schedule(
+                    self.model, self.loss_fn, self._param_groups,
+                    group_meta=self._param_group_meta,
+                )
+            )
+            self._commutator_schedule = schedule
+            self._group_scales = scales
+            self._controller_diagnostics = diagnostics
+            self.landscape.commutator_scores = {
+                f"({i},{j})": v
+                for (i, j), v in diagnostics["hybrid_scores"].items()
+            }
+            print(f"  [GPC] Schedule: {schedule}")
+            print(f"  [GPC] Group scales: "
+                  f"{[f'{s:.2f}' for s in scales]}")
+            gs = diagnostics.get("geometric_scores", {})
+            if gs:
+                ce = gs.get("closure_error", None)
+                co = gs.get("coherence", None)
+                ge = gs.get("grade_entropy", None)
+                parts = []
+                if ce is not None:
+                    parts.append(f"closure={ce:.4f}")
+                if co is not None:
+                    parts.append(f"coherence={co:.4f}")
+                if ge is not None:
+                    parts.append(f"entropy={ge:.4f}")
+                if parts:
+                    print(f"  [GPC] {' | '.join(parts)}")
+        else:
+            self._commutator_schedule = (
+                [[0]] if self._param_groups else [[]]
+            )
+            self._group_scales = [1.0]
+
+        self._last_schedule_loss = float('inf')
+        self._sprint_step = 0
+
+    def _maybe_reschedule(self, current_loss: float) -> bool:
+        """Check if rescheduling is needed and perform it."""
+        # Condition 1: periodic interval
+        interval_trigger = (
+            self._sprint_step > 0
+            and self._sprint_step % self.config.reschedule_interval == 0
+        )
+
+        # Condition 2: significant loss improvement
+        loss_trigger = False
+        if self._last_schedule_loss < float('inf'):
+            rel_improve = (
+                (self._last_schedule_loss - current_loss)
+                / (abs(self._last_schedule_loss) + 1e-8)
+            )
+            loss_trigger = rel_improve > self.config.reschedule_loss_delta
+
+        # Condition 3: gradient norm distribution shift
+        grad_trigger = False
+        if self._last_schedule_grad_norms is not None:
+            self.model.zero_grad()
+            loss_val = self.loss_fn()
+            loss_val.backward()
+            full_grad = self._get_flat_grad()
+            current_norms = torch.tensor([
+                torch.cat([full_grad[s:e] for s, e in ranges]).norm().item()
+                for ranges in self._group_ranges
+            ])
+            # Normalize to distributions
+            old_p = self._last_schedule_grad_norms / (
+                self._last_schedule_grad_norms.sum() + 1e-8
+            )
+            new_p = current_norms / (current_norms.sum() + 1e-8)
+            # KL divergence (with smoothing)
+            eps = 1e-6
+            old_p = old_p.clamp(min=eps)
+            new_p = new_p.clamp(min=eps)
+            kl = (new_p * (new_p / old_p).log()).sum().item()
+            grad_trigger = kl > self.config.reschedule_grad_kl_threshold
+            self.model.zero_grad()
+
+        if not (interval_trigger or loss_trigger or grad_trigger):
+            return False
+
+        # Capture gradient norms before rescheduling
+        self.model.zero_grad()
+        loss_val = self.loss_fn()
+        loss_val.backward()
+        full_grad = self._get_flat_grad()
+        self._last_schedule_grad_norms = torch.tensor([
+            torch.cat([full_grad[s:e] for s, e in ranges]).norm().item()
+            for ranges in self._group_ranges
+        ])
+        self.model.zero_grad()
+
+        old_n_colors = (len(self._commutator_schedule)
+                        if self._commutator_schedule else 0)
+
+        # Recompute schedule
+        self._run_scheduling()
+        self._last_schedule_loss = current_loss
+
+        new_n_colors = (len(self._commutator_schedule)
+                        if self._commutator_schedule else 0)
+
+        # Reinitialize Adam state for affected groups (safe warm restart)
+        if new_n_colors != old_n_colors:
+            n_groups = len(self._param_groups)
+            self._grp_m = [None] * n_groups
+            self._grp_v = [None] * n_groups
+            self._grp_t = [0] * n_groups
+
+        reason = ("interval" if interval_trigger
+                  else "loss_delta" if loss_trigger else "grad_shift")
+        print(f"  [GPC] Rescheduled ({reason}): "
+              f"{old_n_colors} -> {new_n_colors} colors")
+        return True
+
+    def _apply_color_updates(
+        self, color: List[int], full_grad: torch.Tensor,
+    ):
+        """Batched per-color update: one flat-param read/write per color."""
+        beta1, beta2, eps = 0.9, 0.999, 1e-8
+        flat_p = self._get_flat_params()
+
+        for group_idx in color:
+            if group_idx >= len(self._param_groups):
+                continue
+            ranges = self._group_ranges[group_idx]
+            group_grad = torch.cat([full_grad[s:e] for s, e in ranges])
+            device = group_grad.device
+
+            if self._grp_m[group_idx] is None:
+                self._grp_m[group_idx] = torch.zeros_like(group_grad)
+                self._grp_v[group_idx] = torch.zeros_like(group_grad)
+            self._grp_t[group_idx] += 1
+            t = self._grp_t[group_idx]
+
+            m = beta1 * self._grp_m[group_idx] + (1 - beta1) * group_grad
+            v = (beta2 * self._grp_v[group_idx]
+                 + (1 - beta2) * group_grad * group_grad)
+            self._grp_m[group_idx] = m
+            self._grp_v[group_idx] = v
+
+            m_hat = m / (1 - beta1 ** t)
+            v_hat = v / (1 - beta2 ** t)
+            adam_dir = m_hat / (v_hat.sqrt() + eps)
+
+            lr_vec = self.warp.warped_lr(self.lr, group_grad.shape[0], device)
+            if (self._group_scales is not None
+                    and group_idx < len(self._group_scales)):
+                lr_vec = lr_vec * self._group_scales[group_idx]
+
+            ptr = 0
+            for start, end in ranges:
+                sz = end - start
+                flat_p[start:end] -= lr_vec[ptr:ptr + sz] * adam_dir[ptr:ptr + sz]
+                ptr += sz
+
+        self._set_flat_params(flat_p)
+
     def optimize_step(self, loss: torch.Tensor) -> Dict:
         """Execute one step of Morse-geometric optimization."""
         current_loss = loss.item()
         info = {"step": self.step, "mode": self.mode.value, "loss": current_loss}
+        self._mode_history.append(self.mode.value)
         params = list(self.model.parameters())
 
         # ---- EXPLORE ----
-        if self.mode == GeometricDeterministicOptimizer.Mode.EXPLORE:
-
-            # Probe: runs before backward, modifies and restores param data.
-            # warp.update() is called only here, on fresh probe data.
+        if self.mode == GDOController.Mode.EXPLORE:
             if self.step % self.probe_interval == 0:
                 self._probe_result = self.probe.probe(self.loss_fn, params)
                 self.landscape.curvature_history.append(self._probe_result.mean_curvature)
@@ -1886,7 +2343,6 @@ class GeometricDeterministicOptimizer:
                     "beta": self.warp._beta,
                 }
 
-            # LiftOracle: escape when stuck
             if self.lift_oracle.should_lift(current_loss, self.step):
                 new_flat, new_loss = self.lift_oracle.lift_and_search(
                     self.model, self.loss_fn, current_loss,
@@ -1896,7 +2352,6 @@ class GeometricDeterministicOptimizer:
                 )
                 if new_flat is not None:
                     self._set_flat_params(new_flat)
-                    # Reset Adam state so momentum from stuck region does not carry over
                     self._adam_m = None
                     self._adam_v = None
                     self._adam_t = 0
@@ -1904,13 +2359,7 @@ class GeometricDeterministicOptimizer:
                     info["lift_oracle"] = f"improved to {new_loss:.5f}"
                     return info
 
-            # Topology check -- use a FRESH loss, not the outer `loss` tensor.
-            # _hessian_vector_product inside check() calls autograd.grad with
-            # create_graph=True then a second grad without retain_graph, which
-            # frees saved tensors. A separate forward pass isolates graph
-            # consumption so the outer loss.backward() below remains valid.
             cp = self.topology.check(self.loss_fn(), params, self.step)
-            # Cache eigenvectors whenever Lanczos ran (even if no critical point)
             if self.topology._last_eigenvecs is not None:
                 self._hessian_vecs = self.topology._last_eigenvecs
                 self._hessian_vals = self.topology._last_eigenvalues
@@ -1926,21 +2375,20 @@ class GeometricDeterministicOptimizer:
                         self._navigate_steps = 0
                         self._navigate_best_loss = current_loss
                         self._navigate_no_improve = 0
-                        self.mode = GeometricDeterministicOptimizer.Mode.NAVIGATE
+                        self.mode = GDOController.Mode.NAVIGATE
                         print(f"  [Morse] -> NAVIGATE toward {target}")
 
             if self.step >= self.sprint_after:
-                self.mode = GeometricDeterministicOptimizer.Mode.SPRINT
+                self.mode = GDOController.Mode.SPRINT
                 print(f"  [Morse] Step {self.step}: -> SPRINT")
 
-            # Adam direction + warp LR (composed, not separate)
             loss.backward()
             flat_g = self._get_flat_grad()
             self._adam_warp_step(flat_g)
             self.model.zero_grad()
 
         # ---- NAVIGATE ----
-        elif self.mode == GeometricDeterministicOptimizer.Mode.NAVIGATE:
+        elif self.mode == GDOController.Mode.NAVIGATE:
             loss.backward()
             flat_g = self._get_flat_grad()
             hess_diag = flat_g.abs() + 1e-6
@@ -1952,7 +2400,6 @@ class GeometricDeterministicOptimizer:
 
             self._navigate_steps += 1
 
-            # Exit by loss-no-improve OR timeout
             if current_loss < self._navigate_best_loss - 1e-4:
                 self._navigate_best_loss = current_loss
                 self._navigate_no_improve = 0
@@ -1963,80 +2410,85 @@ class GeometricDeterministicOptimizer:
             timed_out = self._navigate_steps >= self.max_navigate_steps
             if stuck or timed_out or self.step >= self.sprint_after:
                 reason = "stuck" if stuck else ("timeout" if timed_out else "sprint")
-                next_mode = (GeometricDeterministicOptimizer.Mode.SPRINT
+                next_mode = (GDOController.Mode.SPRINT
                              if self.step >= self.sprint_after
-                             else GeometricDeterministicOptimizer.Mode.EXPLORE)
+                             else GDOController.Mode.EXPLORE)
                 print(f"  [Morse] NAVIGATE exit ({reason}) -> {next_mode.value}")
                 self.mode = next_mode
                 self.geodesic._target = None
 
         # ---- SPRINT ----
-        elif self.mode == GeometricDeterministicOptimizer.Mode.SPRINT:
-            # Build geometric controller schedule once
+        elif self.mode == GDOController.Mode.SPRINT:
             if self._commutator_schedule is None:
-                if len(self._param_groups) > 1:
-                    print(f"  [GPC] Analyzing parameter geometry...")
-                    schedule, scales, diagnostics = (
-                        self.controller.analyze_and_schedule(
-                            self.model, self.loss_fn, self._param_groups
-                        )
-                    )
-                    self._commutator_schedule = schedule
-                    self._group_scales = scales
-                    self._controller_diagnostics = diagnostics
-                    # Log hybrid scores
-                    self.landscape.commutator_scores = {
-                        f"({i},{j})": v
-                        for (i, j), v in diagnostics["hybrid_scores"].items()
-                    }
-                    print(f"  [GPC] Schedule: {schedule}")
-                    print(f"  [GPC] Group scales: "
-                          f"{[f'{s:.2f}' for s in scales]}")
-                    gs = diagnostics.get("geometric_scores", {})
-                    if gs:
-                        ce = gs.get("closure_error", None)
-                        co = gs.get("coherence", None)
-                        ge = gs.get("grade_entropy", None)
-                        parts = []
-                        if ce is not None:
-                            parts.append(f"closure={ce:.4f}")
-                        if co is not None:
-                            parts.append(f"coherence={co:.4f}")
-                        if ge is not None:
-                            parts.append(f"entropy={ge:.4f}")
-                        if parts:
-                            print(f"  [GPC] {' | '.join(parts)}")
-                else:
-                    self._commutator_schedule = [[0]] if self._param_groups else [[]]
-                    self._group_scales = [1.0]
+                self._run_scheduling()
 
-            # Sequential between colors (high commutator), parallel within color.
-            # Each color round uses per-group Adam + warp.
+            # Adaptive rescheduling
+            if (self.config.adaptive_reschedule
+                    and self._commutator_schedule is not None):
+                if self._maybe_reschedule(current_loss):
+                    info["rescheduled"] = True
+
             for color in self._commutator_schedule:
                 self.model.zero_grad()
                 loss_c = self.loss_fn()
                 loss_c.backward()
                 full_grad = self._get_flat_grad()
+                self._apply_color_updates(color, full_grad)
 
-                for group_idx in color:
-                    if group_idx >= len(self._param_groups):
-                        continue
-                    ranges = self._group_ranges[group_idx]
-                    group_grad = torch.cat([full_grad[s:e] for s, e in ranges])
-                    self._group_adam_warp_step(group_idx, group_grad)
-
+            self._sprint_step += 1
             self.model.zero_grad()
 
         self.step += 1
         return info
 
+    # === State Inspection API ===
+    def get_topology_map(self) -> LandscapeMap:
+        return self.landscape
+
+    def get_mode_history(self) -> List[str]:
+        return self._mode_history
+
+    def get_full_diagnostics(self) -> Dict:
+        return {
+            "topology_map": {
+                "critical_points": len(self.landscape.critical_points),
+                "curvature_history": self.landscape.curvature_history,
+                "gradient_norm_history": self.landscape.gradient_norm_history,
+                "plateau_episodes": self.landscape.plateau_episodes,
+                "commutator_scores": self.landscape.commutator_scores,
+            },
+            "mode_history": self._mode_history,
+            "commutator_schedule": self._commutator_schedule,
+            "group_scales": self._group_scales,
+            "controller_diagnostics": self._controller_diagnostics,
+            "lift_oracle": {
+                "lift_count": self.lift_oracle._lift_count,
+                "consecutive_fails": self.lift_oracle._consecutive_fails,
+                "current_sigma": self.lift_oracle._current_sigma,
+                "best_loss": self.lift_oracle._best_loss,
+            },
+            "warp": {
+                "beta": self.warp._beta,
+                "gamma": self.warp.gamma,
+                "on_plateau": self.warp._on_plateau,
+                "plateau_steps": self.warp._plateau_steps,
+            },
+            "optimizer_state": self.optimizer.get_state_snapshot(),
+        }
+
+
+# Backward compatibility alias
+GeometricDeterministicOptimizer = GDOController
+
+
+# ======================================================================
+# Benchmark Models
+# ======================================================================
+
+# --- Category: Analytic Functions ---
 
 class RosenbrockModel(nn.Module):
-    """2D Rosenbrock function as a learnable parameter pair.
-
-    f(x,y) = (a - x)^2 + b*(y - x^2)^2,  minimum at (a, a^2).
-    Standard: a=1, b=100. Famous for narrow curved valley.
-    """
+    """2D Rosenbrock function. Famous narrow curved valley."""
     def __init__(self, a: float = 1.0, b: float = 100.0):
         super().__init__()
         self.a = a
@@ -2049,11 +2501,7 @@ class RosenbrockModel(nn.Module):
 
 
 class RastriginModel(nn.Module):
-    """N-dimensional Rastrigin function.
-
-    f(x) = A*n + sum_i [x_i^2 - A*cos(2*pi*x_i)]
-    Many local minima; global minimum at x=0 with f=0.
-    """
+    """N-dimensional Rastrigin function. Many local minima; global at x=0."""
     def __init__(self, n_dims: int = 4, A: float = 10.0):
         super().__init__()
         self.A = A
@@ -2064,6 +2512,37 @@ class RastriginModel(nn.Module):
         x = self.x
         return self.A * self.n + (x ** 2 - self.A * torch.cos(2 * math.pi * x)).sum()
 
+
+class AckleyModel(nn.Module):
+    """N-dimensional Ackley function. Nearly flat plateau with narrow central well.
+    Tests Lorentz warp effectiveness."""
+    def __init__(self, n_dims: int = 10, a: float = 20.0, b: float = 0.2, c: float = 2 * math.pi):
+        super().__init__()
+        self._a = a
+        self._b = b
+        self._c = c
+        self.x = nn.Parameter(torch.randn(n_dims) * 2.0)
+
+    def forward(self) -> torch.Tensor:
+        x = self.x
+        sum_sq = (x ** 2).mean()
+        sum_cos = (torch.cos(self._c * x)).mean()
+        return -self._a * torch.exp(-self._b * sum_sq.sqrt()) - torch.exp(sum_cos) + self._a + math.e
+
+
+class StyblinskiTangModel(nn.Module):
+    """N-dimensional Styblinski-Tang. Multiple asymmetric wells.
+    Tests topology search for finding global basin."""
+    def __init__(self, n_dims: int = 6):
+        super().__init__()
+        self.x = nn.Parameter(torch.randn(n_dims) * 3.0)
+
+    def forward(self) -> torch.Tensor:
+        x = self.x
+        return 0.5 * (x ** 4 - 16 * x ** 2 + 5 * x).sum()
+
+
+# --- Category: Geometric Primitives ---
 
 class SmallGBNModel(nn.Module):
     """Small Geometric Blade Network for testing optimizer on actual GA model."""
@@ -2088,12 +2567,7 @@ class SmallGBNModel(nn.Module):
 
 
 class RotorRegistrationModel(nn.Module):
-    """Fit a rotor in Cl(3,0) to align a source point cloud to a rotated+noised target.
-
-    This is a natural geometric problem: the solution lives on Spin(3), has
-    180-degree ambiguity (R and -R give the same rotation), and the learned
-    bivectors should close under Lie bracket (so(3) is a Lie algebra).
-    """
+    """Fit a rotor in Cl(3,0) to align a source point cloud to a rotated+noised target."""
 
     def __init__(
         self,
@@ -2104,77 +2578,532 @@ class RotorRegistrationModel(nn.Module):
     ):
         super().__init__()
         self.algebra = CliffordAlgebra(3, 0, device=device)
-        dim = self.algebra.dim  # 8
 
-        # Source: random points on unit sphere
         torch.manual_seed(42)
         raw = torch.randn(n_points, 3, device=device)
         raw = F.normalize(raw, dim=-1)
         self.register_buffer('source', raw)
 
-        # Ground-truth rotation bivector
         axis = torch.tensor([1.0, 1.0, 1.0], device=device)
         axis = axis / axis.norm()
         gt_bv = self._axis_angle_to_bivector(axis, rotation_angle)
         self.register_buffer('gt_bivector', gt_bv)
 
-        # Apply ground-truth rotor to source → target
-        gt_rotor = self.algebra.exp(-0.5 * gt_bv.unsqueeze(0))  # [1, 8]
-        source_mv = self.algebra.embed_vector(raw)  # [N, 8]
+        gt_rotor = self.algebra.exp(-0.5 * gt_bv.unsqueeze(0))
+        source_mv = self.algebra.embed_vector(raw)
         rotated = self.algebra.sandwich_product(
             gt_rotor.expand(n_points, -1),
             source_mv.unsqueeze(1),
-        ).squeeze(1)  # [N, 8]
+        ).squeeze(1)
         target_pts = self._extract_vector(rotated)
         target_pts = target_pts + noise_std * torch.randn_like(target_pts)
         self.register_buffer('target', target_pts)
 
-        # Learnable rotor
         self.rotor = RotorLayer(self.algebra, channels=1)
 
     def _axis_angle_to_bivector(self, axis: torch.Tensor, angle: float) -> torch.Tensor:
-        """Convert axis-angle to bivector in Cl(3,0).
-
-        Basis: e1=1, e2=2, e3=4, e12=3, e13=5, e23=6, e123=7
-        Rotation bivector B = angle * (a3*e12 - a2*e13 + a1*e23)
-        """
         bv = torch.zeros(self.algebra.dim, device=axis.device)
-        bv[3] = angle * axis[2]    # e12
-        bv[5] = -angle * axis[1]   # e13
-        bv[6] = angle * axis[0]    # e23
+        bv[3] = angle * axis[2]
+        bv[5] = -angle * axis[1]
+        bv[6] = angle * axis[0]
         return bv
 
     def _extract_vector(self, mv: torch.Tensor) -> torch.Tensor:
-        """Extract grade-1 (x,y,z) from multivector. e1=1, e2=2, e3=4."""
         return torch.stack([mv[..., 1], mv[..., 2], mv[..., 4]], dim=-1)
 
     def forward(self) -> torch.Tensor:
-        source_mv = self.algebra.embed_vector(self.source)  # [N, 8]
-        source_mv = source_mv.unsqueeze(1)  # [N, 1, 8]
-        rotated_mv = self.rotor(source_mv)  # [N, 1, 8]
+        source_mv = self.algebra.embed_vector(self.source)
+        source_mv = source_mv.unsqueeze(1)
+        rotated_mv = self.rotor(source_mv)
         pred_pts = self._extract_vector(rotated_mv.squeeze(1))
         return F.mse_loss(pred_pts, self.target)
 
     def angular_error(self) -> float:
-        """Angle error (radians) between learned and ground-truth rotors."""
         with torch.no_grad():
             learned_bv = torch.zeros(
                 self.algebra.dim, device=self.gt_bivector.device
             )
             learned_bv[self.rotor.grade_indices] = self.rotor.grade_weights[0]
-            # Angle ≈ 2 * ||B_learned - B_gt|| (for small errors)
-            # More robust: cos(angle/2) = <R_learned, R_gt>_0
             r_learned = self.algebra.exp(-0.5 * learned_bv.unsqueeze(0))
             r_gt = self.algebra.exp(-0.5 * self.gt_bivector.unsqueeze(0))
-            # Inner product of rotors = grade-0 of R_learned * ~R_gt
             r_gt_rev = self.algebra.reverse(r_gt)
             product = self.algebra.geometric_product(r_learned, r_gt_rev)
             cos_half = product[0, 0].abs().clamp(max=1.0).item()
             return 2.0 * math.acos(cos_half)
 
 
+class MinkowskiRotorModel(nn.Module):
+    """Fit a Lorentz boost in Cl(2,1) to align spacetime events.
+    Tests optimizer on indefinite signature (mixed exp map regime)."""
+    def __init__(self, n_events: int = 30, boost_rapidity: float = 0.8, device: str = 'cpu'):
+        super().__init__()
+        self.algebra = CliffordAlgebra(2, 1, device=device)
+        dim = self.algebra.dim  # 8
+
+        torch.manual_seed(42)
+        # Source events: spatial (e1, e2) random, temporal (e3 where e3^2=-1) = 1
+        raw = torch.randn(n_events, 2, device=device)
+        spatial = F.normalize(raw, dim=-1) * 0.5
+        events_3d = torch.cat([spatial, torch.ones(n_events, 1, device=device)], dim=-1)
+        self.register_buffer('source', events_3d)
+
+        # Ground-truth: boost along e1-e3 plane (bivector e13)
+        # In Cl(2,1): e1^2=+1, e3^2=-1, so e13 is a boost plane
+        gt_bv = torch.zeros(dim, device=device)
+        # e13 index in Cl(2,1): basis e1=idx1, e3=idx4 -> e13=idx5
+        gt_bv[5] = boost_rapidity  # e13 component
+        self.register_buffer('gt_bivector', gt_bv)
+
+        gt_rotor = self.algebra.exp(-0.5 * gt_bv.unsqueeze(0))
+        source_mv = self.algebra.embed_vector(events_3d)
+        boosted = self.algebra.sandwich_product(
+            gt_rotor.expand(n_events, -1),
+            source_mv.unsqueeze(1),
+        ).squeeze(1)
+        # Extract vector part
+        target_3d = torch.stack([boosted[..., 1], boosted[..., 2], boosted[..., 4]], dim=-1)
+        target_3d = target_3d + 0.02 * torch.randn_like(target_3d)
+        self.register_buffer('target', target_3d)
+
+        self.rotor = RotorLayer(self.algebra, channels=1)
+
+    def forward(self) -> torch.Tensor:
+        source_mv = self.algebra.embed_vector(self.source).unsqueeze(1)
+        boosted_mv = self.rotor(source_mv).squeeze(1)
+        pred = torch.stack([boosted_mv[..., 1], boosted_mv[..., 2], boosted_mv[..., 4]], dim=-1)
+        return F.mse_loss(pred, self.target)
+
+    def rapidity_error(self) -> float:
+        with torch.no_grad():
+            learned_bv = torch.zeros(self.algebra.dim, device=self.gt_bivector.device)
+            learned_bv[self.rotor.grade_indices] = self.rotor.grade_weights[0]
+            return (learned_bv - self.gt_bivector).norm().item()
+
+
+class ConformalRegistrationModel(nn.Module):
+    """Fit a conformal rotor in Cl(4,1) for rotation+translation.
+    Tests optimizer on 32-dimensional multivectors."""
+    def __init__(self, n_points: int = 40, device: str = 'cpu'):
+        super().__init__()
+        self.algebra = CliffordAlgebra(4, 1, device=device)
+        dim = self.algebra.dim  # 32
+
+        torch.manual_seed(42)
+        raw = torch.randn(n_points, 3, device=device) * 0.5
+        self.register_buffer('source_pts', raw)
+
+        # Ground-truth: rotation + translation
+        # Rotation around z-axis by 0.8 rad
+        gt_bv = torch.zeros(dim, device=device)
+        # In Cl(4,1) the first 3 spatial bivectors handle rotations
+        # e12 component for z-rotation
+        bv_indices = [i for i in range(dim) if bin(i).count('1') == 2]
+        if len(bv_indices) > 0:
+            gt_bv[bv_indices[0]] = 0.4  # small rotation bivector
+
+        self.register_buffer('gt_bivector', gt_bv)
+
+        # Apply via rotor
+        gt_rotor = self.algebra.exp(-0.5 * gt_bv.unsqueeze(0))
+        # Embed source as 5D vectors (pad with zeros for CGA extra dims)
+        src_5d = torch.zeros(n_points, 5, device=device)
+        src_5d[:, :3] = raw
+        source_mv = self.algebra.embed_vector(src_5d)
+        rotated = self.algebra.sandwich_product(
+            gt_rotor.expand(n_points, -1),
+            source_mv.unsqueeze(1),
+        ).squeeze(1)
+        # Also apply a small translation shift in Euclidean coords
+        target_mv = rotated.clone()
+        target_mv[:, 1] += 0.3  # shift e1 component
+        target_mv += 0.01 * torch.randn_like(target_mv)
+        self.register_buffer('target_mv', target_mv)
+        self.register_buffer('source_mv', source_mv)
+
+        self.rotor = RotorLayer(self.algebra, channels=1)
+
+    def forward(self) -> torch.Tensor:
+        src = self.source_mv.unsqueeze(1)
+        pred = self.rotor(src).squeeze(1)
+        return F.mse_loss(pred, self.target_mv)
+
+
+class MultiRotorRegistrationModel(nn.Module):
+    """Fit a MultiRotorLayer to align multi-cluster point clouds.
+    Tests commutator scheduling and multi-modal optimization."""
+    def __init__(self, n_clusters: int = 3, points_per_cluster: int = 20, device: str = 'cpu'):
+        super().__init__()
+        self.algebra = CliffordAlgebra(3, 0, device=device)
+        dim = self.algebra.dim
+
+        torch.manual_seed(42)
+        sources = []
+        targets = []
+
+        for c in range(n_clusters):
+            center = torch.randn(3, device=device)
+            pts = center + 0.2 * torch.randn(points_per_cluster, 3, device=device)
+            sources.append(pts)
+
+            # Each cluster gets a different rotation
+            angle = 0.5 + c * 1.0
+            axis = F.normalize(torch.randn(3, device=device), dim=0)
+            bv = torch.zeros(dim, device=device)
+            bv[3] = angle * axis[2]
+            bv[5] = -angle * axis[1]
+            bv[6] = angle * axis[0]
+            rotor = self.algebra.exp(-0.5 * bv.unsqueeze(0))
+            pts_mv = self.algebra.embed_vector(pts)
+            rotated = self.algebra.sandwich_product(
+                rotor.expand(points_per_cluster, -1),
+                pts_mv.unsqueeze(1),
+            ).squeeze(1)
+            tgt_pts = torch.stack([rotated[..., 1], rotated[..., 2], rotated[..., 4]], dim=-1)
+            targets.append(tgt_pts + 0.03 * torch.randn_like(tgt_pts))
+
+        self.register_buffer('source', torch.cat(sources))
+        self.register_buffer('target', torch.cat(targets))
+
+        self.multi_rotor = MultiRotorLayer(self.algebra, channels=1, num_rotors=n_clusters)
+
+    def forward(self) -> torch.Tensor:
+        source_mv = self.algebra.embed_vector(self.source).unsqueeze(1)
+        rotated_mv = self.multi_rotor(source_mv).squeeze(1)
+        pred = torch.stack([rotated_mv[..., 1], rotated_mv[..., 2], rotated_mv[..., 4]], dim=-1)
+        return F.mse_loss(pred, self.target)
+
+
+# --- Category: GA Neural Networks ---
+
+class MediumGBNModel(nn.Module):
+    """Medium GBN using GeometricBladeNetwork. 3 layers, 16ch.
+    Task: learn regression on multivector inputs."""
+    def __init__(self, p=3, q=0, channels=16, layers=3, n_samples=64, device='cpu'):
+        super().__init__()
+        self.algebra = CliffordAlgebra(p, q, device=device)
+        dim = self.algebra.dim
+        self.gbn = GeometricBladeNetwork(
+            self.algebra, in_channels=channels,
+            hidden_channels=channels, out_channels=channels,
+            layers=layers,
+        )
+        torch.manual_seed(42)
+        self.register_buffer('X', torch.randn(n_samples, channels, dim, device=device) * 0.3)
+        self.register_buffer('y', self.X[:, :, 0].mean(dim=1, keepdim=True))
+
+    def forward(self) -> torch.Tensor:
+        out = self.gbn(self.X)
+        pred = out[:, :, 0].mean(dim=1, keepdim=True)
+        return F.mse_loss(pred, self.y)
+
+
+class MultiSigGBNModel(nn.Module):
+    """GBN in Minkowski signature Cl(2,1). 2 layers, 8ch.
+    Tests optimizer with mixed exp map regime."""
+    def __init__(self, channels=8, layers=2, n_samples=48, device='cpu'):
+        super().__init__()
+        self.algebra = CliffordAlgebra(2, 1, device=device)
+        dim = self.algebra.dim
+        self.gbn = GeometricBladeNetwork(
+            self.algebra, in_channels=channels,
+            hidden_channels=channels, out_channels=channels,
+            layers=layers,
+        )
+        torch.manual_seed(42)
+        self.register_buffer('X', torch.randn(n_samples, channels, dim, device=device) * 0.3)
+        self.register_buffer('y', self.X[:, :, 0].mean(dim=1, keepdim=True))
+
+    def forward(self) -> torch.Tensor:
+        out = self.gbn(self.X)
+        pred = out[:, :, 0].mean(dim=1, keepdim=True)
+        return F.mse_loss(pred, self.y)
+
+
+class DeepGBNModel(nn.Module):
+    """Deep GBN (5 layers, 16 channels) for scalability testing.
+    Task: predict grade-2 energy from input multivectors."""
+    def __init__(self, p=3, q=0, channels=16, layers=5, n_samples=48, device='cpu'):
+        super().__init__()
+        self.algebra = CliffordAlgebra(p, q, device=device)
+        dim = self.algebra.dim
+        self.gbn = GeometricBladeNetwork(
+            self.algebra, in_channels=channels,
+            hidden_channels=channels, out_channels=channels,
+            layers=layers,
+        )
+        torch.manual_seed(42)
+        self.register_buffer('X', torch.randn(n_samples, channels, dim, device=device) * 0.3)
+        # Target: grade-2 energy of input
+        grade2_mask = self.algebra.grade_masks_float[2]
+        g2_energy = (self.X * grade2_mask).pow(2).sum(dim=-1).mean(dim=1, keepdim=True)
+        self.register_buffer('y', g2_energy)
+
+    def forward(self) -> torch.Tensor:
+        out = self.gbn(self.X)
+        pred = out[:, :, 0].mean(dim=1, keepdim=True)
+        return F.mse_loss(pred, self.y)
+
+
+# --- Category: Manifold Tasks ---
+
+class SO3InterpolationModel(nn.Module):
+    """Learn a smooth rotor trajectory through waypoints on SO(3).
+    Tests geodesic integrator on curved manifold."""
+    def __init__(self, n_waypoints: int = 8, device: str = 'cpu'):
+        super().__init__()
+        self.algebra = CliffordAlgebra(3, 0, device=device)
+        dim = self.algebra.dim
+        self.n_waypoints = n_waypoints
+
+        torch.manual_seed(42)
+        # Generate random waypoint rotors
+        waypoint_bivectors = []
+        for i in range(n_waypoints):
+            bv = torch.zeros(dim, device=device)
+            angle = 0.3 + i * 0.5
+            axis = F.normalize(torch.randn(3, device=device), dim=0)
+            bv[3] = angle * axis[2]
+            bv[5] = -angle * axis[1]
+            bv[6] = angle * axis[0]
+            waypoint_bivectors.append(bv)
+        waypoint_bvs = torch.stack(waypoint_bivectors)
+        waypoint_rotors = self.algebra.exp(-0.5 * waypoint_bvs)
+        self.register_buffer('target_rotors', waypoint_rotors)
+
+        # A test vector to rotate (unit e1)
+        test_vec = torch.zeros(dim, device=device)
+        test_vec[1] = 1.0  # e1
+        self.register_buffer('test_vec', test_vec)
+
+        # Compute target points
+        targets = []
+        for i in range(n_waypoints):
+            R = waypoint_rotors[i:i+1]
+            v = test_vec.unsqueeze(0)
+            rotated = self.algebra.sandwich_product(R, v.unsqueeze(1)).squeeze(1)
+            targets.append(rotated)
+        self.register_buffer('target_points', torch.cat(targets))
+
+        # Learnable rotor bank -- one per waypoint
+        self.rotor_bank = RotorLayer(self.algebra, channels=n_waypoints)
+
+    def forward(self) -> torch.Tensor:
+        # Rotate test vector by each learned rotor
+        test_expanded = self.test_vec.unsqueeze(0).unsqueeze(0).expand(1, self.n_waypoints, -1)
+        rotated = self.rotor_bank(test_expanded).squeeze(0)  # [n_waypoints, dim]
+        return F.mse_loss(rotated, self.target_points)
+
+    def geodesic_deviation(self) -> float:
+        """Measure how far learned rotors are from ground-truth on SO(3)."""
+        with torch.no_grad():
+            learned_bv = torch.zeros(self.n_waypoints, self.algebra.dim,
+                                     device=self.target_rotors.device)
+            learned_bv[:, self.rotor_bank.grade_indices] = self.rotor_bank.grade_weights
+            r_learned = self.algebra.exp(-0.5 * learned_bv)
+            r_gt_rev = self.algebra.reverse(self.target_rotors)
+            product = self.algebra.geometric_product(r_learned, r_gt_rev)
+            cos_half = product[:, 0].abs().clamp(max=1.0)
+            angles = 2.0 * torch.acos(cos_half)
+            return angles.mean().item()
+
+
 # ======================================================================
-# Visualization
+# Optimizer Factory & Training Loops
+# ======================================================================
+
+def _collect_bivector_norms(model: nn.Module) -> float:
+    """Sum of bivector parameter norms across all rotor layers."""
+    total = 0.0
+    for m in model.modules():
+        if isinstance(m, (RotorLayer, MultiRotorLayer)):
+            w = m.grade_weights if isinstance(m, RotorLayer) else m.rotor_grade_weights
+            total += w.detach().norm().item()
+    return total
+
+
+def create_optimizer(
+    name: str,
+    model: nn.Module,
+    lr: float,
+    algebra: Optional[CliffordAlgebra] = None,
+    loss_fn: Optional[Callable] = None,
+    config: Optional[GDOConfig] = None,
+    device: str = 'cpu',
+) -> Tuple[Union[Optimizer, GDOController], str]:
+    """Factory for all optimizer variants."""
+    if name == 'adam':
+        return torch.optim.Adam(model.parameters(), lr=lr), "Adam"
+    elif name == 'riemannian_adam':
+        if algebra is None:
+            return torch.optim.Adam(model.parameters(), lr=lr), "Adam (no algebra)"
+        return RiemannianAdam.from_model(model, lr=lr, algebra=algebra), "RiemannianAdam"
+    elif name == 'exponential_sgd':
+        if algebra is None:
+            return torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9), "SGD"
+        return ExponentialSGD.from_model(model, lr=lr, algebra=algebra), "ExponentialSGD"
+    elif name == 'gdo':
+        assert loss_fn is not None, "GDO requires loss_fn"
+        gdo_opt = GDOOptimizer.from_model(model, lr=lr, algebra=algebra) if algebra else \
+            GDOOptimizer(model.parameters(), lr=lr)
+        controller = GDOController(
+            model, loss_fn, optimizer=gdo_opt,
+            config=config, algebra=algebra, device=device, lr=lr,
+        )
+        return controller, "GDO"
+    else:
+        raise ValueError(f"Unknown optimizer: {name}")
+
+
+def train_loop_standard(
+    model: nn.Module,
+    optimizer: Optimizer,
+    loss_fn: Callable,
+    steps: int,
+    metric_fn: Optional[Callable] = None,
+    log_interval: int = 500,
+    label: str = "",
+) -> ExperimentResult:
+    """Standard training loop for torch.optim.Optimizer (Adam, RiemannianAdam)."""
+    losses = []
+    wall_times = []
+    metrics: Dict[str, List[float]] = {}
+    bv_norms = []
+
+    for s in range(steps):
+        t0 = time.perf_counter()
+        optimizer.zero_grad()
+        loss = loss_fn()
+        loss.backward()
+        optimizer.step()
+        wt = time.perf_counter() - t0
+
+        losses.append(loss.item())
+        wall_times.append(wt)
+        bv_norms.append(_collect_bivector_norms(model))
+
+        if metric_fn is not None:
+            for k, v in metric_fn().items():
+                metrics.setdefault(k, []).append(v)
+
+        if s % log_interval == 0 or s == steps - 1:
+            print(f"  [{label}] Step {s:5d}: loss={loss.item():.6f}")
+
+    return ExperimentResult(
+        name="", optimizer_name=label,
+        losses=losses, wall_times=wall_times,
+        metrics=metrics,
+        final_loss=losses[-1] if losses else float('inf'),
+        total_wall_time=sum(wall_times),
+        bivector_norms=bv_norms,
+    )
+
+
+def train_loop_gdo(
+    model: nn.Module,
+    controller: GDOController,
+    steps: int,
+    metric_fn: Optional[Callable] = None,
+    log_interval: int = 500,
+) -> ExperimentResult:
+    """GDO controller loop with full diagnostic collection."""
+    losses = []
+    wall_times = []
+    metrics: Dict[str, List[float]] = {}
+    bv_norms = []
+
+    for s in range(steps):
+        t0 = time.perf_counter()
+        loss = controller.loss_fn()
+        info = controller.optimize_step(loss)
+        wt = time.perf_counter() - t0
+
+        losses.append(info['loss'])
+        wall_times.append(wt)
+        bv_norms.append(_collect_bivector_norms(model))
+
+        if metric_fn is not None:
+            for k, v in metric_fn().items():
+                metrics.setdefault(k, []).append(v)
+
+        if s % log_interval == 0 or s == steps - 1:
+            print(f"  [GDO] Step {s:5d}: loss={info['loss']:.6f}  mode={info['mode']}")
+
+    return ExperimentResult(
+        name="", optimizer_name="GDO",
+        losses=losses, wall_times=wall_times,
+        metrics=metrics,
+        final_loss=losses[-1] if losses else float('inf'),
+        total_wall_time=sum(wall_times),
+        gdo_diagnostics=controller.get_full_diagnostics(),
+        bivector_norms=bv_norms,
+        mode_history=controller.get_mode_history(),
+    )
+
+
+def run_comparison(
+    task_name: str,
+    model_factory: Callable,
+    loss_factory: Callable,
+    config: ExperimentConfig,
+    optimizers: Tuple[str, ...] = ('gdo', 'riemannian_adam', 'adam'),
+    metric_factory: Optional[Callable] = None,
+    pre_explore: bool = True,
+    output_dir: str = "gdo_plots",
+) -> Dict[str, ExperimentResult]:
+    """Run all optimizers on same task, same init, collect results."""
+    results: Dict[str, ExperimentResult] = {}
+
+    # Get reference init state
+    torch.manual_seed(config.seed)
+    ref_model = model_factory()
+    init_state = {k: v.clone() for k, v in ref_model.state_dict().items()}
+    algebra = getattr(ref_model, 'algebra', None)
+    del ref_model
+
+    for opt_name in optimizers:
+        print(f"\n  --- {opt_name.upper()} ---")
+        torch.manual_seed(config.seed)
+        model = model_factory()
+        model.load_state_dict(init_state)
+        loss_fn = loss_factory(model)
+        metric_fn = metric_factory(model) if metric_factory else None
+
+        if opt_name == 'gdo':
+            # Pre-exploration for GDO
+            if pre_explore and algebra is not None:
+                try:
+                    pre_analyzer = PreExplorationAnalyzer(
+                        algebra=algebra, n_samples=100, device=config.device)
+                    pre_result = pre_analyzer.analyze(model, loss_fn)
+                    print(f"  Strategy: {pre_result.strategy_label}")
+                    gdo_config = pre_result.recommended_config
+                except Exception:
+                    gdo_config = GDOConfig(lr=config.lr)
+            else:
+                gdo_config = config.gdo_config or GDOConfig(lr=config.lr)
+
+            controller_or_opt, label = create_optimizer(
+                'gdo', model, config.lr, algebra=algebra,
+                loss_fn=loss_fn, config=gdo_config, device=config.device)
+            result = train_loop_gdo(
+                model, controller_or_opt, config.steps,
+                metric_fn=metric_fn, log_interval=max(config.steps // 5, 1))
+        else:
+            opt, label = create_optimizer(
+                opt_name, model, config.lr, algebra=algebra, device=config.device)
+            result = train_loop_standard(
+                model, opt, loss_fn, config.steps,
+                metric_fn=metric_fn, log_interval=max(config.steps // 5, 1), label=label)
+
+        result.name = task_name
+        result.optimizer_name = label
+        results[label] = result
+
+    return results
+
+
+# ======================================================================
+# Visualization (existing + new)
 # ======================================================================
 
 def _ensure_output_dir(output_dir: str):
@@ -2191,7 +3120,6 @@ def plot_pre_exploration(
     fig, axes = plt.subplots(2, 3, figsize=(18, 10))
     fig.suptitle(title, fontsize=14, fontweight='bold')
 
-    # (0,0) Eigenvalue spectrum
     ax = axes[0, 0]
     if pre_result.dim_result is not None:
         ev = pre_result.dim_result.eigenvalues.cpu().numpy()
@@ -2211,7 +3139,6 @@ def plot_pre_exploration(
     ax.set_ylabel("Eigenvalue")
     ax.grid(True, alpha=0.3)
 
-    # (0,1) Local dimension histogram / loss distribution
     ax = axes[0, 1]
     if pre_result.dim_result is not None and pre_result.dim_result.local_dims is not None:
         ld = pre_result.dim_result.local_dims.cpu().numpy()
@@ -2231,7 +3158,6 @@ def plot_pre_exploration(
             ax.text(0.5, 0.5, "N/A", ha='center', va='center', transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
-    # (0,2) Grade energy bar chart
     ax = axes[0, 2]
     gs = pre_result.geometric_scores
     if pre_result.spectral_result is not None:
@@ -2255,71 +3181,63 @@ def plot_pre_exploration(
                 transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
-    # (1,0) Coherence / curvature
     ax = axes[1, 0]
-    metrics = ["Coherence", "Curvature"]
+    metrics_names = ["Coherence", "Curvature"]
     values = [pre_result.landscape_coherence, pre_result.landscape_curvature]
     bar_colors = []
-    for v, name in zip(values, metrics):
+    for v, name in zip(values, metrics_names):
         if name == "Coherence":
             bar_colors.append('green' if v > 0.5 else ('orange' if v > 0.3 else 'red'))
         else:
             bar_colors.append('green' if v < 0.3 else ('orange' if v < 0.5 else 'red'))
-    bars = ax.barh(metrics, values, color=bar_colors, alpha=0.7, edgecolor='white')
+    ax.barh(metrics_names, values, color=bar_colors, alpha=0.7, edgecolor='white')
     ax.set_xlim(0, 1)
     ax.set_title(f"Landscape Geometry\nStrategy: {pre_result.strategy_label}")
     ax.grid(True, alpha=0.3)
 
-    # (1,1) Lie bracket closure + grade entropy + coherence
     ax = axes[1, 1]
-    labels, vals, colors_list = [], [], []
+    labels_gs, vals_gs, colors_gs = [], [], []
     if "closure_error" in gs:
-        labels.append("Lie Closure\nError")
-        vals.append(gs["closure_error"])
+        labels_gs.append("Lie Closure\nError")
+        vals_gs.append(gs["closure_error"])
         ce = gs["closure_error"]
-        colors_list.append('green' if ce < 0.1 else ('orange' if ce < 0.5 else 'red'))
+        colors_gs.append('green' if ce < 0.1 else ('orange' if ce < 0.5 else 'red'))
     if "grade_entropy" in gs:
-        labels.append("Grade\nEntropy")
-        vals.append(gs["grade_entropy"])
-        colors_list.append('purple')
+        labels_gs.append("Grade\nEntropy")
+        vals_gs.append(gs["grade_entropy"])
+        colors_gs.append('purple')
     if "coherence" in gs:
-        labels.append("Bivector\nCoherence")
-        vals.append(gs["coherence"])
-        colors_list.append('steelblue')
-    if labels:
-        ax.barh(labels, vals, color=colors_list, alpha=0.7, edgecolor='white')
-        ax.set_xlim(0, max(1.0, max(vals) * 1.1))
+        labels_gs.append("Bivector\nCoherence")
+        vals_gs.append(gs["coherence"])
+        colors_gs.append('steelblue')
+    if labels_gs:
+        ax.barh(labels_gs, vals_gs, color=colors_gs, alpha=0.7, edgecolor='white')
+        ax.set_xlim(0, max(1.0, max(vals_gs) * 1.1))
         ax.set_title("Geometric Signals")
     else:
-        ax.text(0.5, 0.5, "No geometric\nanalysis", ha='center', va='center',
+        ax.text(0.5, 0.5, "No geometric\nscores", ha='center', va='center',
                 transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
-    # (1,2) Recommended config
     ax = axes[1, 2]
     ax.axis('off')
     cfg = pre_result.recommended_config
-    config_text = (
-        f"lr: {cfg.lr}\n"
-        f"probe_interval: {cfg.probe_interval}\n"
-        f"topology_interval: {cfg.topology_interval}\n"
-        f"sprint_after: {cfg.sprint_after}\n"
-        f"lift_patience: {cfg.lift_patience}\n"
-        f"lift_sigma: {cfg.lift_sigma}\n"
-        f"lorentz_max_beta: {cfg.lorentz_max_beta}\n"
-        f"commutator_threshold: {cfg.commutator_threshold}\n"
-        f"fim_damping: {cfg.fim_damping}\n"
-        f"closure_trust: {cfg.closure_trust_threshold}\n"
-        f"coherence_gate: {cfg.coherence_gate}\n"
-        f"entropy_thresh: {cfg.entropy_exploration_threshold}"
-    )
-    ax.text(0.1, 0.95, "Recommended Config", fontsize=11, fontweight='bold',
-            va='top', transform=ax.transAxes)
-    ax.text(0.1, 0.85, config_text, fontsize=9, va='top', family='monospace',
-            transform=ax.transAxes)
+    lines = [
+        f"lr: {cfg.lr}",
+        f"probe_interval: {cfg.probe_interval}",
+        f"topology_interval: {cfg.topology_interval}",
+        f"sprint_after: {cfg.sprint_after}",
+        f"lift_patience: {cfg.lift_patience}",
+        f"lift_sigma: {cfg.lift_sigma}",
+        f"lorentz_max_beta: {cfg.lorentz_max_beta}",
+        f"commutator_threshold: {cfg.commutator_threshold}",
+    ]
+    ax.text(0.05, 0.95, "Recommended Config\n" + "-" * 25 + "\n" + "\n".join(lines),
+            transform=ax.transAxes, va='top', fontsize=9, family='monospace',
+            bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8))
 
     plt.tight_layout()
-    path = os.path.join(output_dir, "pre_exploration.png")
+    path = os.path.join(output_dir, f"pre_exploration_{title.replace(' ', '_').lower()}.png")
     fig.savefig(path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     print(f"  Saved: {path}")
@@ -2331,93 +3249,91 @@ def plot_optimization_trajectory(
     title: str = "Optimization Trajectory",
     output_dir: str = "gdo_plots",
 ):
-    """2x2 dashboard: loss curve with modes, curvature+grad, lorentz, lifts."""
+    """Loss curve, probe results, landscape map summary."""
     _ensure_output_dir(output_dir)
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     fig.suptitle(title, fontsize=14, fontweight='bold')
 
+    ax = axes[0, 0]
     losses = history.get("losses", [])
     modes = history.get("modes", [])
-    steps = list(range(len(losses)))
-
-    mode_colors = {"explore": "#cce5ff", "navigate": "#d4edda", "sprint": "#fff3cd"}
-
-    # (0,0) Loss curve with mode bands
-    ax = axes[0, 0]
     if losses:
-        ax.semilogy(steps, losses, 'b-', linewidth=0.8)
-        # Mode background bands
+        ax.semilogy(losses, 'b-', linewidth=0.8)
+        mode_colors = {"explore": "#cce5ff", "navigate": "#d4edda", "sprint": "#fff3cd"}
         if modes:
-            prev_mode = modes[0]
+            prev = modes[0]
             start = 0
             for i, m in enumerate(modes + [None]):
-                if m != prev_mode or i == len(modes):
+                if m != prev or i == len(modes):
                     ax.axvspan(start, i, alpha=0.15,
-                               color=mode_colors.get(prev_mode, '#ffffff'))
-                    prev_mode = m
+                               color=mode_colors.get(prev, '#ffffff'))
+                    prev = m
                     start = i
-        ax.set_ylabel("Loss")
-        ax.set_xlabel("Step")
-    ax.set_title("Loss Curve")
-    ax.grid(True, alpha=0.3)
-    # Legend for modes
-    patches = [Patch(facecolor=c, alpha=0.3, label=m.upper())
-               for m, c in mode_colors.items()]
-    ax.legend(handles=patches, loc='upper right', fontsize=8)
-
-    # (0,1) Curvature + gradient norm
-    ax = axes[0, 1]
-    curv = history.get("curvatures", [])
-    gnorms = history.get("grad_norms", [])
-    probe_steps = history.get("probe_steps", [])
-    if curv and probe_steps:
-        ax.plot(probe_steps[:len(curv)], curv, 'b.-', label='Curvature', markersize=3)
-        ax.set_ylabel("Mean Curvature", color='b')
-        ax.tick_params(axis='y', labelcolor='b')
-        if gnorms:
-            ax2 = ax.twinx()
-            ax2.plot(probe_steps[:len(gnorms)], gnorms, 'r.-',
-                     label='Grad Norm', markersize=3)
-            ax2.set_ylabel("Gradient Norm", color='r')
-            ax2.tick_params(axis='y', labelcolor='r')
-    ax.set_title("Curvature & Gradient")
-    ax.set_xlabel("Step")
-    ax.grid(True, alpha=0.3)
-
-    # (1,0) Lorentz warp
-    ax = axes[1, 0]
-    betas = history.get("betas", [])
-    if betas and probe_steps:
-        ax.plot(probe_steps[:len(betas)], betas, 'g.-', label='beta', markersize=3)
-        gammas = [1.0 / max(math.sqrt(1.0 - b**2), 1e-6) for b in betas]
-        ax.plot(probe_steps[:len(gammas)], gammas, 'm.-', label='gamma', markersize=3)
-        # Shade plateau regions
-        plateaus = history.get("plateaus", [])
-        for ps, pe in plateaus:
-            ax.axvspan(ps, pe, alpha=0.15, color='yellow')
-        ax.legend(fontsize=8)
-    ax.set_title("Lorentz Warp State")
-    ax.set_xlabel("Step")
-    ax.grid(True, alpha=0.3)
-
-    # (1,1) Lift oracle events
-    ax = axes[1, 1]
-    if losses:
-        ax.semilogy(steps, losses, 'b-', linewidth=0.5, alpha=0.5)
-    lifts = history.get("lifts", [])
-    for lift in lifts:
-        color = 'green' if lift.get("success", False) else 'red'
-        ax.scatter(lift["step"], lift["loss"], c=color, s=40, zorder=5)
-        ax.annotate(f'σ={lift.get("sigma", 0):.2f}',
-                    (lift["step"], lift["loss"]), fontsize=7,
-                    textcoords="offset points", xytext=(5, 5))
-    ax.set_title("Lift Oracle Events")
     ax.set_xlabel("Step")
     ax.set_ylabel("Loss")
+    ax.set_title("Loss Curve")
+    ax.grid(True, alpha=0.3)
+
+    ax = axes[0, 1]
+    probe_steps = history.get("probe_steps", [])
+    curvatures = history.get("curvatures", [])
+    grad_norms = history.get("grad_norms", [])
+    if probe_steps and curvatures:
+        ax.plot(probe_steps, curvatures, 'b.-', label='Mean curvature')
+        ax2 = ax.twinx()
+        ax2.plot(probe_steps, grad_norms, 'r.-', alpha=0.7, label='Grad norm')
+        ax2.set_ylabel("Grad Norm", color='red')
+        ax.set_xlabel("Step")
+        ax.set_ylabel("Mean Curvature", color='blue')
+        ax.set_title("Probe Results")
+        ax.legend(loc='upper left', fontsize=8)
+        ax2.legend(loc='upper right', fontsize=8)
+    else:
+        ax.text(0.5, 0.5, "No probe data", ha='center', va='center',
+                transform=ax.transAxes)
+    ax.grid(True, alpha=0.3)
+
+    ax = axes[1, 0]
+    betas = history.get("betas", [])
+    if probe_steps and betas:
+        ax.plot(probe_steps, betas, 'g.-')
+        ax.set_xlabel("Step")
+        ax.set_ylabel("Lorentz beta")
+        ax.set_title("Lorentz Warp Factor")
+        ax.axhline(0.0, color='gray', linestyle='--', alpha=0.3)
+    else:
+        ax.text(0.5, 0.5, "No warp data", ha='center', va='center',
+                transform=ax.transAxes)
+    ax.grid(True, alpha=0.3)
+
+    ax = axes[1, 1]
+    lifts = history.get("lifts", [])
+    if lifts:
+        lift_steps = [l["step"] for l in lifts]
+        lift_losses = [l["loss"] for l in lifts]
+        lift_colors = ['green' if l["success"] else 'red' for l in lifts]
+        ax.scatter(lift_steps, lift_losses, c=lift_colors, s=50, zorder=5)
+        ax.set_xlabel("Step")
+        ax.set_ylabel("Loss at Lift")
+        ax.set_title(f"Lift Oracle Events ({len(lifts)} total)")
+        patches = [Patch(color='green', label='Success'),
+                   Patch(color='red', label='Fail')]
+        ax.legend(handles=patches, fontsize=8)
+    else:
+        if modes:
+            mode_counts = {}
+            for m in modes:
+                mode_counts[m] = mode_counts.get(m, 0) + 1
+            ax.bar(mode_counts.keys(), mode_counts.values(),
+                   color=['steelblue', 'seagreen', 'orange'][:len(mode_counts)])
+            ax.set_title("Mode Distribution")
+        else:
+            ax.text(0.5, 0.5, "No lift/mode data", ha='center', va='center',
+                    transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    path = os.path.join(output_dir, "optimization_trajectory.png")
+    path = os.path.join(output_dir, f"trajectory_{title.replace(' ', '_').lower()}.png")
     fig.savefig(path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     print(f"  Saved: {path}")
@@ -2434,7 +3350,6 @@ def plot_geometric_controller(
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     fig.suptitle(title, fontsize=14, fontweight='bold')
 
-    # (0,0) Per-group FIM
     ax = axes[0, 0]
     fim = diagnostics.get("fim_diag", {})
     if fim:
@@ -2449,7 +3364,6 @@ def plot_geometric_controller(
                 transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
-    # (0,1) Commutativity matrix heatmap
     ax = axes[0, 1]
     gs = diagnostics.get("geometric_scores", {})
     if "comm_result" in gs:
@@ -2459,7 +3373,6 @@ def plot_geometric_controller(
         ax.set_title("Commutativity Matrix")
         ax.set_xlabel("Dimension")
         ax.set_ylabel("Dimension")
-        # Overlay coloring partition
         schedule = diagnostics.get("schedule", [])
         sched_colors = plt.cm.Set2(np.linspace(0, 1, max(len(schedule), 1)))
         for ci, color_group in enumerate(schedule):
@@ -2482,20 +3395,18 @@ def plot_geometric_controller(
                     transform=ax.transAxes)
     ax.grid(False)
 
-    # (1,0) Per-group update scales
     ax = axes[1, 0]
     scales = diagnostics.get("scales", [])
     if scales:
         x = list(range(len(scales)))
-        # Color by dominant signal
         bar_colors = []
         for s in scales:
             if s > 1.3:
-                bar_colors.append('green')    # closure trust
+                bar_colors.append('green')
             elif s < 0.5:
-                bar_colors.append('red')      # FIM caution
+                bar_colors.append('red')
             elif s < 0.8:
-                bar_colors.append('orange')   # coherence gate
+                bar_colors.append('orange')
             else:
                 bar_colors.append('steelblue')
         ax.bar(x, scales, color=bar_colors, edgecolor='white')
@@ -2508,7 +3419,6 @@ def plot_geometric_controller(
                 transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
-    # (1,1) Grade energy + entropy + closure annotation
     ax = axes[1, 1]
     if "grade_energy" in gs:
         ge = gs["grade_energy"].cpu().numpy()
@@ -2546,12 +3456,10 @@ def plot_topology_map(
     """Contour plot of 2D loss surface + critical points + trajectory."""
     _ensure_output_dir(output_dir)
     if not hasattr(model, 'a'):
-        print("  [plot_topology_map] Skipping: not a 2D model")
         return None
 
     fig, ax = plt.subplots(figsize=(10, 8))
 
-    # Loss surface contour
     xr = np.linspace(-2.5, 2.5, 100)
     yr = np.linspace(-1.5, 3.5, 100)
     X, Y = np.meshgrid(xr, yr)
@@ -2560,7 +3468,6 @@ def plot_topology_map(
     ax.contour(X, Y, np.log10(Z + 1e-10), levels=15, colors='gray',
                linewidths=0.3, alpha=0.5)
 
-    # Critical points
     cp_markers = {
         CriticalPointType.MINIMUM: ('o', 'blue', 'Minimum'),
         CriticalPointType.SADDLE: ('^', 'red', 'Saddle'),
@@ -2568,13 +3475,12 @@ def plot_topology_map(
     }
     for cp in landscape.critical_points:
         if cp.params.shape[0] >= 2:
-            marker, color, label = cp_markers.get(
+            marker, color, cp_label = cp_markers.get(
                 cp.point_type, ('x', 'black', 'Unknown'))
             ax.scatter(cp.params[0].item(), cp.params[1].item(),
                        marker=marker, c=color, s=80, zorder=5,
-                       edgecolors='white', linewidths=1)
+                       edgecolors='white', linewidths=1, label=cp_label)
 
-    # Trajectory
     if trajectory:
         mode_colors_traj = {"explore": "blue", "navigate": "green", "sprint": "orange"}
         for i in range(1, len(trajectory)):
@@ -2582,7 +3488,6 @@ def plot_topology_map(
             ax.plot([trajectory[i - 1][0], trajectory[i][0]],
                     [trajectory[i - 1][1], trajectory[i][1]],
                     color=mode_colors_traj.get(m, "blue"), linewidth=0.5, alpha=0.7)
-        # Start and end markers
         ax.scatter(*trajectory[0], marker='*', c='lime', s=150, zorder=6,
                    edgecolors='black', label='Start')
         ax.scatter(*trajectory[-1], marker='*', c='red', s=150, zorder=6,
@@ -2602,662 +3507,503 @@ def plot_topology_map(
     return fig
 
 
-def plot_comparison(
-    results: Dict[str, List[float]],
-    title: str = "GDO vs Adam",
+# --- New Enhanced Visualizations ---
+
+def plot_three_way_comparison(
+    results: Dict[str, ExperimentResult],
+    title: str = "Optimizer Comparison",
     output_dir: str = "gdo_plots",
 ):
-    """1x2: overlaid loss curves + final loss bar chart."""
+    """4-panel: loss curves, final loss bars, wall time bars, convergence rate."""
     _ensure_output_dir(output_dir)
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle(title, fontsize=14, fontweight='bold')
 
-    # Left: overlaid curves
-    ax = axes[0]
-    styles = {"GDO": ("b-", 1.0), "Adam": ("r--", 0.8)}
-    for name, losses in results.items():
-        style, lw = styles.get(name, ("g-", 0.8))
-        ax.semilogy(losses, style, label=name, linewidth=lw)
+    styles = {
+        "GDO": ("b-", 2.0), "RiemannianAdam": ("r--", 1.5),
+        "Adam": ("g:", 1.2), "Adam (no algebra)": ("g:", 1.2),
+        "ExponentialSGD": ("m-.", 1.2), "SGD": ("m-.", 1.2),
+    }
+    color_map = {
+        "GDO": "steelblue", "RiemannianAdam": "salmon",
+        "Adam": "seagreen", "Adam (no algebra)": "seagreen",
+        "ExponentialSGD": "plum", "SGD": "plum",
+    }
+
+    # (0,0) Loss curves
+    ax = axes[0, 0]
+    for name, res in results.items():
+        style, lw = styles.get(name, ("k-", 1.0))
+        ax.semilogy(res.losses, style, label=name, linewidth=lw)
     ax.set_xlabel("Step")
     ax.set_ylabel("Loss")
     ax.set_title("Convergence")
-    ax.legend()
+    ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
 
-    # Right: final loss bar chart
-    ax = axes[1]
+    # (0,1) Final loss bars
+    ax = axes[0, 1]
     names = list(results.keys())
-    finals = [results[n][-1] if results[n] else 0 for n in names]
-    bar_colors = ['steelblue' if n == 'GDO' else 'salmon' for n in names]
+    finals = [results[n].final_loss for n in names]
+    bar_colors = [color_map.get(n, 'gray') for n in names]
     ax.bar(names, finals, color=bar_colors, edgecolor='white')
     ax.set_ylabel("Final Loss")
-    ax.set_title("Final Loss Comparison")
+    ax.set_title("Final Loss")
+    ax.grid(True, alpha=0.3)
+    for i, v in enumerate(finals):
+        ax.text(i, v, f'{v:.4f}', ha='center', va='bottom', fontsize=8)
+
+    # (1,0) Wall time bars
+    ax = axes[1, 0]
+    wall_times = [results[n].total_wall_time for n in names]
+    ax.bar(names, wall_times, color=bar_colors, edgecolor='white')
+    ax.set_ylabel("Total Wall Time (s)")
+    ax.set_title("Wall Time")
+    ax.grid(True, alpha=0.3)
+    for i, v in enumerate(wall_times):
+        ax.text(i, v, f'{v:.1f}s', ha='center', va='bottom', fontsize=8)
+
+    # (1,1) Loss vs wall time
+    ax = axes[1, 1]
+    for name, res in results.items():
+        cum_time = np.cumsum(res.wall_times)
+        style, lw = styles.get(name, ("k-", 1.0))
+        ax.semilogy(cum_time, res.losses, style, label=name, linewidth=lw)
+    ax.set_xlabel("Cumulative Wall Time (s)")
+    ax.set_ylabel("Loss")
+    ax.set_title("Loss vs Wall Time")
+    ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
 
-    fig.suptitle(title, fontsize=13, fontweight='bold')
     plt.tight_layout()
-    path = os.path.join(output_dir, "comparison.png")
+    safe_title = title.replace(' ', '_').replace('/', '_').lower()
+    path = os.path.join(output_dir, f"comparison_{safe_title}.png")
     fig.savefig(path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     print(f"  Saved: {path}")
     return fig
 
 
-def plot_registration_result(
-    model: RotorRegistrationModel,
-    history: Dict,
+def plot_convergence_rate(
+    results: Dict[str, ExperimentResult],
+    title: str = "Convergence Rate",
     output_dir: str = "gdo_plots",
 ):
-    """1x3: 3D point clouds, angular error, loss with modes."""
+    """3-panel: loss vs step, loss vs wall-time, convergence rate."""
     _ensure_output_dir(output_dir)
-    fig = plt.figure(figsize=(18, 5))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    fig.suptitle(title, fontsize=14, fontweight='bold')
 
-    # Left: 3D scatter
-    ax = fig.add_subplot(131, projection='3d')
-    src = model.source.cpu().numpy()
-    tgt = model.target.cpu().numpy()
-    # Predict current
-    with torch.no_grad():
-        source_mv = model.algebra.embed_vector(model.source).unsqueeze(1)
-        pred_mv = model.rotor(source_mv).squeeze(1)
-        pred_pts = model._extract_vector(pred_mv).cpu().numpy()
-    ax.scatter(src[:, 0], src[:, 1], src[:, 2], c='blue', s=15, alpha=0.6, label='Source')
-    ax.scatter(tgt[:, 0], tgt[:, 1], tgt[:, 2], c='red', s=15, alpha=0.6, label='Target')
-    ax.scatter(pred_pts[:, 0], pred_pts[:, 1], pred_pts[:, 2],
-               c='green', s=15, alpha=0.6, label='Predicted')
-    ax.set_title("Point Clouds")
-    ax.legend(fontsize=7)
+    styles = {"GDO": "b-", "RiemannianAdam": "r--", "Adam": "g:", "Adam (no algebra)": "g:"}
 
-    # Center: angular error
-    ax = fig.add_subplot(132)
-    angle_errors = history.get("angle_errors", [])
-    if angle_errors:
-        ax.plot(angle_errors, 'b-', linewidth=0.8)
-        ax.set_ylabel("Angle Error (rad)")
-        ax.set_xlabel("Step")
-        ax.set_title(f"Angular Error (final={angle_errors[-1]:.4f} rad)")
-    ax.grid(True, alpha=0.3)
-
-    # Right: loss with mode transitions
-    ax = fig.add_subplot(133)
-    losses = history.get("losses", [])
-    modes = history.get("modes", [])
-    if losses:
-        ax.semilogy(losses, 'b-', linewidth=0.8)
-        mode_colors = {"explore": "#cce5ff", "navigate": "#d4edda", "sprint": "#fff3cd"}
-        if modes:
-            prev = modes[0]
-            start = 0
-            for i, m in enumerate(modes + [None]):
-                if m != prev or i == len(modes):
-                    ax.axvspan(start, i, alpha=0.15,
-                               color=mode_colors.get(prev, '#ffffff'))
-                    prev = m
-                    start = i
+    ax = axes[0]
+    for name, res in results.items():
+        ax.semilogy(res.losses, styles.get(name, "k-"), label=name, linewidth=1.2)
     ax.set_xlabel("Step")
     ax.set_ylabel("Loss")
-    ax.set_title("Loss Curve")
-    ax.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    path = os.path.join(output_dir, "registration_result.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    print(f"  Saved: {path}")
-    return fig
-
-
-def plot_dimension_analysis(
-    pre_result: PreExplorationResult,
-    title: str = "Dimension Analysis",
-    output_dir: str = "gdo_plots",
-):
-    """Detailed dimension analysis: eigenvalues, explained variance, condition number."""
-    if pre_result.dim_result is None:
-        return None
-    _ensure_output_dir(output_dir)
-    d = pre_result.dim_result
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle(title, fontsize=14, fontweight='bold')
-
-    # (0,0) Eigenvalue spectrum with broken-stick overlay
-    ax = axes[0, 0]
-    ev = d.eigenvalues.cpu().numpy()
-    n_comp = len(ev)
-    ax.semilogy(range(1, n_comp + 1), ev, 'b.-', label='Eigenvalues')
-    # Broken-stick expected values
-    bs = np.zeros(n_comp)
-    for i in range(n_comp):
-        bs[i] = sum(1.0 / (j + 1) for j in range(i, n_comp)) / n_comp
-    bs_scaled = bs * ev.sum()
-    ax.semilogy(range(1, n_comp + 1), bs_scaled, 'r--', alpha=0.7, label='Broken-stick')
-    ax.axvline(d.broken_stick_threshold, color='green', linestyle=':', alpha=0.7,
-               label=f'Threshold={d.broken_stick_threshold}')
-    ax.set_xlabel("Component")
-    ax.set_ylabel("Eigenvalue")
-    ax.set_title(f"Eigenvalue Spectrum (intrinsic_dim={d.intrinsic_dim})")
+    ax.set_title("Loss vs Step")
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
 
-    # (0,1) Explained variance ratio (cumulative)
-    ax = axes[0, 1]
-    evr = d.explained_variance_ratio.cpu().numpy()
-    cum_evr = np.cumsum(evr)
-    ax.bar(range(1, len(evr) + 1), evr, color='steelblue', alpha=0.7, label='Individual')
-    ax.plot(range(1, len(cum_evr) + 1), cum_evr, 'ro-', markersize=3, label='Cumulative')
-    ax.axhline(0.95, color='green', linestyle='--', alpha=0.5, label='95%')
-    n95 = int(np.searchsorted(cum_evr, 0.95)) + 1
-    ax.axvline(n95, color='green', linestyle=':', alpha=0.5)
-    ax.set_xlabel("Component")
-    ax.set_ylabel("Variance Ratio")
-    ax.set_title(f"Explained Variance (95% at {n95} components)")
-    ax.legend(fontsize=8)
-    ax.grid(True, alpha=0.3)
-
-    # (1,0) Condition number and participation ratio
-    ax = axes[1, 0]
-    cond = ev[0] / max(ev[-1], 1e-15)
-    metrics = ['Participation\nRatio', 'Intrinsic\nDim', 'log10(Cond.\nNumber)']
-    values = [d.participation_ratio, float(d.intrinsic_dim), np.log10(max(cond, 1))]
-    colors = ['steelblue', 'seagreen', 'coral']
-    bars = ax.bar(metrics, values, color=colors, alpha=0.7, edgecolor='white')
-    for bar, val in zip(bars, values):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
-                f'{val:.2f}', ha='center', va='bottom', fontsize=9)
-    ax.set_title("Dimension Summary")
-    ax.grid(True, alpha=0.3, axis='y')
-
-    # (1,1) Local dimension distribution (if available) else eigenvalue gap ratios
-    ax = axes[1, 1]
-    if d.local_dims is not None:
-        ld = d.local_dims.cpu().numpy()
-        ax.hist(ld, bins=min(30, max(5, int(np.sqrt(len(ld))))),
-                color='mediumpurple', edgecolor='white', alpha=0.8)
-        ax.axvline(d.participation_ratio, color='red', linestyle='--',
-                   label=f'PR={d.participation_ratio:.1f}')
-        ax.axvline(d.intrinsic_dim, color='green', linestyle=':',
-                   label=f'Intrinsic={d.intrinsic_dim}')
-        ax.set_xlabel("Local Dimension")
-        ax.set_ylabel("Count")
-        ax.set_title("Local Dimension Distribution")
-        ax.legend(fontsize=8)
-    else:
-        # Eigenvalue gap ratios
-        if len(ev) > 1:
-            gaps = ev[:-1] / np.maximum(ev[1:], 1e-15)
-            ax.bar(range(1, len(gaps) + 1), np.log10(np.clip(gaps, 1, None)),
-                   color='coral', alpha=0.7, edgecolor='white')
-            ax.set_xlabel("Gap Index (i / i+1)")
-            ax.set_ylabel("log10(Gap Ratio)")
-            ax.set_title("Eigenvalue Gap Ratios")
-        else:
-            ax.text(0.5, 0.5, "N/A", ha='center', va='center', transform=ax.transAxes)
-    ax.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    path = os.path.join(output_dir, "dimension_analysis.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    print(f"  Saved: {path}")
-    return fig
-
-
-def plot_symmetry_analysis(
-    pre_result: PreExplorationResult,
-    title: str = "Symmetry Analysis",
-    output_dir: str = "gdo_plots",
-):
-    """Symmetry detection results: null scores, reflections, involution, continuous dim."""
-    if pre_result.symmetry_result is None:
-        return None
-    _ensure_output_dir(output_dir)
-    sy = pre_result.symmetry_result
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle(title, fontsize=14, fontweight='bold')
-
-    # (0,0) Null scores per basis vector
-    ax = axes[0, 0]
-    ns = sy.null_scores.cpu().numpy()
-    n = len(ns)
-    colors = ['red' if i in sy.null_directions else 'steelblue' for i in range(n)]
-    ax.bar(range(n), ns, color=colors, alpha=0.7, edgecolor='white')
-    ax.axhline(0.01, color='gray', linestyle='--', alpha=0.5, label='Null threshold')
-    ax.set_xlabel("Basis Vector Index")
-    ax.set_ylabel("Null Score")
-    ax.set_title(f"Null Direction Scores ({len(sy.null_directions)} null)")
-    ax.legend(fontsize=8)
-    ax.grid(True, alpha=0.3)
-
-    # (0,1) Reflection symmetry scores
-    ax = axes[0, 1]
-    if sy.reflection_symmetries:
-        dirs = [r["direction"] for r in sy.reflection_symmetries]
-        scores = [r["score"] for r in sy.reflection_symmetries]
-        bar_colors = ['green' if s < 0.1 else 'orange' if s < 0.3 else 'red'
-                      for s in scores]
-        ax.bar(range(len(dirs)), scores, color=bar_colors, alpha=0.7, edgecolor='white')
-        ax.set_xticks(range(len(dirs)))
-        ax.set_xticklabels([f'e{d}' for d in dirs], fontsize=8)
-        ax.axhline(0.1, color='green', linestyle='--', alpha=0.5, label='Symmetric')
-        n_sym = sum(1 for s in scores if s < 0.1)
-        ax.set_title(f"Reflection Symmetries ({n_sym} detected)")
-        ax.legend(fontsize=8)
-    else:
-        ax.text(0.5, 0.5, "No reflections\nanalyzed", ha='center', va='center',
-                transform=ax.transAxes)
-    ax.set_xlabel("Direction")
-    ax.set_ylabel("Asymmetry Score")
-    ax.grid(True, alpha=0.3)
-
-    # (1,0) Involution symmetry gauge
-    ax = axes[1, 0]
-    inv = sy.involution_symmetry
-    # Horizontal bar showing even/odd balance
-    ax.barh(['Grade\nInvolution'], [inv], color='mediumpurple', alpha=0.7, height=0.4)
-    ax.barh(['Continuous\nSymmetry Dim'], [sy.continuous_symmetry_dim],
-            color='teal', alpha=0.7, height=0.4)
-    ax.set_xlim(0, max(1.0, sy.continuous_symmetry_dim + 0.5))
-    ax.set_title("Symmetry Measures")
-    # Annotate
-    ax.text(inv + 0.02, 0, f'{inv:.3f}', va='center', fontsize=10)
-    ax.text(sy.continuous_symmetry_dim + 0.02, 1,
-            f'{sy.continuous_symmetry_dim}', va='center', fontsize=10)
-    ax.grid(True, alpha=0.3, axis='x')
-
-    # (1,1) Summary text panel
-    ax = axes[1, 1]
-    ax.axis('off')
-    lines = [
-        f"Null directions: {sy.null_directions}",
-        f"Involution symmetry: {inv:.4f}",
-        f"  (0 = purely even subalgebra, 1 = balanced)",
-        f"Continuous symmetry dim: {sy.continuous_symmetry_dim}",
-        f"Reflection symmetries: {sum(1 for r in sy.reflection_symmetries if r['score'] < 0.1)}"
-        f" / {len(sy.reflection_symmetries)}",
-        "",
-        "Interpretation:",
-    ]
-    if inv < 0.2:
-        lines.append("  Data lives near even subalgebra (rotors)")
-    elif inv > 0.8:
-        lines.append("  Data has balanced even/odd content")
-    else:
-        lines.append("  Mixed even/odd content")
-    if sy.continuous_symmetry_dim > 0:
-        lines.append(f"  {sy.continuous_symmetry_dim}D continuous symmetry group detected")
-    ax.text(0.05, 0.95, "\n".join(lines), transform=ax.transAxes,
-            va='top', fontsize=10, family='monospace',
-            bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8))
-
-    plt.tight_layout()
-    path = os.path.join(output_dir, "symmetry_analysis.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    print(f"  Saved: {path}")
-    return fig
-
-
-def plot_geodesic_flow(
-    pre_result: PreExplorationResult,
-    title: str = "Geodesic Flow Analysis",
-    output_dir: str = "gdo_plots",
-):
-    """Flow bivector magnitudes, per-point coherence, causal report."""
-    _ensure_output_dir(output_dir)
-    has_flow = pre_result.flow_bivectors is not None
-    has_coh = pre_result.per_point_coherence is not None
-    has_causal = pre_result.causal_report is not None
-    if not (has_flow or has_coh or has_causal
-            or pre_result.landscape_coherence > 0):
-        return None
-
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle(title, fontsize=14, fontweight='bold')
-
-    # (0,0) Flow bivector magnitudes
-    ax = axes[0, 0]
-    if has_flow:
-        mags = pre_result.flow_bivectors.norm(dim=-1).cpu().numpy()
-        ax.bar(range(len(mags)), mags, color='steelblue', alpha=0.7, edgecolor='white')
-        ax.set_xlabel("Data Point")
-        ax.set_ylabel("Flow Bivector Magnitude")
-        ax.set_title(f"Flow Field Magnitudes (mean={mags.mean():.4f})")
-        ax.axhline(mags.mean(), color='red', linestyle='--', alpha=0.5)
-    else:
-        ax.text(0.5, 0.5, "No flow bivectors\n(no algebra)", ha='center',
-                va='center', transform=ax.transAxes)
-    ax.grid(True, alpha=0.3)
-
-    # (0,1) Per-point coherence distribution
-    ax = axes[0, 1]
-    if has_coh:
-        coh_vals = pre_result.per_point_coherence.cpu().numpy()
-        ax.hist(coh_vals, bins=min(25, max(5, len(coh_vals) // 3)),
-                color='seagreen', edgecolor='white', alpha=0.8)
-        ax.axvline(coh_vals.mean(), color='red', linestyle='--',
-                   label=f'Mean={coh_vals.mean():.3f}')
-        ax.set_xlabel("Coherence")
-        ax.set_ylabel("Count")
-        ax.set_title("Per-Point Coherence Distribution")
-        ax.legend(fontsize=8)
-    else:
-        ax.text(0.5, 0.5, "No per-point\ncoherence", ha='center',
-                va='center', transform=ax.transAxes)
-    ax.grid(True, alpha=0.3)
-
-    # (1,0) Landscape coherence vs curvature scatter / gauge
-    ax = axes[1, 0]
-    coh = pre_result.landscape_coherence
-    curv = pre_result.landscape_curvature
-    ax.scatter([coh], [curv], s=200, c='darkorange', edgecolors='black',
-               zorder=5, marker='*')
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    # Shade regions
-    ax.axvspan(0.5, 1.0, ymin=0, ymax=0.5, alpha=0.08, color='green')
-    ax.axvspan(0, 0.5, ymin=0.5, ymax=1.0, alpha=0.08, color='red')
-    ax.text(0.75, 0.2, 'Causal', ha='center', fontsize=10, color='green', alpha=0.6)
-    ax.text(0.25, 0.8, 'Noisy', ha='center', fontsize=10, color='red', alpha=0.6)
-    ax.set_xlabel("Coherence")
-    ax.set_ylabel("Curvature")
-    ax.set_title(f"Landscape Flow (coh={coh:.3f}, curv={curv:.3f})")
-    ax.grid(True, alpha=0.3)
-
-    # (1,1) Causal report text + loss landscape stats
-    ax = axes[1, 1]
-    ax.axis('off')
-    lines = ["Geodesic Flow Summary", "=" * 30]
-    if has_causal:
-        cr = pre_result.causal_report
-        lines.append(f"  Verdict: {cr['label']}")
-        lines.append(f"  Coherence: {cr['coherence']:.4f}")
-        lines.append(f"  Curvature: {cr['curvature']:.4f}")
-    else:
-        lines.append(f"  Landscape coherence: {coh:.4f}")
-        lines.append(f"  Landscape curvature: {curv:.4f}")
-    lines.append("")
-    ls = pre_result.loss_statistics
-    if ls:
-        lines.append("Loss Landscape Statistics")
-        lines.append("=" * 30)
-        lines.append(f"  Mean:   {ls.get('mean', 0):.6f}")
-        lines.append(f"  Std:    {ls.get('std', 0):.6f}")
-        lines.append(f"  Min:    {ls.get('min', 0):.6f}")
-        lines.append(f"  Max:    {ls.get('max', 0):.6f}")
-        lines.append(f"  Median: {ls.get('median', 0):.6f}")
-        lines.append(f"  IQR:    [{ls.get('q25', 0):.6f}, {ls.get('q75', 0):.6f}]")
-    ax.text(0.05, 0.95, "\n".join(lines), transform=ax.transAxes,
-            va='top', fontsize=10, family='monospace',
-            bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8))
-
-    plt.tight_layout()
-    path = os.path.join(output_dir, "geodesic_flow.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    print(f"  Saved: {path}")
-    return fig
-
-
-def plot_exchange_spectrum(
-    pre_result: PreExplorationResult,
-    title: str = "Exchange Spectrum & Lie Structure",
-    output_dir: str = "gdo_plots",
-):
-    """Exchange spectrum eigenvalues, structure constants heatmap, Lie bracket closure."""
-    if pre_result.commutator_result is None:
-        return None
-    _ensure_output_dir(output_dir)
-    c = pre_result.commutator_result
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle(title, fontsize=14, fontweight='bold')
-
-    # (0,0) Exchange spectrum eigenvalues
-    ax = axes[0, 0]
-    es = c.exchange_spectrum.cpu().numpy()
-    if len(es) > 0:
-        ax.semilogy(range(1, len(es) + 1), np.maximum(es, 1e-15), 'b.-')
-        ax.set_xlabel("Index")
-        ax.set_ylabel("Eigenvalue Magnitude")
-        ax.set_title(f"Exchange Spectrum (top={es[0]:.4f})")
-        # Mark significant eigenvalues
-        threshold = es[0] * 0.01 if es[0] > 0 else 0
-        n_sig = int(np.sum(es > threshold))
-        ax.axhline(threshold, color='red', linestyle='--', alpha=0.5,
-                   label=f'{n_sig} significant')
-        ax.legend(fontsize=8)
-    else:
-        ax.text(0.5, 0.5, "Algebra too large\nfor full spectrum",
-                ha='center', va='center', transform=ax.transAxes)
-    ax.grid(True, alpha=0.3)
-
-    # (0,1) Commutativity matrix heatmap
-    ax = axes[0, 1]
-    cm = c.commutativity_matrix.cpu().numpy()
-    if cm.size > 0:
-        im = ax.imshow(cm, cmap='hot', aspect='auto')
-        plt.colorbar(im, ax=ax, shrink=0.8)
-        ax.set_xlabel("Basis Direction j")
-        ax.set_ylabel("Basis Direction i")
-        ax.set_title(f"Commutativity Matrix (mean={cm.mean():.4f})")
-    else:
-        ax.text(0.5, 0.5, "N/A", ha='center', va='center', transform=ax.transAxes)
-
-    # (1,0) Structure constants heatmap (sum over third index for visualization)
-    ax = axes[1, 0]
-    sc = c.lie_bracket_structure.get("structure_constants", None)
-    if sc is not None and sc.numel() > 0:
-        sc_np = sc.cpu().numpy()
-        k = sc_np.shape[0]
-        # Frobenius norm over the c-index: ||c_{a,b,:}||
-        sc_norm = np.sqrt((sc_np ** 2).sum(axis=2))
-        im = ax.imshow(sc_norm, cmap='viridis', aspect='auto')
-        plt.colorbar(im, ax=ax, shrink=0.8)
-        ax.set_xlabel("Bivector b")
-        ax.set_ylabel("Bivector a")
-        ax.set_title(f"Structure Constants ||c_{{ab}}|| (k={k})")
-    else:
-        ax.text(0.5, 0.5, "No structure\nconstants", ha='center',
-                va='center', transform=ax.transAxes)
-
-    # (1,1) Summary: closure error, mean commutator norm, basis indices
-    ax = axes[1, 1]
-    ax.axis('off')
-    ce = c.lie_bracket_structure.get("closure_error", None)
-    bi = c.lie_bracket_structure.get("basis_indices", [])
-    lines = [
-        "Lie Bracket Analysis",
-        "=" * 30,
-        f"  Mean commutator norm: {c.mean_commutator_norm:.6f}",
-    ]
-    if ce is not None:
-        lines.append(f"  Lie bracket closure error: {ce:.6f}")
-        if ce < 0.05:
-            lines.append("  -> Bivectors form a closed Lie subalgebra")
-        elif ce < 0.2:
-            lines.append("  -> Approximate closure (near-Lie structure)")
-        else:
-            lines.append("  -> Poor closure (no clear Lie subalgebra)")
-    lines.append(f"  Basis bivector indices: {bi[:10]}")
-    if len(bi) > 10:
-        lines.append(f"    ... ({len(bi)} total)")
-    lines.append("")
-    lines.append("Exchange Spectrum Summary")
-    lines.append("=" * 30)
-    if len(es) > 0:
-        lines.append(f"  Largest eigenvalue: {es[0]:.6f}")
-        lines.append(f"  Spectral gap: {(es[0] - es[1]):.6f}" if len(es) > 1 else "")
-        n_nonzero = int(np.sum(es > 1e-8))
-        lines.append(f"  Non-zero eigenvalues: {n_nonzero}/{len(es)}")
-    ax.text(0.05, 0.95, "\n".join(lines), transform=ax.transAxes,
-            va='top', fontsize=10, family='monospace',
-            bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8))
-
-    plt.tight_layout()
-    path = os.path.join(output_dir, "exchange_spectrum.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    print(f"  Saved: {path}")
-    return fig
-
-
-def plot_dimension_lifting(
-    pre_result: PreExplorationResult,
-    title: str = "Dimension Lifting Analysis",
-    output_dir: str = "gdo_plots",
-):
-    """DimensionLifter results: original vs positive vs null lift coherence/curvature."""
-    if pre_result.lifting_report is None:
-        return None
-    _ensure_output_dir(output_dir)
-    lr = pre_result.lifting_report
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-    fig.suptitle(title, fontsize=14, fontweight='bold')
-
-    configs = ['original', 'lift_positive', 'lift_null']
-    labels = ['Original', 'Positive Lift\n(+1 spacelike)', 'Null Lift\n(+1 timelike)']
-    cohs = []
-    curvs = []
-    sigs = []
-    for cfg in configs:
-        entry = lr.get(cfg, {})
-        cohs.append(entry.get('coherence', 0))
-        curvs.append(entry.get('curvature', 0))
-        sig = entry.get('signature', (0, 0))
-        sigs.append(f"Cl({sig[0]},{sig[1]})")
-
-    best = lr.get('best', 'original')
-
-    # Left: Coherence comparison
-    ax = axes[0]
-    bar_colors = ['gold' if cfg == best else 'steelblue' for cfg in configs]
-    bars = ax.bar(range(3), cohs, color=bar_colors, alpha=0.7, edgecolor='white')
-    ax.set_xticks(range(3))
-    ax.set_xticklabels([f"{l}\n{s}" for l, s in zip(labels, sigs)], fontsize=8)
-    ax.set_ylabel("Coherence")
-    ax.set_title("Geodesic Flow Coherence")
-    ax.set_ylim(0, 1)
-    for bar, val in zip(bars, cohs):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.02,
-                f'{val:.3f}', ha='center', fontsize=9)
-    ax.grid(True, alpha=0.3, axis='y')
-
-    # Center: Curvature comparison
     ax = axes[1]
-    bar_colors = ['gold' if cfg == best else 'coral' for cfg in configs]
-    bars = ax.bar(range(3), curvs, color=bar_colors, alpha=0.7, edgecolor='white')
-    ax.set_xticks(range(3))
-    ax.set_xticklabels([f"{l}\n{s}" for l, s in zip(labels, sigs)], fontsize=8)
-    ax.set_ylabel("Curvature")
-    ax.set_title("Geodesic Flow Curvature")
-    ax.set_ylim(0, 1)
-    for bar, val in zip(bars, curvs):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.02,
-                f'{val:.3f}', ha='center', fontsize=9)
-    ax.grid(True, alpha=0.3, axis='y')
-
-    # Right: Summary + recommendation
-    ax = axes[2]
-    ax.axis('off')
-    lines = [
-        "Dimension Lifting Report",
-        "=" * 30,
-    ]
-    for cfg, label in zip(configs, ['Original', 'Positive Lift', 'Null Lift']):
-        entry = lr.get(cfg, {})
-        sig = entry.get('signature', (0, 0))
-        coh = entry.get('coherence', 0)
-        curv = entry.get('curvature', 0)
-        causal = entry.get('causal', False)
-        marker = " <-- BEST" if cfg == best else ""
-        lines.append(f"  {label} Cl({sig[0]},{sig[1]}):{marker}")
-        lines.append(f"    Coherence: {coh:.4f}")
-        lines.append(f"    Curvature: {curv:.4f}")
-        lines.append(f"    Causal: {'Yes' if causal else 'No'}")
-        lines.append("")
-    lines.append(f"Recommendation: {best.replace('_', ' ').title()}")
-    if best == 'lift_positive':
-        lines.append("  -> Adding spacelike dimension reveals structure")
-    elif best == 'lift_null':
-        lines.append("  -> Adding timelike dimension reveals structure")
-    else:
-        lines.append("  -> Current algebra is sufficient")
-    ax.text(0.05, 0.95, "\n".join(lines), transform=ax.transAxes,
-            va='top', fontsize=9, family='monospace',
-            bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8))
-
-    plt.tight_layout()
-    path = os.path.join(output_dir, "dimension_lifting.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    print(f"  Saved: {path}")
-    return fig
-
-
-def plot_landscape_loss(
-    pre_result: PreExplorationResult,
-    title: str = "Loss Landscape Exploration",
-    output_dir: str = "gdo_plots",
-):
-    """Loss landscape distribution, sorted loss profile, and loss vs distance."""
-    if pre_result.landscape_losses is None:
-        return None
-    _ensure_output_dir(output_dir)
-    losses = pre_result.landscape_losses.cpu().numpy()
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-    fig.suptitle(title, fontsize=14, fontweight='bold')
-
-    # Left: Loss histogram
-    ax = axes[0]
-    ax.hist(losses, bins=min(30, max(5, len(losses) // 5)),
-            color='steelblue', edgecolor='white', alpha=0.8)
-    ax.axvline(losses.mean(), color='red', linestyle='--', label=f'Mean={losses.mean():.4f}')
-    ax.axvline(np.median(losses), color='green', linestyle=':', label=f'Median={np.median(losses):.4f}')
-    ax.set_xlabel("Loss")
-    ax.set_ylabel("Count")
-    ax.set_title("Loss Distribution")
-    ax.legend(fontsize=8)
-    ax.grid(True, alpha=0.3)
-
-    # Center: Sorted loss profile
-    ax = axes[1]
-    sorted_losses = np.sort(losses)
-    ax.plot(sorted_losses, 'b-', linewidth=0.8)
-    ax.fill_between(range(len(sorted_losses)), sorted_losses, alpha=0.1, color='blue')
-    ax.set_xlabel("Rank (sorted)")
+    for name, res in results.items():
+        cum_time = np.cumsum(res.wall_times)
+        ax.semilogy(cum_time, res.losses, styles.get(name, "k-"), label=name, linewidth=1.2)
+    ax.set_xlabel("Wall Time (s)")
     ax.set_ylabel("Loss")
-    ax.set_title("Sorted Loss Profile")
+    ax.set_title("Loss vs Wall Time")
+    ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
 
-    # Right: Loss vs distance from origin (first sample)
     ax = axes[2]
-    if pre_result.landscape_positions is not None:
-        positions = pre_result.landscape_positions.cpu().numpy()
-        origin = positions[0]
-        dists = np.linalg.norm(positions - origin, axis=-1)
-        ax.scatter(dists, losses, s=8, alpha=0.5, c='steelblue', edgecolors='none')
-        ax.set_xlabel("Distance from Origin")
-        ax.set_ylabel("Loss")
-        ax.set_title("Loss vs Perturbation Distance")
-        # Fit trend line
-        if len(dists) > 3:
-            z = np.polyfit(dists, losses, 2)
-            d_sorted = np.sort(dists)
-            ax.plot(d_sorted, np.polyval(z, d_sorted), 'r--', alpha=0.6, label='Quadratic fit')
-            ax.legend(fontsize=8)
-    else:
-        ax.text(0.5, 0.5, "No positions\navailable", ha='center', va='center',
-                transform=ax.transAxes)
+    window = 50
+    for name, res in results.items():
+        if len(res.losses) > window:
+            losses_arr = np.array(res.losses)
+            rate = -(losses_arr[window:] - losses_arr[:-window]) / window
+            smoothed = np.convolve(rate, np.ones(20)/20, mode='valid')
+            ax.plot(smoothed, styles.get(name, "k-"), label=name, linewidth=1.2)
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Convergence Rate (loss drop/step)")
+    ax.set_title("Smoothed Convergence Rate")
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    path = os.path.join(output_dir, "landscape_loss.png")
+    safe_title = title.replace(' ', '_').lower()
+    path = os.path.join(output_dir, f"convergence_{safe_title}.png")
     fig.savefig(path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     print(f"  Saved: {path}")
     return fig
 
 
-def _collect_history(optimizer, info, history):
-    """Append step data to history dict."""
+def plot_timing_breakdown(
+    results: Dict[str, ExperimentResult],
+    title: str = "Timing Breakdown",
+    output_dir: str = "gdo_plots",
+):
+    """2-panel: per-step wall time, cumulative time vs loss."""
+    _ensure_output_dir(output_dir)
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    fig.suptitle(title, fontsize=14, fontweight='bold')
+
+    styles = {"GDO": "b", "RiemannianAdam": "r", "Adam": "g", "Adam (no algebra)": "g"}
+
+    ax = axes[0]
+    for name, res in results.items():
+        wt = np.array(res.wall_times) * 1000  # ms
+        # Smooth for readability
+        window = max(1, len(wt) // 100)
+        if window > 1:
+            wt_smooth = np.convolve(wt, np.ones(window)/window, mode='valid')
+        else:
+            wt_smooth = wt
+        ax.plot(wt_smooth, color=styles.get(name, 'k'), label=name, linewidth=0.8, alpha=0.8)
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Wall Time (ms)")
+    ax.set_title("Per-Step Wall Time")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+    ax = axes[1]
+    for name, res in results.items():
+        cum_time = np.cumsum(res.wall_times)
+        ax.plot(cum_time, res.losses, color=styles.get(name, 'k'), label=name, linewidth=1.2)
+    ax.set_xlabel("Cumulative Time (s)")
+    ax.set_ylabel("Loss")
+    ax.set_yscale('log')
+    ax.set_title("Cumulative Time vs Loss")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    safe_title = title.replace(' ', '_').lower()
+    path = os.path.join(output_dir, f"timing_{safe_title}.png")
+    fig.savefig(path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  Saved: {path}")
+    return fig
+
+
+def plot_bivector_trajectory(
+    results: Dict[str, ExperimentResult],
+    title: str = "Bivector Trajectory",
+    output_dir: str = "gdo_plots",
+):
+    """Bivector param norm evolution across optimizers."""
+    _ensure_output_dir(output_dir)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    fig.suptitle(title, fontsize=14, fontweight='bold')
+
+    styles = {"GDO": "b-", "RiemannianAdam": "r--", "Adam": "g:", "Adam (no algebra)": "g:"}
+    for name, res in results.items():
+        if res.bivector_norms:
+            ax.plot(res.bivector_norms, styles.get(name, "k-"), label=name, linewidth=1.2)
+
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Bivector Param Norm")
+    ax.set_title("Bivector Parameter Evolution")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    safe_title = title.replace(' ', '_').lower()
+    path = os.path.join(output_dir, f"bivector_{safe_title}.png")
+    fig.savefig(path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  Saved: {path}")
+    return fig
+
+
+def plot_optimizer_state_dashboard(
+    gdo_result: ExperimentResult,
+    title: str = "GDO State Dashboard",
+    output_dir: str = "gdo_plots",
+):
+    """4-panel: mode timeline, topology summary, warp beta/gamma, lift events."""
+    _ensure_output_dir(output_dir)
+    diag = gdo_result.gdo_diagnostics
+    if diag is None:
+        return None
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle(title, fontsize=14, fontweight='bold')
+
+    # (0,0) Mode timeline
+    ax = axes[0, 0]
+    mode_hist = gdo_result.mode_history or diag.get("mode_history", [])
+    if mode_hist:
+        mode_to_int = {"explore": 0, "navigate": 1, "sprint": 2}
+        mode_ints = [mode_to_int.get(m, 0) for m in mode_hist]
+        mode_colors = {0: '#4a90d9', 1: '#66bb6a', 2: '#ffa726'}
+        for i in range(len(mode_ints)):
+            ax.bar(i, 1, color=mode_colors.get(mode_ints[i], 'gray'), width=1.0)
+        ax.set_xlabel("Step")
+        ax.set_yticks([])
+        ax.set_title("Mode Timeline (blue=explore, green=navigate, orange=sprint)")
+    else:
+        ax.text(0.5, 0.5, "No mode data", ha='center', va='center', transform=ax.transAxes)
+
+    # (0,1) Topology summary
+    ax = axes[0, 1]
+    topo = diag.get("topology_map", {})
+    ax.axis('off')
+    lines = [
+        f"Critical points detected: {topo.get('critical_points', 0)}",
+        f"Plateau episodes: {len(topo.get('plateau_episodes', []))}",
+        f"Curvature samples: {len(topo.get('curvature_history', []))}",
+    ]
+    warp = diag.get("warp", {})
+    lines.append(f"\nWarp beta: {warp.get('beta', 0):.4f}")
+    lines.append(f"Warp gamma: {warp.get('gamma', 1):.4f}")
+    lines.append(f"On plateau: {warp.get('on_plateau', False)}")
+
+    lift = diag.get("lift_oracle", {})
+    lines.append(f"\nLift count: {lift.get('lift_count', 0)}")
+    lines.append(f"Consecutive fails: {lift.get('consecutive_fails', 0)}")
+    lines.append(f"Current sigma: {lift.get('current_sigma', 0):.4f}")
+
+    ax.text(0.05, 0.95, "\n".join(lines), transform=ax.transAxes,
+            va='top', fontsize=10, family='monospace',
+            bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8))
+    ax.set_title("GDO State Summary")
+
+    # (1,0) Curvature history
+    ax = axes[1, 0]
+    curv_hist = topo.get("curvature_history", [])
+    if curv_hist:
+        ax.plot(curv_hist, 'b.-', linewidth=0.8)
+        ax.set_xlabel("Probe Index")
+        ax.set_ylabel("Mean Curvature")
+        ax.set_title("Curvature History")
+    else:
+        ax.text(0.5, 0.5, "No curvature data", ha='center', va='center',
+                transform=ax.transAxes)
+    ax.grid(True, alpha=0.3)
+
+    # (1,1) Gradient norm history
+    ax = axes[1, 1]
+    grad_hist = topo.get("gradient_norm_history", [])
+    if grad_hist:
+        ax.semilogy(grad_hist, 'r.-', linewidth=0.8)
+        ax.set_xlabel("Probe Index")
+        ax.set_ylabel("Gradient Norm")
+        ax.set_title("Gradient Norm History")
+    else:
+        ax.text(0.5, 0.5, "No gradient data", ha='center', va='center',
+                transform=ax.transAxes)
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    safe_title = title.replace(' ', '_').lower()
+    path = os.path.join(output_dir, f"gdo_state_{safe_title}.png")
+    fig.savefig(path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  Saved: {path}")
+    return fig
+
+
+def plot_loss_landscape_2d_slice(
+    model: nn.Module,
+    loss_fn: Callable,
+    n_grid: int = 40,
+    radius: float = 1.0,
+    title: str = "Loss Landscape Slice",
+    output_dir: str = "gdo_plots",
+):
+    """Contour plot along 2 random orthogonal directions in param space."""
+    _ensure_output_dir(output_dir)
+    params = list(model.parameters())
+    flat_center = torch.cat([p.detach().reshape(-1) for p in params])
+    n = flat_center.shape[0]
+    device = flat_center.device
+
+    # Two random orthogonal directions
+    d1 = F.normalize(torch.randn(n, device=device), dim=0)
+    d2 = torch.randn(n, device=device)
+    d2 = d2 - (d2 @ d1) * d1
+    d2 = F.normalize(d2, dim=0)
+
+    alphas = np.linspace(-radius, radius, n_grid)
+    betas = np.linspace(-radius, radius, n_grid)
+    Z = np.zeros((n_grid, n_grid))
+
+    with torch.no_grad():
+        for i, a in enumerate(alphas):
+            for j, b in enumerate(betas):
+                flat_p = flat_center + a * d1 + b * d2
+                idx = 0
+                for p in params:
+                    sz = p.numel()
+                    p.data.copy_(flat_p[idx:idx+sz].reshape(p.shape))
+                    idx += sz
+                Z[j, i] = loss_fn().item()
+
+    # Restore
+    idx = 0
+    for p in params:
+        sz = p.numel()
+        p.data.copy_(flat_center[idx:idx+sz].reshape(p.shape))
+        idx += sz
+
+    fig, ax = plt.subplots(figsize=(8, 7))
+    A, B = np.meshgrid(alphas, betas)
+    cs = ax.contourf(A, B, np.log10(Z + 1e-10), levels=30, cmap='viridis')
+    fig.colorbar(cs, ax=ax, label='log10(loss)')
+    ax.scatter([0], [0], c='red', s=100, marker='*', zorder=5, label='Current')
+    ax.set_xlabel("Direction 1")
+    ax.set_ylabel("Direction 2")
+    ax.set_title(title)
+    ax.legend()
+
+    plt.tight_layout()
+    safe_title = title.replace(' ', '_').lower()
+    path = os.path.join(output_dir, f"landscape_{safe_title}.png")
+    fig.savefig(path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  Saved: {path}")
+    return fig
+
+
+# ======================================================================
+# Analysis Infrastructure
+# ======================================================================
+
+def compute_convergence_metrics(result: ExperimentResult) -> Dict:
+    """Steps to 50%/90%/99% of total improvement, AUC."""
+    losses = np.array(result.losses)
+    if len(losses) < 2:
+        return {}
+    initial = losses[0]
+    final = losses[-1]
+    total_improvement = initial - final
+    if total_improvement <= 0:
+        return {"auc": float(losses.sum()), "improvement": 0.0}
+
+    metrics = {"auc": float(losses.sum()), "improvement": float(total_improvement)}
+    for pct, label in [(0.5, "steps_to_50pct"), (0.9, "steps_to_90pct"), (0.99, "steps_to_99pct")]:
+        threshold = initial - pct * total_improvement
+        reached = np.where(losses <= threshold)[0]
+        metrics[label] = int(reached[0]) if len(reached) > 0 else len(losses)
+
+    return metrics
+
+
+def compute_overhead_ratio(
+    gdo_result: ExperimentResult,
+    baseline_result: ExperimentResult,
+) -> float:
+    """Wall-time ratio GDO / baseline."""
+    if baseline_result.total_wall_time < 1e-6:
+        return float('inf')
+    return gdo_result.total_wall_time / baseline_result.total_wall_time
+
+
+def analyze_experiment_results(
+    all_results: Dict[str, Dict[str, ExperimentResult]],
+    output_dir: str = "gdo_plots",
+) -> str:
+    """Cross-experiment analysis. Returns formatted report text."""
+    lines = []
+    lines.append("=" * 70)
+    lines.append("GDO ANALYSIS REPORT")
+    lines.append("=" * 70)
+
+    # 1. Win/loss matrix
+    lines.append("\n1. WIN/LOSS MATRIX (lowest final loss)")
+    lines.append("-" * 50)
+    wins = {}
+    for task_name, task_results in all_results.items():
+        if not task_results:
+            continue
+        best_name = min(task_results.keys(), key=lambda k: task_results[k].final_loss)
+        wins.setdefault(best_name, []).append(task_name)
+        final_strs = [f"  {k}: {v.final_loss:.6f}" for k, v in task_results.items()]
+        lines.append(f"\n  {task_name}:")
+        lines.extend(final_strs)
+        lines.append(f"  Winner: {best_name}")
+
+    lines.append("\n  Summary:")
+    for opt_name, tasks in sorted(wins.items()):
+        lines.append(f"    {opt_name}: {len(tasks)} wins ({', '.join(tasks)})")
+
+    # 2. Convergence speed
+    lines.append("\n2. CONVERGENCE SPEED")
+    lines.append("-" * 50)
+    for task_name, task_results in all_results.items():
+        lines.append(f"\n  {task_name}:")
+        for opt_name, res in task_results.items():
+            cm = compute_convergence_metrics(res)
+            if cm:
+                lines.append(f"    {opt_name}: 50%@{cm.get('steps_to_50pct','?')}, "
+                             f"90%@{cm.get('steps_to_90pct','?')}, "
+                             f"99%@{cm.get('steps_to_99pct','?')}")
+
+    # 3. Wall-time efficiency
+    lines.append("\n3. WALL-TIME EFFICIENCY")
+    lines.append("-" * 50)
+    for task_name, task_results in all_results.items():
+        lines.append(f"\n  {task_name}:")
+        for opt_name, res in task_results.items():
+            ms_per_step = (res.total_wall_time / max(len(res.losses), 1)) * 1000
+            lines.append(f"    {opt_name}: {res.total_wall_time:.1f}s total, "
+                         f"{ms_per_step:.1f}ms/step")
+
+    # 4. Overhead ratio
+    lines.append("\n4. GDO OVERHEAD RATIO (vs RiemannianAdam)")
+    lines.append("-" * 50)
+    for task_name, task_results in all_results.items():
+        gdo_res = task_results.get("GDO")
+        riem_res = task_results.get("RiemannianAdam")
+        if gdo_res and riem_res:
+            ratio = compute_overhead_ratio(gdo_res, riem_res)
+            lines.append(f"  {task_name}: {ratio:.2f}x")
+
+    # 5. When GDO wins/loses
+    lines.append("\n5. GDO ADVANTAGE ANALYSIS")
+    lines.append("-" * 50)
+    gdo_better = []
+    gdo_worse = []
+    for task_name, task_results in all_results.items():
+        gdo_res = task_results.get("GDO")
+        riem_res = task_results.get("RiemannianAdam")
+        if gdo_res and riem_res:
+            if gdo_res.final_loss < riem_res.final_loss * 0.95:
+                gdo_better.append(task_name)
+            elif gdo_res.final_loss > riem_res.final_loss * 1.05:
+                gdo_worse.append(task_name)
+    lines.append(f"  GDO better (>5% lower loss): {gdo_better or 'none'}")
+    lines.append(f"  GDO worse (>5% higher loss): {gdo_worse or 'none'}")
+
+    report = "\n".join(lines)
+
+    # Save report
+    _ensure_output_dir(output_dir)
+    report_path = os.path.join(output_dir, "analysis_report.txt")
+    with open(report_path, 'w') as f:
+        f.write(report)
+    print(f"  Saved: {report_path}")
+
+    return report
+
+
+# ======================================================================
+# History helpers (for legacy GDO-only mode)
+# ======================================================================
+
+def _new_history() -> Dict:
+    return {
+        "losses": [], "modes": [], "probe_steps": [],
+        "curvatures": [], "grad_norms": [], "betas": [],
+        "lifts": [], "plateaus": [], "trajectory": [],
+        "angle_errors": [],
+    }
+
+
+def _collect_history(controller, info, history):
     history["losses"].append(info["loss"])
     history["modes"].append(info["mode"])
     if "probe" in info:
@@ -3270,442 +4016,407 @@ def _collect_history(optimizer, info, history):
             "step": info["step"],
             "loss": info["loss"],
             "success": "improved" in str(info["lift_oracle"]),
-            "sigma": getattr(optimizer.lift_oracle, '_current_sigma', 0),
+            "sigma": getattr(controller.lift_oracle, '_current_sigma', 0),
         })
 
 
-def _new_history() -> Dict:
-    return {
-        "losses": [], "modes": [], "probe_steps": [],
-        "curvatures": [], "grad_norms": [], "betas": [],
-        "lifts": [], "plateaus": [], "trajectory": [],
-        "angle_errors": [],
-    }
+# ======================================================================
+# Experiment Runners
+# ======================================================================
 
+@register_experiment("rosenbrock", "analytic")
+def run_rosenbrock(steps: int = 2000, optimizers=('gdo', 'riemannian_adam', 'adam'),
+                   seed: int = 42, output_dir: str = "gdo_plots", device: str = 'cpu'):
+    print("\n" + "=" * 60)
+    print("EXPERIMENT: Rosenbrock Function (a=1, b=100)")
+    print("=" * 60)
 
-def run_rosenbrock(steps: int = 2000, use_morse: bool = True,
-                   init_flat: Optional[torch.Tensor] = None,
-                   output_dir: str = "gdo_plots"):
-    """Run GDO on Rosenbrock function."""
-    print("\n" + "="*60)
-    print("DEMO: Rosenbrock Function (a=1, b=100)")
-    print("="*60)
-    model = RosenbrockModel()
-    if init_flat is not None:
-        idx = 0
-        for p in model.parameters():
-            sz = p.numel()
-            p.data.copy_(init_flat[idx:idx + sz].reshape(p.shape))
-            idx += sz
-
-    losses = []
-    history = _new_history()
-
-    # Pre-exploration (no algebra for Rosenbrock, but landscape analysis still useful)
-    if use_morse:
-        print("  Running pre-exploration analysis...")
-        pre_analyzer = PreExplorationAnalyzer(n_samples=100)
-        pre_result = pre_analyzer.analyze(model, model.forward)
-        print(f"  Strategy: {pre_result.strategy_label}")
-        plot_pre_exploration(pre_result, title="Rosenbrock Pre-Exploration", output_dir=output_dir)
-        plot_dimension_analysis(pre_result, title="Rosenbrock Dimension", output_dir=output_dir)
-        plot_landscape_loss(pre_result, title="Rosenbrock Loss Landscape", output_dir=output_dir)
-
-        optimizer = GeometricDeterministicOptimizer(
-            model=model,
-            loss_fn=model.forward,
-            lr=1e-3,
-            probe_interval=100,
-            topology_interval=500,
-            sprint_after=1000,
-        )
-        for s in range(steps):
-            loss = model()
-            info = optimizer.optimize_step(loss)
-            losses.append(info['loss'])
-            _collect_history(optimizer, info, history)
-            history["trajectory"].append((model.x.item(), model.y.item()))
-            if s % 500 == 0 or s == steps - 1:
-                x, y = model.x.item(), model.y.item()
-                print(f"  Step {s:5d}: loss={info['loss']:.6f}  "
-                      f"x={x:.4f}, y={y:.4f}  mode={info['mode']}")
-
-        # Visualize
-        plot_optimization_trajectory(
-            history, title="Rosenbrock - GDO", output_dir=output_dir)
-        plot_topology_map(
-            model, optimizer.landscape,
-            history["trajectory"], history["modes"], output_dir=output_dir)
-        if optimizer._controller_diagnostics:
-            plot_geometric_controller(
-                optimizer._controller_diagnostics,
-                title="Rosenbrock - Controller", output_dir=output_dir)
-    else:
-        opt = torch.optim.Adam(model.parameters(), lr=1e-3)
-        for s in range(steps):
-            opt.zero_grad()
-            loss = model()
-            loss.backward()
-            opt.step()
-            losses.append(loss.item())
-            if s % 500 == 0 or s == steps - 1:
-                x, y = model.x.item(), model.y.item()
-                print(f"  Step {s:5d}: loss={loss.item():.6f}  x={x:.4f}, y={y:.4f}")
-
-    x_final, y_final = model.x.item(), model.y.item()
-    print(f"\nFinal: x={x_final:.5f}, y={y_final:.5f}  "
-          f"(optimum: x=1.0, y=1.0)")
-    return losses
-
-
-def run_rastrigin(n_dims: int = 4, steps: int = 3000, use_morse: bool = True,
-                  init_flat: Optional[torch.Tensor] = None,
-                  output_dir: str = "gdo_plots"):
-    """Run GDO on Rastrigin function (many local minima)."""
-    print("\n" + "="*60)
-    print(f"DEMO: Rastrigin Function ({n_dims}D)")
-    print("="*60)
-    model = RastriginModel(n_dims=n_dims)
-    if init_flat is not None:
-        idx = 0
-        for p in model.parameters():
-            sz = p.numel()
-            p.data.copy_(init_flat[idx:idx + sz].reshape(p.shape))
-            idx += sz
-
-    losses = []
-    history = _new_history()
-
-    if use_morse:
-        print("  Running pre-exploration analysis...")
-        pre_analyzer = PreExplorationAnalyzer(n_samples=100)
-        pre_result = pre_analyzer.analyze(model, model.forward)
-        print(f"  Strategy: {pre_result.strategy_label}")
-        plot_pre_exploration(pre_result, title=f"Rastrigin {n_dims}D Pre-Exploration", output_dir=output_dir)
-        plot_dimension_analysis(pre_result, title=f"Rastrigin {n_dims}D Dimension", output_dir=output_dir)
-        plot_landscape_loss(pre_result, title=f"Rastrigin {n_dims}D Loss Landscape", output_dir=output_dir)
-
-        optimizer = GeometricDeterministicOptimizer(
-            model=model,
-            loss_fn=model.forward,
-            lr=1e-2,
-            probe_interval=50,
-            topology_interval=300,
-            sprint_after=1500,
-        )
-        for s in range(steps):
-            loss = model()
-            info = optimizer.optimize_step(loss)
-            losses.append(info['loss'])
-            _collect_history(optimizer, info, history)
-            if s % 500 == 0 or s == steps - 1:
-                print(f"  Step {s:5d}: loss={info['loss']:.4f}  "
-                      f"||x||={model.x.norm().item():.4f}  mode={info['mode']}")
-
-        plot_optimization_trajectory(
-            history, title=f"Rastrigin {n_dims}D - GDO", output_dir=output_dir)
-    else:
-        opt = torch.optim.Adam(model.parameters(), lr=1e-2)
-        for s in range(steps):
-            opt.zero_grad()
-            loss = model()
-            loss.backward()
-            opt.step()
-            losses.append(loss.item())
-            if s % 500 == 0 or s == steps - 1:
-                print(f"  Step {s:5d}: loss={loss.item():.4f}  "
-                      f"||x||={model.x.norm().item():.4f}")
-
-    print(f"\nFinal loss: {losses[-1]:.5f}  (global optimum: 0.0)")
-    return losses
-
-
-def run_gbn(epochs: int = 50, device: str = 'cpu', output_dir: str = "gdo_plots"):
-    """Run GDO on a small GBN regression task with pre-exploration."""
-    print("\n" + "="*60)
-    print(f"DEMO: Small GBN Regression (Cl(3,0), {epochs} epochs)")
-    print("="*60)
-
-    algebra = CliffordAlgebra(3, 0, device=device)
-    model = SmallGBNModel(p=3, q=0, channels=4, device=device)
-    dim = 2 ** 3  # = 8
-
-    torch.manual_seed(42)
-    X = torch.randn(32, 4, dim, device=device) * 0.3
-    y_target = X[:, :, 0].mean(dim=1, keepdim=True)
-
-    def loss_fn():
-        out = model(X)
-        pred = out[:, :, 0].mean(dim=1, keepdim=True)
-        return F.mse_loss(pred, y_target)
-
-    # Pre-exploration
-    print("  Running pre-exploration analysis...")
-    pre_analyzer = PreExplorationAnalyzer(
-        algebra=algebra, n_samples=100, device=device)
-    pre_result = pre_analyzer.analyze(model, loss_fn)
-    print(f"  Strategy: {pre_result.strategy_label}")
-    plot_pre_exploration(pre_result, title="GBN Pre-Exploration", output_dir=output_dir)
-    plot_dimension_analysis(pre_result, title="GBN Dimension Analysis", output_dir=output_dir)
-    plot_symmetry_analysis(pre_result, title="GBN Symmetry Analysis", output_dir=output_dir)
-    plot_geodesic_flow(pre_result, title="GBN Geodesic Flow", output_dir=output_dir)
-    plot_exchange_spectrum(pre_result, title="GBN Exchange Spectrum", output_dir=output_dir)
-    plot_dimension_lifting(pre_result, title="GBN Dimension Lifting", output_dir=output_dir)
-    plot_landscape_loss(pre_result, title="GBN Loss Landscape", output_dir=output_dir)
-
-    optimizer = GeometricDeterministicOptimizer(
-        model=model,
-        loss_fn=loss_fn,
-        lr=5e-4,
-        probe_interval=20,
-        topology_interval=100,
-        sprint_after=300,
-        algebra=algebra,
-        device=device,
+    config = ExperimentConfig(name="rosenbrock", category="analytic",
+                              steps=steps, lr=1e-3, seed=seed, device=device)
+    results = run_comparison(
+        "rosenbrock",
+        model_factory=RosenbrockModel,
+        loss_factory=lambda m: m.forward,
+        config=config, optimizers=optimizers, output_dir=output_dir,
     )
-
-    history = _new_history()
-    losses = []
-    for epoch in range(epochs):
-        loss = loss_fn()
-        info = optimizer.optimize_step(loss)
-        losses.append(info['loss'])
-        _collect_history(optimizer, info, history)
-        if epoch % 10 == 0 or epoch == epochs - 1:
-            print(f"  Epoch {epoch:3d}: loss={info['loss']:.6f}  mode={info['mode']}")
-
-    plot_optimization_trajectory(
-        history, title="GBN - GDO", output_dir=output_dir)
-    if optimizer._controller_diagnostics:
-        plot_geometric_controller(
-            optimizer._controller_diagnostics,
-            title="GBN - Controller", output_dir=output_dir)
-
-    print(f"\nFinal GBN loss: {losses[-1]:.6f}")
-    return losses
-
-
-def run_registration(
-    steps: int = 1500,
-    noise_std: float = 0.05,
-    rotation_angle: float = 2.5,
-    use_morse: bool = True,
-    device: str = 'cpu',
-    output_dir: str = "gdo_plots",
-):
-    """Run GDO on geometric rotor registration in Cl(3,0)."""
-    print("\n" + "="*60)
-    print(f"DEMO: Rotor Registration (Cl(3,0), angle={rotation_angle:.2f} rad)")
-    print("="*60)
-
-    model = RotorRegistrationModel(
-        n_points=50, noise_std=noise_std,
-        rotation_angle=rotation_angle, device=device,
-    )
-
-    # Pre-exploration
-    print("  Running pre-exploration analysis...")
-    pre_analyzer = PreExplorationAnalyzer(
-        algebra=model.algebra, n_samples=150, device=device)
-    pre_result = pre_analyzer.analyze(model, model.forward)
-    print(f"  Strategy: {pre_result.strategy_label}")
-    plot_pre_exploration(
-        pre_result, title="Registration Pre-Exploration", output_dir=output_dir)
-    plot_dimension_analysis(
-        pre_result, title="Registration Dimension Analysis", output_dir=output_dir)
-    plot_symmetry_analysis(
-        pre_result, title="Registration Symmetry Analysis", output_dir=output_dir)
-    plot_geodesic_flow(
-        pre_result, title="Registration Geodesic Flow", output_dir=output_dir)
-    plot_exchange_spectrum(
-        pre_result, title="Registration Exchange Spectrum", output_dir=output_dir)
-    plot_dimension_lifting(
-        pre_result, title="Registration Dimension Lifting", output_dir=output_dir)
-    plot_landscape_loss(
-        pre_result, title="Registration Loss Landscape", output_dir=output_dir)
-
-    losses = []
-    history = _new_history()
-
-    if use_morse:
-        config = pre_result.recommended_config
-        optimizer = GeometricDeterministicOptimizer(
-            model=model,
-            loss_fn=model.forward,
-            algebra=model.algebra,
-            device=device,
-            config=config,
-        )
-        for s in range(steps):
-            loss = model()
-            info = optimizer.optimize_step(loss)
-            losses.append(info['loss'])
-            _collect_history(optimizer, info, history)
-            history["angle_errors"].append(model.angular_error())
-            if s % 300 == 0 or s == steps - 1:
-                ae = model.angular_error()
-                print(f"  Step {s:5d}: loss={info['loss']:.6f}  "
-                      f"angle_err={ae:.4f} rad  mode={info['mode']}")
-
-        plot_optimization_trajectory(
-            history, title="Registration - GDO", output_dir=output_dir)
-        if optimizer._controller_diagnostics:
-            plot_geometric_controller(
-                optimizer._controller_diagnostics,
-                title="Registration - Controller", output_dir=output_dir)
-    else:
-        opt = torch.optim.Adam(model.parameters(), lr=1e-3)
-        for s in range(steps):
-            opt.zero_grad()
-            loss = model()
-            loss.backward()
-            opt.step()
-            losses.append(loss.item())
-            history["losses"].append(loss.item())
-            history["modes"].append("adam")
-            history["angle_errors"].append(model.angular_error())
-            if s % 300 == 0 or s == steps - 1:
-                ae = model.angular_error()
-                print(f"  Step {s:5d}: loss={loss.item():.6f}  angle_err={ae:.4f} rad")
-
-    plot_registration_result(model, history, output_dir=output_dir)
-    ae = model.angular_error()
-    print(f"\nFinal loss: {losses[-1]:.6f}  angle_error: {ae:.4f} rad "
-          f"({math.degrees(ae):.1f} deg)")
-    return losses
-
-
-def run_full_demo(steps: int = 500, device: str = 'cpu',
-                  output_dir: str = "gdo_plots"):
-    """Run all tasks + comparison plot."""
-    print("\n" + "#"*60)
-    print("# FULL GDO DEMO")
-    print("#"*60)
-
-    results = {}
-    results["Rosenbrock"] = run_rosenbrock(steps=steps, output_dir=output_dir)
-    results["Rastrigin"] = run_rastrigin(steps=steps, output_dir=output_dir)
-    results["GBN"] = run_gbn(epochs=min(steps, 100), device=device, output_dir=output_dir)
-    results["Registration"] = run_registration(
-        steps=steps, device=device, output_dir=output_dir)
-
-    # Comparison plot across all tasks
-    plot_comparison(results, title="Full Demo - All Tasks", output_dir=output_dir)
-
-    # Summary
-    print("\n" + "="*60)
-    print("SUMMARY")
-    print("="*60)
-    for name, losses in results.items():
-        print(f"  {name:15s}: final_loss = {losses[-1]:.6f}")
-
+    plot_three_way_comparison(results, title="Rosenbrock", output_dir=output_dir)
+    plot_convergence_rate(results, title="Rosenbrock", output_dir=output_dir)
+    plot_timing_breakdown(results, title="Rosenbrock", output_dir=output_dir)
     return results
 
 
-def compare_optimizers(task: str = 'rosenbrock', steps: int = 2000,
-                       n_dims: int = 4, seed: int = 42,
-                       output_dir: str = "gdo_plots"):
-    """Compare GeometricDeterministicOptimizer vs baseline Adam side by side."""
-    print("\n" + "="*60)
-    print(f"COMPARISON: GDO vs Adam  (task={task})")
-    print("="*60)
+@register_experiment("rastrigin", "analytic")
+def run_rastrigin(n_dims: int = 8, steps: int = 3000,
+                  optimizers=('gdo', 'riemannian_adam', 'adam'),
+                  seed: int = 42, output_dir: str = "gdo_plots", device: str = 'cpu'):
+    print("\n" + "=" * 60)
+    print(f"EXPERIMENT: Rastrigin Function ({n_dims}D)")
+    print("=" * 60)
 
-    torch.manual_seed(seed)
-    if task == 'rosenbrock':
-        ref_model = RosenbrockModel()
-    elif task == 'rastrigin':
-        ref_model = RastriginModel(n_dims=n_dims)
-    elif task == 'registration':
-        ref_model = RotorRegistrationModel()
-    else:
-        raise ValueError(f"Unknown task: {task}")
-    init_flat = torch.cat([p.data.clone().reshape(-1) for p in ref_model.parameters()])
+    config = ExperimentConfig(name="rastrigin", category="analytic",
+                              steps=steps, lr=1e-2, seed=seed, device=device)
+    results = run_comparison(
+        "rastrigin",
+        model_factory=lambda: RastriginModel(n_dims=n_dims),
+        loss_factory=lambda m: m.forward,
+        config=config, optimizers=optimizers, output_dir=output_dir,
+    )
+    plot_three_way_comparison(results, title=f"Rastrigin {n_dims}D", output_dir=output_dir)
+    plot_convergence_rate(results, title=f"Rastrigin {n_dims}D", output_dir=output_dir)
+    return results
 
-    if task == 'rosenbrock':
-        print("\n[Adam Baseline]")
-        adam_losses = run_rosenbrock(
-            steps=steps, use_morse=False, init_flat=init_flat, output_dir=output_dir)
-        print("\n[GeometricDeterministicOptimizer]")
-        morse_losses = run_rosenbrock(
-            steps=steps, use_morse=True, init_flat=init_flat, output_dir=output_dir)
-    elif task == 'rastrigin':
-        print("\n[Adam Baseline]")
-        adam_losses = run_rastrigin(
-            n_dims=n_dims, steps=steps, use_morse=False,
-            init_flat=init_flat, output_dir=output_dir)
-        print("\n[GeometricDeterministicOptimizer]")
-        morse_losses = run_rastrigin(
-            n_dims=n_dims, steps=steps, use_morse=True,
-            init_flat=init_flat, output_dir=output_dir)
-    else:
-        print("\n[Adam Baseline]")
-        adam_losses = run_registration(
-            steps=steps, use_morse=False, output_dir=output_dir)
-        print("\n[GeometricDeterministicOptimizer]")
-        morse_losses = run_registration(
-            steps=steps, use_morse=True, output_dir=output_dir)
 
-    print("\n" + "-"*40)
-    print(f"Adam final loss:  {adam_losses[-1]:.6f}")
-    print(f"GDO final loss:   {morse_losses[-1]:.6f}")
-    improvement = (adam_losses[-1] - morse_losses[-1]) / (abs(adam_losses[-1]) + 1e-8)
-    print(f"Improvement: {improvement*100:+.1f}%")
+@register_experiment("ackley", "analytic")
+def run_ackley(n_dims: int = 10, steps: int = 3000,
+               optimizers=('gdo', 'riemannian_adam', 'adam'),
+               seed: int = 42, output_dir: str = "gdo_plots", device: str = 'cpu'):
+    print("\n" + "=" * 60)
+    print(f"EXPERIMENT: Ackley Function ({n_dims}D)")
+    print("=" * 60)
 
-    plot_comparison(
-        {"GDO": morse_losses, "Adam": adam_losses},
-        title=f"{task.capitalize()} - GDO vs Adam",
+    config = ExperimentConfig(name="ackley", category="analytic",
+                              steps=steps, lr=1e-2, seed=seed, device=device)
+    results = run_comparison(
+        "ackley",
+        model_factory=lambda: AckleyModel(n_dims=n_dims),
+        loss_factory=lambda m: m.forward,
+        config=config, optimizers=optimizers, output_dir=output_dir,
+    )
+    plot_three_way_comparison(results, title=f"Ackley {n_dims}D", output_dir=output_dir)
+    plot_convergence_rate(results, title=f"Ackley {n_dims}D", output_dir=output_dir)
+    return results
+
+
+@register_experiment("styblinski_tang", "analytic")
+def run_styblinski_tang(n_dims: int = 6, steps: int = 2000,
+                        optimizers=('gdo', 'riemannian_adam', 'adam'),
+                        seed: int = 42, output_dir: str = "gdo_plots", device: str = 'cpu'):
+    print("\n" + "=" * 60)
+    print(f"EXPERIMENT: Styblinski-Tang Function ({n_dims}D)")
+    print("=" * 60)
+
+    config = ExperimentConfig(name="styblinski_tang", category="analytic",
+                              steps=steps, lr=5e-3, seed=seed, device=device)
+    results = run_comparison(
+        "styblinski_tang",
+        model_factory=lambda: StyblinskiTangModel(n_dims=n_dims),
+        loss_factory=lambda m: m.forward,
+        config=config, optimizers=optimizers, output_dir=output_dir,
+    )
+    plot_three_way_comparison(results, title=f"Styblinski-Tang {n_dims}D", output_dir=output_dir)
+    return results
+
+
+@register_experiment("registration", "geometric")
+def run_registration(steps: int = 1500, noise_std: float = 0.05, rotation_angle: float = 2.5,
+                     optimizers=('gdo', 'riemannian_adam', 'adam'),
+                     seed: int = 42, output_dir: str = "gdo_plots", device: str = 'cpu'):
+    print("\n" + "=" * 60)
+    print(f"EXPERIMENT: Rotor Registration (Cl(3,0), angle={rotation_angle:.2f} rad)")
+    print("=" * 60)
+
+    config = ExperimentConfig(name="registration", category="geometric",
+                              steps=steps, lr=1e-3, seed=seed, device=device,
+                              algebra_sig=(3, 0))
+    results = run_comparison(
+        "registration",
+        model_factory=lambda: RotorRegistrationModel(
+            noise_std=noise_std, rotation_angle=rotation_angle, device=device),
+        loss_factory=lambda m: m.forward,
+        config=config, optimizers=optimizers,
+        metric_factory=lambda m: lambda: {"angle_error": m.angular_error()},
         output_dir=output_dir,
     )
+    plot_three_way_comparison(results, title="Rotor Registration", output_dir=output_dir)
+    plot_convergence_rate(results, title="Rotor Registration", output_dir=output_dir)
+    plot_timing_breakdown(results, title="Rotor Registration", output_dir=output_dir)
+    plot_bivector_trajectory(results, title="Rotor Registration", output_dir=output_dir)
+    return results
 
+
+@register_experiment("minkowski_rotor", "geometric")
+def run_minkowski_rotor(steps: int = 1500,
+                        optimizers=('gdo', 'riemannian_adam', 'adam'),
+                        seed: int = 42, output_dir: str = "gdo_plots", device: str = 'cpu'):
+    print("\n" + "=" * 60)
+    print("EXPERIMENT: Minkowski Rotor Registration (Cl(2,1))")
+    print("=" * 60)
+
+    config = ExperimentConfig(name="minkowski_rotor", category="geometric",
+                              steps=steps, lr=1e-3, seed=seed, device=device,
+                              algebra_sig=(2, 1))
+    results = run_comparison(
+        "minkowski_rotor",
+        model_factory=lambda: MinkowskiRotorModel(device=device),
+        loss_factory=lambda m: m.forward,
+        config=config, optimizers=optimizers,
+        metric_factory=lambda m: lambda: {"rapidity_error": m.rapidity_error()},
+        output_dir=output_dir,
+    )
+    plot_three_way_comparison(results, title="Minkowski Rotor Cl(2,1)", output_dir=output_dir)
+    plot_bivector_trajectory(results, title="Minkowski Rotor", output_dir=output_dir)
+    return results
+
+
+@register_experiment("conformal_registration", "geometric")
+def run_conformal_registration(steps: int = 2000,
+                               optimizers=('gdo', 'riemannian_adam', 'adam'),
+                               seed: int = 42, output_dir: str = "gdo_plots", device: str = 'cpu'):
+    print("\n" + "=" * 60)
+    print("EXPERIMENT: Conformal Registration (Cl(4,1), 32D)")
+    print("=" * 60)
+
+    config = ExperimentConfig(name="conformal_registration", category="geometric",
+                              steps=steps, lr=5e-4, seed=seed, device=device,
+                              algebra_sig=(4, 1))
+    results = run_comparison(
+        "conformal_registration",
+        model_factory=lambda: ConformalRegistrationModel(device=device),
+        loss_factory=lambda m: m.forward,
+        config=config, optimizers=optimizers, output_dir=output_dir,
+    )
+    plot_three_way_comparison(results, title="Conformal Cl(4,1)", output_dir=output_dir)
+    return results
+
+
+@register_experiment("multi_rotor", "geometric")
+def run_multi_rotor(steps: int = 2000,
+                    optimizers=('gdo', 'riemannian_adam', 'adam'),
+                    seed: int = 42, output_dir: str = "gdo_plots", device: str = 'cpu'):
+    print("\n" + "=" * 60)
+    print("EXPERIMENT: Multi-Rotor Registration (Cl(3,0), 3 clusters)")
+    print("=" * 60)
+
+    config = ExperimentConfig(name="multi_rotor", category="geometric",
+                              steps=steps, lr=1e-3, seed=seed, device=device,
+                              algebra_sig=(3, 0))
+    results = run_comparison(
+        "multi_rotor",
+        model_factory=lambda: MultiRotorRegistrationModel(device=device),
+        loss_factory=lambda m: m.forward,
+        config=config, optimizers=optimizers, output_dir=output_dir,
+    )
+    plot_three_way_comparison(results, title="Multi-Rotor", output_dir=output_dir)
+    plot_bivector_trajectory(results, title="Multi-Rotor", output_dir=output_dir)
+    return results
+
+
+@register_experiment("gbn_small", "ga_neural")
+def run_gbn_small(steps: int = 200,
+                  optimizers=('gdo', 'riemannian_adam', 'adam'),
+                  seed: int = 42, output_dir: str = "gdo_plots", device: str = 'cpu'):
+    print("\n" + "=" * 60)
+    print("EXPERIMENT: Small GBN (Cl(3,0), 4ch)")
+    print("=" * 60)
+
+    config = ExperimentConfig(name="gbn_small", category="ga_neural",
+                              steps=steps, lr=5e-4, seed=seed, device=device,
+                              algebra_sig=(3, 0))
+
+    def model_factory():
+        return SmallGBNModel(p=3, q=0, channels=4, device=device)
+
+    def loss_factory(model):
+        X = torch.randn(32, 4, model._dim, device=device) * 0.3
+        y_target = X[:, :, 0].mean(dim=1, keepdim=True)
+        def loss_fn():
+            out = model(X)
+            pred = out[:, :, 0].mean(dim=1, keepdim=True)
+            return F.mse_loss(pred, y_target)
+        return loss_fn
+
+    results = run_comparison(
+        "gbn_small", model_factory=model_factory, loss_factory=loss_factory,
+        config=config, optimizers=optimizers, output_dir=output_dir,
+    )
+    plot_three_way_comparison(results, title="Small GBN", output_dir=output_dir)
+    plot_bivector_trajectory(results, title="Small GBN", output_dir=output_dir)
+
+    # GDO state dashboard
+    gdo_res = results.get("GDO")
+    if gdo_res:
+        plot_optimizer_state_dashboard(gdo_res, title="Small GBN GDO", output_dir=output_dir)
+    return results
+
+
+@register_experiment("gbn_medium", "ga_neural")
+def run_gbn_medium(steps: int = 300,
+                   optimizers=('gdo', 'riemannian_adam', 'adam'),
+                   seed: int = 42, output_dir: str = "gdo_plots", device: str = 'cpu'):
+    print("\n" + "=" * 60)
+    print("EXPERIMENT: Medium GBN (Cl(3,0), 16ch, 3 layers)")
+    print("=" * 60)
+
+    config = ExperimentConfig(name="gbn_medium", category="ga_neural",
+                              steps=steps, lr=3e-4, seed=seed, device=device,
+                              algebra_sig=(3, 0))
+    results = run_comparison(
+        "gbn_medium",
+        model_factory=lambda: MediumGBNModel(channels=16, layers=3, device=device),
+        loss_factory=lambda m: m.forward,
+        config=config, optimizers=optimizers, output_dir=output_dir,
+    )
+    plot_three_way_comparison(results, title="Medium GBN", output_dir=output_dir)
+    plot_convergence_rate(results, title="Medium GBN", output_dir=output_dir)
+    plot_timing_breakdown(results, title="Medium GBN", output_dir=output_dir)
+    plot_bivector_trajectory(results, title="Medium GBN", output_dir=output_dir)
+    return results
+
+
+@register_experiment("gbn_multisig", "ga_neural")
+def run_gbn_multisig(steps: int = 250,
+                     optimizers=('gdo', 'riemannian_adam', 'adam'),
+                     seed: int = 42, output_dir: str = "gdo_plots", device: str = 'cpu'):
+    print("\n" + "=" * 60)
+    print("EXPERIMENT: Minkowski GBN (Cl(2,1), 8ch)")
+    print("=" * 60)
+
+    config = ExperimentConfig(name="gbn_multisig", category="ga_neural",
+                              steps=steps, lr=3e-4, seed=seed, device=device,
+                              algebra_sig=(2, 1))
+    results = run_comparison(
+        "gbn_multisig",
+        model_factory=lambda: MultiSigGBNModel(channels=8, layers=2, device=device),
+        loss_factory=lambda m: m.forward,
+        config=config, optimizers=optimizers, output_dir=output_dir,
+    )
+    plot_three_way_comparison(results, title="Minkowski GBN Cl(2,1)", output_dir=output_dir)
+    plot_bivector_trajectory(results, title="Minkowski GBN", output_dir=output_dir)
+    return results
+
+
+@register_experiment("gbn_deep", "ga_neural")
+def run_gbn_deep(steps: int = 300,
+                 optimizers=('gdo', 'riemannian_adam', 'adam'),
+                 seed: int = 42, output_dir: str = "gdo_plots", device: str = 'cpu'):
+    print("\n" + "=" * 60)
+    print("EXPERIMENT: Deep GBN (Cl(3,0), 16ch, 5 layers)")
+    print("=" * 60)
+
+    config = ExperimentConfig(name="gbn_deep", category="ga_neural",
+                              steps=steps, lr=2e-4, seed=seed, device=device,
+                              algebra_sig=(3, 0))
+    results = run_comparison(
+        "gbn_deep",
+        model_factory=lambda: DeepGBNModel(channels=32, layers=5, device=device),
+        loss_factory=lambda m: m.forward,
+        config=config, optimizers=optimizers, output_dir=output_dir,
+    )
+    plot_three_way_comparison(results, title="Deep GBN", output_dir=output_dir)
+    plot_convergence_rate(results, title="Deep GBN", output_dir=output_dir)
+    plot_timing_breakdown(results, title="Deep GBN", output_dir=output_dir)
+    return results
+
+
+@register_experiment("so3_interpolation", "manifold")
+def run_so3_interpolation(steps: int = 1500,
+                          optimizers=('gdo', 'riemannian_adam', 'adam'),
+                          seed: int = 42, output_dir: str = "gdo_plots", device: str = 'cpu'):
+    print("\n" + "=" * 60)
+    print("EXPERIMENT: SO(3) Rotor Interpolation")
+    print("=" * 60)
+
+    config = ExperimentConfig(name="so3_interpolation", category="manifold",
+                              steps=steps, lr=1e-3, seed=seed, device=device,
+                              algebra_sig=(3, 0))
+    results = run_comparison(
+        "so3_interpolation",
+        model_factory=lambda: SO3InterpolationModel(n_waypoints=8, device=device),
+        loss_factory=lambda m: m.forward,
+        config=config, optimizers=optimizers,
+        metric_factory=lambda m: lambda: {"geodesic_deviation": m.geodesic_deviation()},
+        output_dir=output_dir,
+    )
+    plot_three_way_comparison(results, title="SO(3) Interpolation", output_dir=output_dir)
+    plot_convergence_rate(results, title="SO(3) Interpolation", output_dir=output_dir)
+    plot_bivector_trajectory(results, title="SO(3) Interpolation", output_dir=output_dir)
+    return results
+
+
+# ======================================================================
+# Category / Full Runners
+# ======================================================================
+
+def run_category(category: str, **kwargs):
+    """Run all experiments in a category."""
+    results = {}
+    for name, (fn, cat) in EXPERIMENT_REGISTRY.items():
+        if cat == category:
+            results[name] = fn(**kwargs)
+    return results
+
+
+def run_all_experiments(**kwargs):
+    """Run all registered experiments and produce analysis report."""
+    all_results = {}
+    for name, (fn, _cat) in EXPERIMENT_REGISTRY.items():
+        try:
+            all_results[name] = fn(**kwargs)
+        except Exception as e:
+            print(f"  [ERROR] {name}: {e}")
+    return all_results
+
+
+# ======================================================================
+# CLI
+# ======================================================================
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Geometric Deterministic Optimizer Experiment")
-    p.add_argument(
-        "--task",
-        choices=["rosenbrock", "rastrigin", "gbn", "registration",
-                 "compare", "full"],
-        default="full",
-    )
+    registered = list(EXPERIMENT_REGISTRY.keys())
+    all_choices = registered + [
+        "all", "analytic", "geometric", "ga_neural", "manifold", "compare_all",
+    ]
+    p = argparse.ArgumentParser(
+        description="Geometric Deterministic Optimizer (GDO) Experiment Suite")
+    p.add_argument("--task", choices=all_choices, default="rosenbrock")
+    p.add_argument("--optimizers", nargs="+",
+                   default=["gdo", "riemannian_adam", "adam"],
+                   help="Optimizers to compare")
     p.add_argument("--steps", type=int, default=2000)
-    p.add_argument("--epochs", type=int, default=50)
-    p.add_argument("--n-dims", type=int, default=4)
-    p.add_argument("--no-morse", action="store_true",
-                   help="Use baseline Adam instead of GDO")
+    p.add_argument("--n-dims", type=int, default=10)
+    p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default="cpu")
-    p.add_argument("--output-dir", default="gdo_plots",
-                   help="Directory for saving plots")
-    p.add_argument("--noise-std", type=float, default=0.05,
-                   help="Noise std for registration task")
-    p.add_argument("--rotation-angle", type=float, default=2.5,
-                   help="Rotation angle (rad) for registration task")
+    p.add_argument("--output-dir", default="gdo_plots")
+    p.add_argument("--noise-std", type=float, default=0.05)
+    p.add_argument("--rotation-angle", type=float, default=2.5)
     return p.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
 
-    print("Geometric Deterministic Optimizer (GDO) Experiment")
-    print("Theory: Morse topology + curvature probes + geodesic paths")
-    print("        + Lorentz warp + geometric parameter controller")
-    print("        + dimensional lift oracle")
+    print("Geometric Deterministic Optimizer (GDO) Experiment Suite")
+    print("=" * 60)
+    print(f"Task: {args.task}")
+    print(f"Optimizers: {args.optimizers}")
+    print(f"Steps: {args.steps}")
+    print(f"Device: {args.device}")
+    print("=" * 60)
 
     od = args.output_dir
+    opts = tuple(args.optimizers)
+    common = dict(optimizers=opts, seed=args.seed, output_dir=od, device=args.device)
 
-    if args.task == "rosenbrock":
-        run_rosenbrock(steps=args.steps, use_morse=not args.no_morse, output_dir=od)
-    elif args.task == "rastrigin":
-        run_rastrigin(n_dims=args.n_dims, steps=args.steps,
-                      use_morse=not args.no_morse, output_dir=od)
-    elif args.task == "gbn":
-        run_gbn(epochs=args.epochs, device=args.device, output_dir=od)
-    elif args.task == "registration":
-        run_registration(
-            steps=args.steps, noise_std=args.noise_std,
-            rotation_angle=args.rotation_angle,
-            use_morse=not args.no_morse, device=args.device, output_dir=od)
-    elif args.task == "full":
-        run_full_demo(steps=args.steps, device=args.device, output_dir=od)
-    elif args.task == "compare":
-        compare_optimizers(task="rosenbrock", steps=args.steps, output_dir=od)
-        compare_optimizers(task="rastrigin", steps=args.steps,
-                           n_dims=args.n_dims, output_dir=od)
+    if args.task in EXPERIMENT_REGISTRY:
+        fn, cat = EXPERIMENT_REGISTRY[args.task]
+        # Pass relevant kwargs based on task
+        kwargs = dict(steps=args.steps, **common)
+        if args.task in ("rastrigin", "ackley", "styblinski_tang"):
+            kwargs["n_dims"] = args.n_dims
+        if args.task == "registration":
+            kwargs["noise_std"] = args.noise_std
+            kwargs["rotation_angle"] = args.rotation_angle
+        fn(**kwargs)
+
+    elif args.task == "analytic":
+        run_category("analytic", steps=args.steps, n_dims=args.n_dims, **common)
+    elif args.task == "geometric":
+        run_category("geometric", steps=args.steps, **common)
+    elif args.task == "ga_neural":
+        run_category("ga_neural", steps=args.steps, **common)
+    elif args.task == "manifold":
+        run_category("manifold", steps=args.steps, **common)
+    elif args.task in ("all", "compare_all"):
+        all_results = run_all_experiments(steps=min(args.steps, 1000), **common)
+        report = analyze_experiment_results(all_results, output_dir=od)
+        print("\n" + report)
