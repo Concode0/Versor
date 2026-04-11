@@ -22,9 +22,20 @@ discover any fascinating geometric behaviors or encounter structural limitations
 
 ==============================================================================
 
-Navier-Stokes as Gauge Theory in Cl(3,0).
+Navier-Stokes as Gauge Theory in Cl(3,0) — Continuum Multivector Formulation.
 
-Reinterprets fluid dynamics through the lens of gauge theory:
+Reinterprets fluid dynamics through the lens of gauge theory, treating the
+entire fluid state Ψ = p + u + ω + h as a single continuum multivector in
+Cl(3,0). PDE constraints emerge from the vector derivative ∇Ψ and grade
+projections, rather than component-wise scalar differentiation:
+
+  ∇Ψ = GP(e₁, ∂Ψ/∂x) + GP(e₂, ∂Ψ/∂y) + GP(e₃, ∂Ψ/∂z)
+
+  ⟨∇u⟩₀ = div(u) = 0          — incompressibility (grade-0 projection)
+  ⟨∇u⟩₂ = curl(u) = ω         — vorticity consistency (grade-2 projection)
+  ∂ₜu + (u·∇)u + ∇p − ν∇²u   — momentum equation (grade-1 residual)
+
+Gauge-theoretic interpretation:
   - Velocity field u is a gauge connection (grade-1 vector)
   - Vorticity ω = ∇×u is the gauge curvature (grade-2 bivector)
   - Incompressibility ∇·u = 0 is gauge fixing
@@ -207,6 +218,166 @@ def pack_multivector(p: torch.Tensor,
     if helicity is not None:
         mv[:, 7] = helicity
     return mv
+
+
+# ============================================================================ #
+# Continuum Multivector Derivative
+# ============================================================================ #
+
+class MultivectorDerivative:
+    """Vector derivative operator ∇Ψ in Cl(3,0) via geometric product.
+
+    The vector derivative ∇Ψ = GP(e₁, ∂Ψ/∂x) + GP(e₂, ∂Ψ/∂y) + GP(e₃, ∂Ψ/∂z)
+    is the fundamental differential operator in Geometric Algebra. Grade
+    projections of ∇Ψ unify multiple PDE constraints into a single algebraic
+    object:
+
+        ⟨∇u⟩₀ = div(u)      — incompressibility constraint
+        ⟨∇u⟩₂ = curl(u)     — vorticity (as bivector)
+
+    This replaces 25 separate scalar autograd calls with 8 multivector-valued
+    calls (one per basis element), yielding all 32 first-order partials.
+    """
+
+    def __init__(self, algebra: CliffordAlgebra):
+        self.algebra = algebra
+        # Basis vector indices in Cl(3,0): e₁=1, e₂=2, e₃=4 (binary encoding)
+        self._basis_indices = [1 << i for i in range(3)]  # [1, 2, 4]
+        # Velocity component indices in the multivector
+        self._vel_indices = self._basis_indices  # [1, 2, 4]
+
+    def _make_basis_vector(self, idx: int, device, dtype) -> torch.Tensor:
+        """Create a unit basis vector eᵢ as a [1, dim] multivector."""
+        ei = torch.zeros(1, self.algebra.dim, device=device, dtype=dtype)
+        ei[0, idx] = 1.0
+        return ei
+
+    def compute_partials(
+        self, mv: torch.Tensor, x: torch.Tensor, y: torch.Tensor,
+        z: torch.Tensor, t: torch.Tensor, create_graph: bool = True,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Compute ∂Ψ/∂x, ∂Ψ/∂y, ∂Ψ/∂z, ∂Ψ/∂t as full [B, 8] multivectors.
+
+        Uses 8 autograd calls (one per MV component j), each returning
+        grads w.r.t. [x, y, z, t] simultaneously. This yields all 32
+        first-order partial derivatives.
+
+        Args:
+            mv: [B, 8] full multivector output from the network.
+            x, y, z, t: [B, 1] leaf tensors with requires_grad=True.
+            create_graph: Whether to create graph for higher-order derivatives.
+
+        Returns:
+            (dΨ/dx, dΨ/dy, dΨ/dz, dΨ/dt): each [B, 8].
+        """
+        B, D = mv.shape
+        device, dtype = mv.device, mv.dtype
+
+        # Collect per-component gradients as lists, then stack.
+        # In-place assignment to torch.zeros would break the autograd graph.
+        cols_dx, cols_dy, cols_dz, cols_dt = [], [], [], []
+        zero = torch.zeros(B, device=device, dtype=dtype)
+
+        for j in range(D):
+            grads = torch.autograd.grad(
+                mv[:, j].sum(), [x, y, z, t],
+                create_graph=create_graph,
+                allow_unused=True,
+            )
+            cols_dx.append(grads[0].squeeze(-1) if grads[0] is not None else zero)
+            cols_dy.append(grads[1].squeeze(-1) if grads[1] is not None else zero)
+            cols_dz.append(grads[2].squeeze(-1) if grads[2] is not None else zero)
+            cols_dt.append(grads[3].squeeze(-1) if grads[3] is not None else zero)
+
+        dPsi_dx = torch.stack(cols_dx, dim=-1)  # [B, D]
+        dPsi_dy = torch.stack(cols_dy, dim=-1)
+        dPsi_dz = torch.stack(cols_dz, dim=-1)
+        dPsi_dt = torch.stack(cols_dt, dim=-1)
+
+        return dPsi_dx, dPsi_dy, dPsi_dz, dPsi_dt
+
+    def vector_derivative(
+        self, dPsi_dx: torch.Tensor, dPsi_dy: torch.Tensor,
+        dPsi_dz: torch.Tensor,
+    ) -> torch.Tensor:
+        """Compute ∇Ψ = GP(e₁, ∂Ψ/∂x) + GP(e₂, ∂Ψ/∂y) + GP(e₃, ∂Ψ/∂z).
+
+        The grade decomposition of the result encodes:
+            Grade 0: scalar contributions (div of vectors)
+            Grade 1: vector contributions (grad of scalars, curl of bivectors)
+            Grade 2: bivector contributions (curl of vectors)
+            Grade 3: pseudoscalar contributions
+
+        When applied to velocity (grade-1 input only):
+            ⟨∇u⟩₀ = ∇·u (divergence)
+            ⟨∇u⟩₂ = ∇∧u (vorticity as bivector)
+
+        Args:
+            dPsi_dx, dPsi_dy, dPsi_dz: [B, 8] multivector partials.
+
+        Returns:
+            [B, 8] the vector derivative ∇Ψ.
+        """
+        device, dtype = dPsi_dx.device, dPsi_dx.dtype
+        partials = [dPsi_dx, dPsi_dy, dPsi_dz]
+
+        result = torch.zeros_like(dPsi_dx)
+        for i, dPsi_di in enumerate(partials):
+            ei = self._make_basis_vector(self._basis_indices[i], device, dtype)
+            # GP(eᵢ, ∂Ψ/∂xᵢ): broadcast eᵢ [1, 8] with dPsi_di [B, 8]
+            result = result + self.algebra.geometric_product(
+                ei.expand(dPsi_di.shape[0], -1), dPsi_di
+            )
+        return result
+
+    def velocity_laplacian(
+        self, dPsi_dx: torch.Tensor, dPsi_dy: torch.Tensor,
+        dPsi_dz: torch.Tensor,
+        x: torch.Tensor, y: torch.Tensor, z: torch.Tensor,
+        create_graph: bool = True,
+    ) -> torch.Tensor:
+        """Compute ∇²u (Laplacian of velocity) as a grade-1 multivector.
+
+        Requires 9 second-order autograd calls: velocity indices {1,2,4} ×
+        spatial variables {x,y,z}.
+
+        Args:
+            dPsi_dx, dPsi_dy, dPsi_dz: [B, 8] first-order partials.
+            x, y, z: [B, 1] leaf tensors.
+            create_graph: Whether to retain graph (needed if loss needs grads).
+
+        Returns:
+            [B, 8] grade-1 multivector containing ∇²u.
+        """
+        B = dPsi_dx.shape[0]
+        device, dtype = dPsi_dx.device, dPsi_dx.dtype
+
+        # Accumulate second derivatives per velocity index without in-place ops.
+        accum = {vi: [] for vi in self._vel_indices}
+
+        partials_and_vars = [
+            (dPsi_dx, x), (dPsi_dy, y), (dPsi_dz, z),
+        ]
+        for dPsi_di, var_i in partials_and_vars:
+            for vel_idx in self._vel_indices:  # [1, 2, 4]
+                d2 = torch.autograd.grad(
+                    dPsi_di[:, vel_idx].sum(), var_i,
+                    create_graph=create_graph,
+                    allow_unused=True,
+                )[0]
+                if d2 is not None:
+                    accum[vel_idx].append(d2.squeeze(-1))
+
+        # Build the Laplacian multivector additively (graph-safe, no in-place ops)
+        laplacian = torch.zeros(B, self.algebra.dim, device=device, dtype=dtype)
+        for vel_idx, parts in accum.items():
+            if parts:
+                col = torch.stack(parts, dim=0).sum(dim=0)  # [B]
+                mask = torch.zeros(self.algebra.dim, device=device, dtype=dtype)
+                mask[vel_idx] = 1.0
+                laplacian = laplacian + col.unsqueeze(-1) * mask
+
+        return laplacian
 
 
 # ============================================================================ #
@@ -498,6 +669,127 @@ def compute_ns_residual(model: GaugeFluidNet, coords_raw: torch.Tensor,
     dE_dt = torch.autograd.grad(E.sum(), t, create_graph=True)[0].squeeze(-1)
     enstrophy = 0.5 * (w1_pred ** 2 + w2_pred ** 2 + w3_pred ** 2)
     lagrangian = ((dE_dt + 2.0 * nu * enstrophy) ** 2).mean()
+
+    return {
+        'ns_residual': ns_residual,
+        'div_residual': div_residual,
+        'vorticity_consistency': vort_consistency,
+        'lagrangian': lagrangian,
+        'mv': mv,
+    }
+
+
+def compute_ns_residual_mv_from_output(
+    mv: torch.Tensor,
+    x: torch.Tensor, y: torch.Tensor, z: torch.Tensor, t: torch.Tensor,
+    algebra, nu: float, mv_deriv: MultivectorDerivative,
+    colloc_mask: Optional[torch.Tensor] = None,
+) -> Dict[str, torch.Tensor]:
+    """Compute NS residuals via continuum multivector formulation.
+
+    All PDE constraints emerge from the vector derivative ∇Ψ and grade
+    projections, rather than component-wise scalar differentiation:
+
+        ∇u = GP(e₁, ∂u/∂x) + GP(e₂, ∂u/∂y) + GP(e₃, ∂u/∂z)
+        ⟨∇u⟩₀ = div(u) = 0           (incompressibility)
+        ⟨∇u⟩₂ = curl(u) = ω          (vorticity consistency)
+        ∂ₜu + (u·∇)u + ∇p - ν∇²u = 0 (momentum, grade-1 equation)
+
+    This operates on a pre-computed mv output (no internal forward pass),
+    enabling single-forward-pass training. Derivatives are computed on the
+    full batch (preserving the autograd graph from leaf tensors to mv), then
+    masked to collocation points before averaging.
+
+    Args:
+        mv: [B, 8] multivector output from the network (with grad graph).
+        x, y, z, t: [B, 1] leaf tensors with requires_grad=True (full batch).
+        algebra: CliffordAlgebra(3, 0).
+        nu: Kinematic viscosity.
+        mv_deriv: MultivectorDerivative instance.
+        colloc_mask: [B] boolean mask for collocation points (PDE enforced here).
+            If None, all points are treated as collocation.
+
+    Returns:
+        Dict of loss terms: ns_residual, div_residual, vorticity_consistency,
+        lagrangian, mv.
+    """
+    # --- Step 1: Compute all first-order partials as full multivectors ---
+    # 8 autograd calls (one per MV component), yielding all 32 first-order
+    # partial derivatives on the FULL batch (keeps autograd graph intact).
+    dPsi_dx, dPsi_dy, dPsi_dz, dPsi_dt = mv_deriv.compute_partials(
+        mv, x, y, z, t
+    )
+
+    # --- Step 2: Extract velocity partials via grade projection ---
+    du_dx = algebra.grade_projection(dPsi_dx, 1)  # [B, 8]
+    du_dy = algebra.grade_projection(dPsi_dy, 1)
+    du_dz = algebra.grade_projection(dPsi_dz, 1)
+
+    # --- Step 3: Vector derivative ∇u = GP(eᵢ, ∂u/∂xᵢ) ---
+    # This single multivector encodes both divergence and curl.
+    nabla_u = mv_deriv.vector_derivative(du_dx, du_dy, du_dz)
+
+    # --- Step 4: Divergence from grade-0 projection ---
+    # ⟨∇u⟩₀ = div(u) — the incompressibility constraint
+    div_u = algebra.grade_projection(nabla_u, 0)[..., 0]  # [B]
+
+    # --- Step 5: Vorticity consistency from grade-2 projection ---
+    # ⟨∇u⟩₂ = curl(u) as bivector — should match predicted vorticity
+    curl_u_bv = algebra.grade_projection(nabla_u, 2)   # [B, 8]
+    vort_pred = algebra.grade_projection(mv, 2)         # [B, 8]
+    vort_diff = (curl_u_bv - vort_pred) ** 2  # [B, 8]
+
+    # --- Step 6: Momentum equation (grade-1 residual) ---
+    # ∂ₜu
+    dt_u = algebra.grade_projection(dPsi_dt, 1)  # [B, 8]
+
+    # Advection: (u·∇)u = u₁·(∂u/∂x) + u₂·(∂u/∂y) + u₃·(∂u/∂z)
+    # Scalar velocity components × grade-1 multivector partials
+    u1 = mv[:, 1]  # [B]
+    u2 = mv[:, 2]
+    u3 = mv[:, 4]
+    advection = (u1.unsqueeze(-1) * du_dx +
+                 u2.unsqueeze(-1) * du_dy +
+                 u3.unsqueeze(-1) * du_dz)  # [B, 8] (grade-1)
+
+    # Pressure gradient: ∇p = embed_vector([dp/dx, dp/dy, dp/dz])
+    # dp/dxᵢ is the grade-0 component of ∂Ψ/∂xᵢ
+    grad_p = algebra.embed_vector(
+        torch.stack([dPsi_dx[:, 0], dPsi_dy[:, 0], dPsi_dz[:, 0]], dim=-1)
+    )  # [B, 8] grade-1
+
+    # Laplacian: ν∇²u (9 second-order autograd calls)
+    laplacian_u = mv_deriv.velocity_laplacian(
+        dPsi_dx, dPsi_dy, dPsi_dz, x, y, z
+    )  # [B, 8] grade-1
+
+    # NS momentum residual: R = ∂ₜu + (u·∇)u + ∇p - ν∇²u
+    R_momentum = dt_u + advection + grad_p - nu * laplacian_u  # [B, 8]
+    # Only grade-1 components carry the momentum equation
+    R_momentum = algebra.grade_projection(R_momentum, 1)
+    R_sq = (R_momentum ** 2).sum(dim=-1)  # [B]
+
+    # --- Step 7: Lagrangian energy balance ---
+    # E = ½|u|², dE/dt = u · ∂ₜu (chain rule, no extra autograd needed)
+    dE_dt = (u1 * dt_u[:, 1] + u2 * dt_u[:, 2] + u3 * dt_u[:, 4])
+    # Enstrophy from predicted vorticity bivector
+    w1_pred = vort_pred[:, 6]    # e₂₃
+    w2_pred = -vort_pred[:, 5]   # -e₁₃ → ω₂
+    w3_pred = vort_pred[:, 3]    # e₁₂
+    enstrophy = 0.5 * (w1_pred ** 2 + w2_pred ** 2 + w3_pred ** 2)
+    lagr_sq = (dE_dt + 2.0 * nu * enstrophy) ** 2  # [B]
+
+    # --- Apply collocation mask and average ---
+    if colloc_mask is not None:
+        div_residual = (div_u[colloc_mask] ** 2).mean()
+        vort_consistency = vort_diff[colloc_mask].sum(dim=-1).mean()
+        ns_residual = R_sq[colloc_mask].mean()
+        lagrangian = lagr_sq[colloc_mask].mean()
+    else:
+        div_residual = (div_u ** 2).mean()
+        vort_consistency = vort_diff.sum(dim=-1).mean()
+        ns_residual = R_sq.mean()
+        lagrangian = lagr_sq.mean()
 
     return {
         'ns_residual': ns_residual,
@@ -1040,9 +1332,10 @@ def train(args):
     )
     ortho = StrictOrthogonality(algebra, ortho_settings).to(device)
 
-    # Metric and debugger
+    # Metric, debugger, and multivector derivative operator
     gauge_metric = GaugeFluidMetric(algebra)
     debugger = NSRegularityDebugger(algebra, gauge_metric)
+    mv_deriv = MultivectorDerivative(algebra)
 
     # Dataset (at initial Re)
     re_init = args.re_min
@@ -1105,18 +1398,34 @@ def train(args):
             targets = targets.to(device)
             is_ic = is_ic.to(device)
 
-            # Update log(Re) for current curriculum
-            coords_grad = torch.cat([
-                coords[:, :4],
-                torch.full((coords.shape[0], 1), np.log(current_re),
-                           device=device, dtype=coords.dtype)
-            ], dim=-1)
+            # Create leaf tensors for autograd before the single forward pass
+            x = coords[:, 0:1].detach().requires_grad_(True)
+            y = coords[:, 1:2].detach().requires_grad_(True)
+            z = coords[:, 2:3].detach().requires_grad_(True)
+            t = coords[:, 3:4].detach().requires_grad_(True)
+            log_re = torch.full((coords.shape[0], 1), np.log(current_re),
+                                device=device, dtype=coords.dtype)
+            coords_leaf = torch.cat([x, y, z, t, log_re], dim=-1)
 
-            # PDE residuals (on collocation points)
+            # === Single forward pass for ALL points ===
+            mv_all, intermediates = model(coords_leaf)
+
+            # IC loss (on initial condition points)
+            if is_ic.any():
+                ic_loss = nn.functional.mse_loss(mv_all[is_ic], targets[is_ic])
+            else:
+                ic_loss = torch.tensor(0.0, device=device)
+
+            # PDE residuals via continuum multivector formulation.
+            # Derivatives computed on full batch (preserving autograd graph),
+            # then masked to collocation points for the loss.
             colloc_mask = ~is_ic
             if colloc_mask.any():
-                residuals = compute_ns_residual(model, coords_grad[colloc_mask],
-                                               algebra, current_nu)
+                residuals = compute_ns_residual_mv_from_output(
+                    mv_all, x, y, z, t,
+                    algebra, current_nu, mv_deriv,
+                    colloc_mask=colloc_mask,
+                )
                 ns_loss = residuals['ns_residual']
                 div_loss = residuals['div_residual']
                 lagrangian_loss = residuals['lagrangian']
@@ -1124,18 +1433,7 @@ def train(args):
             else:
                 ns_loss = div_loss = lagrangian_loss = vorticity_loss = torch.tensor(0.0, device=device)
 
-            # IC loss (on initial condition points)
-            if is_ic.any():
-                ic_coords = coords_grad[is_ic]
-                ic_targets = targets[is_ic]
-                mv_ic, intermediates = model(ic_coords)
-                ic_loss = nn.functional.mse_loss(mv_ic, ic_targets)
-            else:
-                mv_ic, intermediates = model(coords_grad[:1])
-                ic_loss = torch.tensor(0.0, device=device)
-
-            # Gauge covariance loss
-            mv_all, intermediates = model(coords_grad)
+            # Gauge covariance loss (reuses mv_all — no extra forward pass)
             gauge_loss = compute_gauge_covariance_loss(mv_all, algebra)
 
             # Orthogonality loss
