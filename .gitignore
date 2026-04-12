@@ -21,5 +21,8 @@ train_log_*.txt
 
 lorentz_plots/
 zeta_plots/
+gdo_plots/
+ym_plots/
+lattice_morph_plots/
 
 site/
