@@ -204,17 +204,10 @@ class VariableGrouper:
             n_analysis = target_dim
 
         # 4. MetricSearch for global signature
-        try:
-            searcher = MetricSearch(
-                device=self.device, num_probes=4,
-                probe_epochs=40, micro_batch_size=64,
-            )
-            p, q, r = searcher.search(analysis_data)
-            n = p + q + r
-            if n < 2:
-                p = max(p, 2 - n + p)
-        except Exception:
-            p, q, r = min(n_analysis, 4), 0, 0
+        from models.sr.utils import safe_metric_search
+        p, q, r = safe_metric_search(
+            analysis_data, self.device, n_analysis,
+        )
 
         algebra = CliffordAlgebra(p, q, r, device=self.device)
 
@@ -554,15 +547,8 @@ class VariableGrouper:
             _, _, V = torch.linalg.svd(data_c, full_matrices=False)
             data = data_c @ V[:6].T
 
-        try:
-            searcher = MetricSearch(device=self.device, num_probes=4,
-                                    probe_epochs=40, micro_batch_size=64)
-            p, q, r = searcher.search(data)
-            n = p + q + r
-            if n < 2:
-                p = max(p, 2 - n + p)
-        except Exception:
-            p, q, r = min(n_vars, 4), 0, 0
+        from models.sr.utils import safe_metric_search
+        p, q, r = safe_metric_search(data, self.device, n_vars)
 
         algebra = CliffordAlgebra(p, q, r, device=self.device)
         return VariableGroup(
@@ -595,15 +581,11 @@ class VariableGrouper:
             _, _, V = torch.linalg.svd(data_c, full_matrices=False)
             data = data_c @ V[:6].T
 
-        try:
-            searcher = MetricSearch(device=self.device, num_probes=2,
-                                    probe_epochs=20, micro_batch_size=64)
-            p, q, r = searcher.search(data)
-            n = p + q + r
-            if n < 2:
-                p = max(p, 2 - n + p)
-        except Exception:
-            p, q, r = min(len(indices), 3), 0, 0
+        from models.sr.utils import safe_metric_search
+        p, q, r = safe_metric_search(
+            data, self.device, len(indices),
+            num_probes=2, probe_epochs=20,
+        )
 
         algebra = CliffordAlgebra(p, q, r, device=self.device)
         return VariableGroup(
@@ -624,8 +606,9 @@ class VariableGrouper:
         if n <= n_clusters:
             return list(range(n))
 
+        from models.sr.numerics import safe_inv_sqrt_diag
         D = np.diag(affinity.sum(axis=1) + 1e-10)
-        D_inv_sqrt = np.diag(1.0 / np.sqrt(np.diag(D)))
+        D_inv_sqrt = np.diag(safe_inv_sqrt_diag(np.diag(D)))
         L = np.eye(n) - D_inv_sqrt @ affinity @ D_inv_sqrt
 
         try:

@@ -73,6 +73,15 @@ mother_algebra:
   cross_term_threshold: 0.01
   joint_epochs: 50
 
+feedback:
+  enabled: true
+  max_outer_iterations: 3
+  phase3_reextract_threshold: 0.3
+  cross_term_reeval: true
+  adaptive_implicit: true
+  r2_stall_threshold: 0.01
+  r2_stall_stages: 2
+
 basis:
   enabled: true
   log: true

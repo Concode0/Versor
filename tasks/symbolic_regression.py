@@ -90,6 +90,7 @@ class SRTask(BaseTask):
             'mother_cross_threshold': cfg.get("mother_algebra", {}).get("cross_term_threshold", 0.01),
             'basis_config': dict(cfg.get("basis", {})),
             'grouping_config': dict(cfg.get("grouping", {})),
+            'feedback_config': dict(cfg.get("feedback", {})),
         })
 
         super().__init__(cfg)

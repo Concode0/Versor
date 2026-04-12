@@ -152,6 +152,8 @@ class RotorTranslator:
 
     def _plane_to_action(self, plane: SimplePlane) -> sympy.Expr:
         """Closed-form sandwich product action for a single plane."""
+        from models.sr.numerics import clamp_theta
+
         xi = self.symbols[plane.var_i]
         xj = self.symbols[plane.var_j]
         theta = plane.angle
@@ -159,6 +161,7 @@ class RotorTranslator:
         if plane.sig_type == "elliptic":
             return xi * sympy.cos(2 * theta) - xj * sympy.sin(2 * theta)
         elif plane.sig_type == "hyperbolic":
+            theta = clamp_theta(theta)
             return xi * sympy.cosh(2 * theta) + xj * sympy.sinh(2 * theta)
         else:
             return xi + 2 * theta * xj
@@ -179,7 +182,8 @@ class RotorTranslator:
         for t in terms:
             final_expr += t.weight * t.expr
 
-        return f"y = {sympy.simplify(final_expr)}"
+        from models.sr.numerics import safe_simplify
+        return f"y = {safe_simplify(final_expr)}"
 
     def translate_implicit(self, model, target_var_idx: int) -> List[RotorTerm]:
         """Translate model rotors in augmented (k+1)-variable implicit space.
@@ -562,14 +566,15 @@ class RotorTranslator:
             expr = expr.subs(sympy.Symbol(f"x{i+1}"), 0)
 
         # 6. Prune and simplify (use expand+collect, not simplify which can hang)
+        from models.sr.numerics import safe_simplify
         expr = self._prune_expr(expr)
         n_terms = len(sympy.Add.make_args(expr))
         if n_terms <= 20:
             try:
                 expr = sympy.nsimplify(expr, tolerance=1e-3)
-            except Exception:
+            except (ValueError, TypeError):
                 pass
-            expr = sympy.simplify(expr)
+            expr = safe_simplify(expr)
         else:
             # For large expressions, just collect terms
             expr = sympy.expand(expr)

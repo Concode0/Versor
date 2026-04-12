@@ -196,7 +196,7 @@ class VersorSR(BaseEstimator, RegressorMixin):
                 ).copy()
                 if np.all(np.isfinite(pred_norm)):
                     return pred_norm * self.y_std_ + self.y_mean_
-            except Exception:
+            except (ValueError, TypeError, OverflowError, ZeroDivisionError):
                 pass
 
         # Fallback: model forward pass

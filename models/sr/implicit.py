@@ -282,17 +282,19 @@ class ImplicitSolver:
             if epoch < warmup_epochs:
                 # Warmup: escape trivial F==0
                 output_mag = pred.pow(2).mean()
-                loss = (-self.jacobian_weight * torch.log(jac_norm_sq + 1e-4)
-                        - 0.01 * torch.log(output_mag + 1e-4)
+                log_eps = max(1e-8, 1e-4 * jac_norm_sq.detach().item())
+                loss = (-self.jacobian_weight * torch.log(jac_norm_sq + log_eps)
+                        - 0.01 * torch.log(output_mag + log_eps)
                         + 0.01 * sparsity)
             else:
                 # Eikonal-normalized loss
                 per_sample_grad_norm = torch.sqrt(
                     (grad_F ** 2).sum(dim=-1, keepdim=True) + 1e-8
                 )
-                normalized_pred = pred / (per_sample_grad_norm + 1e-4)
+                log_eps = max(1e-8, 1e-4 * jac_norm_sq.detach().item())
+                normalized_pred = pred / (per_sample_grad_norm + 1e-8)
                 eikonal_loss = F.mse_loss(normalized_pred, target)
-                jac_loss = -self.jacobian_weight * torch.log(jac_norm_sq + 1e-4)
+                jac_loss = -self.jacobian_weight * torch.log(jac_norm_sq + log_eps)
                 loss = eikonal_loss + jac_loss + 0.01 * sparsity
 
             if torch.isfinite(loss):
@@ -370,16 +372,18 @@ class ImplicitSolver:
             if epoch < warmup_epochs:
                 # Phase 1: maximize gradient norm to escape F==0
                 output_mag = pred.pow(2).mean()
-                loss = (-self.jacobian_weight * torch.log(jac_norm_sq + 1e-4)
-                        - 0.01 * torch.log(output_mag + 1e-4))
+                log_eps = max(1e-8, 1e-4 * jac_norm_sq.detach().item())
+                loss = (-self.jacobian_weight * torch.log(jac_norm_sq + log_eps)
+                        - 0.01 * torch.log(output_mag + log_eps))
             else:
                 # Phase 2: Eikonal-normalized loss
                 per_sample_grad_norm = torch.sqrt(
                     (grad_F ** 2).sum(dim=-1, keepdim=True) + 1e-8
                 )
-                normalized_pred = pred / (per_sample_grad_norm + 1e-4)
+                log_eps = max(1e-8, 1e-4 * jac_norm_sq.detach().item())
+                normalized_pred = pred / (per_sample_grad_norm + 1e-8)
                 eikonal_loss = F.mse_loss(normalized_pred, target)
-                jac_loss = -self.jacobian_weight * torch.log(jac_norm_sq + 1e-4)
+                jac_loss = -self.jacobian_weight * torch.log(jac_norm_sq + log_eps)
                 loss = eikonal_loss + jac_loss
 
             if torch.isfinite(loss):
@@ -437,7 +441,7 @@ class ImplicitSolver:
             sol_set = sympy.solveset(F_expr, y_sym, domain=sympy.S.Reals)
             if sol_set.is_FiniteSet and len(sol_set) > 0:
                 return list(sol_set)[0]
-        except Exception:
+        except (NotImplementedError, ValueError, TypeError):
             pass
 
         return F_expr  # Return implicit form if all solves fail
