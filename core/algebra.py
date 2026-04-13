@@ -664,6 +664,42 @@ class CliffordAlgebra(nn.Module):
         # x: [B, C, D], M.T: [C, D, D] -> einsum or matmul with broadcast
         return torch.einsum('bcd,cdk->bck', x, M.transpose(-2, -1))
 
+    def multi_rotor_sandwich(self, R: torch.Tensor, x: torch.Tensor,
+                              R_rev: torch.Tensor = None) -> torch.Tensor:
+        """Sandwich product with K rotors applied to C-channel input.
+
+        Builds K action matrices [K, D, D] once, then applies all K
+        rotors to x in a single einsum.  This replaces the naive
+        two-sequential-geometric-product approach used by MultiRotorLayer.
+
+        Memory: O(K*D*D) setup + O(B*C*K*D) apply.
+        Compare to naive two-GP: O(2*B*C*K*D*D).
+
+        Args:
+            R: Per-rotor versors [K, D].
+            x: Batched multivectors [B, C, D].
+            R_rev: Optional precomputed reverse/inverse of R [K, D].
+
+        Returns:
+            Per-rotor sandwiched result [B, C, K, D].
+        """
+        if R_rev is None:
+            R_rev = self.reverse(R)
+
+        ci = self.cayley_indices  # [D, D]
+
+        R_gathered = R[:, ci]                                    # [K, D, D]
+        L_R = R_gathered.permute(0, 2, 1) * self._left_sign_T.unsqueeze(0)
+
+        gp_T = self.gp_signs.T
+        Rr_gathered = R_rev[:, ci]                               # [K, D, D]
+        R_Rr = Rr_gathered.permute(0, 2, 1) * gp_T.unsqueeze(0)
+
+        M = torch.bmm(R_Rr, L_R)  # [K, D, D]
+
+        # Apply all K rotors: x[B,C,D] @ M[K,D,D].T -> [B,C,K,D]
+        return torch.einsum('bcd,kde->bcke', x, M.transpose(-2, -1))
+
     def pseudoscalar_product(self, x: torch.Tensor) -> torch.Tensor:
         """Multiply by the unit pseudoscalar: x * I.
 

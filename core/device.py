@@ -43,6 +43,9 @@ class DeviceConfig:
         num_workers: DataLoader worker count.  ``None`` -> auto (4 for CUDA,
             2 otherwise).
         compile_model: Wrap the model with :func:`torch.compile`.
+        compile_backend: ``torch.compile`` backend.  ``None`` -> auto
+            (``aot_eager`` for MPS, ``inductor`` for CUDA/CPU).
+            MPS does not fully support the inductor backend.
         amp: Enable automatic mixed precision (CUDA only).
         cudnn_benchmark: Set :attr:`torch.backends.cudnn.benchmark`.
             ``None`` -> auto (``True`` for CUDA).
@@ -52,6 +55,7 @@ class DeviceConfig:
     pin_memory: bool | None = None
     num_workers: int | None = None
     compile_model: bool = False
+    compile_backend: str | None = None
     amp: bool = False
     cudnn_benchmark: bool | None = None
 
@@ -81,13 +85,35 @@ class DeviceConfig:
         if self.device.startswith("cuda"):
             torch.set_float32_matmul_precision("high")
 
+    def _resolve_compile_backend(self) -> str:
+        """Pick a ``torch.compile`` backend appropriate for :attr:`device`.
+
+        MPS does not fully support the ``inductor`` backend, so we
+        default to ``aot_eager`` (graph capture without kernel codegen).
+        """
+        if self.compile_backend is not None:
+            return self.compile_backend
+        if self.device == "mps":
+            return "aot_eager"
+        return "inductor"
+
     def maybe_compile(self, model: nn.Module) -> nn.Module:
         """Optionally wrap *model* with :func:`torch.compile`."""
         if not self.compile_model:
             return model
         if not hasattr(torch, "compile"):
             return model
-        return torch.compile(model)
+        backend = self._resolve_compile_backend()
+        try:
+            return torch.compile(model, backend=backend)
+        except Exception as e:
+            import warnings
+            warnings.warn(
+                f"torch.compile(backend={backend!r}) failed: {e}. "
+                f"Falling back to eager mode.",
+                RuntimeWarning,
+            )
+            return model
 
     def get_scaler(self) -> torch.amp.GradScaler | None:
         """Return a :class:`GradScaler` when AMP is active, else ``None``."""
