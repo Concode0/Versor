@@ -8,6 +8,7 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
+from utils.compat import safe_linalg_solve
 from .base import CliffordModule
 
 class BladeSelector(CliffordModule):
@@ -146,7 +147,7 @@ class GeometricNeutralizer(CliffordModule):
         reg = 1e-6 * torch.eye(
             self.d2, device=cur_cov_bb.device, dtype=cur_cov_bb.dtype
         ).unsqueeze(0)
-        weights = torch.linalg.solve(cur_cov_bb + reg, cur_cov_bs)
+        weights = safe_linalg_solve(cur_cov_bb + reg, cur_cov_bs)
 
         # Center based on current means
         b_centered = bivec - cur_mean_b.unsqueeze(0)
