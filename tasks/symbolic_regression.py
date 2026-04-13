@@ -47,7 +47,7 @@ class SRTask(BaseTask):
         model.hidden_channels   : channel count C
         model.num_layers        : residual block count
         model.num_rotors        : K rotors per MultiRotorLayer
-        model.use_decomposition : bivector decomposition in rotors
+        model.exp_policy        : exp policy ('auto', 'fast', 'exact')
         iterative.max_stages    : maximum unbending iterations
         iterative.stage_epochs  : epochs per stage
         iterative.r2_target     : R2 threshold to stop
@@ -157,7 +157,9 @@ class SRTask(BaseTask):
             p = self.cfg.algebra.p
             q = self.cfg.algebra.get("q", 0)
             r = self.cfg.algebra.get("r", 0)
-        return CliffordAlgebra(p=p, q=q, r=r, device=self.device)
+        exp_policy = self.cfg.model.get("exp_policy", "auto")
+        return CliffordAlgebra(p=p, q=q, r=r, device=self.device,
+                               exp_policy=exp_policy)
 
     def setup_model(self) -> SRGBN:
         """Build SRGBN with config parameters, optionally auto-sizing."""
@@ -171,7 +173,6 @@ class SRTask(BaseTask):
             in_features=self.n_vars,
             channels=self.cfg.model.get("hidden_channels", auto.get("channels", 16)),
             num_layers=self.cfg.model.get("num_layers", auto.get("num_layers", 2)),
-            use_decomposition=self.cfg.model.get("use_decomposition", False),
         )
 
     def setup_criterion(self) -> nn.Module:

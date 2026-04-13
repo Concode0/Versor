@@ -182,7 +182,6 @@ class _ResidualBlock(nn.Module):
         self,
         algebra: CliffordAlgebra,
         channels: int,
-        use_decomposition: bool,
         use_skip: bool = True,
         activation_type: str = "gelu",
     ):
@@ -197,7 +196,7 @@ class _ResidualBlock(nn.Module):
             self.activation = GeometricSquare(algebra, channels)
         else:
             self.activation = GeometricGELU(algebra, channels)
-        self.rotor      = RotorLayer(algebra, channels, use_decomposition=use_decomposition)
+        self.rotor      = RotorLayer(algebra, channels)
         self.blade = BladeSelector(algebra, channels)
         self.use_skip = use_skip
 
@@ -229,7 +228,7 @@ class SRGBN(CliffordModule):
     """
 
     @staticmethod
-    def single_rotor(algebra, in_features, channels=4, use_decomposition=True):
+    def single_rotor(algebra, in_features, channels=4):
         """Minimal 1-block SRGBN with no skip connection.
 
         Factory for the iterative unbender pipeline where each stage
@@ -240,14 +239,12 @@ class SRGBN(CliffordModule):
             algebra: CliffordAlgebra instance.
             in_features: Number of scalar inputs.
             channels: Number of hidden channels.
-            use_decomposition: Whether to use bivector decomposition.
 
         Returns:
             SRGBN with num_layers=1, no skip connections.
         """
         return SRGBN(algebra, in_features, channels=channels,
-                     num_layers=1, use_decomposition=use_decomposition,
-                     use_skip=False)
+                     num_layers=1, use_skip=False)
 
     def svd_warmstart(self, Vt, algebra):
         """Initialize first rotor's bivector weights from SVD rotation.
@@ -331,7 +328,6 @@ class SRGBN(CliffordModule):
         in_features: int,
         channels: int = 16,
         num_layers: int = 3,
-        use_decomposition: bool = False,
         use_skip: bool = True,
     ):
         super().__init__(algebra)
@@ -343,7 +339,7 @@ class SRGBN(CliffordModule):
         )
 
         self.blocks = nn.ModuleList([
-            _ResidualBlock(algebra, channels, use_decomposition,
+            _ResidualBlock(algebra, channels,
                            use_skip=use_skip, activation_type="square")
             for _ in range(num_layers)
         ])

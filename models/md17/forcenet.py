@@ -108,7 +108,6 @@ class MD17InteractionBlock(CliffordModule):
     def __init__(self, algebra: CliffordAlgebra, hidden_dim: int,
                  num_static_rotors: int = 8, num_dynamic_rotors: int = 4,
                  num_rbf: int = 20, rbf_cutoff: float = 5.0,
-                 use_decomposition: bool = False, decomp_k: int = 10,
                  use_rotor_backend: bool = False, use_geo_square: bool = True):
         super().__init__(algebra)
         self.hidden_dim = hidden_dim
@@ -130,7 +129,6 @@ class MD17InteractionBlock(CliffordModule):
 
         self.multi_rotor = MultiRotorLayer(
             algebra, hidden_dim, num_static_rotors,
-            use_decomposition=use_decomposition, decomp_k=decomp_k
         )
 
         # inv_dim: grade norms (hidden_dim * num_grades) + rbf projection (hidden_dim)
@@ -232,8 +230,6 @@ class MD17ForceNet(CliffordModule):
         max_z: int = 100,
         num_rbf: int = 20,
         rbf_cutoff: float = 5.0,
-        use_decomposition: bool = False,
-        decomp_k: int = 10,
         use_rotor_backend: bool = False,
         use_geo_square: bool = True,
         use_checkpoint: bool = False,
@@ -251,8 +247,6 @@ class MD17ForceNet(CliffordModule):
                 num_dynamic_rotors=num_dynamic_rotors,
                 num_rbf=num_rbf,
                 rbf_cutoff=rbf_cutoff,
-                use_decomposition=use_decomposition,
-                decomp_k=decomp_k,
                 use_rotor_backend=use_rotor_backend,
                 use_geo_square=use_geo_square,
             )

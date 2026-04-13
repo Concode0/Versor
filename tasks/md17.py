@@ -48,7 +48,9 @@ class MD17Task(BaseTask):
 
     def setup_algebra(self):
         """Use Cl(3,0,1) PGA for SE(3) rigid-body motions."""
-        return CliffordAlgebra(p=3, q=0, r=self.cfg.algebra.get("r", 1), device=self.device)
+        exp_policy = self.cfg.model.get("exp_policy", "auto")
+        return CliffordAlgebra(p=3, q=0, r=self.cfg.algebra.get("r", 1),
+                               device=self.device, exp_policy=exp_policy)
 
     def setup_model(self):
         """Build MD17ForceNet model with PGA motors, dynamic rotors, and RBF."""
@@ -61,8 +63,6 @@ class MD17Task(BaseTask):
             max_z=self.cfg.model.get('max_z', 100),
             num_rbf=self.cfg.model.get('num_rbf', 20),
             rbf_cutoff=self.cfg.model.get('rbf_cutoff', 5.0),
-            use_decomposition=self.cfg.model.get('use_decomposition', False),
-            decomp_k=self.cfg.model.get('decomp_k', 10),
             use_rotor_backend=self.cfg.model.get('use_rotor_backend', False),
             use_geo_square=self.cfg.model.get('use_geo_square', True),
             use_checkpoint=self.cfg.model.get('use_checkpoint', False),

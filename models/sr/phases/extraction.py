@@ -555,7 +555,6 @@ class ExtractionMixin:
             in_features=self.in_features,
             channels=channels,
             num_layers=num_layers,
-            use_decomposition=True,
         )
         return model.to(self.device)
 

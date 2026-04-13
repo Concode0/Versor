@@ -17,6 +17,7 @@ import torch
 from sklearn.base import BaseEstimator, RegressorMixin
 
 from core.algebra import CliffordAlgebra
+from core.decomposition import ExpPolicy
 from models.sr.net import SRGBN
 from models.sr.utils import make_lambdify_fn
 from optimizers.riemannian import RiemannianAdam
@@ -40,7 +41,7 @@ class VersorSR(BaseEstimator, RegressorMixin):
         sparsity_weight=0.01,
         random_state=42,
         max_time=600,
-        use_decomposition=True,
+        exp_policy='auto',
         max_bivector_norm=10.0,
         basis_config=None,
     ):
@@ -56,7 +57,7 @@ class VersorSR(BaseEstimator, RegressorMixin):
         self.sparsity_weight = sparsity_weight
         self.random_state = random_state
         self.max_time = max_time
-        self.use_decomposition = use_decomposition
+        self.exp_policy = exp_policy
         self.max_bivector_norm = max_bivector_norm
         self.basis_config = basis_config
 
@@ -90,14 +91,14 @@ class VersorSR(BaseEstimator, RegressorMixin):
         y_t = torch.from_numpy(y_norm).unsqueeze(-1)
 
         n_vars = X.shape[1]
-        algebra = CliffordAlgebra(p=self.p, q=self.q, r=self.r, device="cpu")
+        algebra = CliffordAlgebra(p=self.p, q=self.q, r=self.r, device="cpu",
+                                   exp_policy=self.exp_policy)
 
         self.model_ = SRGBN(
             algebra=algebra,
             in_features=n_vars,
             channels=self.hidden_channels,
             num_layers=self.num_layers,
-            use_decomposition=self.use_decomposition,
         )
         self.algebra_ = algebra
 
