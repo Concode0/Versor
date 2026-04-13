@@ -20,12 +20,13 @@ class RotorLayer(CliffordModule):
 
     Preserves origin. For grade=2, also preserves lengths and angles (isometry).
 
+    The exp strategy (closed-form vs decomposition) is controlled by
+    ``algebra.exp_policy`` -- see :class:`core.decomposition.ExpPolicy`.
+
     Attributes:
         channels (int): Number of versors.
         grade (int): Grade of the learnable parameter. Default 2 (bivector → rotor).
         grade_weights (nn.Parameter): Learnable grade-k coefficients [channels, num_grade_elements].
-        use_decomposition (bool): If True (grade=2 only), use power iteration decomposition.
-        decomp_k (int, optional): Number of simple components for decomposition.
     """
 
     def __init__(
@@ -33,8 +34,6 @@ class RotorLayer(CliffordModule):
         algebra: CliffordAlgebra,
         channels: int,
         grade: int = 2,
-        use_decomposition: bool = False,
-        decomp_k: int = None
     ):
         """Initialize the versor layer.
 
@@ -45,15 +44,10 @@ class RotorLayer(CliffordModule):
                 grade=2 (default): bivectors → rotors via exp(-B/2), Spin group.
                 grade=1: vectors → reflections via hat(n) x n^{-1}, Pin group.
                 grade=k: general grade-k versor product.
-            use_decomposition (bool): If True and grade=2, use bivector decomposition.
-                Reference: Pence et al. (2025), arXiv:2507.11688v1
-            decomp_k (int, optional): Number of simple components for decomposition.
         """
         super().__init__(algebra)
         self.channels = channels
         self.grade = grade
-        self.use_decomposition = use_decomposition
-        self.decomp_k = decomp_k
 
         grade_mask = algebra.grade_masks[grade]
         self.register_buffer('grade_indices', grade_mask.nonzero(as_tuple=False).squeeze(-1))
@@ -109,12 +103,7 @@ class RotorLayer(CliffordModule):
         """
         V = self._build_grade_element(device, dtype)
         if self.grade == 2:
-            if self.use_decomposition:
-                R = self.algebra.exp_decomposed(
-                    -0.5 * V, use_decomposition=True, k=self.decomp_k
-                )
-            else:
-                R = self.algebra.exp(-0.5 * V)
+            R = self.algebra.exp(-0.5 * V)
             return R, self.algebra.reverse(R)
         else:
             # Normalize per channel so blade_inverse is exact.

@@ -39,7 +39,6 @@ class RotorGadget(CliffordModule):
         in_channels: Number of input channels
         out_channels: Number of output channels
         num_rotor_pairs: Number of rotor pairs to use
-        use_decomposition: Whether to use bivector decomposition
         aggregation: Aggregation method ('mean', 'sum', or 'learned')
     """
 
@@ -49,8 +48,6 @@ class RotorGadget(CliffordModule):
         in_channels: int,
         out_channels: int,
         num_rotor_pairs: int = 4,
-        use_decomposition: bool = False,
-        decomp_k: int = 10,
         aggregation: Literal['mean', 'sum', 'learned'] = 'mean',
         shuffle: Literal['none', 'fixed', 'random'] = 'none',
         bias: bool = False,
@@ -62,8 +59,6 @@ class RotorGadget(CliffordModule):
             in_channels: Number of input channels
             out_channels: Number of output channels
             num_rotor_pairs: Number of rotor pairs (higher = more expressive)
-            use_decomposition: Use bivector decomposition for efficiency
-            decomp_k: Number of iterations for decomposition (if enabled)
             aggregation: How to pool rotor outputs ('mean', 'sum', 'learned')
             shuffle: Input channel shuffle strategy:
                 - 'none': No shuffle, sequential block assignment (default)
@@ -76,8 +71,6 @@ class RotorGadget(CliffordModule):
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.num_rotor_pairs = num_rotor_pairs
-        self.use_decomposition = use_decomposition
-        self.decomp_k = decomp_k
         self.aggregation = aggregation
         self.shuffle = shuffle
 
@@ -206,22 +199,8 @@ class RotorGadget(CliffordModule):
         B_right = self._bivector_to_multivector(self.bivector_right)  # [pairs, dim]
 
         # Compute rotors via exponential map: R = exp(-0.5 * B)
-        if self.use_decomposition:
-            # Use decomposed exponential (more efficient)
-            R_left = self.algebra.exp_decomposed(
-                -0.5 * B_left,
-                use_decomposition=True,
-                k=self.decomp_k
-            )  # [pairs, dim]
-            R_right = self.algebra.exp_decomposed(
-                -0.5 * B_right,
-                use_decomposition=True,
-                k=self.decomp_k
-            )  # [pairs, dim]
-        else:
-            # Standard exponential
-            R_left = self.algebra.exp(-0.5 * B_left)  # [pairs, dim]
-            R_right = self.algebra.exp(-0.5 * B_right)  # [pairs, dim]
+        R_left = self.algebra.exp(-0.5 * B_left)  # [pairs, dim]
+        R_right = self.algebra.exp(-0.5 * B_right)  # [pairs, dim]
 
         # Compute reverse of right rotors for sandwich product
         R_right_rev = self.algebra.reverse(R_right)  # [pairs, dim]
@@ -351,6 +330,5 @@ class RotorGadget(CliffordModule):
             f"num_rotor_pairs={self.num_rotor_pairs}, "
             f"aggregation={self.aggregation}, "
             f"shuffle={self.shuffle}, "
-            f"use_decomposition={self.use_decomposition}, "
             f"bias={self.bias is not None}"
         )

@@ -38,8 +38,6 @@ class MultiRotorFFN(CliffordModule):
         channels (int): Input/output channel count.
         ffn_mult (int): Expansion factor (ffn_channels = channels * ffn_mult).
         num_rotors (int): Number of parallel rotors K in the toolbox.
-        use_decomposition (bool): Use power-iteration bivector decomposition.
-        decomp_k (int, optional): Number of simple components for decomposition.
         use_rotor_backend (bool): Use RotorGadget backend for CliffordLinear.
 
     Input/Output shape: ``[B, C, D]`` where D = algebra.dim.
@@ -51,8 +49,6 @@ class MultiRotorFFN(CliffordModule):
         channels: int,
         ffn_mult: int = 4,
         num_rotors: int = 8,
-        use_decomposition: bool = False,
-        decomp_k: int = None,
         use_rotor_backend: bool = False,
     ):
         super().__init__(algebra)
@@ -62,11 +58,7 @@ class MultiRotorFFN(CliffordModule):
 
         self.expand = CliffordLinear(algebra, channels, ffn_channels, backend=backend)
         self.norm = CliffordLayerNorm(algebra, ffn_channels)
-        self.toolbox = MultiRotorLayer(
-            algebra, ffn_channels, num_rotors,
-            use_decomposition=use_decomposition,
-            decomp_k=decomp_k,
-        )
+        self.toolbox = MultiRotorLayer(algebra, ffn_channels, num_rotors)
         self.act = GeometricGELU(algebra, channels=ffn_channels)
         self.contract = CliffordLinear(algebra, ffn_channels, channels, backend=backend)
         self.gate = BladeSelector(algebra, channels)

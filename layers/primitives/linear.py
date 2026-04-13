@@ -45,8 +45,6 @@ class CliffordLinear(CliffordModule):
         out_channels: int,
         backend: Literal['traditional', 'rotor'] = 'traditional',
         num_rotor_pairs: int = 4,
-        use_decomposition: bool = False,
-        decomp_k: int = 10,
         aggregation: Literal['mean', 'sum', 'learned'] = 'mean',
         shuffle: Literal['none', 'fixed', 'random'] = 'none',
     ):
@@ -59,8 +57,6 @@ class CliffordLinear(CliffordModule):
             backend (str): 'traditional' for standard linear layer,
                           'rotor' for rotor-based transformation
             num_rotor_pairs (int): Number of rotor pairs (rotor backend only)
-            use_decomposition (bool): Use bivector decomposition (rotor backend only)
-            decomp_k (int): Decomposition iterations (rotor backend only)
             aggregation (str): Aggregation method (rotor backend only)
             shuffle (str): Input channel shuffle strategy (rotor backend only):
                 - 'none': No shuffle (default)
@@ -85,8 +81,6 @@ class CliffordLinear(CliffordModule):
                 in_channels=in_channels,
                 out_channels=out_channels,
                 num_rotor_pairs=num_rotor_pairs,
-                use_decomposition=use_decomposition,
-                decomp_k=decomp_k,
                 aggregation=aggregation,
                 shuffle=shuffle,
                 bias=True,  # Include bias in rotor gadget

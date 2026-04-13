@@ -24,12 +24,12 @@ class MultiRotorLayer(CliffordModule):
     x' = sum_k w_k R_k x R~_k.
     For grade=k: each V_k is a grade-k versor applied via the general versor product.
 
+    The exp strategy is controlled by ``algebra.exp_policy``.
+
     Attributes:
         channels (int): Input features.
         num_rotors (int): Number of overlapping versors.
         grade (int): Grade of the learnable parameters. Default 2 (rotors).
-        use_decomposition (bool): If True (grade=2 only), use power iteration decomposition.
-        decomp_k (int | None): Number of simple components for decomposition.
         rotor_grade_weights (nn.Parameter): Grade-k coefficients [num_rotors, num_grade_elements].
         weights (nn.Parameter): Mixing weights [channels, num_rotors].
     """
@@ -40,8 +40,6 @@ class MultiRotorLayer(CliffordModule):
         channels: int,
         num_rotors: int = 8,
         grade: int = 2,
-        use_decomposition: bool = False,
-        decomp_k: int = None
     ):
         """Initialize Multi-Versor Layer.
 
@@ -52,16 +50,11 @@ class MultiRotorLayer(CliffordModule):
             grade (int): Grade of the learnable parameter.
                 grade=2 (default): bivectors → rotors via exp(-B/2), Spin group.
                 grade=k: general grade-k versor product.
-            use_decomposition (bool): If True and grade=2, use bivector decomposition.
-                Reference: Pence et al. (2025), arXiv:2507.11688v1
-            decomp_k (int, optional): Number of simple components for decomposition.
         """
         super().__init__(algebra)
         self.channels = channels
         self.num_rotors = num_rotors
         self.grade = grade
-        self.use_decomposition = use_decomposition
-        self.decomp_k = decomp_k
 
         grade_mask = algebra.grade_masks[grade]
         self.register_buffer('grade_indices', grade_mask.nonzero(as_tuple=False).squeeze(-1))
@@ -115,12 +108,7 @@ class MultiRotorLayer(CliffordModule):
         V.scatter_(1, indices, self.rotor_grade_weights)
 
         if self.grade == 2:
-            if self.use_decomposition:
-                R = self.algebra.exp_decomposed(
-                    -0.5 * V, use_decomposition=True, k=self.decomp_k
-                )
-            else:
-                R = self.algebra.exp(-0.5 * V)  # [K, D]
+            R = self.algebra.exp(-0.5 * V)  # [K, D]
             return R, self.algebra.reverse(R)
         else:
             norm = V.norm(dim=-1, keepdim=True).clamp(min=1e-8)
@@ -150,16 +138,13 @@ class MultiRotorLayer(CliffordModule):
                 self._cached_V_left = V_left
                 self._cached_V_right = V_right
 
-        # Sandwich Product for all K versors simultaneously
-        x_expanded = x.unsqueeze(2)                         # [B, C, 1, D]
-        VL_expanded = V_left.view(1, 1, self.num_rotors, -1)   # [1, 1, K, D]
-        VR_expanded = V_right.view(1, 1, self.num_rotors, -1)  # [1, 1, K, D]
+        # Action-matrix sandwich: build K matrices once, apply via einsum
+        versored_x = self.algebra.multi_rotor_sandwich(
+            V_left, x, V_right,
+        )  # [B, C, K, D]
 
-        Vx = self.algebra.geometric_product(VL_expanded, x_expanded)  # [B, C, K, D]
-        versored_x = self.algebra.geometric_product(Vx, VR_expanded)  # [B, C, K, D]
-
-        # Superposition
-        out = torch.einsum('ck,bckd->bcd', self.weights, versored_x)
+        # Weighted superposition
+        out = torch.einsum('ck,bcke->bce', self.weights, versored_x)
 
         if return_invariants:
             return self.algebra.get_grade_norms(out)
