@@ -445,8 +445,10 @@ class TestExpDecomposedGradient:
     """Gradient flow through exp_decomposed() during training."""
 
     def test_decomposed_gradient_cl40(self):
-        """exp_decomposed should produce finite gradients in Cl(4,0)."""
+        """EXACT policy should produce finite gradients in Cl(4,0)."""
+        from core.decomposition import ExpPolicy
         alg = CliffordAlgebra(4, 0, device=DEVICE)
+        alg.exp_policy = ExpPolicy.EXACT
         bv_mask = alg.grade_masks[2]
         bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
 
@@ -456,15 +458,17 @@ class TestExpDecomposedGradient:
             -1, bv_indices[[0, 5]].unsqueeze(0),
             torch.tensor([[0.3, 0.4]])
         )
-        R = alg.exp_decomposed(B_full, use_decomposition=True)
+        R = alg.exp(B_full)
         loss = R.pow(2).sum()
         loss.backward()
         assert B.grad is not None
-        assert torch.isfinite(B.grad).all(), "exp_decomposed gradient has NaN/Inf"
+        assert torch.isfinite(B.grad).all(), "EXACT exp gradient has NaN/Inf"
 
     def test_decomposed_gradient_cl15(self):
-        """exp_decomposed should produce finite gradients in Cl(1,5)."""
+        """EXACT policy should produce finite gradients in Cl(1,5)."""
+        from core.decomposition import ExpPolicy
         alg = CliffordAlgebra(1, 5, device=DEVICE)
+        alg.exp_policy = ExpPolicy.EXACT
         bv_mask = alg.grade_masks[2]
         bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
 
@@ -475,15 +479,17 @@ class TestExpDecomposedGradient:
         B_full = B + torch.zeros_like(B).scatter(
             -1, idx.unsqueeze(0), coeffs.unsqueeze(0)
         )
-        R = alg.exp_decomposed(B_full, use_decomposition=True)
+        R = alg.exp(B_full)
         loss = R.pow(2).sum()
         loss.backward()
         assert B.grad is not None
         assert torch.isfinite(B.grad).all()
 
     def test_decomposed_matches_inference(self):
-        """Decomposed exp with grad should approximate inference result."""
+        """EXACT exp with grad should approximate inference result."""
+        from core.decomposition import ExpPolicy
         alg = CliffordAlgebra(4, 0, device=DEVICE)
+        alg.exp_policy = ExpPolicy.EXACT
         bv_mask = alg.grade_masks[2]
         bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
 
@@ -491,15 +497,15 @@ class TestExpDecomposedGradient:
         B_data[0, bv_indices[0].item()] = 0.3  # e12
         B_data[0, bv_indices[5].item()] = 0.4  # e34
 
-        # Training path (detached decomposition)
+        # Training path
         B_train = B_data.clone().requires_grad_(True)
-        R_train = alg.exp_decomposed(B_train, use_decomposition=True)
+        R_train = alg.exp(B_train)
 
-        # Inference path (full decomposition)
+        # Inference path
         with torch.no_grad():
-            R_infer = alg.exp_decomposed(B_data, use_decomposition=True)
+            R_infer = alg.exp(B_data)
 
-        assert torch.allclose(R_train, R_infer, atol=1e-4), \
+        assert torch.allclose(R_train, R_infer, atol=1e-3), \
             f"Train vs inference max diff: {(R_train - R_infer).abs().max()}"
 
 

@@ -279,55 +279,58 @@ class TestAggregationMethods:
         assert layer.agg_weights.shape == (2, 4)
 
 
-class TestBivectorDecomposition:
-    """Test integration with bivector decomposition."""
+class TestExpPolicy:
+    """Test RotorGadget with different exp policies."""
 
-    def test_with_decomposition(self, algebra_3d):
-        """Test layer with bivector decomposition enabled."""
+    def test_with_exact_policy(self, algebra_3d):
+        """Test layer with EXACT exp policy."""
+        from core.decomposition import ExpPolicy
+        algebra_3d.exp_policy = ExpPolicy.EXACT
+
         layer = RotorGadget(
             algebra=algebra_3d,
             in_channels=4,
             out_channels=4,
             num_rotor_pairs=2,
-            use_decomposition=True,
-            decomp_k=5,
         )
 
         x = torch.randn(2, 4, algebra_3d.dim)
         out = layer(x)
 
         assert out.shape == (2, 4, algebra_3d.dim)
+        algebra_3d.exp_policy = ExpPolicy.AUTO
 
-    def test_decomposition_vs_standard(self, algebra_3d):
-        """Compare decomposition and standard exponential."""
-        # Create two identical layers
+    def test_policy_fast_vs_exact(self, algebra_3d):
+        """Compare FAST and EXACT policies (n=3: should match)."""
+        from core.decomposition import ExpPolicy
+
         torch.manual_seed(42)
-        layer_standard = RotorGadget(
+        layer_a = RotorGadget(
             algebra=algebra_3d,
             in_channels=4,
             out_channels=4,
             num_rotor_pairs=2,
-            use_decomposition=False,
         )
 
         torch.manual_seed(42)
-        layer_decomp = RotorGadget(
+        layer_b = RotorGadget(
             algebra=algebra_3d,
             in_channels=4,
             out_channels=4,
             num_rotor_pairs=2,
-            use_decomposition=True,
-            decomp_k=20,  # High iterations for accuracy
         )
 
-        # Same input
         x = torch.randn(2, 4, algebra_3d.dim)
 
-        out_standard = layer_standard(x)
-        out_decomp = layer_decomp(x)
+        algebra_3d.exp_policy = ExpPolicy.FAST
+        out_fast = layer_a(x)
 
-        # Should be close (not exact due to approximation)
-        assert torch.allclose(out_standard, out_decomp, atol=1e-3)
+        algebra_3d.exp_policy = ExpPolicy.EXACT
+        out_exact = layer_b(x)
+
+        algebra_3d.exp_policy = ExpPolicy.AUTO
+
+        assert torch.allclose(out_fast, out_exact, atol=1e-3)
 
 
 class TestParameterEfficiency:
@@ -529,7 +532,6 @@ class TestEdgeCases:
             out_channels=8,
             num_rotor_pairs=2,
             aggregation='mean',
-            use_decomposition=True,
         )
 
         repr_str = repr(layer)

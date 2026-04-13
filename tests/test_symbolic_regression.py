@@ -56,7 +56,7 @@ def _make_cfg(dataset_name=_TEST_DATASET, hidden_channels=4, num_layers=1,
         "model": {
             "hidden_channels": hidden_channels,
             "num_layers": num_layers,
-            "use_decomposition": False,
+            "exp_policy": "fast",
         },
         "training": {
             "epochs": 1,

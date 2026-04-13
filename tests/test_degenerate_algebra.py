@@ -230,8 +230,11 @@ class TestAdaptiveExp:
         B[0, bv_indices[0].item()] = 0.3  # e12
         B[0, bv_indices[5].item()] = 0.4  # e34
 
+        from core.decomposition import ExpPolicy
+        alg.exp_policy = ExpPolicy.EXACT
         with torch.no_grad():
-            R = alg.exp_decomposed(B, use_decomposition=True)
+            R = alg.exp(B)
+        alg.exp_policy = ExpPolicy.AUTO
         R_taylor = alg._exp_taylor(B, order=20)
         assert torch.allclose(R, R_taylor, atol=1e-3), \
             f"Decomposed exp at inference: max diff {(R - R_taylor).abs().max()}"

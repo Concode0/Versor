@@ -5,6 +5,7 @@ import pytest
 from core.algebra import CliffordAlgebra
 
 pytestmark = pytest.mark.unit
+from core.decomposition import ExpPolicy
 from core.metric import hermitian_norm, hermitian_grade_spectrum
 from models.md17 import MD17ForceNet, MD17InteractionBlock, GaussianRBF, DynamicRotorGenerator
 from functional.loss import ConservativeLoss, HermitianGradeRegularization
@@ -68,7 +69,6 @@ class TestMD17InteractionBlock:
             algebra, hidden_dim=16,
             num_static_rotors=4, num_dynamic_rotors=2,
             num_rbf=10, rbf_cutoff=5.0,
-            use_decomposition=True, decomp_k=5,
             use_geo_square=True
         )
         h = torch.randn(10, 16, algebra.dim)
@@ -117,11 +117,12 @@ class TestMD17ForceNet:
         assert energy.shape == (2,)
         assert force.shape == (8, 3)
 
-    def test_forward_with_decomposition(self, algebra):
+    def test_forward_with_exact_policy(self, algebra):
+        from core.decomposition import ExpPolicy
+        algebra.exp_policy = ExpPolicy.EXACT
         model = MD17ForceNet(
             algebra, hidden_dim=16, num_layers=2,
             num_static_rotors=4, num_dynamic_rotors=2,
-            use_decomposition=True, decomp_k=5,
             num_rbf=10
         )
         z = torch.randint(1, 10, (8,))
@@ -131,6 +132,7 @@ class TestMD17ForceNet:
         energy, force = model(z, pos, batch, edge_index)
         assert energy.shape == (2,)
         assert force.shape == (8, 3)
+        algebra.exp_policy = ExpPolicy.AUTO
 
     def test_forward_with_rotor_backend(self, algebra):
         model = MD17ForceNet(
@@ -158,7 +160,6 @@ class TestMD17ForceNet:
             algebra, hidden_dim=16, num_layers=2,
             num_static_rotors=4, num_dynamic_rotors=2,
             num_rbf=10, rbf_cutoff=5.0,
-            use_decomposition=True, decomp_k=5,
             use_rotor_backend=True, use_geo_square=True
         )
         z = torch.randint(1, 10, (8,))

@@ -18,10 +18,13 @@ from core.algebra import CliffordAlgebra
 
 pytestmark = pytest.mark.unit
 from core.decomposition import (
+    ExpPolicy,
     ga_power_iteration,
     differentiable_invariant_decomposition,
     exp_simple_bivector,
-    exp_decomposed
+    exp_decomposed,
+    compiled_safe_decomposed_exp,
+    _power_iteration_compiled_safe,
 )
 
 
@@ -317,7 +320,6 @@ class TestExpDecomposed:
 
     def test_exp_decomposed_vs_standard_small_bivector(self, algebra_3d):
         """Compare decomposed exp with standard exp for small bivectors."""
-        # Small simple bivector
         v1_raw = torch.tensor([1.0, 0.0, 0.0])
         v2_raw = torch.tensor([0.0, 1.0, 0.0])
         v1 = algebra_3d.embed_vector(v1_raw)
@@ -325,14 +327,16 @@ class TestExpDecomposed:
         b = 0.1 * algebra_3d.wedge(v1, v2)
 
         R_standard = algebra_3d.exp(b)
-        R_decomposed = exp_decomposed(algebra_3d, b, use_decomposition=True)
 
-        # Should be close
-        assert torch.allclose(R_standard, R_decomposed, atol=1e-4)
+        # Use EXACT policy
+        algebra_3d.exp_policy = ExpPolicy.EXACT
+        R_exact = algebra_3d.exp(b)
+        algebra_3d.exp_policy = ExpPolicy.AUTO
+
+        assert torch.allclose(R_standard, R_exact, atol=1e-4)
 
     def test_exp_decomposed_rotor_property(self, algebra_3d):
-        """Test that decomposed exp satisfies rotor property."""
-        # Random bivector
+        """Test that EXACT exp satisfies rotor property."""
         bivector_weights = torch.randn(3) * 0.1
         bivector_indices = [3, 5, 6]
 
@@ -340,10 +344,11 @@ class TestExpDecomposed:
         for idx, weight in zip(bivector_indices, bivector_weights):
             b[idx] = weight
 
-        R = exp_decomposed(algebra_3d, b, use_decomposition=True)
-        R_rev = algebra_3d.reverse(R)
+        algebra_3d.exp_policy = ExpPolicy.EXACT
+        R = algebra_3d.exp(b)
+        algebra_3d.exp_policy = ExpPolicy.AUTO
 
-        # R * ~R should be identity
+        R_rev = algebra_3d.reverse(R)
         identity = algebra_3d.geometric_product(R, R_rev)
 
         expected_identity = torch.zeros_like(identity)
@@ -352,43 +357,42 @@ class TestExpDecomposed:
         assert torch.allclose(identity, expected_identity, atol=1e-4)
 
     def test_exp_decomposed_requires_grad(self, algebra_3d):
-        """Test gradient flow through decomposed exponential."""
-        # Create leaf tensor directly
+        """Test gradient flow through EXACT exponential."""
         b = torch.randn(algebra_3d.dim, requires_grad=True)
 
-        R = exp_decomposed(algebra_3d, b, use_decomposition=True)
+        algebra_3d.exp_policy = ExpPolicy.EXACT
+        R = algebra_3d.exp(b)
+        algebra_3d.exp_policy = ExpPolicy.AUTO
 
-        # Should have gradients
         assert R.requires_grad
 
-        # Test backward pass
         loss = R.sum()
         loss.backward()
 
-        # b should have gradients (it's a leaf tensor)
         assert b.grad is not None
         assert not torch.isnan(b.grad).any()
         assert not torch.isinf(b.grad).any()
 
-    def test_exp_decomposed_fallback(self, algebra_3d):
-        """Test that use_decomposition=False falls back to standard exp."""
+    def test_exp_fast_policy(self, algebra_3d):
+        """Test that FAST policy uses closed-form only."""
         v1_raw = torch.tensor([1.0, 0.0, 0.0])
         v2_raw = torch.tensor([0.0, 1.0, 0.0])
         v1 = algebra_3d.embed_vector(v1_raw)
         v2 = algebra_3d.embed_vector(v2_raw)
         b = algebra_3d.wedge(v1, v2)
 
-        R_standard = algebra_3d.exp(b)
-        R_fallback = exp_decomposed(algebra_3d, b, use_decomposition=False)
+        R_closed = algebra_3d._exp_bivector_closed(b)
 
-        # Should be identical (using same method)
-        assert torch.allclose(R_standard, R_fallback, atol=1e-6)
+        algebra_3d.exp_policy = ExpPolicy.FAST
+        R_fast = algebra_3d.exp(b)
+        algebra_3d.exp_policy = ExpPolicy.AUTO
+
+        assert torch.allclose(R_closed, R_fast, atol=1e-6)
 
     def test_exp_decomposed_batch(self, algebra_3d):
-        """Test decomposed exp works with batched inputs."""
+        """Test EXACT exp works with batched inputs."""
         batch_size = 4
 
-        # Batch of bivectors
         bivector_weights = torch.randn(batch_size, 3) * 0.1
         bivector_indices = [3, 5, 6]
 
@@ -396,12 +400,12 @@ class TestExpDecomposed:
         for i, idx in enumerate(bivector_indices):
             b[:, idx] = bivector_weights[:, i]
 
-        R = exp_decomposed(algebra_3d, b, use_decomposition=True)
+        algebra_3d.exp_policy = ExpPolicy.EXACT
+        R = algebra_3d.exp(b)
+        algebra_3d.exp_policy = ExpPolicy.AUTO
 
-        # Check shape
         assert R.shape == (batch_size, algebra_3d.dim)
 
-        # Check each is a rotor
         for i in range(batch_size):
             R_i = R[i]
             R_i_rev = algebra_3d.reverse(R_i)
@@ -411,6 +415,141 @@ class TestExpDecomposed:
             expected_identity[0] = 1.0
 
             assert torch.allclose(identity, expected_identity, atol=1e-4)
+
+
+class TestExpPolicy:
+    """Tests for ExpPolicy dispatch and compile-safe decomposition."""
+
+    def test_policy_auto_n3_uses_closed_form(self):
+        """AUTO with n<=3 should match closed-form exactly."""
+        alg = CliffordAlgebra(3, 0, device='cpu')
+        b = torch.randn(alg.dim) * 0.1
+        # Zero non-bivector components
+        bv_mask = alg.grade_masks[2]
+        b = b * bv_mask.float()
+
+        alg.exp_policy = ExpPolicy.AUTO
+        R_auto = alg.exp(b)
+        R_closed = alg._exp_bivector_closed(b)
+
+        assert torch.allclose(R_auto, R_closed, atol=1e-10)
+
+    def test_policy_auto_n4_nonsimple(self):
+        """AUTO with n>=4 should produce valid rotors for non-simple bivectors."""
+        alg = CliffordAlgebra(4, 0, device='cpu')
+
+        # Construct a non-simple bivector: B = e12 + e34
+        b = torch.zeros(alg.dim)
+        bv_mask = alg.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+        b[bv_indices[0]] = 0.3  # e12
+        b[bv_indices[-1]] = 0.5  # e34
+
+        alg.exp_policy = ExpPolicy.AUTO
+        R = alg.exp(b)
+        R_rev = alg.reverse(R)
+        identity = alg.geometric_product(R, R_rev)
+
+        expected_identity = torch.zeros_like(identity)
+        expected_identity[0] = 1.0
+        assert torch.allclose(identity, expected_identity, atol=1e-3)
+
+    def test_policy_fast_nonsimple(self):
+        """FAST should return closed-form even for non-simple bivectors."""
+        alg = CliffordAlgebra(4, 0, device='cpu')
+
+        b = torch.zeros(alg.dim)
+        bv_mask = alg.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+        b[bv_indices[0]] = 0.3
+        b[bv_indices[-1]] = 0.5
+
+        alg.exp_policy = ExpPolicy.FAST
+        R_fast = alg.exp(b)
+        R_closed = alg._exp_bivector_closed(b)
+
+        assert torch.allclose(R_fast, R_closed, atol=1e-10)
+
+    def test_policy_setter_runtime(self):
+        """Verify runtime policy changes work."""
+        alg = CliffordAlgebra(3, 0, device='cpu')
+        assert alg.exp_policy == ExpPolicy.AUTO
+
+        alg.exp_policy = 'fast'
+        assert alg.exp_policy == ExpPolicy.FAST
+
+        alg.exp_policy = ExpPolicy.EXACT
+        assert alg.exp_policy == ExpPolicy.EXACT
+
+    def test_compiled_safe_power_iteration(self):
+        """Compiled-safe power iteration produces valid simple bivectors."""
+        alg = CliffordAlgebra(3, 0, device='cpu')
+        v1 = alg.embed_vector(torch.tensor([1.0, 0.0, 0.0]))
+        v2 = alg.embed_vector(torch.tensor([0.0, 1.0, 0.0]))
+        b = alg.wedge(v1, v2)
+
+        b_s = _power_iteration_compiled_safe(alg, b, fixed_iterations=20)
+
+        # Should recover the same plane (up to sign/scale)
+        b_norm = b.norm()
+        b_s_norm = b_s.norm()
+        assert b_s_norm > 0.5 * b_norm
+
+    def test_simplicity_check(self):
+        """B*B grade-4 energy identifies simple vs non-simple bivectors."""
+        alg = CliffordAlgebra(4, 0, device='cpu')
+
+        # Simple bivector: single plane
+        v1 = alg.embed_vector(torch.tensor([1.0, 0.0, 0.0, 0.0]))
+        v2 = alg.embed_vector(torch.tensor([0.0, 1.0, 0.0, 0.0]))
+        b_simple = alg.wedge(v1, v2)
+
+        BB_simple = alg.geometric_product(b_simple, b_simple)
+        scalar_part = alg.grade_projection(BB_simple, 0)
+        non_scalar = (BB_simple - scalar_part).norm()
+        assert non_scalar < 1e-6
+
+        # Non-simple bivector: two independent planes
+        v3 = alg.embed_vector(torch.tensor([0.0, 0.0, 1.0, 0.0]))
+        v4 = alg.embed_vector(torch.tensor([0.0, 0.0, 0.0, 1.0]))
+        b_nonsimple = alg.wedge(v1, v2) + alg.wedge(v3, v4)
+
+        BB_nonsimple = alg.geometric_product(b_nonsimple, b_nonsimple)
+        scalar_part_ns = alg.grade_projection(BB_nonsimple, 0)
+        non_scalar_ns = (BB_nonsimple - scalar_part_ns).norm()
+        assert non_scalar_ns > 1e-4
+
+    def test_compiled_safe_decomposed_exp(self):
+        """compiled_safe_decomposed_exp produces valid rotors."""
+        alg = CliffordAlgebra(4, 0, device='cpu')
+
+        # Non-simple bivector
+        b = torch.zeros(alg.dim)
+        bv_mask = alg.grade_masks[2]
+        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
+        b[bv_indices[0]] = 0.3
+        b[bv_indices[-1]] = 0.5
+
+        R = compiled_safe_decomposed_exp(alg, b)
+        R_rev = alg.reverse(R)
+        identity = alg.geometric_product(R, R_rev)
+
+        expected = torch.zeros_like(identity)
+        expected[0] = 1.0
+        assert torch.allclose(identity, expected, atol=1e-3)
+
+    def test_deprecated_exp_decomposed_warning(self):
+        """exp_decomposed emits DeprecationWarning."""
+        import warnings
+        alg = CliffordAlgebra(3, 0, device='cpu')
+        b = torch.zeros(alg.dim)
+        b[3] = 0.1
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            exp_decomposed(alg, b, use_decomposition=True)
+            assert len(w) >= 1
+            assert issubclass(w[0].category, DeprecationWarning)
 
 
 if __name__ == '__main__':
