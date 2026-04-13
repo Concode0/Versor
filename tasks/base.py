@@ -45,6 +45,7 @@ class BaseTask(ABC):
             pin_memory=cfg.training.get('pin_memory', None),
             num_workers=cfg.training.get('num_workers', None),
             compile_model=cfg.training.get('compile', False),
+            compile_backend=cfg.training.get('compile_backend', None),
             amp=cfg.training.get('amp', False),
             cudnn_benchmark=cfg.training.get('cudnn_benchmark', None),
         )
