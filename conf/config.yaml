@@ -20,6 +20,7 @@ training:
   num_workers: 2  # DataLoader workers (0 to disable multiprocessing)
   pin_memory: null        # null = auto (true for CUDA)
   compile: false          # torch.compile() wrapper
+  compile_backend: null   # null=auto (aot_eager on MPS, inductor on CUDA/CPU)
   amp: false              # Automatic mixed precision (CUDA only)
   cudnn_benchmark: null   # null = auto (true for CUDA)
 

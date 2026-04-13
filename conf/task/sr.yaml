@@ -21,7 +21,7 @@ dataset:
 
 model:
   auto_capacity: true
-  use_decomposition: true
+  exp_policy: "auto"
 
 training:
   epochs: 200
