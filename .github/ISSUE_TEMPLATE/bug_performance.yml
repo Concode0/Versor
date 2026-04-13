@@ -1,0 +1,123 @@
+name: Bug / Performance / Numerical Stability
+description: Report a bug, NaN/Inf, training divergence, memory pressure, or unexpected slowness
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for anything that is *not working as expected* — incorrect results,
+        NaN/Inf, training divergence, rotor collapse, memory explosions, or slowness.
+        Geometric algebra operations (exp map, decomposition, Riemannian optimizer) have
+        numerical edge cases, so please include the algebra signature and reproduction.
+
+  - type: textarea
+    id: tldr
+    attributes:
+      label: TL;DR
+      description: One or two sentences summarizing what's broken and where.
+      placeholder: "e.g. exp map returns NaN for non-simple bivectors in Cl(4,0) on MPS during RotorLayer forward."
+    validations:
+      required: true
+
+  - type: input
+    id: area
+    attributes:
+      label: Affected Area
+      description: |
+        Free-form — name the module, layer, task, or code path. Paths or symbol names welcome.
+        Leave blank if you're not sure; the TL;DR and repro are what matter most.
+      placeholder: "e.g. core/algebra.exp, layers/rotor.RotorLayer, optimizers/riemannian"
+
+  - type: input
+    id: algebra_signature
+    attributes:
+      label: Algebra Signature
+      description: "Which Clifford algebra? e.g. Cl(3,0), Cl(4,1), Cl(2,1,1)"
+      placeholder: "Cl(p, q, r)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What's Happening
+      description: |
+        Describe the bug or instability. For numerical issues include loss curves, error
+        messages, memory usage, or training logs. Include the full traceback if there is one.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal Reproduction
+      description: |
+        Minimal code or CLI command to reproduce. For config-driven issues, paste the
+        relevant Hydra overrides.
+      render: python
+      placeholder: |
+        import torch
+        from versor.core.algebra import CliffordAlgebra
+
+        alg = CliffordAlgebra(3, 0, device='cpu')
+        # ... steps that reproduce the issue
+
+        # or:
+        # uv run main.py task=sr algebra.p=6 training.epochs=50
+
+        # If unavailable, just skip.
+    validations:
+      required: false
+
+  - type: textarea
+    id: tensor_shapes
+    attributes:
+      label: Tensor Shapes / Config (if applicable)
+      description: |
+        Relevant tensor shapes (multivectors are `[Batch, Channels, 2^n]`) or Hydra config
+        excerpts that help pin down the issue.
+      placeholder: |
+        Input:  [32, 8, 8]   (Batch=32, Channels=8, Cl(3,0) → 2^3=8 blades)
+        Bivector B: [32, 8, 3]
+
+        algebra: {p: 3, q: 0, r: 0}
+        training: {lr: 0.001, epochs: 100}
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks Already Tried (for instability / performance)
+      options:
+        - label: Reduced learning rate
+        - label: Reduced bivector norm clip (`optimizer.bv_clip`)
+        - label: Switched to standard Adam
+        - label: Reduced model depth / channels
+        - label: Used `.reshape()` instead of `.view()` after multi-rotor ops
+        - label: Passed `device='cpu'` explicitly to `CliffordAlgebra`
+        - label: Tried a different `exp_policy` (`auto` / `fast` / `exact`)
+
+  - type: checkboxes
+    id: device
+    attributes:
+      label: Device
+      options:
+        - label: CPU
+        - label: CUDA
+        - label: Apple Silicon (MPS)
+
+  - type: input
+    id: version
+    attributes:
+      label: Versor Commit / Python / PyTorch
+      placeholder: "git short sha, Python 3.11, PyTorch 2.x"
+    validations:
+      required: true

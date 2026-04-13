@@ -1,0 +1,90 @@
+name: Feature / New Task / Dataset
+description: Propose a new layer, algebra op, optimizer, task, dataset, or framework capability
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to propose *additions* to Versor — a new layer (`CliffordModule`
+        subclass), a new algebra operation, a new optimizer, a new scientific task or dataset
+        (`BaseTask` subclass), or framework tooling. Task and feature proposals share the same
+        shape, so both live here.
+
+  - type: textarea
+    id: tldr
+    attributes:
+      label: TL;DR
+      description: One or two sentences summarizing what you want to add and why.
+      placeholder: "e.g. Add a ReflectionLayer for odd versors so Pin-group equivariant models are expressible without manual sandwich code."
+    validations:
+      required: true
+
+  - type: input
+    id: scope
+    attributes:
+      label: Scope
+      description: |
+        Free-form — describe what kind of addition this is. No fixed menu: name the layer,
+        module, task, or tooling area. Multi-scope proposals are fine (e.g. "new task + new loss").
+      placeholder: "e.g. new layer under layers/primitives; new task under tasks/; new algebra op in core/algebra"
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: |
+        What problem does this solve? What domain, task, or user need would benefit?
+        For new tasks, explain why a GBN / rotor-based approach is a good fit, and describe
+        the inputs, outputs, and evaluation metric.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Design
+      description: |
+        For code additions: sketch the interface, math, or pseudocode. For new tasks: describe
+        the data pipeline, suggested algebra signature, and baseline comparison. LaTeX welcome.
+      render: python
+      placeholder: |
+        # If doesn't have to be code. Mathematical definition, pseudocode, or just ideas about what geometric transformation
+        # you want to implment are sufficient.
+
+        # New layer
+        class MyNewLayer(CliffordModule):
+            def __init__(self, p, q, r=0, channels=...):
+                super().__init__(p, q, r)
+                ...
+            def forward(self, x):  # x: [B, C, 2^n]
+                ...
+
+        # Or new task
+        # class MyTask(BaseTask):
+        #     def setup_algebra(self): ...
+        #     def get_data(self): ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: data_source
+    attributes:
+      label: Data Source (if task/dataset)
+      description: |
+        URL, paper reference, pip package, or license notes for any dataset involved.
+        Skip this if your proposal is purely a code feature.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Other approaches you considered and why this one is preferable.
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to implement this and submit a PR
+        - label: I can provide benchmarks, baselines, or test cases
+        - label: I can provide access to the dataset (if applicable)

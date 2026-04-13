@@ -1,0 +1,53 @@
+name: Theory / Math Question
+description: Questions about Geometric Algebra theory, rotor mechanics, or mathematical correctness
+labels: ["math", "question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for questions about the mathematical foundations: rotor algebra,
+        bivector decomposition, signature selection, conformal models, or manifold properties.
+        This is the right place for "is this formulation correct?" or "why does Versor do X
+        this way?" — not for bug reports.
+
+  - type: textarea
+    id: tldr
+    attributes:
+      label: TL;DR
+      description: One or two sentences capturing the core question.
+      placeholder: "e.g. Why does RotorLayer use exp(-B/2) rather than exp(B) for the sandwich product?"
+    validations:
+      required: true
+
+  - type: input
+    id: topic
+    attributes:
+      label: Topic
+      description: |
+        Free-form — a short phrase describing the math area. No fixed menu; use whatever
+        language matches your question.
+      placeholder: "e.g. bivector decomposition, conformal model, Riemannian retraction, grade projection"
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: |
+        Describe your question. LaTeX is supported in GitHub markdown. Include any
+        equations, references, or snippets that help frame the question.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / Motivation
+      description: |
+        What are you trying to accomplish? Which domain, dataset, or part of Versor does
+        this connect to? This helps point you at the right part of the framework.
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What Have You Tried?
+      description: Partial reasoning, references consulted, or experiments you've already run.
