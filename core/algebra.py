@@ -37,7 +37,8 @@ class CliffordAlgebra(nn.Module):
     """
     _CACHED_TABLES = {}
 
-    def __init__(self, p: int, q: int = 0, r: int = 0, device='cuda'):
+    def __init__(self, p: int, q: int = 0, r: int = 0, device='cuda',
+                 exp_policy: str = 'auto'):
         """Initialize the algebra and cache the Cayley table.
 
         Args:
@@ -45,6 +46,9 @@ class CliffordAlgebra(nn.Module):
             q (int, optional): Negative dimensions (-1). Defaults to 0.
             r (int, optional): Degenerate dimensions (0). Defaults to 0.
             device (str, optional): The device on which computations are performed. Defaults to 'cuda'.
+            exp_policy (str or ExpPolicy, optional): Bivector exp policy.
+                ``'auto'`` (default), ``'fast'``, or ``'exact'``.
+                See :class:`core.decomposition.ExpPolicy`.
         """
         super().__init__()
 
@@ -64,6 +68,13 @@ class CliffordAlgebra(nn.Module):
             self._exp_regime = 'hyperbolic'
         else:
             self._exp_regime = 'mixed'
+
+        # Exp policy: controls decomposition strategy
+        from core.decomposition import ExpPolicy
+        if isinstance(exp_policy, str):
+            self._exp_policy = ExpPolicy(exp_policy)
+        else:
+            self._exp_policy = exp_policy
 
         # Cache Cayley tables to avoid recomputation
         cache_key = (p, q, r, str(device))
@@ -111,6 +122,12 @@ class CliffordAlgebra(nn.Module):
         # Pre-initialize derived tables (sandwich_product / pseudoscalar_product)
         self._init_derived_tables()
 
+        # Precomputed finfo-derived tolerances for dtype-aware numerical guards.
+        # Plain floats for zero-overhead usage in clamp/where operations.
+        _finfo = torch.finfo(self.cayley_signs.dtype)
+        self.eps: float = float(_finfo.eps)
+        self.eps_sq: float = float(_finfo.eps ** 2)
+
     @property
     def device(self):
         """Return the device of the algebra tables."""
@@ -125,6 +142,18 @@ class CliffordAlgebra(nn.Module):
     def grade_masks_float(self):
         """Float grade masks indexed by grade: ``grade_masks_float[k]`` -> ``[dim]`` float."""
         return self._grade_masks_float
+
+    @property
+    def exp_policy(self):
+        """Active :class:`ExpPolicy` controlling ``exp()`` dispatch."""
+        return self._exp_policy
+
+    @exp_policy.setter
+    def exp_policy(self, value):
+        from core.decomposition import ExpPolicy
+        if isinstance(value, str):
+            value = ExpPolicy(value)
+        self._exp_policy = value
 
     def _init_derived_tables(self):
         """Precompute derived tables for sandwich_product and pseudoscalar_product.
@@ -199,7 +228,7 @@ class CliffordAlgebra(nn.Module):
         idx = gi.unsqueeze(0).expand_as(flat)
         result = torch.zeros(flat.shape[0], self.num_grades, device=mv.device, dtype=mv.dtype)
         result.scatter_add_(1, idx, flat)
-        return result.reshape(*batch_shape, self.num_grades).clamp(min=1e-6).sqrt()
+        return result.reshape(*batch_shape, self.num_grades).clamp(min=self.eps).sqrt()
 
     def _generate_cayley_table(self, device):
         """Precompute the Cayley table, grade masks, and reversion signs.
@@ -556,7 +585,7 @@ class CliffordAlgebra(nn.Module):
         """
         blade_rev = self.reverse(blade)
         blade_sq = self.geometric_product(blade, blade_rev)
-        scalar = blade_sq[..., 0:1].clamp(min=1e-12)
+        scalar = blade_sq[..., 0:1].clamp(min=self.eps_sq)
         return blade_rev / scalar
 
     def sandwich_product(self, R: torch.Tensor, x: torch.Tensor,
@@ -823,18 +852,21 @@ class CliffordAlgebra(nn.Module):
         )
 
     def exp(self, mv: torch.Tensor) -> torch.Tensor:
-        """Exponentiates a bivector to produce a rotor via closed-form.
+        """Exponentiates a bivector to produce a rotor.
 
-        Three signature regimes:
+        Dispatches by :attr:`exp_policy`:
+
+        - ``FAST``  -- closed-form only (fastest, approximate for
+          non-simple bivectors in n >= 4).
+        - ``AUTO``  (default) -- closed-form for n <= 3 (exact),
+          compiled-safe decomposition for n >= 4.
+        - ``EXACT`` -- always compiled-safe decomposition (exact for
+          all bivectors, ``torch.compile``-safe).
+
+        Three signature regimes handled in the closed-form path:
             - Elliptic  (B^2 < 0): exp(B) = cos(th) + sin(th)/th * B
             - Hyperbolic (B^2 > 0): exp(B) = cosh(th) + sinh(th)/th * B
             - Parabolic  (B^2 ~ 0): exp(B) ~ 1 + B
-
-        For n <= 3 every bivector is simple, so the closed-form is exact.
-        For n >= 4 the closed-form is exact for simple bivectors and a
-        first-order approximation for non-simple ones.  Use
-        ``exp_decomposed()`` when exact non-simple handling is needed
-        (inference only -- see ``core.decomposition``).
 
         Args:
             mv (torch.Tensor): Pure bivector [..., dim].
@@ -842,7 +874,20 @@ class CliffordAlgebra(nn.Module):
         Returns:
             torch.Tensor: Rotor exp(mv) [..., dim].
         """
-        return self._exp_bivector_closed(mv)
+        from core.decomposition import ExpPolicy
+
+        policy = self._exp_policy
+
+        if policy == ExpPolicy.FAST:
+            return self._exp_bivector_closed(mv)
+
+        if policy == ExpPolicy.AUTO:
+            if self.n <= 3:
+                return self._exp_bivector_closed(mv)
+            return self._exp_compiled_safe(mv)
+
+        # ExpPolicy.EXACT
+        return self._exp_compiled_safe(mv)
 
     def _exp_bivector_closed(self, B: torch.Tensor) -> torch.Tensor:
         """Closed-form exponential for bivectors in arbitrary signature.
@@ -871,7 +916,7 @@ class CliffordAlgebra(nn.Module):
         # alpha < 0 -> elliptic (Euclidean-like), alpha > 0 -> hyperbolic
         alpha = (bv_coeffs * bv_coeffs * self.bv_sq_scalar).sum(dim=-1, keepdim=True)
 
-        abs_alpha = alpha.abs().clamp(min=1e-12)
+        abs_alpha = alpha.abs().clamp(min=self.eps_sq)
         theta = torch.sqrt(abs_alpha)  # [..., 1]
 
         g0_mask = self.grade_masks_float[0]
@@ -883,7 +928,7 @@ class CliffordAlgebra(nn.Module):
             # Pure Euclidean: alpha is always negative, only cos/sinc needed
             cos_theta = torch.cos(theta)
             sinc_theta = torch.where(
-                theta > 1e-7,
+                theta > self.eps,
                 torch.sin(theta) / theta,
                 1.0 - abs_alpha / 6.0,
             )
@@ -893,7 +938,7 @@ class CliffordAlgebra(nn.Module):
             # Pure negative: alpha is always positive, only cosh/sinhc needed
             cosh_theta = torch.cosh(theta)
             sinhc_theta = torch.where(
-                theta > 1e-7,
+                theta > self.eps,
                 torch.sinh(theta) / theta,
                 1.0 + abs_alpha / 6.0,
             )
@@ -902,19 +947,19 @@ class CliffordAlgebra(nn.Module):
         # Mixed signature: need both branches + runtime select
         cos_theta = torch.cos(theta)
         sinc_theta = torch.where(
-            theta > 1e-7,
+            theta > self.eps,
             torch.sin(theta) / theta,
             1.0 - abs_alpha / 6.0,
         )
         cosh_theta = torch.cosh(theta)
         sinhc_theta = torch.where(
-            theta > 1e-7,
+            theta > self.eps,
             torch.sinh(theta) / theta,
             1.0 + abs_alpha / 6.0,
         )
 
-        is_elliptic = alpha < -1e-12
-        is_hyperbolic = alpha > 1e-12
+        is_elliptic = alpha < -self.eps_sq
+        is_hyperbolic = alpha > self.eps_sq
 
         scalar_part = torch.where(
             is_elliptic, cos_theta,
@@ -926,6 +971,33 @@ class CliffordAlgebra(nn.Module):
         )
 
         return scalar_part * g0_mask + coeff_part * B
+
+    def _exp_compiled_safe(self, B: torch.Tensor) -> torch.Tensor:
+        """Compiled-safe exponential: runs both closed-form and decomposed,
+        selects per-element via ``torch.where`` based on simplicity.
+
+        A bivector is simple iff ``B*B`` has no grade-4 component (i.e.
+        ``B^2`` is purely scalar).  Both paths are computed unconditionally
+        so there is no data-dependent branching.
+
+        Args:
+            B (torch.Tensor): Pure bivector [..., dim].
+
+        Returns:
+            torch.Tensor: Rotor exp(B) [..., dim].
+        """
+        from core.decomposition import compiled_safe_decomposed_exp
+
+        R_closed = self._exp_bivector_closed(B)
+        R_decomposed = compiled_safe_decomposed_exp(self, B)
+
+        BB = self.geometric_product(B, B)
+        # Subtract scalar part, check if residual is negligible
+        scalar_part = self.grade_projection(BB, 0)
+        non_scalar_energy = (BB - scalar_part).norm(dim=-1, keepdim=True)
+        is_simple = non_scalar_energy < self.eps * 100
+
+        return torch.where(is_simple, R_closed, R_decomposed)
 
     def _exp_taylor(self, mv: torch.Tensor, order: int = 8) -> torch.Tensor:
         """Taylor series exponential with scaling-and-squaring (fallback).
@@ -965,29 +1037,24 @@ class CliffordAlgebra(nn.Module):
     def exp_decomposed(self, mv: torch.Tensor, **kwargs) -> torch.Tensor:
         """Exponentiates a bivector via decomposition into simple components.
 
-        Decomposes a general bivector into a sum of simple (blade) bivectors
-        using GA power iteration, exponentiates each in closed form, then
-        composes via geometric product.  Exact for all bivectors, but the
-        power iteration loop is not differentiable through its normalization
-        steps.  During training the loop is detached and gradients flow only
-        through the final closed-form exp + composition.
-
-        Reference:
-            Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear
-            Layers from Irreducibles." arXiv:2507.11688v1 [cs.LG]
+        .. deprecated::
+            Set :attr:`exp_policy` and call :meth:`exp` instead.
 
         Args:
             mv (torch.Tensor): Pure bivector [..., dim].
-            **kwargs (dict): Forwarded to ``core.decomposition.exp_decomposed``.
-                use_decomposition (bool): Enable decomposition. Default True.
-                k (int | None): Number of simple components (auto if None).
-                threshold (float): Convergence threshold. Default 1e-6.
-                max_iterations (int): Power iteration cap. Default 100.
+            **kwargs: Legacy kwargs (``use_decomposition``, ``k``, etc.).
 
         Returns:
             torch.Tensor: Rotor exp(mv) [..., dim].
         """
-        from core.decomposition import exp_decomposed
-        if 'use_decomposition' not in kwargs:
-            kwargs['use_decomposition'] = True
-        return exp_decomposed(self, mv, **kwargs)
+        import warnings
+        warnings.warn(
+            "exp_decomposed() is deprecated. Set algebra.exp_policy and "
+            "use algebra.exp() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        # Legacy compat: use_decomposition=False means closed-form
+        if kwargs.get('use_decomposition') is False:
+            return self._exp_bivector_closed(mv)
+        return self.exp(mv)

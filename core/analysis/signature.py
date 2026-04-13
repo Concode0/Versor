@@ -245,7 +245,7 @@ class MetricSearch:
         if n_layers > 0:
             total_energy /= n_layers
 
-        max_energy = total_energy.max().clamp(min=1e-8)
+        max_energy = total_energy.max().clamp(min=algebra.eps)
         normalized_energy = total_energy / max_energy
 
         n = algebra.n

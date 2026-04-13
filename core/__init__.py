@@ -34,10 +34,12 @@ from .metric import (
 )
 
 from .decomposition import (
+    ExpPolicy,
     ga_power_iteration,
     differentiable_invariant_decomposition,
     exp_simple_bivector,
     exp_decomposed,
+    compiled_safe_decomposed_exp,
 )
 
 __all__ = [
@@ -65,10 +67,12 @@ __all__ = [
     "signature_trace_form",
     "signature_norm_squared",
     # decomposition
+    "ExpPolicy",
     "ga_power_iteration",
     "differentiable_invariant_decomposition",
     "exp_simple_bivector",
     "exp_decomposed",
+    "compiled_safe_decomposed_exp",
     # analysis (lazy)
     "MetricSearch",
     "GeodesicFlow",

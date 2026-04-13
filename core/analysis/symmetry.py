@@ -101,7 +101,7 @@ class SymmetryDetector:
 
         # Normalise so max is 1
         smax = scores.max()
-        if smax > 1e-12:
+        if smax > self.algebra.eps_sq:
             scores = scores / smax
 
         null_dirs = (scores < self.null_threshold).nonzero(as_tuple=True)[0]
@@ -124,7 +124,7 @@ class SymmetryDetector:
         alpha = self.algebra.grade_involution(mv_data)  # [N, dim]
         odd_part = (mv_data - alpha) / 2.0
         odd_energy = (odd_part ** 2).sum(dim=-1)
-        total_energy = (mv_data ** 2).sum(dim=-1).clamp(min=1e-12)
+        total_energy = (mv_data ** 2).sum(dim=-1).clamp(min=self.algebra.eps_sq)
         return (odd_energy / total_energy).mean().item()
 
     def detect_reflection_symmetries(
@@ -158,7 +158,7 @@ class SymmetryDetector:
         orig_sorted = mv_data.sort(dim=0).values.unsqueeze(0).expand(n, N, dim)
         refl_sorted = reflected.sort(dim=1).values  # sort along N
         dist = ((orig_sorted - refl_sorted) ** 2).sum(dim=-1).mean(dim=-1)  # [n]
-        norm = (mv_data ** 2).sum(dim=-1).mean().clamp(min=1e-12)
+        norm = (mv_data ** 2).sum(dim=-1).mean().clamp(min=self.algebra.eps_sq)
         scores = dist / norm  # [n]
 
         results = [{"direction": i, "score": scores[i].item()} for i in range(n)]
@@ -195,7 +195,7 @@ class SymmetryDetector:
         if commutator_result is not None:
             spec = commutator_result.exchange_spectrum
             if spec.numel() > 0:
-                max_val = spec.abs().max().clamp(min=1e-12)
+                max_val = spec.abs().max().clamp(min=self.algebra.eps_sq)
                 return int((spec.abs() / max_val < threshold).sum().item())
 
         # Compute from scratch: test each basis bivector
@@ -221,6 +221,6 @@ class SymmetryDetector:
         comm = self.algebra.commutator(bv_exp, mv_exp)
 
         comm_norms = comm.norm(dim=-1).mean(dim=-1)  # [n_bv]
-        data_norm = mv_data.norm(dim=-1).mean().clamp(min=1e-12)
+        data_norm = mv_data.norm(dim=-1).mean().clamp(min=self.algebra.eps_sq)
 
         return int((comm_norms / data_norm < threshold).sum().item())

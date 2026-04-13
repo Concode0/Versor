@@ -115,7 +115,7 @@ class GeodesicFlow:
 
         # For grade-1 inputs, <xi * ~xj>_2 = wedge(xi, xj_rev) -- single pass
         bv_raw = self.algebra.wedge(xi, xj_rev)                   # [N*k, dim]
-        bv_norm = bv_raw.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+        bv_norm = bv_raw.norm(dim=-1, keepdim=True).clamp(min=self.algebra.eps)
         return (bv_raw / bv_norm).reshape(N, k, D)               # [N, k, dim]
 
     def flow_bivectors(self, mv: torch.Tensor) -> torch.Tensor:
@@ -263,7 +263,7 @@ class GeodesicFlow:
 
         # a_inv = ~a / <a . ~a>_0
         a_rev = self.algebra.reverse(a)
-        a_sq = (a * a_rev)[..., 0:1].clamp(min=1e-8)   # grade-0 scalar
+        a_sq = (a * a_rev)[..., 0:1].clamp(min=self.algebra.eps)   # grade-0 scalar
         a_inv = a_rev / a_sq                            # [1, dim]
 
         # Transition element T = a_inv . b

@@ -119,7 +119,7 @@ class SpectralAnalyzer:
         mean_bv = self.algebra.grade_projection(mean_mv, 2)
 
         bv_norm = mean_bv.norm()
-        if bv_norm < 1e-10:
+        if bv_norm < self.algebra.eps_sq:
             return (
                 torch.zeros(1, device=mv_data.device),
                 [torch.zeros_like(mean_bv)],
@@ -137,7 +137,7 @@ class SpectralAnalyzer:
         for comp in decomp:
             c = comp.squeeze(0)  # [dim]
             n = c.norm()
-            if n > 1e-10:
+            if n > self.algebra.eps_sq:
                 norms.append(n)
                 components.append(c)
 

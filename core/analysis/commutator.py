@@ -239,7 +239,7 @@ class CommutatorAnalyzer:
         res_norms = residuals.norm(dim=-1)  # [n_pairs]
         bracket_norms = brackets_bv.norm(dim=-1)  # [n_pairs]
 
-        valid = bracket_norms > 1e-12
+        valid = bracket_norms > self.algebra.eps_sq
         if valid.any():
             closure_error = (res_norms[valid] / bracket_norms[valid]).mean().item()
         else:

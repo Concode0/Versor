@@ -101,7 +101,7 @@ def grade_purity(algebra: CliffordAlgebra, A: torch.Tensor, grade: int) -> torch
     
     # Compute energies (using standard squared norm of coefficients for stability)
     energy_k = (A_k ** 2).sum(dim=-1)
-    energy_total = (A ** 2).sum(dim=-1).clamp(min=1e-6)
+    energy_total = (A ** 2).sum(dim=-1).clamp(min=algebra.eps)
 
     return energy_k / energy_total
 
@@ -117,7 +117,7 @@ def mean_active_grade(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor
     Returns:
         torch.Tensor: Average grade index.
     """
-    energy_total = (A ** 2).sum(dim=-1).clamp(min=1e-6)
+    energy_total = (A ** 2).sum(dim=-1).clamp(min=algebra.eps)
     weighted_sum = torch.zeros_like(energy_total)
     
     for k in range(algebra.n + 1):
@@ -251,7 +251,7 @@ def hermitian_angle(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) 
     sq_b = (signs * B * B).sum(dim=-1, keepdim=True)
     # Use sqrt(sq_a * sq_b) instead of sqrt(sq_a)*sqrt(sq_b) to avoid
     # float32 precision loss from two separate sqrt operations.
-    denom = torch.sqrt(torch.abs(sq_a) * torch.abs(sq_b)).clamp(min=1e-6)
+    denom = torch.sqrt(torch.abs(sq_a) * torch.abs(sq_b)).clamp(min=algebra.eps)
     cos_theta = ip / denom
     cos_theta = torch.clamp(cos_theta, -1.0, 1.0)
     return torch.acos(cos_theta)

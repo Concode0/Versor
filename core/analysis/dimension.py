@@ -20,6 +20,8 @@ from core.algebra import CliffordAlgebra
 
 from ._types import CONSTANTS, DimensionResult
 
+_EPS_SQ: float = float(torch.finfo(torch.float32).eps ** 2)
+
 
 class EffectiveDimensionAnalyzer:
     """Estimate effective intrinsic dimensionality of data.
@@ -117,7 +119,7 @@ class EffectiveDimensionAnalyzer:
         """``(Sum lam)^2 / Sum lam^2`` -- smooth dimensionality estimator."""
         s1 = eigenvalues.sum()
         s2 = (eigenvalues ** 2).sum()
-        if s2 < 1e-12:
+        if s2 < _EPS_SQ:
             return 0.0
         return (s1 ** 2 / s2).item()
 
@@ -144,7 +146,7 @@ class EffectiveDimensionAnalyzer:
             eigenvalues.device
         )
         total = eigenvalues.sum()
-        if total < 1e-12:
+        if total < _EPS_SQ:
             return 0
         normed = eigenvalues[:d] / total
         return int((normed > expected[:len(normed)]).sum().item())
@@ -168,7 +170,7 @@ class EffectiveDimensionAnalyzer:
         # Vectorized participation ratio
         s1 = eigvals.sum(dim=-1)
         s2 = (eigvals ** 2).sum(dim=-1)
-        local_dims = torch.where(s2 > 1e-12, s1 ** 2 / s2, torch.zeros_like(s1))
+        local_dims = torch.where(s2 > _EPS_SQ, s1 ** 2 / s2, torch.zeros_like(s1))
 
         return local_dims
 
