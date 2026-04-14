@@ -15,7 +15,6 @@ workaround stays out of ``torch.compile``'d graphs in the layers.
 import torch
 
 
-@torch.compiler.disable
 def safe_linalg_solve(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     """``torch.linalg.solve`` with an MPS-safe backward path.
 
