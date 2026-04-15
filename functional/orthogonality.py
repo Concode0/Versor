@@ -51,6 +51,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 from dataclasses import dataclass, field
+from layers.primitives.base import CliffordModule
 
 
 @dataclass
@@ -77,7 +78,7 @@ class OrthogonalitySettings:
     coupling_warn_threshold: float = 0.3
 
 
-class StrictOrthogonality(nn.Module):
+class StrictOrthogonality(CliffordModule):
     """Enforce and monitor grade orthogonality in multivector features.
 
     Given a Clifford algebra Cl(p,q) and a set of target grades,
@@ -95,14 +96,13 @@ class StrictOrthogonality(nn.Module):
     """
 
     def __init__(self, algebra, settings: Optional[OrthogonalitySettings] = None):
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
 
         if settings is None:
             settings = OrthogonalitySettings()
         self.settings = settings
 
-        self._n_grades = algebra.n + 1
+        self._n_grades = self.algebra.n + 1
         self._build_grade_masks()
 
     def _build_grade_masks(self):

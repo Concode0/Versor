@@ -8,11 +8,12 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
+from layers.primitives.base import CliffordModule
 from layers import CliffordLinear
 from layers import MultiRotorLayer
 from functional.activation import GeometricGELU
 
-class MultiRotorModel(nn.Module):
+class MultiRotorModel(CliffordModule):
     """Multi-rotor model for geometric representation learning.
 
     Uses overlapping rotors to approximate complex manifolds.
@@ -34,8 +35,8 @@ class MultiRotorModel(nn.Module):
             num_layers (int): Depth.
             num_rotors (int): Width (Rotors).
         """
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
+        self.channels = hidden_channels
         
         self.input_linear = CliffordLinear(algebra, in_channels, hidden_channels)
         
@@ -49,7 +50,7 @@ class MultiRotorModel(nn.Module):
         
         # Reading out from Invariants (Dimensionless Structure)
         self.readout = nn.Sequential(
-            nn.Linear(hidden_channels * algebra.num_grades, hidden_channels),
+            nn.Linear(hidden_channels * self.algebra.n_grades, hidden_channels),
             nn.SiLU(),
             nn.Linear(hidden_channels, out_channels)
         )

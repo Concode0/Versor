@@ -8,10 +8,11 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
+from layers.primitives.base import CliffordModule
 from layers import CliffordLinear
 from layers import RotorLayer
 
-class RotorTCN(nn.Module):
+class RotorTCN(CliffordModule):
     """Temporal convolutional network with Clifford algebra features.
 
     Applies rotor transformations per frame and 1D convolution along time.
@@ -27,16 +28,15 @@ class RotorTCN(nn.Module):
             kernel_size (int): Conv kernel.
             dilation (int): Dilation factor.
         """
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
         
         # Simplified: Frame-wise Rotor Layer + 1D Conv on Coefficients
         self.rotor = RotorLayer(algebra, in_channels)
         
         # Standard Conv1d on the coefficients
         # Input: [B, T, C, D] -> [B, C*D, T]
-        self.input_dim = in_channels * algebra.dim
-        self.hidden_dim = hidden_channels * algebra.dim
+        self.input_dim = in_channels * self.algebra.dim
+        self.hidden_dim = hidden_channels * self.algebra.dim
         
         self.tcn = nn.Conv1d(
             self.input_dim, 

@@ -13,9 +13,10 @@ Magnitude-scaling and grade-wise gating functions that preserve geometric struct
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from layers.primitives.base import CliffordModule
 
 
-class GeometricGELU(nn.Module):
+class GeometricGELU(CliffordModule):
     """Geometric GELU activation: x' = x * GELU(||x|| + b) / ||x||.
 
     Scales magnitude while preserving direction.
@@ -32,8 +33,7 @@ class GeometricGELU(nn.Module):
             algebra (CliffordAlgebra): The algebra instance.
             channels (int): Number of channels.
         """
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
         self.bias = nn.Parameter(torch.zeros(channels))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -53,7 +53,7 @@ class GeometricGELU(nn.Module):
         return x * scale
 
 
-class GeometricSquare(nn.Module):
+class GeometricSquare(CliffordModule):
     """Gated geometric self-product: x + gate * GP(x, x).
 
     GP(grade-1, grade-1) produces grade-0 (squares x_i^2) and grade-2
@@ -62,8 +62,7 @@ class GeometricSquare(nn.Module):
     """
 
     def __init__(self, algebra, channels: int = 1):
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
         # sigmoid(-2) ~= 0.12 -- starts small so GP doesn't dominate
         self.gate_logit = nn.Parameter(torch.full((channels,), -2.0))
 
@@ -73,7 +72,7 @@ class GeometricSquare(nn.Module):
         return x + gate * gp
 
 
-class GradeSwish(nn.Module):
+class GradeSwish(CliffordModule):
     """Per-grade gated activation.
 
     Each grade receives an independent sigmoid gate based on its norm.
@@ -92,15 +91,14 @@ class GradeSwish(nn.Module):
             algebra (CliffordAlgebra): The algebra instance.
             channels (int): Number of channels.
         """
-        super().__init__()
-        self.algebra = algebra
-        self.n_grades = algebra.n + 1
+        super().__init__(algebra)
+        self.n_grades = self.algebra.n + 1
 
         self.grade_weights = nn.Parameter(torch.ones(self.n_grades))
         self.grade_biases = nn.Parameter(torch.zeros(self.n_grades))
 
         # Reuse algebra's precomputed grade_index instead of building our own
-        self.register_buffer('_grade_index', algebra.grade_index.clone())
+        self.register_buffer('_grade_index', self.algebra.grade_index.clone())
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply per-grade gating.

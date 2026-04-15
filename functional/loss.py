@@ -9,23 +9,23 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from core.metric import hermitian_grade_spectrum
+from layers.primitives.base import CliffordModule
 
-class GeometricMSELoss(nn.Module):
+class GeometricMSELoss(CliffordModule):
     """Geometric MSE. Euclidean distance in embedding space.
 
     Standard MSE on coefficients.
     """
 
-    def __init__(self, algebra=None):
+    def __init__(self, algebra):
         """Initialize the geometric MSE loss."""
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """MSE."""
         return F.mse_loss(pred, target, reduction='mean')
 
-class SubspaceLoss(nn.Module):
+class SubspaceLoss(CliffordModule):
     """Subspace Loss. Enforces grade constraints.
 
     Penalizes energy in forbidden grades.
@@ -33,14 +33,13 @@ class SubspaceLoss(nn.Module):
 
     def __init__(self, algebra, target_indices: list = None, exclude_indices: list = None):
         """Initialize grade constraint penalties."""
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
         
         if target_indices is not None:
-            mask = torch.ones(algebra.dim, dtype=torch.bool)
+            mask = torch.ones(self.algebra.dim, dtype=torch.bool)
             mask[target_indices] = False
         elif exclude_indices is not None:
-            mask = torch.zeros(algebra.dim, dtype=torch.bool)
+            mask = torch.zeros(self.algebra.dim, dtype=torch.bool)
             mask[exclude_indices] = True
         else:
             raise ValueError("Must provide target_indices or exclude_indices")
@@ -53,7 +52,7 @@ class SubspaceLoss(nn.Module):
         loss = (penalty_components ** 2).sum(dim=-1).mean()
         return loss
 
-class IsometryLoss(nn.Module):
+class IsometryLoss(CliffordModule):
     """Isometry loss enforcing metric norm preservation.
 
     Ensures transformations preserve the metric norm.
@@ -61,8 +60,7 @@ class IsometryLoss(nn.Module):
 
     def __init__(self, algebra):
         """Initialize isometry loss with metric diagonal."""
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
         self.register_buffer('metric_diag', self._compute_metric_diagonal())
 
     def _compute_metric_diagonal(self):
@@ -83,7 +81,7 @@ class IsometryLoss(nn.Module):
         
         return F.mse_loss(pred_norm, target_norm)
 
-class BivectorRegularization(nn.Module):
+class BivectorRegularization(CliffordModule):
     """Bivector regularization enforcing grade-2 purity.
 
     Penalizes energy outside the target grade (default: grade 2).
@@ -91,8 +89,7 @@ class BivectorRegularization(nn.Module):
 
     def __init__(self, algebra, grade=2):
         """Initialize bivector regularization."""
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
         self.grade = grade
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -102,7 +99,7 @@ class BivectorRegularization(nn.Module):
         return (residual ** 2).sum(dim=-1).mean()
 
 
-class HermitianGradeRegularization(nn.Module):
+class HermitianGradeRegularization(CliffordModule):
     """Regularizes grade spectrum toward a target distribution using Hermitian norm.
 
     Computes the KL-divergence-like loss between the actual grade energy
@@ -118,9 +115,8 @@ class HermitianGradeRegularization(nn.Module):
             target_spectrum: [n+1] tensor of desired relative grade energies.
                 If None, defaults to uniform distribution.
         """
-        super().__init__()
-        self.algebra = algebra
-        n_grades = algebra.n + 1
+        super().__init__(algebra)
+        n_grades = self.algebra.n + 1
         if target_spectrum is None:
             target = torch.ones(n_grades) / n_grades
         else:

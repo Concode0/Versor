@@ -53,7 +53,7 @@ class MultiTargetPhaseShiftHead(CliffordModule):
         return raw_logits * self.log_scale.exp() + self.bias
 
 
-class EEGNet(nn.Module):
+class EEGNet(CliffordModule):
     """Geometric EEG Emotion Classification Network.
 
     Architecture:
@@ -76,8 +76,6 @@ class EEGNet(nn.Module):
             device: Torch device.
             config: Hydra DictConfig or plain dict with model hyperparameters.
         """
-        super().__init__()
-
         p, q = 3, 1
         if config is not None:
             if hasattr(config, 'algebra'):
@@ -87,7 +85,8 @@ class EEGNet(nn.Module):
                 p = config.get('p', 3)
                 q = config.get('q', 1)
 
-        self.algebra = CliffordAlgebra(p, q, device=device)
+        algebra = CliffordAlgebra(p, q, device=device)
+        super().__init__(algebra)
 
         if config is not None and hasattr(config, 'model'):
             m = config.model

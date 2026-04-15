@@ -8,20 +8,20 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
+from layers.primitives.base import CliffordModule
 from layers import CliffordLinear
 from layers import RotorLayer
 from layers import BladeSelector
 from functional.activation import GeometricGELU
 
-class GeometricBladeNetwork(nn.Module):
+class GeometricBladeNetwork(CliffordModule):
     """Geometric Blade Network (GBN) reference implementation.
 
     Stacks CliffordLinear and RotorLayer for geometric representation learning.
     """
 
     def __init__(self, algebra: CliffordAlgebra, in_channels: int, hidden_channels: int, out_channels: int, layers: int = 2):
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
 
         self.net = nn.Sequential()
 

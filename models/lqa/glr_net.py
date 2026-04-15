@@ -24,6 +24,7 @@ real sequence structure to attend over:
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
+from layers.primitives.base import CliffordModule
 from layers.adapters.mother import MotherEmbedding
 from layers.adapters.embedding import RotaryBivectorPE
 from layers.blocks.transformer import GeometricTransformerBlock
@@ -32,7 +33,7 @@ from layers.primitives.normalization import CliffordLayerNorm
 from .heads import ChainReasoningHead, EntailmentHead, NegationHead
 
 
-class GLRNet(nn.Module):
+class GLRNet(CliffordModule):
     """Geometric Latent Reasoning Network.
 
     Architecture:
@@ -62,8 +63,7 @@ class GLRNet(nn.Module):
         use_entropy_gating: bool = True,
         num_relations: int = 10,
     ):
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
         self.channels = channels
         self.probe = probe
         self.encoder_dim = encoder_dim
