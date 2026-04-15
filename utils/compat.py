@@ -8,22 +8,19 @@
 """Device compatibility shims.
 
 Holds smart-dispatch wrappers for ops whose MPS kernels have broken
-backward passes. Each helper is ``@torch.compiler.disable``'d so the
-workaround stays out of ``torch.compile``'d graphs in the layers.
+backward passes. Dispatch is resolved at import time so non-MPS
+builds get the raw op as the same symbol — no per-call branch, no
+Dynamo guard, no chance of a compile-time graph break from the
+workaround path.
 """
 
 import torch
 
 
-def safe_linalg_solve(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-    """``torch.linalg.solve`` with an MPS-safe backward path.
-
-    The MPS backward of ``linalg_solve_ex`` emits out-of-bounds gather
-    indices (uninitialized memory), so for MPS tensors we run the solve
-    on CPU and move the result back. Autograd threads gradients through
-    the device transfer correctly. All other devices dispatch directly
-    to ``torch.linalg.solve``.
-    """
-    if A.device.type == 'mps':
-        return torch.linalg.solve(A.cpu(), B.cpu()).to(A.device)
-    return torch.linalg.solve(A, B)
+if torch.backends.mps.is_available():
+    def safe_linalg_solve(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        if A.is_mps:
+            return torch.linalg.solve(A.cpu(), B.cpu()).to(A.device)
+        return torch.linalg.solve(A, B)
+else:
+    safe_linalg_solve = torch.linalg.solve
