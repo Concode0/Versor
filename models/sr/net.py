@@ -175,7 +175,7 @@ class SRMultiGradeEmbedding(CliffordModule):
         return out
 
 
-class _ResidualBlock(nn.Module):
+class _ResidualBlock(CliffordModule):
     """One residual block: Norm -> Linear -> Activation -> Rotor -> BladeSelector -> skip."""
 
     def __init__(
@@ -185,7 +185,7 @@ class _ResidualBlock(nn.Module):
         use_skip: bool = True,
         activation_type: str = "gelu",
     ):
-        super().__init__()
+        super().__init__(algebra)
         # SR uses recover=False: pure direction normalization is symbolically
         # interpretable (constant scaling absorbed by downstream linear weights).
         # recover=True would inject log1p(||x||) into grade-0, a transcendental
