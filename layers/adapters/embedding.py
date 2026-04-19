@@ -130,12 +130,13 @@ class RotaryBivectorPE(CliffordModule):
 
     def _sinusoidal_init(self, L: int, num_bv: int) -> torch.Tensor:
         """Sinusoidal initialization: B[p, k] = p * 10000^(-2k/num_bv) * 0.01."""
+        # Compute in float32 for numerical precision, then cast to algebra dtype.
         positions = torch.arange(L, dtype=torch.float32).unsqueeze(1)  # [L, 1]
         freqs = torch.pow(
             10000.0,
             -2.0 * torch.arange(num_bv, dtype=torch.float32) / max(num_bv, 1)
         ).unsqueeze(0)  # [1, num_bv]
-        return positions * freqs * 0.01  # [L, num_bv]
+        return (positions * freqs * 0.01).to(dtype=self.algebra.dtype)  # [L, num_bv]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Applies position-dependent rotor rotations.
