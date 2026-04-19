@@ -41,7 +41,7 @@ class Multivector:
         """Creates a scalar multivector (grade 0 only)."""
         dim = 2 ** algebra.n
         t = torch.zeros(*batch_shape, dim, device=algebra.device,
-                         dtype=torch.float32)
+                         dtype=algebra.dtype)
         t[..., 0] = value
         return cls(algebra, t)
 

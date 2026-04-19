@@ -115,6 +115,23 @@ class DeviceConfig:
             )
             return model
 
+    @property
+    def dtype(self) -> torch.dtype:
+        """Working dtype for algebra tables and model parameters.
+
+        Returns ``torch.bfloat16`` when AMP is active on CUDA (bfloat16 is
+        native on Ampere+ GPUs and avoids fp16 overflow).  All other
+        backends keep ``torch.float32``.
+
+        Pass this to :class:`~core.algebra.CliffordAlgebra` as ``dtype`` and
+        to :meth:`~tasks.base.BaseTask` model setup so that tables and
+        parameters are created in the correct precision from the start
+        rather than requiring a post-hoc ``.to()`` cast.
+        """
+        if self.amp and self.device.startswith("cuda"):
+            return torch.bfloat16
+        return torch.float32
+
     def get_scaler(self) -> torch.amp.GradScaler | None:
         """Return a :class:`GradScaler` when AMP is active, else ``None``."""
         if not self.amp:

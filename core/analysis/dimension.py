@@ -20,9 +20,6 @@ from core.algebra import CliffordAlgebra
 
 from ._types import CONSTANTS, DimensionResult
 
-_EPS_SQ: float = float(torch.finfo(torch.float32).eps ** 2)
-
-
 class EffectiveDimensionAnalyzer:
     """Estimate effective intrinsic dimensionality of data.
 
@@ -32,6 +29,9 @@ class EffectiveDimensionAnalyzer:
 
     Args:
         device: Torch device string.
+        dtype: Floating-point dtype used for covariance computations.
+            Defaults to ``torch.float32``.  Pass ``torch.float64`` for
+            higher-precision analyses.
         k_local: Number of neighbours for local-dimension estimation.
         energy_threshold: Minimum normalised eigenvalue to count as
             active.
@@ -40,12 +40,15 @@ class EffectiveDimensionAnalyzer:
     def __init__(
         self,
         device: str = "cpu",
+        dtype: torch.dtype = torch.float32,
         k_local: int = 20,
         energy_threshold: float = 0.05,
     ):
         self.device = device
+        self.dtype = dtype
         self.k_local = k_local
         self.energy_threshold = energy_threshold
+        self._eps_sq: float = float(torch.finfo(dtype).eps ** 2)
 
     def analyze(self, data: torch.Tensor) -> DimensionResult:
         """Full effective-dimension analysis.
@@ -57,7 +60,7 @@ class EffectiveDimensionAnalyzer:
             :class:`DimensionResult` with eigenvalues, participation
             ratio, broken-stick threshold, and optional local dims.
         """
-        data = data.to(self.device).float()
+        data = data.to(device=self.device, dtype=self.dtype)
         N, D = data.shape
 
         eigenvalues = self._covariance_eigenvalues(data)  # descending
@@ -96,7 +99,7 @@ class EffectiveDimensionAnalyzer:
         Returns:
             ``[N, target_dim]`` projected tensor.
         """
-        data = data.to(self.device).float()
+        data = data.to(device=self.device, dtype=self.dtype)
         mean = data.mean(dim=0, keepdim=True)
         centered = data - mean
         # Economy SVD
@@ -114,17 +117,16 @@ class EffectiveDimensionAnalyzer:
         eigvals = torch.linalg.eigvalsh(cov)
         return eigvals.flip(0).clamp(min=0.0)
 
-    @staticmethod
-    def _participation_ratio(eigenvalues: torch.Tensor) -> float:
+    def _participation_ratio(self, eigenvalues: torch.Tensor) -> float:
         """``(Sum lam)^2 / Sum lam^2`` -- smooth dimensionality estimator."""
         s1 = eigenvalues.sum()
         s2 = (eigenvalues ** 2).sum()
-        if s2 < _EPS_SQ:
+        if s2 < self._eps_sq:
             return 0.0
         return (s1 ** 2 / s2).item()
 
     @staticmethod
-    def _broken_stick(d: int) -> torch.Tensor:
+    def _broken_stick(d: int, dtype: torch.dtype = torch.float32) -> torch.Tensor:
         """Expected eigenvalues under the broken-stick null model.
 
         The *k*-th expected value is ``(1/d) * Sum_{j=k+1}^{d} 1/j``
@@ -133,20 +135,19 @@ class EffectiveDimensionAnalyzer:
         inv = 1.0 / torch.arange(1, d + 1, dtype=torch.float64)
         # Reverse cumulative sum gives Sum_{j=k+1}^{d} 1/j for 0-indexed k
         expected = inv.flip(0).cumsum(0).flip(0) / d
-        return expected.float()
+        return expected.to(dtype=dtype)
 
-    @staticmethod
     def _broken_stick_threshold(
-        eigenvalues: torch.Tensor, d: int
+        self, eigenvalues: torch.Tensor, d: int
     ) -> int:
         """Number of components exceeding the broken-stick null."""
         if d <= 0:
             return 0
-        expected = EffectiveDimensionAnalyzer._broken_stick(d).to(
+        expected = self._broken_stick(d, dtype=eigenvalues.dtype).to(
             eigenvalues.device
         )
         total = eigenvalues.sum()
-        if total < _EPS_SQ:
+        if total < self._eps_sq:
             return 0
         normed = eigenvalues[:d] / total
         return int((normed > expected[:len(normed)]).sum().item())
@@ -170,7 +171,7 @@ class EffectiveDimensionAnalyzer:
         # Vectorized participation ratio
         s1 = eigvals.sum(dim=-1)
         s2 = (eigvals ** 2).sum(dim=-1)
-        local_dims = torch.where(s2 > _EPS_SQ, s1 ** 2 / s2, torch.zeros_like(s1))
+        local_dims = torch.where(s2 > self._eps_sq, s1 ** 2 / s2, torch.zeros_like(s1))
 
         return local_dims
 

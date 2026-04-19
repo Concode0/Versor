@@ -38,6 +38,7 @@ class CliffordAlgebra(nn.Module):
     _CACHED_TABLES = {}
 
     def __init__(self, p: int, q: int = 0, r: int = 0, device='cuda',
+                 dtype: torch.dtype = torch.float32,
                  exp_policy: str = 'auto'):
         """Initialize the algebra and cache the Cayley table.
 
@@ -46,6 +47,10 @@ class CliffordAlgebra(nn.Module):
             q (int, optional): Negative dimensions (-1). Defaults to 0.
             r (int, optional): Degenerate dimensions (0). Defaults to 0.
             device (str, optional): The device on which computations are performed. Defaults to 'cuda'.
+            dtype (torch.dtype, optional): Floating-point dtype for algebra tables.
+                Defaults to ``torch.float32``.  Pass ``torch.bfloat16`` or
+                ``torch.float16`` when the model will be trained in a reduced
+                precision (e.g. AMP on CUDA bfloat16 mode).
             exp_policy (str or ExpPolicy, optional): Bivector exp policy.
                 ``'auto'`` (default), ``'fast'``, or ``'exact'``.
                 See :class:`core.decomposition.ExpPolicy`.
@@ -77,9 +82,9 @@ class CliffordAlgebra(nn.Module):
             self._exp_policy = exp_policy
 
         # Cache Cayley tables to avoid recomputation
-        cache_key = (p, q, r, str(device))
+        cache_key = (p, q, r, str(device), str(dtype))
         if cache_key not in CliffordAlgebra._CACHED_TABLES:
-            CliffordAlgebra._CACHED_TABLES[cache_key] = self._generate_cayley_table(device)
+            CliffordAlgebra._CACHED_TABLES[cache_key] = self._generate_cayley_table(device, dtype)
 
         (
             cayley_indices, cayley_signs, gp_signs, grade_masks_list,
@@ -110,7 +115,7 @@ class CliffordAlgebra(nn.Module):
         # Stack grade masks: [n+1, dim] bool and float
         stacked = torch.stack(grade_masks_list)                 # [n+1, dim]
         self.register_buffer('_grade_masks', stacked, persistent=False)
-        self.register_buffer('_grade_masks_float', stacked.float(), persistent=False)
+        self.register_buffer('_grade_masks_float', stacked.to(dtype=cayley_signs.dtype), persistent=False)
 
         # Bivector indices
         if self.n >= 2:
@@ -132,6 +137,23 @@ class CliffordAlgebra(nn.Module):
     def device(self):
         """Return the device of the algebra tables."""
         return self.cayley_indices.device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        """Return the floating-point dtype of the algebra tables.
+
+        Reflects the current state — updated automatically when the algebra
+        is moved via ``.to(dtype=...)``.
+        """
+        return self.cayley_signs.dtype
+
+    def _apply(self, fn):
+        """Propagate device/dtype moves and keep eps tolerances in sync."""
+        result = super()._apply(fn)
+        _finfo = torch.finfo(self.cayley_signs.dtype)
+        self.eps = float(_finfo.eps)
+        self.eps_sq = float(_finfo.eps ** 2)
+        return result
 
     @property
     def grade_masks(self):
@@ -230,11 +252,12 @@ class CliffordAlgebra(nn.Module):
         result.scatter_add_(1, idx, flat)
         return result.reshape(*batch_shape, self.num_grades).clamp(min=self.eps).sqrt()
 
-    def _generate_cayley_table(self, device):
+    def _generate_cayley_table(self, device, dtype: torch.dtype = torch.float32):
         """Precompute the Cayley table, grade masks, and reversion signs.
 
         Args:
             device: The device to create tensors on.
+            dtype: Floating-point dtype for sign tables.
 
         Returns:
             tuple: Cached tensors for algebra operations.
@@ -243,7 +266,7 @@ class CliffordAlgebra(nn.Module):
 
         # Result index = A XOR B
         cayley_indices = indices.unsqueeze(0) ^ indices.unsqueeze(1)
-        cayley_signs = self._compute_signs(indices, device)
+        cayley_signs = self._compute_signs(indices, device, dtype)
 
         # Precompute signs for geometric_product accumulation
         gp_signs = torch.gather(cayley_signs, 1, cayley_indices)
@@ -328,7 +351,7 @@ class CliffordAlgebra(nn.Module):
         gj = grade_index[cayley_indices]   # [D, D] - grade of j = i^k
         gk = grade_index.unsqueeze(0)      # [1, D] - grade of result index k
         lc_valid = (gi <= gj) & (gk == gj - gi)
-        lc_gp_signs = gp_signs * lc_valid.float()
+        lc_gp_signs = gp_signs * lc_valid.to(dtype=gp_signs.dtype)
 
         # Clifford conjugation signs: (-1)^k * (-1)^{k(k-1)/2}
         conj_signs = (((-1.0) ** grade_index) * rev_signs).to(
@@ -339,7 +362,8 @@ class CliffordAlgebra(nn.Module):
                 grade_index, rc_action, lc_gp_signs, conj_signs,
                 comm_gp_signs, anti_comm_gp_signs)
 
-    def _compute_signs(self, indices: torch.Tensor, device) -> torch.Tensor:
+    def _compute_signs(self, indices: torch.Tensor, device,
+                       dtype: torch.dtype = torch.float32) -> torch.Tensor:
         """Compute the sign matrix from commutation parity and metric signature.
 
         Handles three signature types:
@@ -350,6 +374,7 @@ class CliffordAlgebra(nn.Module):
         Args:
             indices (torch.Tensor): Basis indices.
             device: The device to create tensors on.
+            dtype: Floating-point dtype for the returned sign matrix.
 
         Returns:
             torch.Tensor: Sign matrix.
@@ -407,7 +432,7 @@ class CliffordAlgebra(nn.Module):
             has_null = (null_intersection != 0).to(metric_sign.dtype)
             metric_sign = metric_sign * (1 - has_null)
 
-        return (commutator_sign * metric_sign).to(dtype=torch.float32)
+        return (commutator_sign * metric_sign).to(dtype=dtype)
 
     def geometric_product(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         """Computes the Geometric Product.
