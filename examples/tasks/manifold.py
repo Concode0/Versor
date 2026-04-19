@@ -8,15 +8,14 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
-from layers import RotorLayer
-from layers import BladeSelector
+from layers import RotorLayer, BladeSelector, CliffordModule
 from functional.loss import SubspaceLoss
 from tasks.base import BaseTask
 from core.visualizer import GeneralVisualizer
 from examples.datasets.synthetic import Figure8Dataset
 from torch.utils.data import DataLoader
 
-class ManifoldNetwork(nn.Module):
+class ManifoldNetwork(CliffordModule):
     """The Unbender.
 
     Aligns the manifold and filters the noise.
@@ -24,7 +23,7 @@ class ManifoldNetwork(nn.Module):
 
     def __init__(self, algebra):
         """Sets up the network."""
-        super().__init__()
+        super().__init__(algebra)
         self.rotor = RotorLayer(algebra, channels=1)
         self.selector = BladeSelector(algebra, channels=1)
 

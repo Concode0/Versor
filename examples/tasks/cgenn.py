@@ -97,7 +97,7 @@ class CGENNBlock(CliffordModule):
         return x + res
 
 
-class CGENNNet(nn.Module):
+class CGENNNet(CliffordModule):
     """Clifford Group Equivariant Network for invariant point cloud regression.
 
     Architecture mirrors CGENN (Ruhe et al. 2023):
@@ -112,14 +112,13 @@ class CGENNNet(nn.Module):
     """
 
     def __init__(self, algebra, channels=16, num_blocks=3):
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
         self.lift = CliffordLinear(algebra, 1, channels)
         self.blocks = nn.ModuleList([
             CGENNBlock(algebra, channels) for _ in range(num_blocks)
         ])
         # Invariant readout: grade norms (O(n)-invariant) -> scalar
-        n_grades = algebra.n + 1
+        n_grades = self.algebra.n + 1
         self.readout = nn.Sequential(
             nn.Linear(channels * n_grades, 64),
             nn.GELU(),

@@ -67,7 +67,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from core.algebra import CliffordAlgebra
 from layers import (
     CliffordLinear, CliffordLayerNorm,
-    RotorLayer,
+    RotorLayer, CliffordModule,
 )
 from functional.activation import GeometricGELU
 from tasks.base import BaseTask
@@ -77,7 +77,7 @@ from tasks.base import BaseTask
 # Model
 # ---------------------------------------------------------------------------
 
-class CliffordPDEBlock(nn.Module):
+class CliffordPDEBlock(CliffordModule):
     """Single Clifford PDE block: spatial conv + algebraic mixing.
 
     Spatial mixing via depthwise Conv2d operates on each MV component
@@ -88,7 +88,7 @@ class CliffordPDEBlock(nn.Module):
     """
 
     def __init__(self, algebra, channels, grid_kernel=3):
-        super().__init__()
+        super().__init__(algebra)
         D = algebra.dim  # 4 for Cl(2,0)
         # Spatial mixing: depthwise conv on each (channel, MV-component) pair
         self.spatial = nn.Conv2d(
@@ -136,7 +136,7 @@ class CliffordPDEBlock(nn.Module):
         return x + res
 
 
-class CliffordPDENet(nn.Module):
+class CliffordPDENet(CliffordModule):
     """Clifford PDE surrogate for 2D fluid dynamics.
 
     Encodes 2D velocity + pressure as Cl(2,0) multivectors:
@@ -147,8 +147,7 @@ class CliffordPDENet(nn.Module):
     """
 
     def __init__(self, algebra, channels=16, num_blocks=3):
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
         self.D = algebra.dim
 
         self.lift = CliffordLinear(algebra, 1, channels)

@@ -8,13 +8,13 @@
 import torch
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
-from layers import RotorLayer
+from layers import RotorLayer, CliffordModule
 from functional.loss import GeometricMSELoss
 from tasks.base import BaseTask
 from core.visualizer import GeneralVisualizer
 import matplotlib.pyplot as plt
 
-class HyperbolicNetwork(nn.Module):
+class HyperbolicNetwork(CliffordModule):
     """Lorentz Booster. Learning hyperbolic transformations.
 
     Learns hyperbolic transformations in Cl(1, 1).
@@ -22,7 +22,7 @@ class HyperbolicNetwork(nn.Module):
 
     def __init__(self, algebra):
         """Sets up the network."""
-        super().__init__()
+        super().__init__(algebra)
         self.rotor = RotorLayer(algebra, channels=1)
 
     def forward(self, x):
