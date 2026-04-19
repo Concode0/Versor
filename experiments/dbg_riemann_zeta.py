@@ -65,6 +65,7 @@ from torch.utils.data import Dataset, DataLoader
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from core.algebra import CliffordAlgebra
+from layers.primitives.base import CliffordModule
 from layers import CliffordLinear
 from layers import RotorLayer
 from layers import CliffordLayerNorm
@@ -271,7 +272,7 @@ class ZetaDataset(Dataset):
 
 # Network
 
-class ZetaNet(nn.Module):
+class ZetaNet(CliffordModule):
     """GA network for zeta function reconstruction in Cl(2,0).
 
     Architecture:
@@ -287,8 +288,7 @@ class ZetaNet(nn.Module):
 
     def __init__(self, algebra, hidden_dim: int = 64, num_layers: int = 6,
                  num_rotors: int = 8, num_freqs: int = 32):
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
         self.hidden_dim = hidden_dim
 
         # Fourier feature embedding: (sigma, t) -> high-dimensional features

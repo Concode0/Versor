@@ -106,7 +106,7 @@ from torch.optim import Optimizer
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from core.algebra import CliffordAlgebra
-from layers import RotorLayer, MultiRotorLayer, CliffordLinear, CliffordLayerNorm
+from layers import RotorLayer, MultiRotorLayer, CliffordLinear, CliffordLayerNorm, CliffordModule
 from functional.activation import GeometricGELU
 from optimizers.riemannian import (
     RiemannianAdam, ExponentialSGD, group_parameters_by_manifold,
@@ -2544,12 +2544,12 @@ class StyblinskiTangModel(nn.Module):
 
 # --- Category: Geometric Primitives ---
 
-class SmallGBNModel(nn.Module):
+class SmallGBNModel(CliffordModule):
     """Small Geometric Blade Network for testing optimizer on actual GA model."""
 
     def __init__(self, p: int = 3, q: int = 0, channels: int = 4, device: str = 'cpu'):
-        super().__init__()
-        self.algebra = CliffordAlgebra(p, q, device=device)
+        algebra = CliffordAlgebra(p, q, device=device)
+        super().__init__(algebra)
         dim = 2 ** (p + q)
         self.norm = CliffordLayerNorm(self.algebra, channels)
         self.rotor = RotorLayer(self.algebra, channels)
@@ -2566,7 +2566,7 @@ class SmallGBNModel(nn.Module):
         return x
 
 
-class RotorRegistrationModel(nn.Module):
+class RotorRegistrationModel(CliffordModule):
     """Fit a rotor in Cl(3,0) to align a source point cloud to a rotated+noised target."""
 
     def __init__(
@@ -2576,8 +2576,8 @@ class RotorRegistrationModel(nn.Module):
         rotation_angle: float = 2.5,
         device: str = 'cpu',
     ):
-        super().__init__()
-        self.algebra = CliffordAlgebra(3, 0, device=device)
+        algebra = CliffordAlgebra(3, 0, device=device)
+        super().__init__(algebra)
 
         torch.manual_seed(42)
         raw = torch.randn(n_points, 3, device=device)
@@ -2632,12 +2632,12 @@ class RotorRegistrationModel(nn.Module):
             return 2.0 * math.acos(cos_half)
 
 
-class MinkowskiRotorModel(nn.Module):
+class MinkowskiRotorModel(CliffordModule):
     """Fit a Lorentz boost in Cl(2,1) to align spacetime events.
     Tests optimizer on indefinite signature (mixed exp map regime)."""
     def __init__(self, n_events: int = 30, boost_rapidity: float = 0.8, device: str = 'cpu'):
-        super().__init__()
-        self.algebra = CliffordAlgebra(2, 1, device=device)
+        algebra = CliffordAlgebra(2, 1, device=device)
+        super().__init__(algebra)
         dim = self.algebra.dim  # 8
 
         torch.manual_seed(42)
@@ -2680,12 +2680,12 @@ class MinkowskiRotorModel(nn.Module):
             return (learned_bv - self.gt_bivector).norm().item()
 
 
-class ConformalRegistrationModel(nn.Module):
+class ConformalRegistrationModel(CliffordModule):
     """Fit a conformal rotor in Cl(4,1) for rotation+translation.
     Tests optimizer on 32-dimensional multivectors."""
     def __init__(self, n_points: int = 40, device: str = 'cpu'):
-        super().__init__()
-        self.algebra = CliffordAlgebra(4, 1, device=device)
+        algebra = CliffordAlgebra(4, 1, device=device)
+        super().__init__(algebra)
         dim = self.algebra.dim  # 32
 
         torch.manual_seed(42)
@@ -2728,12 +2728,12 @@ class ConformalRegistrationModel(nn.Module):
         return F.mse_loss(pred, self.target_mv)
 
 
-class MultiRotorRegistrationModel(nn.Module):
+class MultiRotorRegistrationModel(CliffordModule):
     """Fit a MultiRotorLayer to align multi-cluster point clouds.
     Tests commutator scheduling and multi-modal optimization."""
     def __init__(self, n_clusters: int = 3, points_per_cluster: int = 20, device: str = 'cpu'):
-        super().__init__()
-        self.algebra = CliffordAlgebra(3, 0, device=device)
+        algebra = CliffordAlgebra(3, 0, device=device)
+        super().__init__(algebra)
         dim = self.algebra.dim
 
         torch.manual_seed(42)
@@ -2775,12 +2775,12 @@ class MultiRotorRegistrationModel(nn.Module):
 
 # --- Category: GA Neural Networks ---
 
-class MediumGBNModel(nn.Module):
+class MediumGBNModel(CliffordModule):
     """Medium GBN using GeometricBladeNetwork. 3 layers, 16ch.
     Task: learn regression on multivector inputs."""
     def __init__(self, p=3, q=0, channels=16, layers=3, n_samples=64, device='cpu'):
-        super().__init__()
-        self.algebra = CliffordAlgebra(p, q, device=device)
+        algebra = CliffordAlgebra(p, q, device=device)
+        super().__init__(algebra)
         dim = self.algebra.dim
         self.gbn = GeometricBladeNetwork(
             self.algebra, in_channels=channels,
@@ -2797,12 +2797,12 @@ class MediumGBNModel(nn.Module):
         return F.mse_loss(pred, self.y)
 
 
-class MultiSigGBNModel(nn.Module):
+class MultiSigGBNModel(CliffordModule):
     """GBN in Minkowski signature Cl(2,1). 2 layers, 8ch.
     Tests optimizer with mixed exp map regime."""
     def __init__(self, channels=8, layers=2, n_samples=48, device='cpu'):
-        super().__init__()
-        self.algebra = CliffordAlgebra(2, 1, device=device)
+        algebra = CliffordAlgebra(2, 1, device=device)
+        super().__init__(algebra)
         dim = self.algebra.dim
         self.gbn = GeometricBladeNetwork(
             self.algebra, in_channels=channels,
@@ -2819,12 +2819,12 @@ class MultiSigGBNModel(nn.Module):
         return F.mse_loss(pred, self.y)
 
 
-class DeepGBNModel(nn.Module):
+class DeepGBNModel(CliffordModule):
     """Deep GBN (5 layers, 16 channels) for scalability testing.
     Task: predict grade-2 energy from input multivectors."""
     def __init__(self, p=3, q=0, channels=16, layers=5, n_samples=48, device='cpu'):
-        super().__init__()
-        self.algebra = CliffordAlgebra(p, q, device=device)
+        algebra = CliffordAlgebra(p, q, device=device)
+        super().__init__(algebra)
         dim = self.algebra.dim
         self.gbn = GeometricBladeNetwork(
             self.algebra, in_channels=channels,
@@ -2846,12 +2846,12 @@ class DeepGBNModel(nn.Module):
 
 # --- Category: Manifold Tasks ---
 
-class SO3InterpolationModel(nn.Module):
+class SO3InterpolationModel(CliffordModule):
     """Learn a smooth rotor trajectory through waypoints on SO(3).
     Tests geodesic integrator on curved manifold."""
     def __init__(self, n_waypoints: int = 8, device: str = 'cpu'):
-        super().__init__()
-        self.algebra = CliffordAlgebra(3, 0, device=device)
+        algebra = CliffordAlgebra(3, 0, device=device)
+        super().__init__(algebra)
         dim = self.algebra.dim
         self.n_waypoints = n_waypoints
 

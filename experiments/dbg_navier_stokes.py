@@ -80,6 +80,7 @@ from core.algebra import CliffordAlgebra
 from core.metric import (
     hermitian_inner_product, hermitian_norm, hermitian_grade_spectrum,
 )
+from layers.primitives.base import CliffordModule
 from layers import CliffordLinear
 from layers import RotorLayer
 from layers import CliffordLayerNorm
@@ -453,7 +454,7 @@ class TaylorGreenDataset(Dataset):
 # Network
 # ============================================================================ #
 
-class GaugeFluidNet(nn.Module):
+class GaugeFluidNet(CliffordModule):
     """GA network for Navier-Stokes in Cl(3,0).
 
     Architecture:
@@ -469,8 +470,7 @@ class GaugeFluidNet(nn.Module):
 
     def __init__(self, algebra, hidden_dim: int = 64, num_layers: int = 6,
                  num_spatial_freqs: int = 8, num_temporal_freqs: int = 16):
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
         self.hidden_dim = hidden_dim
 
         # Fourier embedding

@@ -371,7 +371,7 @@ class BPSTInstantonDataset(Dataset):
 # Network
 # ============================================================================ #
 
-class YangMillsNet(nn.Module):
+class YangMillsNet(CliffordModule):
     """CGA network for SU(2) gauge fields in Cl(4,1).
 
     Architecture:
@@ -383,13 +383,12 @@ class YangMillsNet(nn.Module):
         5. SU2BladeSelector enforces su(2) purity (A_μ ∈ {e₁₂, e₁₃, e₂₃})
         6. No external envelope — conformal structure handles decay implicitly
 
-    Returns A_mu [B, 4, 32] and optionally intermediates.
+    Returns A_μ [B, 4, 32] and optionally intermediates.
     """
 
     def __init__(self, algebra, hidden_dim: int = 64, num_layers: int = 6,
                  num_freqs: int = 32, rho: float = 1.0):
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
         self.hidden_dim = hidden_dim
         self.rho = rho
 

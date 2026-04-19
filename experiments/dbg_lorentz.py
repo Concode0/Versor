@@ -67,6 +67,7 @@ from core.metric import (
     signature_norm_squared, hermitian_distance,
     hermitian_grade_spectrum, signature_trace_form,
 )
+from layers.primitives.base import CliffordModule
 from layers import CliffordLinear
 from layers import RotorLayer
 from layers import CliffordLayerNorm
@@ -213,7 +214,7 @@ class LorentzDataset(Dataset):
 
 # Network
 
-class LorentzNet(nn.Module):
+class LorentzNet(CliffordModule):
     """GA network for learning Lorentz rotors in Cl(3,1).
 
     Architecture mirrors ZetaNet:
@@ -226,8 +227,7 @@ class LorentzNet(nn.Module):
 
     def __init__(self, algebra, hidden_dim: int = 64,
                  num_layers: int = 6, num_freqs: int = 32):
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
         self.hidden_dim = hidden_dim
 
         # Fourier feature embedding: 8 coords -> high-dimensional features

@@ -52,6 +52,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from core.algebra import CliffordAlgebra
 from core.metric import induced_norm
 from core.decomposition import exp_decomposed
+from layers.primitives.base import CliffordModule
 from optimizers.riemannian import RiemannianAdam, group_parameters_by_manifold
 
 
@@ -135,7 +136,7 @@ class StructureTracker:
 # MorphStage — single invertible transformation
 # ---------------------------------------------------------------------------
 
-class MorphStage(nn.Module):
+class MorphStage(CliffordModule):
     """One invertible morph: GlobalRotor -> RelativeTwist -> DynamicScale."""
 
     def __init__(self, algebra: CliffordAlgebra, n: int):
@@ -144,8 +145,7 @@ class MorphStage(nn.Module):
             algebra: Clifford algebra instance.
             n: Number of basis vectors (lattice dimension).
         """
-        super().__init__()
-        self.algebra = algebra
+        super().__init__(algebra)
         self.n = n
 
         # Bivector mask and indices
@@ -607,7 +607,7 @@ class LatticeMorpher:
         Returns:
             (optimizer_or_scheduler, use_scheduler: bool)
         """
-        if self.n >= 1000: # More Research Need in lower dims already riemannianAdam works good.
+        if self.n >= 4: # More Research Need in lower dims already riemannianAdam works good.
             scheduler = CommutatorScheduler(
                 self.algebra, self.pipeline,
                 threshold=0.3, lr=lr,
