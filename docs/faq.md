@@ -112,8 +112,8 @@ It lifts data into a conformal algebra `Cl(X+1, 1)`, trains GBN probes with bias
 ### What tasks are included?
 **Main tasks** (via `main.py`):
 - `sr` — Symbolic regression via iterative geometric unbending (PMLB datasets)
-- `md17` — Molecular dynamics: energy + force prediction (requires `--extra graph`)
-- `lqa` — Logical query answering with geometric reasoning probes (requires `--extra examples`)
+- `md17` — Molecular dynamics: energy + force prediction (requires `--extra md17`)
+- `lqa` — Logical query answering with geometric reasoning probes (requires `--extra lqa`)
 - `deap_eeg` — EEG emotion classification with mother manifold alignment
 
 **Example tasks** (via `examples/main.py`):
@@ -162,9 +162,9 @@ The symbolic trace through the model can produce large sympy expressions. Soluti
 - Use `translate()` (indirect) instead of `translate_direct()` for simpler expressions
 
 ### LQA task fails with ImportError
-This task requires optional dependencies (`transformers`, `sentence-transformers`, `datasets`). Install them:
+This task requires optional dependencies (`sentence-transformers`, `datasets`). Install them:
 ```bash
-uv sync --extra examples
+uv sync --extra lqa
 ```
 
 ### DEAP task can't find data files
@@ -173,7 +173,7 @@ The DEAP dataset requires manual download from the official source. Place prepro
 ### MD17 task fails with ImportError
 This task requires `torch-geometric`. Install it:
 ```bash
-uv sync --extra graph
+uv sync --extra md17
 ```
 
 ### Checkpoint loading fails with PyTorch version mismatch

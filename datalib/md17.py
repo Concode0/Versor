@@ -21,7 +21,7 @@ Loading priority:
        fake molecular dynamics data is meaningless for energy/force training)
 
 Install PyG:
-    uv sync --extra graph
+    uv sync --extra md17
 
 Manual download (MD17):
     Download from https://sgdml.org (NumPy format links on main page).
@@ -314,7 +314,7 @@ class VersorMD17NPZ(Dataset):
             raise FileNotFoundError(
                 f"{variant} NPZ file for '{molecule}' not found in {root}.\n"
                 f"Options:\n"
-                f"  1. Install PyG:  uv sync --extra graph\n"
+                f"  1. Install PyG:  uv sync --extra md17\n"
                 f"{hint}"
             )
 
@@ -525,7 +525,7 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
     # Strategy 2: Raw NPZ files
     warnings.warn(
         f"PyTorch Geometric not installed. Attempting to load {variant} from raw .npz files.\n"
-        "For full functionality: uv sync --extra graph",
+        "For full functionality: uv sync --extra md17",
         ImportWarning, stacklevel=2
     )
 

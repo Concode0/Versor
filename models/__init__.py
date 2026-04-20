@@ -2,33 +2,13 @@
 
 Models combine rotor layers, linear transformations, normalization,
 and activation functions into complete architectures.
+
+Submodules have optional dependencies — import directly from the
+relevant submodule rather than from this package:
+
+    from models.md17 import MD17ForceNet          # requires --extra md17
+    from models.sr import SRGBN                   # requires --extra sr
+    from models.lqa import GLRNet                 # requires --extra lqa
+    from models.deap import EEGNet
+    from models.blocks import GeometricBladeNetwork
 """
-
-from .blocks import GeometricBladeNetwork
-from .sr import SRGBN, SRMultiGradeEmbedding
-from .blocks import MultiRotorModel
-from .blocks import RotorTCN
-from .deap import EEGNet
-from .lqa import GLRNet, ChainReasoningHead, EntailmentHead, NegationHead
-
-try:
-    from .md17 import MD17ForceNet, MD17InteractionBlock
-except ImportError:
-    MD17ForceNet = None
-    MD17InteractionBlock = None
-
-__all__ = [
-    "GeometricBladeNetwork",
-    "SRGBN",
-    "SRMultiGradeEmbedding",
-    "MultiRotorModel",
-    "RotorTCN",
-    "EEGNet",
-    "GLRNet",
-    "ChainReasoningHead",
-    "EntailmentHead",
-    "NegationHead",
-    # torch_geometric dependent
-    "MD17ForceNet",
-    "MD17InteractionBlock",
-]

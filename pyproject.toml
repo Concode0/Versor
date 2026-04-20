@@ -85,7 +85,7 @@ markers = [
 ]
 
 [dependency-groups]
-dev = [
+docs = [
     "mkdocs<2.0",
     "mkdocs-material>=9.7.4",
     "mkdocstrings[python]>=0.30.1",
