@@ -25,4 +25,10 @@ gdo_plots/
 ym_plots/
 lattice_morph_plots/
 
+experiments/tmp_*
+embed_compress_plots/
+hnn_pedulum_plots/
+linear_research_plots/
+
+
 site/
