@@ -36,40 +36,55 @@ The following software are used under their respective licenses:
      Copyright (c) Facebook, Inc. and its affiliates.
      Licensed under the MIT License.
 
-   * TQDM (https://github.com/tqdm/tqdm)
-     Copyright (c) 2013- noamraph.
+   * TQDM (https://tqdm.github.io/)
+     Copyright (c) 2015- tqdm developers.
      Licensed under the MIT License / MPL 2.0.
 
-2. Optional Dependencies (Graph, Viz, Demo, Examples)
-   --------------------------------------------------
-   * PyTorch Geometric (https://pyg.org/)
-     Copyright (c) 2021 Matthias Fey <matthias.fey@tu-dortmund.de>
-     Licensed under the MIT License.
-
-   * Hugging Face Transformers (https://huggingface.co/docs/transformers)
-     Copyright (c) 2018- Hugging Face.
-     Licensed under the Apache License 2.0.
-
+2. Optional Dependencies (SR, MD17, LQA, Viz, Demo, Dev)
+   -----------------------------------------------------
    * Scikit-Learn (https://scikit-learn.org/)
-     Copyright (c) 2007- Scikit-learn developers.
+     Copyright (c) 2007- Scikit-Learn Developers.
      Licensed under the BSD-3-Clause License.
 
-   * Streamlit (https://streamlit.io/)
-     Copyright (c) 2018- Streamlit Inc.
+   * SymPy (https://www.sympy.org/)
+     Copyright (c) 2006- SymPy Development Team.
+     Licensed under the BSD-3-Clause License.
+
+   * PMLB (https://epistasislab.github.io/pmlb/)
+     Copyright (c) 2016- Epistasis Lab at UPenn.
+     Licensed under the MIT License.
+
+   * PyTorch Geometric (https://pyg.org/)
+     Copyright (c) 2021- PyG Team.
+     Licensed under the MIT License.
+
+   * Sentence-Transformers (https://sbert.net/)
+     Copyright (c) 2019- Nils Reimers.
+     Licensed under the Apache License 2.0.
+
+   * Datasets (https://huggingface.co/docs/datasets/)
+     Copyright (c) 2020- Hugging Face.
      Licensed under the Apache License 2.0.
 
    * Matplotlib (https://matplotlib.org/)
-     Copyright (c) 2002-2012 John D. Hunter.
-     Licensed under the PSF-based License.
+     Copyright (c) 2002- John D. Hunter, Michael Droettboom and the Matplotlib development team.
+     Licensed under the Python Software Foundation (PSF) License.
 
-   * Plotly (https://plotly.com/)
-     Copyright (c) 2019- Plotly, Inc.
+   * Seaborn (https://seaborn.pydata.org/)
+     Copyright (c) 2012- Michael Waskom.
+     Licensed under the BSD-3-Clause License.
+
+   * Streamlit (https://streamlit.io/)
+     Copyright (c) 2018- Snowflake Inc.
+     Licensed under the Apache License 2.0.
+
+   * Plotly (https://plotly.com/python/)
+     Copyright (c) 2012- Plotly Technologies Inc.
      Licensed under the MIT License.
 
-   * Pillow (https://python-pillow.org/)
-     Copyright (c) 1997-2011 by Secret Labs AB.
-     Copyright (c) 1995-2011 by Fredrik Lundh.
-     Licensed under the HPND License.
+   * Pytest & Pytest-xdist (https://pytest.org/)
+     Copyright (c) 2004- Holger Krekel and others.
+     Licensed under the MIT License.
 
 ===========================================================================
 III. APPENDICES: FULL THIRD-PARTY NOTICES
@@ -79,7 +94,20 @@ The following notices are required by the licenses of the third-party
 software used in this product.
 
 ---------------------------------------------------------------------------
-A. Streamlit NOTICES
+A. sentence-transformers NOTICES
+---------------------------------------------------------------------------
+
+Sentence Transformers
+
+Copyright 2019-2025
+Ubiquitous Knowledge Processing (UKP) Lab
+Technische Universität Darmstadt
+
+Copyright 2025-present
+Hugging Face, Inc.
+
+---------------------------------------------------------------------------
+B. Streamlit NOTICES
 ---------------------------------------------------------------------------
 
 THE FOLLOWING SETS FORTH ATTRIBUTION NOTICES FOR THIRD PARTY SOFTWARE THAT MAY BE CONTAINED IN PORTIONS OF THE STREAMLIT PRODUCT.
