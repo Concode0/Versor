@@ -1924,8 +1924,8 @@ Or pass <code>device='cpu'</code> when creating the algebra directly.</p>
 <h3 id="what-tasks-are-included">What tasks are included?<a class="headerlink" href="#what-tasks-are-included" title="Permanent link">&para;</a></h3>
 <p><strong>Main tasks</strong> (via <code>main.py</code>):
 - <code>sr</code> — Symbolic regression via iterative geometric unbending (PMLB datasets)
-- <code>md17</code> — Molecular dynamics: energy + force prediction (requires <code>--extra graph</code>)
-- <code>lqa</code> — Logical query answering with geometric reasoning probes (requires <code>--extra examples</code>)
+- <code>md17</code> — Molecular dynamics: energy + force prediction (requires <code>--extra md17</code>)
+- <code>lqa</code> — Logical query answering with geometric reasoning probes (requires <code>--extra lqa</code>)
 - <code>deap_eeg</code> — EEG emotion classification with mother manifold alignment</p>
 <p><strong>Example tasks</strong> (via <code>examples/main.py</code>):
 - <code>manifold</code> — Flatten a figure-8 manifold
@@ -1964,14 +1964,14 @@ Or pass <code>device='cpu'</code> when creating the algebra directly.</p>
 - The translator automatically caps symbolic channels at 4 (<code>MAX_SYM_CHANNELS</code>)
 - Use <code>translate()</code> (indirect) instead of <code>translate_direct()</code> for simpler expressions</p>
 <h3 id="lqa-task-fails-with-importerror">LQA task fails with ImportError<a class="headerlink" href="#lqa-task-fails-with-importerror" title="Permanent link">&para;</a></h3>
-<p>This task requires optional dependencies (<code>transformers</code>, <code>sentence-transformers</code>, <code>datasets</code>). Install them:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>examples
+<p>This task requires optional dependencies (<code>sentence-transformers</code>, <code>datasets</code>). Install them:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>lqa
 </code></pre></div></p>
 <h3 id="deap-task-cant-find-data-files">DEAP task can't find data files<a class="headerlink" href="#deap-task-cant-find-data-files" title="Permanent link">&para;</a></h3>
 <p>The DEAP dataset requires manual download from the official source. Place preprocessed <code>.dat</code> files in <code>data/DEAP/data_preprocessed_python/</code>. See <code>docs/tasks/deap_eeg.md</code> for details.</p>
 <h3 id="md17-task-fails-with-importerror">MD17 task fails with ImportError<a class="headerlink" href="#md17-task-fails-with-importerror" title="Permanent link">&para;</a></h3>
 <p>This task requires <code>torch-geometric</code>. Install it:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>graph
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>md17
 </code></pre></div></p>
 <h3 id="checkpoint-loading-fails-with-pytorch-version-mismatch">Checkpoint loading fails with PyTorch version mismatch<a class="headerlink" href="#checkpoint-loading-fails-with-pytorch-version-mismatch" title="Permanent link">&para;</a></h3>
 <p>Versor uses <code>weights_only=False</code> with a fallback for older PyTorch versions. If you still get errors, ensure your PyTorch version is &gt;= 2.0.</p>
