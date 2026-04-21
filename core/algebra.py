@@ -66,10 +66,10 @@ class CliffordAlgebra(nn.Module):
         self.n = p + q + r
         self.dim = 2 ** self.n
 
-        # Exp regime: dispatch at init, not at runtime
-        if q == 0 and r == 0:
+        # Exp regime: dispatch at init
+        if p == 0 or q == 0:
             self._exp_regime = 'elliptic'
-        elif p == 0 and r == 0:
+        elif p == 1 and q == 1 and r == 0:
             self._exp_regime = 'hyperbolic'
         else:
             self._exp_regime = 'mixed'
