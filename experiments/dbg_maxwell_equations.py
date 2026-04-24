@@ -36,8 +36,9 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    ensure_output_dir, make_experiment_parser, print_banner, report_diagnostics,
-    run_supervised_loop, save_training_curve, set_seed, setup_algebra,
+    build_visualization_metadata, ensure_output_dir, make_experiment_parser,
+    print_banner, report_diagnostics, run_supervised_loop, save_training_curve,
+    set_seed, setup_algebra, signature_metadata,
 )
 from core.algebra import CliffordAlgebra
 from layers.primitives.base import CliffordModule
@@ -445,13 +446,23 @@ def train(args) -> None:
         diagnostics, title='Maxwell post-training physics diagnostics',
     ))
 
-    if args.save_plots:
-        ensure_output_dir(args.output_dir)
-        path = save_training_curve(
-            history, os.path.join(args.output_dir, 'training_curve.png'),
-            title='Maxwell — grade-2 reconstruction loss',
-        )
-        print(f'  curve saved to {path}')
+    ensure_output_dir(args.output_dir)
+    metadata = build_visualization_metadata(
+        signature_metadata(3, 1),
+        num_waves=args.num_waves,
+        seed=args.seed,
+    )
+    path = save_training_curve(
+        history,
+        output_dir=args.output_dir,
+        experiment_name='dbg_maxwell_equations',
+        metadata=metadata,
+        plot_name='training_curve',
+        args=args,
+        module=__name__,
+        title='Maxwell — grade-2 reconstruction loss',
+    )
+    print(f'  curve saved to {path}')
 
 
 # ---------------------------------------------------------------------------
@@ -462,7 +473,7 @@ def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
         'Maxwell equations debugger in Cl(3,1)',
         include=('seed', 'device', 'epochs', 'lr', 'batch_size',
-                 'output_dir', 'save_plots', 'diag_interval'),
+                 'output_dir', 'diag_interval'),
         defaults={'epochs': 200, 'lr': 0.001, 'batch_size': 128,
                   'output_dir': 'maxwell_plots', 'diag_interval': 20},
     )

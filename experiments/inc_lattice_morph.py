@@ -50,8 +50,9 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    ensure_output_dir, make_experiment_parser, section_header, set_seed,
-    setup_algebra,
+    build_visualization_metadata, ensure_output_dir, make_experiment_parser,
+    save_experiment_figure, section_header, set_seed, setup_algebra,
+    signature_metadata,
 )
 from core.algebra import CliffordAlgebra
 from core.decomposition import ExpPolicy
@@ -670,10 +671,13 @@ class LatticeMorpher:
 class MorphVisualizer:
     """Visualization for lattice morphing."""
 
-    def __init__(self, algebra: CliffordAlgebra, n: int, output_dir: str):
+    def __init__(self, algebra: CliffordAlgebra, n: int, output_dir: str,
+                 metadata: str, args: argparse.Namespace):
         self.algebra = algebra
         self.n = n
         self.output_dir = ensure_output_dir(output_dir)
+        self.metadata = metadata
+        self.args = args
         self.g1_indices = _grade1_indices(n)
 
     def _extract_coords(self, mvs: torch.Tensor) -> np.ndarray:
@@ -749,9 +753,16 @@ class MorphVisualizer:
             ax.axvline(0, color='grey', lw=0.5)
 
         plt.tight_layout()
-        path = os.path.join(self.output_dir, "morph_sequence_2d.png")
-        plt.savefig(path, dpi=150)
-        plt.close()
+        path = save_experiment_figure(
+            fig,
+            output_dir=self.output_dir,
+            experiment_name='inc_lattice_morph',
+            metadata=self.metadata,
+            plot_name='morph_sequence_2d',
+            args=self.args,
+            module=__name__,
+            dpi=150,
+        )
         print(f"  Saved: {path}")
 
     def _plot_sequence_3d(self, intermediates: list, grid_range: int,
@@ -779,9 +790,16 @@ class MorphVisualizer:
             ax.set_title(label, fontsize=11)
 
         plt.tight_layout()
-        path = os.path.join(self.output_dir, "morph_sequence_3d.png")
-        plt.savefig(path, dpi=150)
-        plt.close()
+        path = save_experiment_figure(
+            fig,
+            output_dir=self.output_dir,
+            experiment_name='inc_lattice_morph',
+            metadata=self.metadata,
+            plot_name='morph_sequence_3d',
+            args=self.args,
+            module=__name__,
+            dpi=150,
+        )
         print(f"  Saved: {path}")
 
     def plot_invariant_evolution(self, invariant_history: list,
@@ -820,9 +838,16 @@ class MorphVisualizer:
         axes[1, 1].grid(True, alpha=0.3)
 
         plt.tight_layout()
-        path = os.path.join(self.output_dir, "invariant_evolution.png")
-        plt.savefig(path, dpi=150)
-        plt.close()
+        path = save_experiment_figure(
+            fig,
+            output_dir=self.output_dir,
+            experiment_name='inc_lattice_morph',
+            metadata=self.metadata,
+            plot_name='invariant_evolution',
+            args=self.args,
+            module=__name__,
+            dpi=150,
+        )
         print(f"  Saved: {path}")
 
     def plot_mode_diagnostics(self, mode: 'MorphMode',
@@ -845,16 +870,23 @@ class MorphVisualizer:
             offdiag = [(h['gram'] * mask).pow(2).sum().sqrt().item()
                        for h in invariant_history]
             steps = range(len(offdiag))
-            plt.figure(figsize=(8, 5))
-            plt.semilogy(steps, offdiag)
-            plt.xlabel('Step')
-            plt.ylabel('||off-diag(G)||_F')
-            plt.title('Off-diagonal Gram norm (SKEW mode)')
-            plt.grid(True, alpha=0.3)
-            path = os.path.join(self.output_dir, 'mode_skew.png')
-            plt.tight_layout()
-            plt.savefig(path, dpi=150)
-            plt.close()
+            fig, ax = plt.subplots(figsize=(8, 5))
+            ax.semilogy(steps, offdiag)
+            ax.set_xlabel('Step')
+            ax.set_ylabel('||off-diag(G)||_F')
+            ax.set_title('Off-diagonal Gram norm (SKEW mode)')
+            ax.grid(True, alpha=0.3)
+            fig.tight_layout()
+            path = save_experiment_figure(
+                fig,
+                output_dir=self.output_dir,
+                experiment_name='inc_lattice_morph',
+                metadata=self.metadata,
+                plot_name='mode_skew',
+                args=self.args,
+                module=__name__,
+                dpi=150,
+            )
             print(f"  Saved: {path}")
             return
 
@@ -866,16 +898,23 @@ class MorphVisualizer:
             dev = [(h['gram'] - ref).pow(2).sum().sqrt().item()
                    for h in invariant_history]
             steps = range(len(dev))
-            plt.figure(figsize=(8, 5))
-            plt.semilogy(steps, dev)
-            plt.xlabel('Step')
-            plt.ylabel('||M_morphed - M_ref||_F')
-            plt.title('Minkowski invariant deviation (MINKOWSKI mode)')
-            plt.grid(True, alpha=0.3)
-            path = os.path.join(self.output_dir, 'mode_minkowski.png')
-            plt.tight_layout()
-            plt.savefig(path, dpi=150)
-            plt.close()
+            fig, ax = plt.subplots(figsize=(8, 5))
+            ax.semilogy(steps, dev)
+            ax.set_xlabel('Step')
+            ax.set_ylabel('||M_morphed - M_ref||_F')
+            ax.set_title('Minkowski invariant deviation (MINKOWSKI mode)')
+            ax.grid(True, alpha=0.3)
+            fig.tight_layout()
+            path = save_experiment_figure(
+                fig,
+                output_dir=self.output_dir,
+                experiment_name='inc_lattice_morph',
+                metadata=self.metadata,
+                plot_name='mode_minkowski',
+                args=self.args,
+                module=__name__,
+                dpi=150,
+            )
             print(f"  Saved: {path}")
             return
 
@@ -898,10 +937,17 @@ class MorphVisualizer:
             ax.set_yticks(range(stage_norms.shape[0]))
             ax.set_title('Per-stage compound bivector L2 norms (COMPOUND mode)')
             plt.colorbar(im, ax=ax)
-            path = os.path.join(self.output_dir, 'mode_compound.png')
-            plt.tight_layout()
-            plt.savefig(path, dpi=150)
-            plt.close()
+            fig.tight_layout()
+            path = save_experiment_figure(
+                fig,
+                output_dir=self.output_dir,
+                experiment_name='inc_lattice_morph',
+                metadata=self.metadata,
+                plot_name='mode_compound',
+                args=self.args,
+                module=__name__,
+                dpi=150,
+            )
             print(f"  Saved: {path}")
             return
 
@@ -963,9 +1009,18 @@ def run_experiment(args):
     morpher.verify_reconstruction()
 
     # Visualization
-    if args.save_plots and args.dim in [2, 3]:
+    p, q = (args.dim - 1, 1) if args.signature == 'minkowski' else (args.dim, 0)
+    plot_metadata = build_visualization_metadata(
+        signature_metadata(p, q),
+        dim=args.dim,
+        ops=args.ops,
+        seed=args.seed,
+    )
+    if args.dim in [2, 3]:
         print("\nGenerating visualizations...")
-        viz = MorphVisualizer(morpher.algebra, morpher.n, args.output_dir)
+        viz = MorphVisualizer(
+            morpher.algebra, morpher.n, args.output_dir, plot_metadata, args,
+        )
 
         # Build labels
         n_inter = len(results['intermediates'])
@@ -985,8 +1040,10 @@ def run_experiment(args):
             results['loss_history'],
         )
 
-    if args.save_plots and ops_mode != MorphMode.BASIC:
-        viz = MorphVisualizer(morpher.algebra, morpher.n, args.output_dir)
+    if ops_mode != MorphMode.BASIC:
+        viz = MorphVisualizer(
+            morpher.algebra, morpher.n, args.output_dir, plot_metadata, args,
+        )
         with torch.no_grad():
             ref_basis = target_basis if target_basis is not None else morpher.source_basis
             ref_gram = morpher.tracker.compute_gram_matrix(ref_basis)
@@ -1002,7 +1059,7 @@ def run_experiment(args):
 def parse_args() -> argparse.Namespace:
     parser = make_experiment_parser(
         "Lattice Morphing via Geometric Algebra",
-        include=('seed', 'device', 'lr', 'output_dir', 'save_plots'),
+        include=('seed', 'device', 'lr', 'output_dir'),
         defaults={'lr': 0.01, 'output_dir': 'lattice_morph_plots'},
     )
     parser.add_argument('--dim', type=int, default=3,

@@ -41,8 +41,9 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    ensure_output_dir, make_experiment_parser, print_banner, report_diagnostics,
-    run_supervised_loop, save_training_curve, set_seed, setup_algebra,
+    build_visualization_metadata, ensure_output_dir, make_experiment_parser,
+    print_banner, report_diagnostics, run_supervised_loop, save_training_curve,
+    set_seed, setup_algebra, signature_metadata,
 )
 from core.metric import (
     hermitian_distance, hermitian_grade_spectrum,
@@ -378,13 +379,23 @@ def train(args) -> None:
         diagnostics, title='Lorentz post-training physics diagnostics',
     ))
 
-    if args.save_plots:
-        ensure_output_dir(args.output_dir)
-        path = save_training_curve(
-            history, os.path.join(args.output_dir, 'training_curve.png'),
-            title='Lorentz — rotor Hermitian loss',
-        )
-        print(f'  curve saved to {path}')
+    ensure_output_dir(args.output_dir)
+    metadata = build_visualization_metadata(
+        signature_metadata(3, 1),
+        boost_type=args.boost_type,
+        seed=args.seed,
+    )
+    path = save_training_curve(
+        history,
+        output_dir=args.output_dir,
+        experiment_name='dbg_lorentz',
+        metadata=metadata,
+        plot_name='training_curve',
+        args=args,
+        module=__name__,
+        title='Lorentz — rotor Hermitian loss',
+    )
+    print(f'  curve saved to {path}')
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +406,7 @@ def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
         'Lorentz boost debugger in Cl(3,1)',
         include=('seed', 'device', 'epochs', 'lr', 'batch_size',
-                 'output_dir', 'save_plots', 'diag_interval'),
+                 'output_dir', 'diag_interval'),
         defaults={'epochs': 200, 'lr': 0.001, 'batch_size': 128,
                   'output_dir': 'lorentz_plots', 'diag_interval': 20},
     )

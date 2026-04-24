@@ -176,7 +176,7 @@ def parse_args() -> argparse.Namespace:
     parser = make_experiment_parser(
         'Incubator template — 2-D rotation regression.',
         include=('seed', 'device', 'epochs', 'lr', 'batch_size',
-                 'output_dir', 'save_plots', 'diag_interval'),
+                 'output_dir', 'diag_interval'),
         defaults={'epochs': 30, 'batch_size': 64,
                   'output_dir': 'template_inc_plots', 'diag_interval': 5},
     )
@@ -224,11 +224,10 @@ def main() -> None:
             history['test_loss'].append(test_loss)
             print(f'Epoch {epoch:4d}/{args.epochs} | train={train_loss:.6f} | test={test_loss:.6f}')
 
-    if args.save_plots:
-        out_dir = ensure_output_dir(args.output_dir)
-        saved = save_training_curve(history, os.path.join(out_dir, 'training_curves.png'),
-                                    title='Incubator Template — training curves')
-        print(f'Saved {saved}')
+    out_dir = ensure_output_dir(args.output_dir)
+    saved = save_training_curve(history, os.path.join(out_dir, 'training_curves.png'),
+                                title='Incubator Template — training curves')
+    print(f'Saved {saved}')
 
 
 if __name__ == '__main__':

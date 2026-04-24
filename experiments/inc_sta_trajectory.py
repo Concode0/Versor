@@ -60,9 +60,10 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    count_parameters, ensure_output_dir, make_experiment_parser,
-    mean_grade_spectrum, print_banner, report_diagnostics,
-    run_supervised_loop, save_training_curve, set_seed, setup_algebra,
+    build_visualization_metadata, count_parameters, ensure_output_dir,
+    make_experiment_parser, mean_grade_spectrum, print_banner,
+    report_diagnostics, run_supervised_loop, save_training_curve, set_seed,
+    setup_algebra, signature_metadata,
 )
 
 from core.algebra import CliffordAlgebra
@@ -494,19 +495,31 @@ def train(args: argparse.Namespace) -> None:
     print(report_diagnostics(
         diagnostics, title='STA trajectory post-training diagnostics'))
 
-    if args.save_plots:
-        ensure_output_dir(args.output_dir)
-        path = save_training_curve(
-            history, os.path.join(args.output_dir, 'training_curve.png'),
-            title='STA Trajectory — supervised MSE')
-        print(f'  curve saved to {path}')
+    ensure_output_dir(args.output_dir)
+    metadata = build_visualization_metadata(
+        signature_metadata(3, 1),
+        window_size=args.window_size,
+        channels=args.channels,
+        seed=args.seed,
+    )
+    path = save_training_curve(
+        history,
+        output_dir=args.output_dir,
+        experiment_name='inc_sta_trajectory',
+        metadata=metadata,
+        plot_name='training_curve',
+        args=args,
+        module=__name__,
+        title='STA Trajectory — supervised MSE',
+    )
+    print(f'  curve saved to {path}')
 
 
 def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
         'STA trajectory reconstruction — Cl(3,1) IMU incubator.',
         include=('seed', 'device', 'epochs', 'lr', 'batch_size',
-                 'output_dir', 'save_plots', 'diag_interval'),
+                 'output_dir', 'diag_interval'),
         defaults={'epochs': 200, 'lr': 0.001, 'batch_size': 64,
                   'output_dir': 'sta_plots', 'diag_interval': 10},
     )

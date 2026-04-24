@@ -72,7 +72,8 @@ from torch.utils.data import DataLoader, TensorDataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    ensure_output_dir, make_experiment_parser, set_seed, setup_algebra,
+    build_visualization_metadata, ensure_output_dir, make_experiment_parser,
+    save_experiment_figure, set_seed, setup_algebra, signature_metadata,
 )
 from core.algebra import CliffordAlgebra
 from core.analysis.dimension import EffectiveDimensionAnalyzer, DimensionLifter
@@ -944,6 +945,8 @@ def plot_dimension_analysis(
     dim_result,
     out_dir: Path,
     dataset_name: str,
+    plot_metadata: str,
+    args: argparse.Namespace,
 ):
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
     fig.suptitle(f'Effective Dimension Analysis — {dataset_name}', fontsize=13)
@@ -989,15 +992,24 @@ def plot_dimension_analysis(
             bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
 
     plt.tight_layout()
-    path = out_dir / f'dimension_analysis_{dataset_name}.png'
-    plt.savefig(path, dpi=120, bbox_inches='tight')
-    plt.close()
+    path = save_experiment_figure(
+        fig,
+        output_dir=str(out_dir),
+        experiment_name='inc_embed_compress',
+        metadata=plot_metadata,
+        plot_name=f'{dataset_name}_dimension_analysis',
+        args=args,
+        module=__name__,
+        dpi=120,
+    )
     print(f"  Saved {path}")
 
 
 def plot_accuracy_vs_compression(
     results_by_dataset: Dict[str, Dict],
     out_dir: Path,
+    plot_metadata: str,
+    args: argparse.Namespace,
 ):
     n_ds = len(results_by_dataset)
     fig, axes = plt.subplots(1, n_ds, figsize=(6 * n_ds, 5), squeeze=False)
@@ -1026,15 +1038,24 @@ def plot_accuracy_vs_compression(
         ax2.set_xlabel('Compression ratio', fontsize=9)
 
     plt.tight_layout()
-    path = out_dir / 'accuracy_vs_compression.png'
-    plt.savefig(path, dpi=120, bbox_inches='tight')
-    plt.close()
+    path = save_experiment_figure(
+        fig,
+        output_dir=str(out_dir),
+        experiment_name='inc_embed_compress',
+        metadata=plot_metadata,
+        plot_name='accuracy_vs_compression',
+        args=args,
+        module=__name__,
+        dpi=120,
+    )
     print(f"  Saved {path}")
 
 
 def plot_reconstruction_similarity(
     results_by_dataset: Dict[str, Dict],
     out_dir: Path,
+    plot_metadata: str,
+    args: argparse.Namespace,
 ):
     n_ds = len(results_by_dataset)
     fig, axes = plt.subplots(1, n_ds, figsize=(6 * n_ds, 5), squeeze=False)
@@ -1057,15 +1078,24 @@ def plot_reconstruction_similarity(
         ax.invert_xaxis()  # higher compression on right
 
     plt.tight_layout()
-    path = out_dir / 'reconstruction_similarity.png'
-    plt.savefig(path, dpi=120, bbox_inches='tight')
-    plt.close()
+    path = save_experiment_figure(
+        fig,
+        output_dir=str(out_dir),
+        experiment_name='inc_embed_compress',
+        metadata=plot_metadata,
+        plot_name='reconstruction_similarity',
+        args=args,
+        module=__name__,
+        dpi=120,
+    )
     print(f"  Saved {path}")
 
 
 def plot_grade_energy_spectrum(
     grade_spectra_by_dataset: Dict[str, Dict],
     out_dir: Path,
+    plot_metadata: str,
+    args: argparse.Namespace,
 ):
     for ds_name, spectra in grade_spectra_by_dataset.items():
         target_dims = list(spectra.keys())
@@ -1090,15 +1120,24 @@ def plot_grade_energy_spectrum(
             ax.tick_params(axis='x', labelsize=8)
 
         plt.tight_layout()
-        path = out_dir / f'grade_energy_spectrum_{ds_name}.png'
-        plt.savefig(path, dpi=120, bbox_inches='tight')
-        plt.close()
+        path = save_experiment_figure(
+            fig,
+            output_dir=str(out_dir),
+            experiment_name='inc_embed_compress',
+            metadata=plot_metadata,
+            plot_name=f'{ds_name}_grade_energy_spectrum',
+            args=args,
+            module=__name__,
+            dpi=120,
+        )
         print(f"  Saved {path}")
 
 
 def plot_training_curves(
     histories_by_dataset: Dict[str, Dict],
     out_dir: Path,
+    plot_metadata: str,
+    args: argparse.Namespace,
 ):
     for ds_name, histories in histories_by_dataset.items():
         target_dims = list(histories.keys())
@@ -1130,15 +1169,24 @@ def plot_training_curves(
             ax.set_ylim(0, 1)
 
         plt.tight_layout()
-        path = out_dir / f'training_curves_{ds_name}.png'
-        plt.savefig(path, dpi=120, bbox_inches='tight')
-        plt.close()
+        path = save_experiment_figure(
+            fig,
+            output_dir=str(out_dir),
+            experiment_name='inc_embed_compress',
+            metadata=plot_metadata,
+            plot_name=f'{ds_name}_training_curves',
+            args=args,
+            module=__name__,
+            dpi=120,
+        )
         print(f"  Saved {path}")
 
 
 def plot_lifting_test(
     lifting_results: Dict[str, Dict],
     out_dir: Path,
+    plot_metadata: str,
+    args: argparse.Namespace,
 ):
     if not lifting_results:
         return
@@ -1172,9 +1220,16 @@ def plot_lifting_test(
                     color='green' if causal else 'red')
 
     plt.tight_layout()
-    path = out_dir / 'lifting_test.png'
-    plt.savefig(path, dpi=120, bbox_inches='tight')
-    plt.close()
+    path = save_experiment_figure(
+        fig,
+        output_dir=str(out_dir),
+        experiment_name='inc_embed_compress',
+        metadata=plot_metadata,
+        plot_name='lifting_test',
+        args=args,
+        module=__name__,
+        dpi=120,
+    )
     print(f"  Saved {path}")
 
 
@@ -1209,7 +1264,13 @@ def run_dataset(
     # Dimension analysis
     print("\n[3] Effective dimension analysis …")
     dim_result = analyze_effective_dimension(train_embs)
-    plot_dimension_analysis(dim_result, out_dir, ds_name)
+    dataset_metadata = build_visualization_metadata(
+        signature_metadata(args.algebra_p, args.algebra_q),
+        datasets=ds_name,
+        model_slug=args.model,
+        seed=args.seed,
+    )
+    plot_dimension_analysis(dim_result, out_dir, ds_name, dataset_metadata, args)
     target_dims = build_target_dims(dim_result.intrinsic_dim)
     print(f"  Target dim sweep: {target_dims}")
 
@@ -1304,6 +1365,12 @@ def main():
     set_seed(args.seed)
 
     out_dir = Path(ensure_output_dir(args.output_dir))
+    plot_metadata = build_visualization_metadata(
+        signature_metadata(args.algebra_p, args.algebra_q),
+        datasets=args.datasets,
+        model_slug=args.model,
+        seed=args.seed,
+    )
 
     results_by_dataset: Dict[str, Dict] = {}
     histories_by_dataset: Dict[str, Dict] = {}
@@ -1318,11 +1385,11 @@ def main():
         lifting_results[ds_name] = lifting
 
     print(f"\n[6] Generating plots in {out_dir} …")
-    plot_accuracy_vs_compression(results_by_dataset, out_dir)
-    plot_reconstruction_similarity(results_by_dataset, out_dir)
-    plot_grade_energy_spectrum(grade_spectra_by_dataset, out_dir)
-    plot_training_curves(histories_by_dataset, out_dir)
-    plot_lifting_test(lifting_results, out_dir)
+    plot_accuracy_vs_compression(results_by_dataset, out_dir, plot_metadata, args)
+    plot_reconstruction_similarity(results_by_dataset, out_dir, plot_metadata, args)
+    plot_grade_energy_spectrum(grade_spectra_by_dataset, out_dir, plot_metadata, args)
+    plot_training_curves(histories_by_dataset, out_dir, plot_metadata, args)
+    plot_lifting_test(lifting_results, out_dir, plot_metadata, args)
 
     print(f"\n{'='*60}")
     print("SUMMARY")

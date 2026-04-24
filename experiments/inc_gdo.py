@@ -64,7 +64,13 @@ def main() -> None:
 
     od = args.output_dir
     opts = tuple(args.optimizers)
-    common = dict(optimizers=opts, seed=args.seed, output_dir=od, device=args.device)
+    common = dict(
+        optimizers=opts,
+        seed=args.seed,
+        output_dir=od,
+        device=args.device,
+        cli_args=args,
+    )
 
     if args.task in EXPERIMENT_REGISTRY:
         fn, _cat = EXPERIMENT_REGISTRY[args.task]

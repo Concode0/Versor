@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Callable, Dict, List, Tuple
 
 import matplotlib
@@ -15,7 +14,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from experiments._lib import ensure_output_dir
+from experiments._lib import ensure_output_dir, save_experiment_figure
 
 from .config import ExperimentResult
 from .pre_exploration import PreExplorationResult
@@ -26,10 +25,32 @@ def _ensure_output_dir(output_dir: str):
     ensure_output_dir(output_dir)
 
 
+def _save_gdo_figure(
+    fig,
+    *,
+    output_dir: str,
+    metadata: str,
+    plot_name: str,
+    args=None,
+):
+    return save_experiment_figure(
+        fig,
+        output_dir=output_dir,
+        experiment_name='inc_gdo',
+        metadata=metadata,
+        plot_name=plot_name,
+        args=args,
+        module=__name__,
+        dpi=150,
+    )
+
+
 def plot_pre_exploration(
     pre_result: PreExplorationResult,
     title: str = "Pre-Exploration Analysis",
     output_dir: str = "gdo_plots",
+    metadata: str = "default",
+    args=None,
 ):
     """2x3 dashboard: eigenvalues, local dims, grade energy, coherence, geometry, config."""
     _ensure_output_dir(output_dir)
@@ -153,9 +174,10 @@ def plot_pre_exploration(
             bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8))
 
     plt.tight_layout()
-    path = os.path.join(output_dir, f"pre_exploration_{title.replace(' ', '_').lower()}.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+    path = _save_gdo_figure(
+        fig, output_dir=output_dir, metadata=metadata,
+        plot_name=f'{title}_pre_exploration', args=args,
+    )
     print(f"  Saved: {path}")
     return fig
 
@@ -164,6 +186,8 @@ def plot_optimization_trajectory(
     history: Dict,
     title: str = "Optimization Trajectory",
     output_dir: str = "gdo_plots",
+    metadata: str = "default",
+    args=None,
 ):
     """Loss curve, probe results, landscape map summary."""
     _ensure_output_dir(output_dir)
@@ -249,9 +273,10 @@ def plot_optimization_trajectory(
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    path = os.path.join(output_dir, f"trajectory_{title.replace(' ', '_').lower()}.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+    path = _save_gdo_figure(
+        fig, output_dir=output_dir, metadata=metadata,
+        plot_name=f'{title}_trajectory', args=args,
+    )
     print(f"  Saved: {path}")
     return fig
 
@@ -260,6 +285,8 @@ def plot_geometric_controller(
     diagnostics: Dict,
     title: str = "Geometric Parameter Controller",
     output_dir: str = "gdo_plots",
+    metadata: str = "default",
+    args=None,
 ):
     """2x2 dashboard: FIM, commutativity heatmap, group scales, grade energy."""
     _ensure_output_dir(output_dir)
@@ -355,9 +382,10 @@ def plot_geometric_controller(
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    path = os.path.join(output_dir, "geometric_controller.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+    path = _save_gdo_figure(
+        fig, output_dir=output_dir, metadata=metadata,
+        plot_name='geometric_controller', args=args,
+    )
     print(f"  Saved: {path}")
     return fig
 
@@ -368,6 +396,8 @@ def plot_topology_map(
     trajectory: List[Tuple[float, float]],
     modes: List[str],
     output_dir: str = "gdo_plots",
+    metadata: str = "default",
+    args=None,
 ):
     """Contour plot of 2D loss surface + critical points + trajectory."""
     _ensure_output_dir(output_dir)
@@ -416,9 +446,10 @@ def plot_topology_map(
     ax.set_title("Loss Landscape & Optimization Trajectory")
     ax.legend(fontsize=8)
     plt.tight_layout()
-    path = os.path.join(output_dir, "topology_map.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+    path = _save_gdo_figure(
+        fig, output_dir=output_dir, metadata=metadata,
+        plot_name='topology_map', args=args,
+    )
     print(f"  Saved: {path}")
     return fig
 
@@ -427,6 +458,8 @@ def plot_three_way_comparison(
     results: Dict[str, ExperimentResult],
     title: str = "Optimizer Comparison",
     output_dir: str = "gdo_plots",
+    metadata: str = "default",
+    args=None,
 ):
     """4-panel: loss curves, final loss bars, wall time bars, convergence rate."""
     _ensure_output_dir(output_dir)
@@ -486,10 +519,10 @@ def plot_three_way_comparison(
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    safe_title = title.replace(' ', '_').replace('/', '_').lower()
-    path = os.path.join(output_dir, f"comparison_{safe_title}.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+    path = _save_gdo_figure(
+        fig, output_dir=output_dir, metadata=metadata,
+        plot_name=f'{title}_comparison', args=args,
+    )
     print(f"  Saved: {path}")
     return fig
 
@@ -498,6 +531,8 @@ def plot_convergence_rate(
     results: Dict[str, ExperimentResult],
     title: str = "Convergence Rate",
     output_dir: str = "gdo_plots",
+    metadata: str = "default",
+    args=None,
 ):
     """3-panel: loss vs step, loss vs wall-time, convergence rate."""
     _ensure_output_dir(output_dir)
@@ -542,10 +577,10 @@ def plot_convergence_rate(
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    safe_title = title.replace(' ', '_').lower()
-    path = os.path.join(output_dir, f"convergence_{safe_title}.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+    path = _save_gdo_figure(
+        fig, output_dir=output_dir, metadata=metadata,
+        plot_name=f'{title}_convergence', args=args,
+    )
     print(f"  Saved: {path}")
     return fig
 
@@ -554,6 +589,8 @@ def plot_timing_breakdown(
     results: Dict[str, ExperimentResult],
     title: str = "Timing Breakdown",
     output_dir: str = "gdo_plots",
+    metadata: str = "default",
+    args=None,
 ):
     """2-panel: per-step wall time, cumulative time vs loss."""
     _ensure_output_dir(output_dir)
@@ -589,10 +626,10 @@ def plot_timing_breakdown(
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    safe_title = title.replace(' ', '_').lower()
-    path = os.path.join(output_dir, f"timing_{safe_title}.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+    path = _save_gdo_figure(
+        fig, output_dir=output_dir, metadata=metadata,
+        plot_name=f'{title}_timing', args=args,
+    )
     print(f"  Saved: {path}")
     return fig
 
@@ -601,6 +638,8 @@ def plot_bivector_trajectory(
     results: Dict[str, ExperimentResult],
     title: str = "Bivector Trajectory",
     output_dir: str = "gdo_plots",
+    metadata: str = "default",
+    args=None,
 ):
     """Bivector param norm evolution across optimizers."""
     _ensure_output_dir(output_dir)
@@ -619,10 +658,10 @@ def plot_bivector_trajectory(
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    safe_title = title.replace(' ', '_').lower()
-    path = os.path.join(output_dir, f"bivector_{safe_title}.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+    path = _save_gdo_figure(
+        fig, output_dir=output_dir, metadata=metadata,
+        plot_name=f'{title}_bivector_trajectory', args=args,
+    )
     print(f"  Saved: {path}")
     return fig
 
@@ -631,6 +670,8 @@ def plot_optimizer_state_dashboard(
     gdo_result: ExperimentResult,
     title: str = "GDO State Dashboard",
     output_dir: str = "gdo_plots",
+    metadata: str = "default",
+    args=None,
 ):
     """4-panel: mode timeline, topology summary, warp beta/gamma, lift events."""
     _ensure_output_dir(output_dir)
@@ -703,10 +744,10 @@ def plot_optimizer_state_dashboard(
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    safe_title = title.replace(' ', '_').lower()
-    path = os.path.join(output_dir, f"gdo_state_{safe_title}.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+    path = _save_gdo_figure(
+        fig, output_dir=output_dir, metadata=metadata,
+        plot_name=f'{title}_gdo_state', args=args,
+    )
     print(f"  Saved: {path}")
     return fig
 
@@ -718,6 +759,8 @@ def plot_loss_landscape_2d_slice(
     radius: float = 1.0,
     title: str = "Loss Landscape Slice",
     output_dir: str = "gdo_plots",
+    metadata: str = "default",
+    args=None,
 ):
     """Contour plot along 2 random orthogonal directions in param space."""
     _ensure_output_dir(output_dir)
@@ -763,9 +806,9 @@ def plot_loss_landscape_2d_slice(
     ax.legend()
 
     plt.tight_layout()
-    safe_title = title.replace(' ', '_').lower()
-    path = os.path.join(output_dir, f"landscape_{safe_title}.png")
-    fig.savefig(path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+    path = _save_gdo_figure(
+        fig, output_dir=output_dir, metadata=metadata,
+        plot_name=f'{title}_loss_landscape', args=args,
+    )
     print(f"  Saved: {path}")
     return fig

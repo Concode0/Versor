@@ -60,6 +60,7 @@ from experiments._lib import (
     extract_grade1, gbn_residual_block, make_experiment_parser,
     mean_grade_spectrum, print_banner, report_diagnostics,
     run_supervised_loop, save_training_curve, set_seed, setup_algebra,
+    build_visualization_metadata, signature_metadata,
 )
 
 from core.algebra import CliffordAlgebra
@@ -421,13 +422,25 @@ def train(args: argparse.Namespace) -> None:
         diagnostics, title='Pendulum post-training diagnostics',
     ))
 
-    if args.save_plots:
-        ensure_output_dir(args.output_dir)
-        path = save_training_curve(
-            history, os.path.join(args.output_dir, 'training_curve.png'),
-            title=f'Pendulum — {args.system} MSE',
-        )
-        print(f'  curve saved to {path}')
+    ensure_output_dir(args.output_dir)
+    q = 2 if is_pendulum else args.q
+    metadata = build_visualization_metadata(
+        signature_metadata(args.p if not is_pendulum else 2, q),
+        system=args.system,
+        chaos=args.chaos,
+        seed=args.seed,
+    )
+    path = save_training_curve(
+        history,
+        output_dir=args.output_dir,
+        experiment_name='inc_pendulum_dynamics',
+        metadata=metadata,
+        plot_name='training_curve',
+        args=args,
+        module=__name__,
+        title=f'Pendulum — {args.system} MSE',
+    )
+    print(f'  curve saved to {path}')
 
 
 # ==============================================================================
@@ -438,7 +451,7 @@ def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
         'Hamiltonian phase-space flow in Cl(p,q) — pendulum / Lorenz.',
         include=('seed', 'device', 'epochs', 'lr', 'batch_size',
-                 'output_dir', 'save_plots', 'diag_interval', 'p', 'q'),
+                 'output_dir', 'diag_interval', 'p', 'q'),
         defaults={'epochs': 200, 'batch_size': 256, 'diag_interval': 20,
                   'output_dir': 'pendulum_plots', 'p': 3, 'q': 0},
     )

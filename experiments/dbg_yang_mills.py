@@ -58,9 +58,10 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    count_parameters, ensure_output_dir, make_experiment_parser,
-    print_banner, report_diagnostics, run_supervised_loop,
-    save_training_curve, set_seed, setup_algebra,
+    build_visualization_metadata, count_parameters, ensure_output_dir,
+    make_experiment_parser, print_banner, report_diagnostics,
+    run_supervised_loop, save_training_curve, set_seed, setup_algebra,
+    signature_metadata,
 )
 from core.algebra import CliffordAlgebra
 from core.metric import hermitian_grade_spectrum, hermitian_inner_product
@@ -523,13 +524,23 @@ def main() -> None:
         diagnostics, title='Yang-Mills post-training physics diagnostics',
     ))
 
-    if args.save_plots:
-        ensure_output_dir(args.output_dir)
-        path = save_training_curve(
-            history, os.path.join(args.output_dir, 'training_curve.png'),
-            title='Yang-Mills — supervised BPST gauge potential loss',
-        )
-        print(f'  curve saved to {path}')
+    ensure_output_dir(args.output_dir)
+    metadata = build_visualization_metadata(
+        signature_metadata(4, 1),
+        rho=args.rho,
+        seed=args.seed,
+    )
+    path = save_training_curve(
+        history,
+        output_dir=args.output_dir,
+        experiment_name='dbg_yang_mills',
+        metadata=metadata,
+        plot_name='training_curve',
+        args=args,
+        module=__name__,
+        title='Yang-Mills — supervised BPST gauge potential loss',
+    )
+    print(f'  curve saved to {path}')
 
 
 if __name__ == '__main__':

@@ -26,9 +26,14 @@ Otherwise, inline it in the experiment.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import math
 import os
 import random
+import re
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence
 
 import numpy as np
@@ -75,6 +80,123 @@ def ensure_output_dir(path: str) -> str:
     """``os.makedirs(path, exist_ok=True)`` and return ``path``."""
     os.makedirs(path, exist_ok=True)
     return path
+
+
+def sanitize_plot_token(value: Any) -> str:
+    """Normalize arbitrary metadata into lowercase ASCII-ish snake_case."""
+    text = str(value).strip().lower()
+    text = re.sub(r'[^a-z0-9]+', '_', text)
+    text = re.sub(r'_+', '_', text).strip('_')
+    return text or 'na'
+
+
+def signature_metadata(p: int, q: int, r: int = 0) -> str:
+    """Compact Clifford signature token suitable for filenames."""
+    parts = [str(p), str(q)]
+    if r != 0:
+        parts.append(str(r))
+    return 'cl' + '_'.join(parts)
+
+
+def build_visualization_metadata(*parts: Any, **named_parts: Any) -> str:
+    """Compose a stable metadata token from positional and named parts."""
+    tokens: List[str] = []
+
+    for part in parts:
+        if part is None or part == '':
+            continue
+        if isinstance(part, (list, tuple, set)):
+            joined = '_'.join(
+                sanitize_plot_token(item)
+                for item in part
+                if item is not None and item != ''
+            )
+            if joined:
+                tokens.append(joined)
+            continue
+        tokens.append(sanitize_plot_token(part))
+
+    for key, value in named_parts.items():
+        if value is None or value == '':
+            continue
+        label = sanitize_plot_token(key)
+        if isinstance(value, bool):
+            tokens.append(f'{label}_{int(value)}')
+            continue
+        if isinstance(value, float):
+            value_token = sanitize_plot_token(f'{value:g}')
+        elif isinstance(value, (list, tuple, set)):
+            value_token = '_'.join(
+                sanitize_plot_token(item)
+                for item in value
+                if item is not None and item != ''
+            )
+        else:
+            value_token = sanitize_plot_token(value)
+        if value_token:
+            tokens.append(f'{label}_{value_token}')
+
+    return '_'.join(tokens) or 'default'
+
+
+def _json_safe(value: Any) -> Any:
+    """Convert common experiment metadata into JSON-serializable values."""
+    if isinstance(value, argparse.Namespace):
+        return _json_safe(vars(value))
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(val) for key, val in value.items()}
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def save_experiment_figure(
+    fig: Any,
+    *,
+    output_dir: str,
+    experiment_name: str,
+    metadata: str,
+    plot_name: str,
+    args: Any = None,
+    module: Optional[str] = None,
+    dpi: int = 150,
+    close: bool = True,
+    manifest_name: str = 'visualization_manifest.jsonl',
+) -> str:
+    """Save a figure with standardized naming and append a verification record."""
+    out_dir = Path(ensure_output_dir(output_dir))
+    exp_token = sanitize_plot_token(experiment_name)
+    meta_token = sanitize_plot_token(metadata)
+    plot_token = sanitize_plot_token(plot_name)
+    filename = f'{exp_token}_{meta_token}_{plot_token}.png'
+    path = out_dir / filename
+
+    fig.savefig(path, dpi=dpi, bbox_inches='tight')
+
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    manifest_path = out_dir / manifest_name
+    entry = {
+        'experiment_name': exp_token,
+        'metadata': meta_token,
+        'plot_name': plot_token,
+        'filename': filename,
+        'path': str(path.resolve()),
+        'sha256': digest,
+        'module': module or exp_token,
+        'args': _json_safe(args),
+        'created_at': datetime.now(timezone.utc).isoformat(),
+    }
+    with manifest_path.open('a', encoding='utf-8') as handle:
+        handle.write(json.dumps(entry, sort_keys=True) + '\n')
+
+    if close:
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+    return str(path.resolve())
 
 
 # ---------------------------------------------------------------------------
@@ -179,8 +301,6 @@ _STANDARD_ARG_SPECS: Mapping[str, dict] = {
     'output_dir':    {'flags': ('--output-dir', '--out-dir'), 'type': str,
                       'default': 'experiment_plots',
                       'help': 'Directory for saved artefacts.'},
-    'save_plots':    {'flags': ('--save-plots',), 'action': 'store_true',
-                      'help': 'Save plots to --output-dir.'},
     'diag_interval': {'flags': ('--diag-interval',), 'type': int, 'default': 20,
                       'help': 'Epoch stride for diagnostic logging.'},
     'p':             {'flags': ('--p',), 'type': int, 'default': 3,
@@ -197,7 +317,7 @@ def add_standard_args(
     *,
     include: Sequence[str] = ('seed', 'device', 'epochs', 'lr',
                               'batch_size', 'output_dir',
-                              'save_plots', 'diag_interval'),
+                              'diag_interval'),
     defaults: Optional[Mapping[str, Any]] = None,
 ) -> argparse.ArgumentParser:
     """Additively attach common flags to ``parser``.
@@ -229,7 +349,7 @@ def make_experiment_parser(
     *,
     include: Sequence[str] = ('seed', 'device', 'epochs', 'lr',
                               'batch_size', 'output_dir',
-                              'save_plots', 'diag_interval'),
+                              'diag_interval'),
     defaults: Optional[Mapping[str, Any]] = None,
     formatter_class: type[argparse.HelpFormatter] = argparse.ArgumentDefaultsHelpFormatter,
 ) -> argparse.ArgumentParser:
@@ -300,8 +420,14 @@ def print_banner(title: str, **kv: Any) -> None:
 
 def save_training_curve(
     history: Mapping[str, Sequence[float]],
-    output_path: str,
+    output_path: Optional[str] = None,
     *,
+    output_dir: Optional[str] = None,
+    experiment_name: Optional[str] = None,
+    metadata: Optional[str] = None,
+    plot_name: str = 'training_curve',
+    args: Any = None,
+    module: Optional[str] = None,
     x_key: str = 'epochs',
     y_keys: Optional[Sequence[str]] = None,
     y_log: bool = True,
@@ -336,6 +462,26 @@ def save_training_curve(
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
+
+    if output_dir is not None or experiment_name is not None or metadata is not None:
+        if output_dir is None or experiment_name is None or metadata is None:
+            raise ValueError(
+                'output_dir, experiment_name, and metadata must be provided together'
+            )
+        return save_experiment_figure(
+            fig,
+            output_dir=output_dir,
+            experiment_name=experiment_name,
+            metadata=metadata,
+            plot_name=plot_name,
+            args=args,
+            module=module,
+            dpi=150,
+        )
+
+    if output_path is None:
+        raise ValueError('output_path is required when standardized plot saving is not used')
+
     saved = os.path.abspath(output_path)
     fig.savefig(saved, dpi=150, bbox_inches='tight')
     plt.close(fig)
@@ -506,6 +652,10 @@ __all__ = [
     'set_seed',
     'setup_algebra',
     'ensure_output_dir',
+    'sanitize_plot_token',
+    'signature_metadata',
+    'build_visualization_metadata',
+    'save_experiment_figure',
     'count_parameters',
     'grade1_indices',
     'extract_grade1',

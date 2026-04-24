@@ -36,6 +36,7 @@ import sys
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -44,8 +45,9 @@ from torch.utils.data import DataLoader, TensorDataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    RawDefaultsHelpFormatter, count_parameters, make_experiment_parser,
-    run_supervised_loop, set_seed, setup_algebra,
+    RawDefaultsHelpFormatter, build_visualization_metadata, count_parameters,
+    ensure_output_dir, make_experiment_parser, run_supervised_loop,
+    save_experiment_figure, set_seed, setup_algebra, signature_metadata,
 )
 from core.algebra import CliffordAlgebra
 from layers import CliffordLinear, BladeSelector
@@ -371,6 +373,145 @@ def winner(results, key='test_mse') -> str:
     return min(valid, key=lambda r: getattr(r, key)).method if valid else '—'
 
 
+def _load_pyplot():
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    return plt
+
+
+def save_regime_summary_plot(
+    title: str,
+    results: List[RunResult],
+    *,
+    output_dir: str,
+    metadata: str,
+    args: argparse.Namespace,
+) -> str:
+    plt = _load_pyplot()
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+    fig.suptitle(f'Linear Basis Mixing — {title}', fontsize=13)
+
+    methods = [r.method for r in results]
+    xs = list(range(len(results)))
+    test_mse = [max(r.test_mse, 1e-12) for r in results]
+    grade_pres = [0.0 if math.isnan(r.grade_pres) else r.grade_pres for r in results]
+    rot_gap = [max(r.rot_inv_gap, 1e-12) if not math.isnan(r.rot_inv_gap) else 1e-12
+               for r in results]
+
+    axes[0].bar(xs, test_mse, color='steelblue')
+    axes[0].set_yscale('log')
+    axes[0].set_title('Test MSE')
+    axes[0].set_xticks(xs)
+    axes[0].set_xticklabels(methods, rotation=30, ha='right')
+    axes[0].grid(True, alpha=0.3, axis='y')
+
+    axes[1].bar(xs, grade_pres, color='darkorange')
+    axes[1].set_ylim(0.0, 1.05)
+    axes[1].set_title('Grade Preservation')
+    axes[1].set_xticks(xs)
+    axes[1].set_xticklabels(methods, rotation=30, ha='right')
+    axes[1].grid(True, alpha=0.3, axis='y')
+
+    axes[2].bar(xs, rot_gap, color='seagreen')
+    axes[2].set_yscale('log')
+    axes[2].set_title('Rotation Invariance Gap')
+    axes[2].set_xticks(xs)
+    axes[2].set_xticklabels(methods, rotation=30, ha='right')
+    axes[2].grid(True, alpha=0.3, axis='y')
+
+    fig.tight_layout()
+    return save_experiment_figure(
+        fig,
+        output_dir=output_dir,
+        experiment_name='dbg_linear_basis_mixing',
+        metadata=metadata,
+        plot_name=f'{title}_summary',
+        args=args,
+        module=__name__,
+        dpi=150,
+    )
+
+
+def save_leakage_heatmap_plot(
+    title: str,
+    results: List[RunResult],
+    algebra: CliffordAlgebra,
+    *,
+    output_dir: str,
+    metadata: str,
+    args: argparse.Namespace,
+) -> str:
+    plt = _load_pyplot()
+    fig, axes = plt.subplots(1, len(results), figsize=(4 * len(results), 4), squeeze=False)
+    fig.suptitle(f'Leakage Matrices — {title}', fontsize=13)
+    axes_row = axes[0]
+    im = None
+
+    for ax, result in zip(axes_row, results):
+        if result.L is None:
+            ax.axis('off')
+            continue
+        matrix = result.L.numpy()
+        masked = np.nan_to_num(matrix, nan=0.0)
+        im = ax.imshow(masked, vmin=0.0, vmax=max(1.0, float(masked.max())), cmap='magma')
+        ax.set_title(result.method, fontsize=10)
+        ax.set_xlabel('Input grade')
+        ax.set_ylabel('Output grade')
+        ax.set_xticks(range(algebra.num_grades))
+        ax.set_yticks(range(algebra.num_grades))
+        for row in range(algebra.num_grades):
+            for col in range(algebra.num_grades):
+                label = '—' if math.isnan(matrix[row, col]) else f'{matrix[row, col]:.2f}'
+                ax.text(col, row, label, ha='center', va='center', fontsize=7, color='white')
+
+    if im is not None:
+        fig.colorbar(im, ax=axes_row.tolist(), shrink=0.75, label='Leakage ratio')
+    fig.tight_layout()
+    return save_experiment_figure(
+        fig,
+        output_dir=output_dir,
+        experiment_name='dbg_linear_basis_mixing',
+        metadata=metadata,
+        plot_name=f'{title}_leakage',
+        args=args,
+        module=__name__,
+        dpi=150,
+    )
+
+
+def save_lifting_plot(
+    stats: Dict[str, float],
+    *,
+    output_dir: str,
+    metadata: str,
+    args: argparse.Namespace,
+) -> str:
+    plt = _load_pyplot()
+    labels = list(stats.keys())
+    values = [stats[label] for label in labels]
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.bar(range(len(labels)), values, color='mediumpurple')
+    ax.set_yscale('log')
+    ax.set_title('Lifting Study')
+    ax.set_ylabel('Value')
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=25, ha='right')
+    ax.grid(True, alpha=0.3, axis='y')
+    fig.tight_layout()
+    return save_experiment_figure(
+        fig,
+        output_dir=output_dir,
+        experiment_name='dbg_linear_basis_mixing',
+        metadata=metadata,
+        plot_name='lifting_study',
+        args=args,
+        module=__name__,
+        dpi=150,
+    )
+
+
 # ==============================================================================
 # CLI
 # ==============================================================================
@@ -378,8 +519,8 @@ def winner(results, key='test_mse') -> str:
 def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
         __doc__,
-        include=('seed', 'device'),
-        defaults={'seed': 0},
+        include=('seed', 'device', 'output_dir'),
+        defaults={'seed': 0, 'output_dir': 'linear_basis_mixing_plots'},
         formatter_class=RawDefaultsHelpFormatter,
     )
     p.add_argument('--p', type=int, default=3)
@@ -417,6 +558,13 @@ def main() -> None:
     chosen = (list(REGIMES)
               if args.regimes == 'all'
               else [name for name in REGIMES if any(name.startswith(tag) for tag in args.regimes.split(','))])
+    metadata = build_visualization_metadata(
+        signature_metadata(args.p, args.q, args.r),
+        channels=args.channels,
+        regimes=args.regimes,
+        seed=args.seed,
+    )
+    ensure_output_dir(args.output_dir)
 
     all_results: Dict[str, List[RunResult]] = {}
     for title in chosen:
@@ -439,6 +587,15 @@ def main() -> None:
             valid_rig = [r for r in results if not math.isnan(r.rot_inv_gap)]
             if valid_rig:
                 print(f"  smallest rot-inv gap : {min(valid_rig, key=lambda r: r.rot_inv_gap).method}")
+        summary_path = save_regime_summary_plot(
+            title, results, output_dir=args.output_dir, metadata=metadata, args=args,
+        )
+        leakage_path = save_leakage_heatmap_plot(
+            title, results, algebra,
+            output_dir=args.output_dir, metadata=metadata, args=args,
+        )
+        print(f"  summary plot saved to {summary_path}")
+        print(f"  leakage plot saved to {leakage_path}")
 
     if not args.skip_lifting:
         print("\n---\n## Lifting study — nn.Linear → CliffordLinear (R2)\n")
@@ -446,6 +603,10 @@ def main() -> None:
                             args.epochs, args.epochs_short, args.batch, args.lr, device)
         for k, v in stats.items():
             print(f"  {k:55s} : {v:.5f}")
+        lifting_path = save_lifting_plot(
+            stats, output_dir=args.output_dir, metadata=metadata, args=args,
+        )
+        print(f"  lifting plot saved to {lifting_path}")
 
 
 if __name__ == '__main__':
