@@ -6,7 +6,10 @@
 #
 
 
-"""Geometric Deterministic Optimizer (GDO) entry point.
+"""
+Highly Experimental, See experiments/gdo/README.md.
+
+Geometric Deterministic Optimizer (GDO) entry point.
 
 Thin CLI wrapper over `experiments._gdo`. The actual optimizer core, controller,
 benchmarks, plotting, and analysis infrastructure live in the subpackage.
@@ -20,7 +23,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
-from experiments._lib import set_seed
+from experiments._lib import make_experiment_parser, set_seed
 from experiments._gdo import EXPERIMENT_REGISTRY
 from experiments._gdo.analysis import analyze_experiment_results
 from experiments._gdo.experiments import run_all_experiments, run_category
@@ -31,17 +34,17 @@ def parse_args():
     all_choices = registered + [
         "all", "analytic", "geometric", "ga_neural", "manifold", "compare_all",
     ]
-    p = argparse.ArgumentParser(
-        description="Geometric Deterministic Optimizer (GDO) Experiment Suite")
+    p = make_experiment_parser(
+        "Geometric Deterministic Optimizer (GDO) Experiment Suite",
+        include=('seed', 'device', 'output_dir'),
+        defaults={'output_dir': 'gdo_plots'},
+    )
     p.add_argument("--task", choices=all_choices, default="rosenbrock")
     p.add_argument("--optimizers", nargs="+",
                    default=["gdo", "riemannian_adam", "adam"],
                    help="Optimizers to compare")
     p.add_argument("--steps", type=int, default=2000)
     p.add_argument("--n-dims", type=int, default=10)
-    p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--device", default="cpu")
-    p.add_argument("--output-dir", default="gdo_plots")
     p.add_argument("--noise-std", type=float, default=0.05)
     p.add_argument("--rotation-angle", type=float, default=2.5)
     return p.parse_args()

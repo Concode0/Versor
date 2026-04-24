@@ -56,10 +56,10 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    add_standard_args, apply_residual_block, count_parameters,
-    ensure_output_dir, extract_grade1, gbn_residual_block, mean_grade_spectrum,
-    print_banner, report_diagnostics, run_supervised_loop, save_training_curve,
-    set_seed, setup_algebra,
+    apply_residual_block, count_parameters, ensure_output_dir,
+    extract_grade1, gbn_residual_block, make_experiment_parser,
+    mean_grade_spectrum, print_banner, report_diagnostics,
+    run_supervised_loop, save_training_curve, set_seed, setup_algebra,
 )
 
 from core.algebra import CliffordAlgebra
@@ -435,10 +435,8 @@ def train(args: argparse.Namespace) -> None:
 # ==============================================================================
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description='Hamiltonian phase-space flow in Cl(p,q) — pendulum / Lorenz.')
-    add_standard_args(
-        p,
+    p = make_experiment_parser(
+        'Hamiltonian phase-space flow in Cl(p,q) — pendulum / Lorenz.',
         include=('seed', 'device', 'epochs', 'lr', 'batch_size',
                  'output_dir', 'save_plots', 'diag_interval', 'p', 'q'),
         defaults={'epochs': 200, 'batch_size': 256, 'diag_interval': 20,

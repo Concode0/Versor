@@ -341,30 +341,6 @@ class MultiSigGBNModel(CliffordModule):
         return F.mse_loss(pred, self.y)
 
 
-class DeepGBNModel(CliffordModule):
-    """Deep GBN (5 layers, 16 channels) for scalability testing.
-    Task: predict grade-2 energy from input multivectors."""
-    def __init__(self, p=3, q=0, channels=16, layers=5, n_samples=48, device='cpu'):
-        algebra = CliffordAlgebra(p, q, device=device)
-        super().__init__(algebra)
-        dim = self.algebra.dim
-        self.gbn = GeometricBladeNetwork(
-            self.algebra, in_channels=channels,
-            hidden_channels=channels, out_channels=channels,
-            layers=layers,
-        )
-        torch.manual_seed(42)
-        self.register_buffer('X', torch.randn(n_samples, channels, dim, device=device) * 0.3)
-        grade2_mask = self.algebra.grade_masks_float[2]
-        g2_energy = (self.X * grade2_mask).pow(2).sum(dim=-1).mean(dim=1, keepdim=True)
-        self.register_buffer('y', g2_energy)
-
-    def forward(self) -> torch.Tensor:
-        out = self.gbn(self.X)
-        pred = out[:, :, 0].mean(dim=1, keepdim=True)
-        return F.mse_loss(pred, self.y)
-
-
 # --- Category: Manifold Tasks ---
 
 class SO3InterpolationModel(CliffordModule):

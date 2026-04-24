@@ -50,7 +50,8 @@ def set_seed(seed: int, deterministic: bool = False) -> None:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
     if deterministic:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
@@ -165,17 +166,29 @@ def mean_grade_spectrum(mv_iter: Iterable[torch.Tensor],
 # ---------------------------------------------------------------------------
 
 _STANDARD_ARG_SPECS: Mapping[str, dict] = {
-    'seed':          {'flag': '--seed',          'type': int,   'default': 42,           'help': 'Random seed.'},
-    'device':        {'flag': '--device',        'type': str,   'default': 'cpu',        'help': 'Torch device (cpu/cuda/mps).'},
-    'epochs':        {'flag': '--epochs',        'type': int,   'default': 200,          'help': 'Number of training epochs.'},
-    'lr':            {'flag': '--lr',            'type': float, 'default': 1e-3,         'help': 'Learning rate.'},
-    'batch_size':    {'flag': '--batch-size',    'type': int,   'default': 128,          'help': 'Mini-batch size.'},
-    'output_dir':    {'flag': '--output-dir',    'type': str,   'default': 'experiment_plots', 'help': 'Directory for saved artefacts.'},
-    'save_plots':    {'flag': '--save-plots',    'action': 'store_true',                  'help': 'Save plots to --output-dir.'},
-    'diag_interval': {'flag': '--diag-interval', 'type': int,   'default': 20,           'help': 'Epoch stride for diagnostic logging.'},
-    'p':             {'flag': '--p',             'type': int,   'default': 3,            'help': 'Positive signature dimensions.'},
-    'q':             {'flag': '--q',             'type': int,   'default': 0,            'help': 'Negative signature dimensions.'},
-    'r':             {'flag': '--r',             'type': int,   'default': 0,            'help': 'Degenerate (null) dimensions.'},
+    'seed':          {'flags': ('--seed',), 'type': int, 'default': 42,
+                      'help': 'Random seed.'},
+    'device':        {'flags': ('--device',), 'type': str, 'default': 'cpu',
+                      'help': 'Torch device (cpu/cuda/mps).'},
+    'epochs':        {'flags': ('--epochs',), 'type': int, 'default': 200,
+                      'help': 'Number of training epochs.'},
+    'lr':            {'flags': ('--lr',), 'type': float, 'default': 1e-3,
+                      'help': 'Learning rate.'},
+    'batch_size':    {'flags': ('--batch-size',), 'type': int, 'default': 128,
+                      'help': 'Mini-batch size.'},
+    'output_dir':    {'flags': ('--output-dir', '--out-dir'), 'type': str,
+                      'default': 'experiment_plots',
+                      'help': 'Directory for saved artefacts.'},
+    'save_plots':    {'flags': ('--save-plots',), 'action': 'store_true',
+                      'help': 'Save plots to --output-dir.'},
+    'diag_interval': {'flags': ('--diag-interval',), 'type': int, 'default': 20,
+                      'help': 'Epoch stride for diagnostic logging.'},
+    'p':             {'flags': ('--p',), 'type': int, 'default': 3,
+                      'help': 'Positive signature dimensions.'},
+    'q':             {'flags': ('--q',), 'type': int, 'default': 0,
+                      'help': 'Negative signature dimensions.'},
+    'r':             {'flags': ('--r',), 'type': int, 'default': 0,
+                      'help': 'Degenerate (null) dimensions.'},
 }
 
 
@@ -197,10 +210,70 @@ def add_standard_args(
     overrides = dict(defaults or {})
     for name in include:
         spec = dict(_STANDARD_ARG_SPECS[name])
-        flag = spec.pop('flag')
+        flags = spec.pop('flags')
         if name in overrides:
             spec['default'] = overrides[name]
-        parser.add_argument(flag, **spec)
+        parser.add_argument(*flags, **spec)
+    return parser
+
+
+class RawDefaultsHelpFormatter(
+    argparse.ArgumentDefaultsHelpFormatter,
+    argparse.RawDescriptionHelpFormatter,
+):
+    """Preserve multi-line descriptions while still showing defaults."""
+
+
+def make_experiment_parser(
+    description: str,
+    *,
+    include: Sequence[str] = ('seed', 'device', 'epochs', 'lr',
+                              'batch_size', 'output_dir',
+                              'save_plots', 'diag_interval'),
+    defaults: Optional[Mapping[str, Any]] = None,
+    formatter_class: type[argparse.HelpFormatter] = argparse.ArgumentDefaultsHelpFormatter,
+) -> argparse.ArgumentParser:
+    """Create a parser and attach the standard experiment flags."""
+    parser = argparse.ArgumentParser(
+        description=description,
+        formatter_class=formatter_class,
+    )
+    if include:
+        add_standard_args(parser, include=include, defaults=defaults)
+    return parser
+
+
+def parse_clifford_signature(value: str) -> tuple[int, int, int]:
+    """Parse ``p,q`` or ``p,q,r`` into a Clifford signature tuple."""
+    parts = [part.strip() for part in value.split(',')]
+    if len(parts) not in (2, 3) or any(part == '' for part in parts):
+        raise argparse.ArgumentTypeError(
+            f"signature must be 'p,q' or 'p,q,r', got {value!r}"
+        )
+    try:
+        ints = tuple(int(part) for part in parts)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"signature must be 'p,q' or 'p,q,r', got {value!r}"
+        ) from exc
+    if len(ints) == 2:
+        return ints[0], ints[1], 0
+    return ints  # type: ignore[return-value]
+
+
+def add_signature_arg(
+    parser: argparse.ArgumentParser,
+    *,
+    default: tuple[int, int, int] = (3, 0, 0),
+    flag: str = '--signature',
+) -> argparse.ArgumentParser:
+    """Attach a reusable ``Cl(p,q,r)`` signature argument."""
+    parser.add_argument(
+        flag,
+        type=parse_clifford_signature,
+        default=default,
+        help='Comma-separated p,q[,r]. Default: 3,0,0.',
+    )
     return parser
 
 
@@ -430,7 +503,6 @@ RUNNABLE SCRIPT:
 
 
 __all__ = [
-    'bootstrap_imports',
     'set_seed',
     'setup_algebra',
     'ensure_output_dir',
@@ -441,6 +513,10 @@ __all__ = [
     'apply_residual_block',
     'mean_grade_spectrum',
     'add_standard_args',
+    'make_experiment_parser',
+    'RawDefaultsHelpFormatter',
+    'parse_clifford_signature',
+    'add_signature_arg',
     'section_header',
     'print_banner',
     'save_training_curve',

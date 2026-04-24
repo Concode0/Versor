@@ -50,13 +50,14 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    add_standard_args, ensure_output_dir, section_header, set_seed, setup_algebra,
+    ensure_output_dir, make_experiment_parser, section_header, set_seed,
+    setup_algebra,
 )
 from core.algebra import CliffordAlgebra
+from core.decomposition import ExpPolicy
 from core.metric import induced_norm
-from core.decomposition import exp_decomposed
 from layers.primitives.base import CliffordModule
-from optimizers.riemannian import RiemannianAdam, group_parameters_by_manifold
+from optimizers.riemannian import RiemannianAdam
 
 
 # ---------------------------------------------------------------------------
@@ -197,9 +198,8 @@ class MorphStage(CliffordModule):
 
     When ``compound_blades >= 2`` and ``n >= 4`` the global and twist rotors
     learn a *sum* of independent simple bivectors per slot, producing
-    non-simple bivectors that route through ``exp_decomposed``. This stresses
-    the commutator scheduler since the per-slot effective bivector now mixes
-    multiple non-commuting planes.
+    non-simple bivectors that are handled by ``algebra.exp()`` via the active
+    :class:`~core.decomposition.ExpPolicy`.
     """
 
     def __init__(self, algebra: CliffordAlgebra, n: int,
@@ -257,10 +257,10 @@ class MorphStage(CliffordModule):
     def _make_rotor(self, B: torch.Tensor) -> tuple:
         """Exponentiate bivector to a unit rotor.
 
-        For n <= 3, all bivectors are simple and algebra.exp() is exact.
-        For n >= 4, uses exp_decomposed() which decomposes B into simple
-        components via power iteration, exponentiates each exactly, and
-        composes via geometric product (core/decomposition.py).
+        ``self.algebra.exp_policy`` controls the dispatch. The experiment
+        sets it to ``ExpPolicy.AUTO`` so simple bivectors use the closed-form
+        path while non-simple bivectors fall back to the compiled-safe
+        decomposition path.
 
         Args:
             B: Full bivector multivector [..., D].
@@ -268,10 +268,7 @@ class MorphStage(CliffordModule):
             (R, R_rev) both [..., D].
         """
         half_B = -0.5 * B
-        if self.algebra.n >= 4:
-            R = exp_decomposed(self.algebra, half_B)
-        else:
-            R = self.algebra.exp(half_B)
+        R = self.algebra.exp(half_B)
         R_rev = self.algebra.reverse(R)
         return R, R_rev
 
@@ -399,214 +396,6 @@ class MorphPipeline(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# CommutatorScheduler — lightweight commutator-based update scheduling
-# ---------------------------------------------------------------------------
-
-class CommutatorScheduler:
-    """Lightweight commutator-based parameter group scheduler.
-
-    Adapts GDO's commutator coloring for the lattice morph pipeline.
-
-    At n >= 4, simultaneous Adam updates to multiple spin (bivector) parameter
-    groups cause mutual interference: updating one rotor's bivector changes
-    the geometry that other rotors see, amplifying the approximate-exp error.
-
-    This scheduler:
-      1. Extracts spin parameter groups from the pipeline
-      2. Computes pairwise algebraic commutator norms [B_i, B_j] = B_i B_j - B_j B_i
-      3. Greedy graph-colors groups so conflicting pairs are in different colors
-      4. Provides per-color optimizers for sequential updates
-
-    Inspired by GDO's GeometricParameterController (experiments/inc_gdo.py).
-    """
-
-    def __init__(self, algebra: CliffordAlgebra, pipeline: MorphPipeline,
-                 threshold: float = 0.3, lr: float = 0.01):
-        self.algebra = algebra
-        self.pipeline = pipeline
-        self.threshold = threshold
-
-        # Extract spin parameter groups (one per spin param tensor)
-        self.spin_groups = []
-        self.spin_labels = []
-        self.euclidean_params = []
-
-        for s_idx, stage in enumerate(pipeline.stages):
-            self.spin_groups.append([stage.global_bv])
-            self.spin_labels.append(f"S{s_idx}.global")
-            self.spin_groups.append([stage.twist_bvs])
-            self.spin_labels.append(f"S{s_idx}.twist")
-            self.euclidean_params.append(stage.log_scale)
-
-        n_groups = len(self.spin_groups)
-
-        # Compute commutator scores and build schedule
-        scores = self._compute_commutator_scores()
-        self.schedule = self._greedy_color(scores, n_groups)
-        self.scores = scores
-
-        # Create per-color optimizers for spin params + one for Euclidean
-        self.color_optimizers = []
-        for color_group in self.schedule:
-            params = []
-            for idx in color_group:
-                params.extend(self.spin_groups[idx])
-            self.color_optimizers.append(
-                RiemannianAdam(
-                    [{'params': params, 'manifold': 'spin'}],
-                    lr=lr, algebra=algebra,
-                )
-            )
-
-        self.euclidean_optimizer = torch.optim.Adam(
-            self.euclidean_params, lr=lr,
-        )
-
-    def _compute_commutator_scores(self):
-        """Compute algebraic commutator norms between spin groups.
-
-        For each pair (i, j), builds full bivector multivectors from the
-        current parameter values and computes:
-            score = ||[B_i, B_j]|| / (||B_i|| * ||B_j||)
-        where [B_i, B_j] = B_i B_j - B_j B_i (Lie bracket).
-        """
-        scores = {}
-        n = len(self.spin_groups)
-        device = self.spin_groups[0][0].device
-
-        # Build a single representative bivector per group by averaging over
-        # all leading dimensions (per-basis row index for ``twist_bvs`` and the
-        # compound-blade index when present). The scoring is heuristic — it
-        # only needs to preserve *relative* ordering of pairs for graph
-        # coloring, so the choice of mean (vs. sum) only rescales the score
-        # uniformly within a group's structure.
-        bv_indices = self.algebra.grade_masks[2].nonzero(as_tuple=False).squeeze(-1)
-        mvs = []
-        for group in self.spin_groups:
-            p = group[0].detach()
-            while p.dim() > 1:
-                p = p.mean(dim=0)
-            # Scatter to full MV
-            full = torch.zeros(self.algebra.dim, device=device)
-            full[bv_indices[:p.shape[0]]] = p
-            mvs.append(full)
-
-        for i in range(n):
-            for j in range(i + 1, n):
-                # Lie bracket [B_i, B_j] = B_i * B_j - B_j * B_i
-                AB = self.algebra.geometric_product(mvs[i], mvs[j])
-                BA = self.algebra.geometric_product(mvs[j], mvs[i])
-                commutator = AB - BA
-                comm_norm = commutator.norm().item()
-                bi_norm = mvs[i].norm().item()
-                bj_norm = mvs[j].norm().item()
-                denom = (bi_norm * bj_norm)
-                scores[(i, j)] = comm_norm / denom if denom > 1e-10 else 0.0
-
-        return scores
-
-    def _greedy_color(self, scores, n_groups):
-        """Greedy graph coloring: conflicting groups get different colors.
-
-        Mirrors GDO's GeometricParameterController.parallel_groups().
-        """
-        conflicts = {i: set() for i in range(n_groups)}
-        for (i, j), s in scores.items():
-            if s > self.threshold:
-                conflicts[i].add(j)
-                conflicts[j].add(i)
-
-        colors = [-1] * n_groups
-        for i in range(n_groups):
-            used = {colors[c] for c in conflicts[i] if colors[c] >= 0}
-            color = 0
-            while color in used:
-                color += 1
-            colors[i] = color
-
-        n_colors = max(colors) + 1 if colors else 1
-        schedule = [[] for _ in range(n_colors)]
-        for i, c in enumerate(colors):
-            schedule[c].append(i)
-        return schedule
-
-    def step(self, loss_fn):
-        """Sequential per-color updates with fresh gradients.
-
-        For each color group:
-          1. Zero all gradients
-          2. Compute loss and backprop
-          3. Step only that color's spin optimizer
-
-        Then one Euclidean step for scale params.
-
-        Args:
-            loss_fn: Callable returning a scalar loss tensor. Must recompute
-                     the forward pass each time (closure-style).
-        """
-        # Per-color spin updates (sequential with fresh gradients)
-        for color_opt in self.color_optimizers:
-            self.pipeline.zero_grad()
-            loss = loss_fn()
-            loss.backward()
-            color_opt.step()
-
-        # Euclidean update (scale params) — one final pass
-        self.pipeline.zero_grad()
-        loss = loss_fn()
-        loss.backward()
-        self.euclidean_optimizer.step()
-
-        return loss.item()
-
-    def reschedule(self):
-        """Recompute commutator scores and update schedule.
-
-        Call periodically when parameters have moved significantly.
-        """
-        self.scores = self._compute_commutator_scores()
-        n_groups = len(self.spin_groups)
-        new_schedule = self._greedy_color(self.scores, n_groups)
-        if new_schedule != self.schedule:
-            self.schedule = new_schedule
-            # Rebuild per-color optimizers with new grouping
-            self.color_optimizers.clear()
-            for color_group in self.schedule:
-                params = []
-                for idx in color_group:
-                    params.extend(self.spin_groups[idx])
-                lr = self.euclidean_optimizer.defaults['lr']
-                self.color_optimizers.append(
-                    RiemannianAdam(
-                        [{'params': params, 'manifold': 'spin'}],
-                        lr=lr, algebra=self.algebra,
-                    )
-                )
-            return True
-        return False
-
-    def print_schedule(self):
-        """Print the current commutator schedule."""
-        n_colors = len(self.schedule)
-        print(f"  Commutator Schedule: {n_colors} color(s)")
-        for c_idx, group in enumerate(self.schedule):
-            labels = [self.spin_labels[i] for i in group]
-            print(f"    Color {c_idx}: {labels}")
-
-        if self.scores:
-            max_score = max(self.scores.values())
-            conflicting = [(k, v) for k, v in self.scores.items()
-                           if v > self.threshold]
-            print(f"    Max commutator score: {max_score:.4f} "
-                  f"(threshold={self.threshold})")
-            if conflicting:
-                for (i, j), s in sorted(conflicting,
-                                         key=lambda x: -x[1])[:5]:
-                    print(f"    Conflict: {self.spin_labels[i]} <-> "
-                          f"{self.spin_labels[j]}: {s:.4f}")
-
-
-# ---------------------------------------------------------------------------
 # LatticeMorpher — main experiment class
 # ---------------------------------------------------------------------------
 
@@ -630,6 +419,7 @@ class LatticeMorpher:
         else:
             p, q = n, 0
         self.algebra = setup_algebra(p=p, q=q, device=device)
+        self.algebra.exp_policy = ExpPolicy.AUTO
         self.signature_q = q
         self.tracker = StructureTracker(self.algebra)
         self.pipeline = MorphPipeline(
@@ -700,31 +490,10 @@ class LatticeMorpher:
                 print(f"      [{row}]")
 
     def _make_optimizer(self, lr: float):
-        """Create optimizer: CommutatorScheduler for n >= 4, plain Adam otherwise.
-
-        At n >= 4, bivectors can be non-simple and simultaneous updates to
-        multiple spin parameter groups cause mutual interference.  The
-        commutator scheduler sequences conflicting groups into separate
-        update steps.
-
-        Returns:
-            (optimizer_or_scheduler, use_scheduler: bool)
-        """
-        # Below n=4 every bivector is simple, so the closed-form exp is exact
-        # and plain RiemannianAdam suffices. From n=4 onwards bivectors can be
-        # non-simple and simultaneous spin-group updates interfere, so we route
-        # through the commutator scheduler.
-        if self.n >= 4:
-            scheduler = CommutatorScheduler(
-                self.algebra, self.pipeline,
-                threshold=0.3, lr=lr,
-            )
-            scheduler.print_schedule()
-            return scheduler, True
-        else:
-            optimizer = RiemannianAdam.from_model(
-                self.pipeline, lr=lr, algebra=self.algebra)
-            return optimizer, False
+        """Create the optimizer used by all morphing runs."""
+        return RiemannianAdam.from_model(
+            self.pipeline, lr=lr, algebra=self.algebra
+        )
 
     def _mode_extra_loss(self, morphed: torch.Tensor,
                          reference_gram: torch.Tensor = None) -> torch.Tensor:
@@ -749,66 +518,25 @@ class LatticeMorpher:
             extra = extra + self.lambda_minkowski * (M - reference_gram).pow(2).sum()
         return extra
 
-    def _optimization_step(self, optimizer, use_scheduler, loss_fn):
-        """Execute one optimization step (plain or scheduled).
+    def _optimization_step(self, optimizer, loss_fn):
+        """Execute one optimization step."""
 
-        Args:
-            optimizer: RiemannianAdam or CommutatorScheduler.
-            use_scheduler: Whether using commutator scheduling.
-            loss_fn: Callable returning loss tensor (closure-style).
-        Returns:
-            loss value (float).
-        """
-        if use_scheduler:
-            return optimizer.step(loss_fn)
-        else:
-            optimizer.zero_grad()
-            loss = loss_fn()
-            loss.backward()
-            optimizer.step()
-            return loss.item()
+        optimizer.zero_grad()
+        loss = loss_fn()
+        loss.backward()
+        optimizer.step()
+        return loss.item()
 
-    def run_target_morphing(self, target_basis: torch.Tensor,
-                            lr: float = 0.01, steps: int = 300,
-                            reschedule_interval: int = 100) -> dict:
-        """Optimize pipeline to morph source -> target basis.
-
-        Args:
-            target_basis: [n, D] target lattice basis.
-            lr: Learning rate.
-            steps: Optimization steps.
-            reschedule_interval: Steps between commutator reschedules (n>=4).
-        Returns:
-            Dict with loss_history, invariant_history, recon_errors, intermediates.
-        """
-        source = self.source_basis.detach()
-        target = target_basis.detach()
-        optimizer, use_scheduler = self._make_optimizer(lr)
-
+    def _run_morphing_loop(self, source: torch.Tensor, optimizer, loss_fn,
+                           steps: int, title: str, final_frame=None) -> dict:
+        """Shared optimization loop for target and free morphing."""
         loss_history = []
         invariant_history = []
         recon_errors = []
-        # Reference Minkowski metric: target's indefinite inner product matrix.
-        with torch.no_grad():
-            ref_gram = self.tracker.compute_gram_matrix(target)
 
-        def loss_fn():
-            morphed, _ = self.pipeline(source)
-            base = (morphed - target).pow(2).sum()
-            return base + self._mode_extra_loss(morphed, reference_gram=ref_gram)
-
-        print(f"\n  Target Morphing: {steps} steps, lr={lr}"
-              f"{' [commutator-scheduled]' if use_scheduler else ''}"
-              f"{' [ops=' + self.mode.value + ']' if self.mode != MorphMode.BASIC else ''}")
+        print(title)
         for step in range(steps):
-            loss_val = self._optimization_step(optimizer, use_scheduler, loss_fn)
-
-            # Periodic reschedule for commutator scheduler
-            if (use_scheduler and reschedule_interval > 0
-                    and step > 0 and step % reschedule_interval == 0):
-                if optimizer.reschedule():
-                    print(f"    step {step:4d}: ** rescheduled **")
-                    optimizer.print_schedule()
+            loss_val = self._optimization_step(optimizer, loss_fn)
 
             with torch.no_grad():
                 morphed, _ = self.pipeline(source)
@@ -830,32 +558,60 @@ class LatticeMorpher:
         with torch.no_grad():
             _, final_intermediates = self.pipeline(source)
 
+        intermediates = [source] + final_intermediates
+        if final_frame is not None:
+            intermediates.append(final_frame)
+
         return {
             'loss_history': loss_history,
             'invariant_history': invariant_history,
             'recon_errors': recon_errors,
-            'intermediates': [source] + final_intermediates + [target],
+            'intermediates': intermediates,
         }
 
+    def run_target_morphing(self, target_basis: torch.Tensor,
+                            lr: float = 0.01, steps: int = 300) -> dict:
+        """Optimize pipeline to morph source -> target basis.
+
+        Args:
+            target_basis: [n, D] target lattice basis.
+            lr: Learning rate.
+            steps: Optimization steps.
+        Returns:
+            Dict with loss_history, invariant_history, recon_errors, intermediates.
+        """
+        source = self.source_basis.detach()
+        target = target_basis.detach()
+        optimizer = self._make_optimizer(lr)
+        # Reference Minkowski metric: target's indefinite inner product matrix.
+        with torch.no_grad():
+            ref_gram = self.tracker.compute_gram_matrix(target)
+
+        def loss_fn():
+            morphed, _ = self.pipeline(source)
+            base = (morphed - target).pow(2).sum()
+            return base + self._mode_extra_loss(morphed, reference_gram=ref_gram)
+
+        title = (f"\n  Target Morphing: {steps} steps, lr={lr}"
+              f"{' [ops=' + self.mode.value + ']' if self.mode != MorphMode.BASIC else ''}")
+        results = self._run_morphing_loop(
+            source, optimizer, loss_fn, steps, title, final_frame=target
+        )
+        return results
+
     def run_free_morphing(self, lr: float = 0.01, steps: int = 200,
-                          objective: str = 'orthogonalize',
-                          reschedule_interval: int = 100) -> dict:
+                          objective: str = 'orthogonalize') -> dict:
         """Optimize pipeline toward a geometric objective.
 
         Args:
             lr: Learning rate.
             steps: Optimization steps.
             objective: 'orthogonalize', 'equalize_norms', or 'minimize_volume'.
-            reschedule_interval: Steps between commutator reschedules (n>=4).
         Returns:
             Dict with loss_history, invariant_history, recon_errors, intermediates.
         """
         source = self.source_basis.detach()
-        optimizer, use_scheduler = self._make_optimizer(lr)
-
-        loss_history = []
-        invariant_history = []
-        recon_errors = []
+        optimizer = self._make_optimizer(lr)
         # Reference Minkowski metric for MINKOWSKI mode: source's metric — the
         # morph should reshape the basis while preserving the causal structure.
         with torch.no_grad():
@@ -877,44 +633,9 @@ class LatticeMorpher:
                 raise ValueError(f"Unknown objective: {objective}")
             return base + self._mode_extra_loss(morphed, reference_gram=ref_gram)
 
-        print(f"\n  Free Morphing ({objective}): {steps} steps, lr={lr}"
-              f"{' [commutator-scheduled]' if use_scheduler else ''}"
+        title = (f"\n  Free Morphing ({objective}): {steps} steps, lr={lr}"
               f"{' [ops=' + self.mode.value + ']' if self.mode != MorphMode.BASIC else ''}")
-        for step in range(steps):
-            loss_val = self._optimization_step(optimizer, use_scheduler, loss_fn)
-
-            if (use_scheduler and reschedule_interval > 0
-                    and step > 0 and step % reschedule_interval == 0):
-                if optimizer.reschedule():
-                    print(f"    step {step:4d}: ** rescheduled **")
-                    optimizer.print_schedule()
-
-            with torch.no_grad():
-                morphed, _ = self.pipeline(source)
-                snap = self.tracker.snapshot(morphed)
-                reconstructed = self.pipeline.inverse(morphed)
-                recon_err = (source - reconstructed).pow(2).sum().sqrt().item()
-
-                loss_history.append(loss_val)
-                invariant_history.append({
-                    k: v.detach().cpu() for k, v in snap.items()
-                })
-                recon_errors.append(recon_err)
-
-            if step % 50 == 0 or step == steps - 1:
-                print(f"    step {step:4d}: loss={loss_val:.6f}, "
-                      f"vol={snap['volume'].item():.4f}, "
-                      f"recon_err={recon_err:.2e}")
-
-        with torch.no_grad():
-            _, final_intermediates = self.pipeline(source)
-
-        return {
-            'loss_history': loss_history,
-            'invariant_history': invariant_history,
-            'recon_errors': recon_errors,
-            'intermediates': [source] + final_intermediates,
-        }
+        return self._run_morphing_loop(source, optimizer, loss_fn, steps, title)
 
     def verify_reconstruction(self, tolerance: float = 1e-5) -> dict:
         """Verify pipeline invertibility.
@@ -972,8 +693,6 @@ class MorphVisualizer:
         n_plots = len(intermediates)
         if labels is None:
             labels = ['Source'] + [f'Stage {i+1}' for i in range(n_plots - 1)]
-            if n_plots >= 2 and 'Target' not in labels[-1]:
-                pass  # Keep as-is
 
         if self.n == 2:
             self._plot_sequence_2d(intermediates, grid_range, labels)
@@ -1281,10 +1000,8 @@ def run_experiment(args):
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Lattice Morphing via Geometric Algebra")
-    add_standard_args(
-        parser,
+    parser = make_experiment_parser(
+        "Lattice Morphing via Geometric Algebra",
         include=('seed', 'device', 'lr', 'output_dir', 'save_plots'),
         defaults={'lr': 0.01, 'output_dir': 'lattice_morph_plots'},
     )

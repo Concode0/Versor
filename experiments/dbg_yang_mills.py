@@ -58,9 +58,9 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    count_parameters, ensure_output_dir, print_banner,
-    report_diagnostics, run_supervised_loop, save_training_curve,
-    set_seed, setup_algebra,
+    count_parameters, ensure_output_dir, make_experiment_parser,
+    print_banner, report_diagnostics, run_supervised_loop,
+    save_training_curve, set_seed, setup_algebra,
 )
 from core.algebra import CliffordAlgebra
 from core.metric import hermitian_grade_spectrum, hermitian_inner_product
@@ -453,8 +453,10 @@ def post_training_diagnostics(model, algebra, test_ds, device, rho):
 # ---------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description='Yang-Mills SU(2) instanton in CGA Cl(4,1) — supervised BPST.')
+    p = make_experiment_parser(
+        'Yang-Mills SU(2) instanton in CGA Cl(4,1) — supervised BPST.',
+        defaults={'output_dir': 'ym_plots'},
+    )
     p.add_argument('--rho', type=float, default=1.0)
     p.add_argument('--num-train', type=int, default=2048)
     p.add_argument('--num-test', type=int, default=512)
@@ -462,14 +464,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--hidden-dim', type=int, default=32)
     p.add_argument('--num-layers', type=int, default=4)
     p.add_argument('--num-freqs', type=int, default=16)
-    p.add_argument('--epochs', type=int, default=200)
-    p.add_argument('--lr', type=float, default=1e-3)
-    p.add_argument('--batch-size', type=int, default=256)
-    p.add_argument('--seed', type=int, default=42)
-    p.add_argument('--device', type=str, default='cpu')
-    p.add_argument('--diag-interval', type=int, default=20)
-    p.add_argument('--save-plots', action='store_true')
-    p.add_argument('--output-dir', type=str, default='ym_plots')
     return p.parse_args()
 
 

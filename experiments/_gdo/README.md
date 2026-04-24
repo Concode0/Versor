@@ -9,6 +9,8 @@ True to the spirit of an **Idea Incubator**, this is a highly experimental space
 
 Therefore, if you are interested in exploring this codebase, **I strongly recommend taking it apart and utilizing it fragment by fragment**. Trying to digest the entire pipeline at once might be overwhelming. Examining individual modules (e.g., topology detection or dimensional lifting) on their own will likely be much easier to understand and apply to your own research.
 
+> Note: It does not guarantee robust stability and may be unstable, especially in deep layer situations.
+
 Thank you so much for your interest!
 
 ---

@@ -56,9 +56,9 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    count_parameters, ensure_output_dir, print_banner,
-    report_diagnostics, run_supervised_loop, save_training_curve,
-    set_seed, setup_algebra,
+    count_parameters, ensure_output_dir, make_experiment_parser,
+    print_banner, report_diagnostics, run_supervised_loop,
+    save_training_curve, set_seed, setup_algebra,
 )
 from core.metric import hermitian_inner_product, hermitian_grade_spectrum
 from layers.primitives.base import CliffordModule
@@ -369,8 +369,10 @@ def post_training_diagnostics(model, algebra, coords, device,
 # ---------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description='Navier-Stokes in Cl(3,0) — supervised IC+BC reconstruction.')
+    p = make_experiment_parser(
+        'Navier-Stokes in Cl(3,0) — supervised IC+BC reconstruction.',
+        defaults={'output_dir': 'ns_plots'},
+    )
     p.add_argument('--re', type=float, default=100.0)
     p.add_argument('--t-max', type=float, default=1.0)
     p.add_argument('--num-ic', type=int, default=1024)
@@ -378,14 +380,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--num-test', type=int, default=512)
     p.add_argument('--hidden-dim', type=int, default=32)
     p.add_argument('--num-layers', type=int, default=4)
-    p.add_argument('--epochs', type=int, default=200)
-    p.add_argument('--lr', type=float, default=1e-3)
-    p.add_argument('--batch-size', type=int, default=256)
-    p.add_argument('--seed', type=int, default=42)
-    p.add_argument('--device', type=str, default='cpu')
-    p.add_argument('--diag-interval', type=int, default=20)
-    p.add_argument('--save-plots', action='store_true')
-    p.add_argument('--output-dir', type=str, default='ns_plots')
     return p.parse_args()
 
 

@@ -8,7 +8,6 @@ import torch.nn.functional as F
 from .benchmarks import (
     AckleyModel,
     ConformalRegistrationModel,
-    DeepGBNModel,
     MediumGBNModel,
     MinkowskiRotorModel,
     MultiRotorRegistrationModel,
@@ -288,29 +287,6 @@ def run_gbn_multisig(steps: int = 250,
     )
     plot_three_way_comparison(results, title="Minkowski GBN Cl(2,1)", output_dir=output_dir)
     plot_bivector_trajectory(results, title="Minkowski GBN", output_dir=output_dir)
-    return results
-
-
-@register_experiment("gbn_deep", "ga_neural")
-def run_gbn_deep(steps: int = 300,
-                 optimizers=('gdo', 'riemannian_adam', 'adam'),
-                 seed: int = 42, output_dir: str = "gdo_plots", device: str = 'cpu'):
-    print("\n" + "=" * 60)
-    print("EXPERIMENT: Deep GBN (Cl(3,0), 16ch, 5 layers)")
-    print("=" * 60)
-
-    config = ExperimentConfig(name="gbn_deep", category="ga_neural",
-                              steps=steps, lr=2e-4, seed=seed, device=device,
-                              algebra_sig=(3, 0))
-    results = run_comparison(
-        "gbn_deep",
-        model_factory=lambda: DeepGBNModel(channels=32, layers=5, device=device),
-        loss_factory=lambda m: m.forward,
-        config=config, optimizers=optimizers, output_dir=output_dir,
-    )
-    plot_three_way_comparison(results, title="Deep GBN", output_dir=output_dir)
-    plot_convergence_rate(results, title="Deep GBN", output_dir=output_dir)
-    plot_timing_breakdown(results, title="Deep GBN", output_dir=output_dir)
     return results
 
 

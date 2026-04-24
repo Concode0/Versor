@@ -44,7 +44,8 @@ from torch.utils.data import DataLoader, TensorDataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    count_parameters, run_supervised_loop, set_seed, setup_algebra,
+    RawDefaultsHelpFormatter, count_parameters, make_experiment_parser,
+    run_supervised_loop, set_seed, setup_algebra,
 )
 from core.algebra import CliffordAlgebra
 from layers import CliffordLinear, BladeSelector
@@ -375,8 +376,11 @@ def winner(results, key='test_mse') -> str:
 # ==============================================================================
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+    p = make_experiment_parser(
+        __doc__,
+        include=('seed', 'device'),
+        defaults={'seed': 0},
+        formatter_class=RawDefaultsHelpFormatter,
     )
     p.add_argument('--p', type=int, default=3)
     p.add_argument('--q', type=int, default=0)
@@ -388,8 +392,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--epochs-short', type=int, default=50, help='fine-tune epochs for lifting study')
     p.add_argument('--batch', type=int, default=64)
     p.add_argument('--lr', type=float, default=1e-2)
-    p.add_argument('--seed', type=int, default=0)
-    p.add_argument('--device', type=str, default='cpu')
     p.add_argument('--regimes', type=str, default='all',
                    help='comma-separated list: R1,R2,R3 (or "all")')
     p.add_argument('--skip-lifting', action='store_true')

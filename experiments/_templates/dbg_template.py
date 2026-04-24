@@ -43,14 +43,15 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from typing import Dict, Tuple
+from typing import Dict
 
 import torch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)))
 
 from experiments._lib import (
-    add_standard_args,
+    add_signature_arg,
+    make_experiment_parser,
     print_banner,
     section_header,
     set_seed,
@@ -165,21 +166,12 @@ def format_report(results: Dict[str, Dict[str, float]],
 # Entry point
 # ---------------------------------------------------------------------------
 
-def _parse_signature(s: str) -> Tuple[int, int, int]:
-    """Parse ``"p,q"`` or ``"p,q,r"`` into a tuple."""
-    parts = [int(x) for x in s.split(',')]
-    if len(parts) == 2:
-        return parts[0], parts[1], 0
-    if len(parts) == 3:
-        return tuple(parts)  # type: ignore[return-value]
-    raise argparse.ArgumentTypeError(f"signature must be 'p,q' or 'p,q,r', got {s!r}")
-
-
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Debugger template — rotor sanity checks.')
-    add_standard_args(parser, include=('seed', 'device'))
-    parser.add_argument('--signature', type=_parse_signature, default=(3, 0, 0),
-                        help='Comma-separated p,q[,r]. Default: 3,0,0.')
+    parser = make_experiment_parser(
+        'Debugger template — rotor sanity checks.',
+        include=('seed', 'device'),
+    )
+    add_signature_arg(parser, default=(3, 0, 0))
     parser.add_argument('--num-samples', type=int, default=256)
     parser.add_argument('--tolerance', type=float, default=1e-4)
     return parser.parse_args()

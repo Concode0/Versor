@@ -72,7 +72,7 @@ from torch.utils.data import DataLoader, TensorDataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    ensure_output_dir, set_seed, setup_algebra,
+    ensure_output_dir, make_experiment_parser, set_seed, setup_algebra,
 )
 from core.algebra import CliffordAlgebra
 from core.analysis.dimension import EffectiveDimensionAnalyzer, DimensionLifter
@@ -99,8 +99,11 @@ from sklearn.preprocessing import StandardScaler
 # ============================================================================
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        description='GBN Embedding Compression — Incubator Experiment'
+    p = make_experiment_parser(
+        'GBN Embedding Compression — Incubator Experiment',
+        include=('seed', 'epochs', 'lr', 'batch_size', 'output_dir'),
+        defaults={'epochs': 30, 'batch_size': 256, 'lr': 5e-4,
+                  'output_dir': 'embed_compress'},
     )
     p.add_argument('--model', default='BAAI/bge-large-en-v1.5',
                    help='SentenceTransformer model (text datasets only; ignored otherwise)')
@@ -120,9 +123,6 @@ def build_parser() -> argparse.ArgumentParser:
                    help='Max validation samples per dataset (default: 2000)')
     p.add_argument('--cache-dir', default='data/embed_compress',
                    help='Directory to cache features (default: data/embed_compress)')
-    p.add_argument('--output-dir', '--out-dir', dest='output_dir',
-                   default='embed_compress',
-                   help='Output directory for plots (default: embed_compress)')
     # Swiss roll synthetic data
     p.add_argument('--swiss-roll-dim', type=int, default=1024,
                    help='High-D lift dimension for synthetic Swiss roll (default: 1024)')
@@ -136,17 +136,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument('--channels', type=int, default=8,
                    help='Number of multivector channels in GBN (default: 8)')
     # Training
-    p.add_argument('--epochs', type=int, default=30,
-                   help='Training epochs per target dim (default: 30)')
-    p.add_argument('--batch-size', type=int, default=256,
-                   help='Batch size (default: 256)')
-    p.add_argument('--lr', type=float, default=5e-4,
-                   help='Learning rate for RiemannianAdam (default: 5e-4)')
     p.add_argument('--alpha', type=float, default=1.0,
                    help='Reconstruction loss weight (default: 1.0)')
     p.add_argument('--beta', type=float, default=0.5,
                    help='Classification loss weight (default: 0.5)')
-    p.add_argument('--seed', type=int, default=42)
     p.add_argument('--complexity-plot', dest='complexity_plot',
                    action='store_true', default=True,
                    help='Produce gain-vs-complexity scatter (default: on).')

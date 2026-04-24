@@ -41,7 +41,7 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    add_standard_args, ensure_output_dir, print_banner, report_diagnostics,
+    ensure_output_dir, make_experiment_parser, print_banner, report_diagnostics,
     run_supervised_loop, save_training_curve, set_seed, setup_algebra,
 )
 from core.metric import (
@@ -392,9 +392,8 @@ def train(args) -> None:
 # ---------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description='Lorentz boost debugger in Cl(3,1)')
-    add_standard_args(
-        p,
+    p = make_experiment_parser(
+        'Lorentz boost debugger in Cl(3,1)',
         include=('seed', 'device', 'epochs', 'lr', 'batch_size',
                  'output_dir', 'save_plots', 'diag_interval'),
         defaults={'epochs': 200, 'lr': 0.001, 'batch_size': 128,

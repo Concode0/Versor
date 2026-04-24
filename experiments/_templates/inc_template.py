@@ -53,9 +53,9 @@ from torch.utils.data import DataLoader, TensorDataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)))
 
 from experiments._lib import (
-    add_standard_args,
     count_parameters,
     ensure_output_dir,
+    make_experiment_parser,
     print_banner,
     save_training_curve,
     set_seed,
@@ -173,9 +173,8 @@ def evaluate(model, loader, device) -> float:
 # ---------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Incubator template — 2-D rotation regression.')
-    add_standard_args(
-        parser,
+    parser = make_experiment_parser(
+        'Incubator template — 2-D rotation regression.',
         include=('seed', 'device', 'epochs', 'lr', 'batch_size',
                  'output_dir', 'save_plots', 'diag_interval'),
         defaults={'epochs': 30, 'batch_size': 64,
