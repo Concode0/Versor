@@ -10,21 +10,32 @@
 VERSOR EXPERIMENT: MATHEMATICAL DEBUGGER
 ==============================================================================
 
-Does Versor's geometric bias learn channel mixing through backprop without
-breaking the multivector grade structure? This debugger measures, for five
-candidate backends, whether a plain supervised MSE preserves grade
-partitioning and rotation covariance while fitting three synthetic regimes.
+This script is designed to validate topological and algebraic phenomena rather
+than to achieve State-of-the-Art (SOTA) on traditional benchmarks. Its focus
+is to confirm that the Clifford Algebra framework computes known identities
+and physical laws correctly, and to surface regressions when they do not.
 
-One natural loss per backend (MSE). Everything else — leakage matrix,
-grade-preservation scalar, rotation-invariance gap — is a post-training
-measurement, not a gradient target.
+Please kindly note that as an experimental module, formal mathematical proofs
+and exhaustive literature reviews may still be in progress. Contributions that
+tighten the validation suite — additional check_* methods, sharper tolerances,
+cross-references to the literature — are warmly welcomed.
 
-Run
-
-    uv run python -m experiments.dbg_linear_basis_mixing
-    uv run python -m experiments.dbg_linear_basis_mixing --epochs 20      # smoke
-    uv run python -m experiments.dbg_linear_basis_mixing --p 2 --q 0      # Cl(2,0)
 ==============================================================================
+
+Linear Basis Mixing Debugger.
+
+Hypothesis
+  Versor's geometric bias should learn channel mixing through plain
+  backpropagation without breaking multivector grade structure. Across five
+  candidate backends and three synthetic regimes, a single supervised MSE
+  should fit the task while grade leakage, grade-preservation, and
+  rotation-invariance remain post-training measurements instead of gradient
+  targets.
+
+Execute Command
+  uv run python -m experiments.dbg_linear_basis_mixing
+  uv run python -m experiments.dbg_linear_basis_mixing --epochs 20
+  uv run python -m experiments.dbg_linear_basis_mixing --p 2 --q 0
 """
 
 from __future__ import annotations

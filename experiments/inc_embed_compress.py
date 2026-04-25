@@ -7,7 +7,7 @@
 
 """
 ==============================================================================
-VERSOR EXPERIMENT: IDEA INCUBATOR — GEOMETRIC EMBEDDING COMPRESSION
+VERSOR EXPERIMENT: IDEA INCUBATOR (SPIN-OFF CONCEPT)
 ==============================================================================
 
 This script serves as an early-stage proof-of-concept for radical, non-Euclidean
@@ -15,43 +15,29 @@ architectures. The concepts demonstrated here are strongly driven by geometric
 intuition and may currently reside ahead of established academic literature.
 
 Please understand that rigorous mathematical proofs or comprehensive citations
-might be incomplete at this stage. If this geometric hypothesis proves structurally
-sound, it is planned to be spin off into a dedicated, independent repository
-for detailed research.
+might be incomplete at this stage. If this geometric hypothesis proves
+structurally sound, it is planned to be spun off into a dedicated, independent
+repository for detailed research.
 
 ==============================================================================
 
-Hypothesis: High-dimensional sentence embeddings from BAAI/bge-large-en-v1.5
-(1024-dim) occupy a much lower effective intrinsic dimension.  A Geometric
-Blade Network (GBN) compressor can learn a geometrically-structured bottleneck
-that preserves downstream classification accuracy better than PCA at the same
-compression ratio — because rotors can capture manifold curvature that
-principal components miss.
+Geometric Embedding Compression.
 
-Pipeline:
-  1. Encode text with BAAI/bge-large-en-v1.5  →  [N, 1024] embeddings
-  2. EffectiveDimensionAnalyzer  →  intrinsic_dim via broken-stick model
-  3. DimensionLifter  →  find best Cl(p,q) for the compressed space
-  4. Sweep target dims around intrinsic_dim
-  5. PCA vs. GBNEmbedCompressor on val classification accuracy
-  6. Diagnose: grade energy spectra, reconstruction similarity, lifting coherence
+Hypothesis
+  High-dimensional embeddings such as ``BAAI/bge-large-en-v1.5`` occupy a much
+  lower effective intrinsic dimension. A Geometric Blade Network compressor
+  should learn a structured bottleneck that preserves downstream
+  classification accuracy better than PCA at the same compression ratio,
+  because rotor-based mixing can capture manifold curvature that principal
+  components miss. The experiment estimates intrinsic dimension, chooses an
+  internal Clifford algebra, sweeps target compression widths, and compares
+  PCA against the learned compressor on validation accuracy and reconstruction
+  diagnostics.
 
-Datasets: SST-2 (binary sentiment), SNLI (3-class entailment)
-Embedding model: BAAI/bge-large-en-v1.5  (1024-dim)
-Internal GA algebra: Cl(5, 0) by default (dim=32, 5-D Euclidean)
-
-==============================================================================
-CALL FOR PARTICIPANTS
-==============================================================================
-This is an open experiment. Extensions to explore:
-  - Multi-head compression (per-grade independent bottlenecks)
-  - Hyperbolic mixing: Cl(4,1) for negative-curvature manifolds
-  - Retrieval tasks (ANN search on compressed embeddings)
-
-If you build on this experiment, please cite the Versor framework:
-  https://github.com/Concode0/Versor
-
-==============================================================================
+Execute Command
+  uv run python -m experiments.inc_embed_compress
+  uv run python -m experiments.inc_embed_compress --datasets sst2 snli
+  uv run python -m experiments.inc_embed_compress --datasets manifold_ladder
 """
 
 from __future__ import annotations

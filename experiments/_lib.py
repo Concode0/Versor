@@ -596,31 +596,6 @@ def report_diagnostics(
 # Docstring header constants
 # ---------------------------------------------------------------------------
 
-INC_HEADER = """\
-==============================================================================
-VERSOR EXPERIMENT: IDEA INCUBATOR (SPIN-OFF CONCEPT)
-==============================================================================
-
-This script serves as an early-stage proof-of-concept for radical, non-Euclidean
-architectures. The concepts demonstrated here are strongly driven by geometric
-intuition and may currently reside ahead of established academic literature.
-
-Please understand that rigorous mathematical proofs or comprehensive citations
-might be incomplete at this stage. If this geometric hypothesis proves
-structurally sound, it is planned to be spun off into a dedicated, independent
-repository for detailed research.
-
-==============================================================================
-
-HYPOTHESIS:
-
-PROOF TARGET:
-
-RUNNABLE SCRIPT:
-
-==============================================================================
-"""
-
 DBG_HEADER = """\
 ==============================================================================
 VERSOR EXPERIMENT: MATHEMATICAL DEBUGGER
@@ -635,16 +610,21 @@ Please kindly note that as an experimental module, formal mathematical proofs
 and exhaustive literature reviews may still be in progress. Contributions that
 tighten the validation suite — additional check_* methods, sharper tolerances,
 cross-references to the literature — are warmly welcomed.
+"""
 
+INC_HEADER = """\
+==============================================================================
+VERSOR EXPERIMENT: IDEA INCUBATOR (SPIN-OFF CONCEPT)
 ==============================================================================
 
-HYPOTHESIS:
+This script serves as an early-stage proof-of-concept for radical, non-Euclidean
+architectures. The concepts demonstrated here are strongly driven by geometric
+intuition and may currently reside ahead of established academic literature.
 
-PROOF TARGET:
-
-RUNNABLE SCRIPT:
-
-==============================================================================
+Please understand that rigorous mathematical proofs or comprehensive citations
+might be incomplete at this stage. If this geometric hypothesis proves
+structurally sound, it is planned to be spun off into a dedicated, independent
+repository for detailed research.
 """
 
 

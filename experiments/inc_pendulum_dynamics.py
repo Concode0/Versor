@@ -21,21 +21,17 @@ repository for detailed research.
 
 ==============================================================================
 
-Hamiltonian Phase-Space Flow in Cl(2,2) (double pendulum) or Cl(3,0) (Lorenz).
+Hamiltonian Phase-Space Flow in Cl(2,2) or Cl(3,0).
 
 Hypothesis
-  The symplectic structure of a Hamiltonian system — position- and momentum-
-  like variables with opposite signatures — is the natural inductive bias of a
-  GBN in Cl(p, q). A residual rotor stack maps phase-space state to its one-
-  step image under the flow; energy conservation, grade confinement on the
-  even subalgebra, and finite Lyapunov separation emerge without being forced
-  as loss terms.
+  The symplectic structure of a Hamiltonian system, with position-like and
+  momentum-like variables carried by opposite signatures, should be a natural
+  inductive bias for a GBN in ``Cl(p, q)``. A residual rotor stack predicts
+  one-step phase-space flow from the current state using a single MSE on the
+  grade-1 readout, while energy drift, even or odd grade ratio, and chaotic
+  divergence remain post-training measurements.
 
-Natural loss
-  Single MSE on the grade-1 readout. Every ex-loss-term (energy drift, even/
-  odd grade ratio, chaotic divergence) is a post-training measurement.
-
-Run
+Execute Command
   uv run python -m experiments.inc_pendulum_dynamics --epochs 200
   uv run python -m experiments.inc_pendulum_dynamics --system lorenz --p 3 --q 0
 """

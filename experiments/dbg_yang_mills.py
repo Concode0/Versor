@@ -22,22 +22,19 @@ cross-references to the literature — are warmly welcomed.
 
 ==============================================================================
 
-Yang-Mills SU(2) Instanton in CGA Cl(4,1) — Supervised BPST reconstruction.
+Yang-Mills SU(2) Instanton in CGA Cl(4,1) — Supervised BPST Reconstruction.
 
-Question
-  Can a CGA-embedded GBN recover the BPST instanton gauge potential through
-  backpropagation without breaking the geometric inductive bias? SU(2) ≅
-  Spin(3) lives in the spatial bivectors {e₁₂, e₁₃, e₂₃}; CGA rotors encode
-  translations and dilations so the 1/(|x|²+ρ²) envelope is implicit.
+Hypothesis
+  A CGA-embedded GBN should recover the BPST instanton gauge potential
+  through backpropagation without breaking the geometric inductive bias.
+  ``SU(2) ~= Spin(3)`` lives in the spatial bivectors ``{e12, e13, e23}``,
+  and CGA rotors encode translations and dilations so the
+  ``1 / (|x|^2 + rho^2)`` envelope is implicit. A single
+  ``MSE(A_pred, A_exact)`` on the analytic BPST field drives training; self-
+  duality, action density, topological charge, Yang-Mills residuals, gauge
+  covariance, and grade-2 purity are all evaluated post-training.
 
-Natural loss
-  MSE(A_pred, A_exact) on the analytic BPST field A_μ^a(x) = η^a_μν x_ν /
-  (|x|² + ρ²). Every other physical quantity — self-duality, action density,
-  topological charge, Sobolev (field strength), Yang-Mills equation, Bianchi
-  identity, gauge covariance, grade-2 purity — is demoted to a post-training
-  measurement. No 2nd-order derivatives in the gradient path.
-
-Run
+Execute Command
   uv run python -m experiments.dbg_yang_mills --epochs 200
   uv run python -m experiments.dbg_yang_mills --epochs 50 --rho 1.0
 """

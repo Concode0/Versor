@@ -10,19 +10,32 @@
 VERSOR EXPERIMENT: MATHEMATICAL DEBUGGER
 ==============================================================================
 
-Does Versor's geometric bias recover Lorentz boosts in Cl(3,1) through
-backpropagation without breaking? We train a GBN on (original, boosted)
-event pairs against the known rotor. **One natural loss** — Hermitian
-distance between predicted and true rotor (with sign ambiguity min) —
-drives learning. Every physics invariant that used to be a loss term
-(norm preservation, grade confinement / even-subalgebra purity) is now
-measured post-training, not forced during training.
+This script is designed to validate topological and algebraic phenomena rather
+than to achieve State-of-the-Art (SOTA) on traditional benchmarks. Its focus
+is to confirm that the Clifford Algebra framework computes known identities
+and physical laws correctly, and to surface regressions when they do not.
 
-Pure-algebra checks (rapidity additivity, interval invariance on the
-analytic targets) stay too — but as verification of the algebra kernel
-itself, not as gradient signal.
+Please kindly note that as an experimental module, formal mathematical proofs
+and exhaustive literature reviews may still be in progress. Contributions that
+tighten the validation suite — additional check_* methods, sharper tolerances,
+cross-references to the literature — are warmly welcomed.
 
 ==============================================================================
+
+Lorentz Rotor Recovery in Cl(3,1).
+
+Hypothesis
+  Versor's geometric bias should recover Lorentz boosts in Cl(3,1) from
+  ``(original, boosted)`` event pairs through backpropagation without
+  breaking. A single natural loss, Hermitian distance between predicted and
+  true rotor with sign ambiguity handled by ``min``, drives learning;
+  interval preservation, grade confinement, and other physics invariants are
+  measured after training rather than enforced as gradient terms.
+
+Execute Command
+  uv run python -m experiments.dbg_lorentz
+  uv run python -m experiments.dbg_lorentz --epochs 20
+  uv run python -m experiments.dbg_lorentz --boost-type pure_rotation
 """
 
 from __future__ import annotations

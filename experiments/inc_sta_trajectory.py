@@ -24,23 +24,15 @@ repository for detailed research.
 STA IMU Trajectory Reconstruction in Cl(3,1).
 
 Hypothesis
-  A 7-channel IMU reading (accel, gyro, fsr) is naturally a single Cl(3,1)
-  multivector: accel → grade-1 spatial vector, gyro → grade-2 Hodge bivector,
-  fsr → grade-0 scalar. A learnable Spin(3,1) calibration rotor (Procrustes-
-  initialised from gravity) followed by a causal rotor TCN reconstructs the
-  3-D trajectory end-to-end through a single supervised MSE — without loss
-  terms for isometry or grade confinement.
+  A 7-channel IMU reading ``(accel, gyro, fsr)`` should fit naturally into a
+  single Cl(3,1) multivector: accel as a grade-1 spatial vector, gyro as a
+  grade-2 Hodge bivector, and fsr as a scalar. A learnable Spin(3,1)
+  calibration rotor, initialized from gravity, followed by a causal rotor TCN
+  should reconstruct 3-D trajectory end to end using the natural supervised
+  loss ``MSE(pos) + 0.5 * MSE(vel)``, while isometry, grade confinement,
+  calibration magnitude, and noise robustness remain post-training checks.
 
-Natural loss
-  ``MSE(pos) + 0.5 · MSE(vel)``. Isometry of the rotor TCN, grade-energy
-  confinement, calibration magnitude, and noise robustness are all demoted
-  to post-training measurements.
-
-Data
-  Expects SimGenerator HDF5 (https://github.com/Concode0/Trajecto) with keys
-  ``sensor_data``, ``gt_pos_data``, ``gt_vel_data``, ``gt_gravity_b_data``.
-
-Run
+Execute Command
   uv run python -m experiments.inc_sta_trajectory --data <path-to-h5>
 """
 

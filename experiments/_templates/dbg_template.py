@@ -24,18 +24,16 @@ cross-references to the literature — are warmly welcomed.
 
 Debugger Template — Rotor sanity checks in Cl(3,0).
 
-Purpose
-  Exercise the three identities every Spin-group implementation must satisfy:
-    1. Unit rotor:        R * ~R == 1.
-    2. Sandwich isometry: |R x ~R|^2 == |x|^2.
-    3. Reverse involution: reverse(reverse(mv)) == mv.
+Hypothesis
+  The algebra kernel should satisfy the three lowest-level Spin-group
+  identities without any learned model in the loop: unit rotor
+  ``R * ~R == 1``, sandwich isometry ``|R x ~R|^2 == |x|^2``, and reverse
+  involution ``reverse(reverse(mv)) == mv``. This file is the minimal smoke
+  test for regressions in the framework core.
 
-Checks are orthogonal to any model — this is a pure algebra-level debugger,
-which is the cleanest possible smoke test for the framework kernel.
-
-Run
-    uv run python -m experiments._templates.dbg_template
-    uv run python -m experiments._templates.dbg_template --signature 3,1,0
+Execute Command
+  uv run python -m experiments._templates.dbg_template
+  uv run python -m experiments._templates.dbg_template --signature 3,1,0
 """
 
 from __future__ import annotations

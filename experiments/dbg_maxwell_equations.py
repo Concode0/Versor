@@ -10,14 +10,32 @@
 VERSOR EXPERIMENT: MATHEMATICAL DEBUGGER
 ==============================================================================
 
-Does Versor's geometric bias reconstruct a plane-wave electromagnetic field
-(F = E + I·B, pure grade-2 in Cl(3,1)) through backpropagation without
-breaking? A single supervised loss — masked MSE on the six grade-2 slots —
-drives learning. Grade-2 purity, Hodge-dual symmetry, Lorentz invariants
-(|E|² − |B|², E·B), and the source-free Maxwell residual ||∇F|| are all
-**post-training measurements**, not gradient terms.
+This script is designed to validate topological and algebraic phenomena rather
+than to achieve State-of-the-Art (SOTA) on traditional benchmarks. Its focus
+is to confirm that the Clifford Algebra framework computes known identities
+and physical laws correctly, and to surface regressions when they do not.
+
+Please kindly note that as an experimental module, formal mathematical proofs
+and exhaustive literature reviews may still be in progress. Contributions that
+tighten the validation suite — additional check_* methods, sharper tolerances,
+cross-references to the literature — are warmly welcomed.
 
 ==============================================================================
+
+Plane-Wave Maxwell Reconstruction in Cl(3,1).
+
+Hypothesis
+  Versor's geometric bias should reconstruct a plane-wave electromagnetic
+  field ``F = E + I·B`` as a pure grade-2 object in Cl(3,1) through
+  backpropagation without breaking. A single masked MSE on the six grade-2
+  slots drives learning, while grade-2 purity, Hodge-dual symmetry, Lorentz
+  invariants ``(|E|^2 - |B|^2, E·B)``, and the source-free Maxwell residual
+  ``||nabla F||`` remain post-training measurements.
+
+Execute Command
+  uv run python -m experiments.dbg_maxwell_equations
+  uv run python -m experiments.dbg_maxwell_equations --epochs 20
+  uv run python -m experiments.dbg_maxwell_equations --num-waves 4
 """
 
 from __future__ import annotations

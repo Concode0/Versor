@@ -22,20 +22,18 @@ cross-references to the literature — are warmly welcomed.
 
 ==============================================================================
 
-Navier-Stokes in Cl(3,0) — Supervised IC+BC reconstruction.
+Navier-Stokes in Cl(3,0) — Supervised IC+BC Reconstruction.
 
-Question
-  Does a GBN trained on the analytic Taylor-Green vortex actually recover the
-  fluid state Ψ = p + u + ω + h on initial/boundary samples through
-  backpropagation, without breaking the geometric inductive bias?
+Hypothesis
+  A GBN trained on the analytic Taylor-Green vortex should recover the fluid
+  state ``Psi = p + u + omega + h`` on initial and boundary samples through
+  backpropagation without breaking the geometric inductive bias. A single MSE
+  on the full multivector ``Psi`` provides the learning signal; all other
+  physical relations such as incompressibility, vorticity-curl consistency,
+  gauge covariance, and energy or enstrophy balance are evaluated only after
+  training.
 
-Natural loss
-  Single MSE on the full multivector Ψ at supervised samples (IC at t=0 plus
-  BC at the periodic faces). Every other physical relation —
-  incompressibility, vorticity-curl consistency, gauge covariance,
-  energy/enstrophy balance — is demoted to a post-training measurement.
-
-Run
+Execute Command
   uv run python -m experiments.dbg_navier_stokes --epochs 200
   uv run python -m experiments.dbg_navier_stokes --epochs 50 --re 1000
 """

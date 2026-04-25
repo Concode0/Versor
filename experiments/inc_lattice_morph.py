@@ -23,19 +23,17 @@ repository for detailed research.
 
 Lattice Morphing via Invertible Geometric Algebra Transformations.
 
-This experiment demonstrates learnable, invertible lattice deformations using
-Clifford Algebra rotors and scalings in Cl(p,q).
+Hypothesis
+  Learnable lattice deformations should be expressible as invertible
+  Clifford-algebra transformations in ``Cl(p, q)``. The morph stack combines
+  a global rotor, per-basis twist rotors, and dynamic scaling factors, and
+  every stage has an exact algebraic inverse, so the full pipeline remains
+  reversible while still learning meaningful basis deformations.
 
-Morph pipeline (each stage):
-  1. Global Rotation  — single rotor R = exp(-B/2), sandwich on all basis vectors
-  2. Relative Twist   — per-basis rotors T_i for shearing/twisting
-  3. Dynamic Scaling   — per-basis log-scale factors for spacing control
-
-Every sub-transform has an exact algebraic inverse:
-  - Rotors: R^{-1} = R~  (reverse)
-  - Scaling: exp(s)^{-1} = exp(-s)
-
-Pipeline inverse = stages in reverse order, each stage inverted internally.
+Execute Command
+  uv run python -m experiments.inc_lattice_morph
+  uv run python -m experiments.inc_lattice_morph --mode compound
+  uv run python -m experiments.inc_lattice_morph --mode minkowski
 """
 
 import os

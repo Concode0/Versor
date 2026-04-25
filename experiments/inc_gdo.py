@@ -7,12 +7,34 @@
 
 
 """
-Highly Experimental, See experiments/gdo/README.md.
+==============================================================================
+VERSOR EXPERIMENT: IDEA INCUBATOR (SPIN-OFF CONCEPT)
+==============================================================================
 
-Geometric Deterministic Optimizer (GDO) entry point.
+This script serves as an early-stage proof-of-concept for radical, non-Euclidean
+architectures. The concepts demonstrated here are strongly driven by geometric
+intuition and may currently reside ahead of established academic literature.
 
-Thin CLI wrapper over `experiments._gdo`. The actual optimizer core, controller,
-benchmarks, plotting, and analysis infrastructure live in the subpackage.
+Please understand that rigorous mathematical proofs or comprehensive citations
+might be incomplete at this stage. If this geometric hypothesis proves
+structurally sound, it is planned to be spun off into a dedicated, independent
+repository for detailed research.
+
+==============================================================================
+
+Geometric Deterministic Optimizer (GDO) Entry Point. ( See _gdo/ )
+
+Hypothesis
+  Geometric deterministic updates should remain competitive across analytic,
+  geometric, GA-neural, and manifold objectives when compared against the
+  baselines wired into ``experiments._gdo``. This file is the thin CLI entry
+  point over that subpackage's optimizer core, controller, benchmarks,
+  plotting, and analysis infrastructure.
+
+Execute Command
+  uv run python -m experiments.inc_gdo
+  uv run python -m experiments.inc_gdo --task all
+  uv run python -m experiments.inc_gdo --task rosenbrock --steps 500
 """
 
 from __future__ import annotations

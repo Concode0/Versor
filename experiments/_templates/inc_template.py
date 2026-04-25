@@ -24,16 +24,14 @@ repository for detailed research.
 Incubator Template — 2-D Rotation Regression in Cl(2,0).
 
 Hypothesis
-  A tiny GBN (CliffordLayerNorm → RotorLayer → GeometricGELU → CliffordLinear)
-  learns a fixed 2-D rotation from grade-1 point pairs (x, R_target x) in under
-  a thousand gradient steps. This is the smallest non-trivial demonstration of
-  the rotor sandwich x' = R x R~ as an inductive bias.
+  A tiny GBN ``(CliffordLayerNorm -> RotorLayer -> GeometricGELU ->
+  CliffordLinear)`` should learn a fixed 2-D rotation from grade-1 point
+  pairs ``(x, R_target x)`` in under a thousand gradient steps. This is the
+  smallest non-trivial demonstration of the rotor sandwich
+  ``x' = R x R~`` as an inductive bias.
 
-Metrics
-  train_loss, test_loss (MSE over grade-1 coordinates).
-
-Run
-    uv run python -m experiments._templates.inc_template              # default
+Execute Command
+  uv run python -m experiments._templates.inc_template
 """
 
 from __future__ import annotations
