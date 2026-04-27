@@ -16,7 +16,6 @@ Reference:
 """
 
 import enum
-import warnings
 import torch
 from typing import Tuple, List, Optional
 
@@ -24,41 +23,73 @@ from typing import Tuple, List, Optional
 class ExpPolicy(enum.Enum):
     """Policy controlling how ``CliffordAlgebra.exp()`` handles bivectors.
 
-    - ``AUTO``  -- closed-form for n <= 3 (all bivectors simple),
-                   compiled-safe decomposition for n >= 4.
-    - ``FAST``  -- closed-form only (``_exp_bivector_closed``). Ignores
-                   residual error for non-simple bivectors. Fastest path.
-    - ``EXACT`` -- always use compiled-safe decomposition. Exact for all
-                   bivectors, ``torch.compile``-safe (no CPU sync).
+    Both policies share the same dispatch (closed-form for n <= 3,
+    compiled-safe decomposition for n >= 4) and differ only in the
+    power-iteration budget used inside the decomposition path.
+
+    - ``BALANCED`` -- knee-point iteration count, cost-efficient default.
+    - ``PRECISE``  -- saturation iteration count, reaches the dtype noise
+      floor at the cost of roughly 2x BALANCED's wall time.
     """
-    AUTO = "auto"
-    FAST = "fast"
-    EXACT = "exact"
+    BALANCED = "balanced"
+    PRECISE = "precise"
 
 
-# Default power-iteration step counts for the compiled-safe decomposed exp
-# path, keyed by tensor dtype. Picked at the cost/benefit knee of a sweep
-# over (n in {4,5,6}, magnitude in {0.1, 0.5, 1.0}) — beyond these counts a
-# 2x cost buys less than ~3 decimal places of additional accuracy.
-#   bfloat16 - mantissa-limited noise floor ~1e-2; saturates at k~8
-#   float32  - n=4 saturates ~3e-7 by k~24; knee at k=32
-#   float64  - knee at k~96 (full machine eps would need k>=256, prohibitive)
-_DTYPE_FIXED_ITERATIONS = {
-    torch.bfloat16: 16,
-    torch.float16: 16,
-    torch.float32: 32,
-    torch.float64: 96,
+# Power-iteration step counts for the compiled-safe decomposed exp path,
+# keyed by (policy, dtype). Calibrated from separated benchmarks.
+#   bf16  : noise floor ~3e-3 reached by k~8;  saturated by k~16
+#   fp32  : knee at k~24 (~3e-7), floor ~3e-8 by k~64
+#   fp64  : knee at k~48 (~1e-12), floor ~1e-14 by k~64; 128 = conservative cap
+_ITER_BASE = {
+    ExpPolicy.BALANCED: {
+        torch.bfloat16: 8, torch.float16: 8,
+        torch.float32: 24, torch.float64: 48,
+    },
+    ExpPolicy.PRECISE: {
+        torch.bfloat16: 16, torch.float16: 16,
+        torch.float32: 64, torch.float64: 128,
+    },
 }
-_DEFAULT_FIXED_ITERATIONS = 32  # fallback for unknown dtypes
+# Added to the base count when n >= 6 to compensate for the slight error
+# growth observed between n=4 and n=6 in benchmarks (e.g. fp32:
+# 3.46e-8 -> 8.73e-8 at fixed iters).
+_ITER_N_BUMP = {ExpPolicy.BALANCED: 8, ExpPolicy.PRECISE: 16}
 
 
-def resolve_fixed_iterations(dtype: torch.dtype) -> int:
-    """Return the dtype-keyed default power-iteration count.
+def resolve_fixed_iterations(policy: ExpPolicy, dtype: torch.dtype, n: int) -> int:
+    """Return the (policy, dtype, n)-keyed power-iteration count.
 
-    Used by ``CliffordAlgebra`` at init to pin a static iteration budget
-    matched to the algebra's working precision.
+    Used by ``CliffordAlgebra`` at init (and on policy change) to pin a
+    static iteration budget matched to the algebra's working precision
+    and dimension.
     """
-    return _DTYPE_FIXED_ITERATIONS.get(dtype, _DEFAULT_FIXED_ITERATIONS)
+    base_table = _ITER_BASE[policy]
+    base = base_table.get(dtype, base_table[torch.float32])
+    bump = _ITER_N_BUMP[policy] if n >= 6 else 0
+    return base + bump
+
+
+def _seed_vector(algebra, b: torch.Tensor) -> torch.Tensor:
+    """Deterministic grade-1 seed for power iteration.
+
+    Probes ``b`` with a uniform unit vector ``(1/sqrt(n)) * sum_i e_i`` via
+    right-contraction. The probe lives in ``b``'s column space, so it has
+    non-zero overlap with the dominant eigenvector unless that eigenvector
+    is exactly orthogonal to ``(1, ..., 1)`` -- a measure-zero case for
+    which we fall back to the uniform vector itself.
+    """
+    batch_shape = b.shape[:-1]
+    device, dtype = b.device, b.dtype
+    n = algebra.n
+
+    uniform = torch.full(
+        (*batch_shape, n), 1.0 / (n ** 0.5), device=device, dtype=dtype
+    )
+    v_uniform = algebra.embed_vector(uniform)
+
+    probe = algebra.right_contraction(b, v_uniform)
+    probe_norm = probe.norm(dim=-1, keepdim=True)
+    return torch.where(probe_norm > algebra.eps, probe, v_uniform)
 
 
 def ga_power_iteration(
@@ -85,13 +116,8 @@ def ga_power_iteration(
         (b_s, v) where b_s is the simple projection and v the converged
         vector, both shaped [..., dim].
     """
-    batch_shape = b.shape[:-1]
-    device = b.device
-    dtype = b.dtype
-
     if v_init is None:
-        v_raw = torch.randn(*batch_shape, algebra.n, device=device, dtype=dtype)
-        v = algebra.embed_vector(v_raw)
+        v = _seed_vector(algebra, b)
     else:
         v = v_init
 
@@ -178,93 +204,6 @@ def exp_simple_bivector(algebra, b: torch.Tensor) -> torch.Tensor:
     return algebra._exp_bivector_closed(b)
 
 
-def exp_decomposed(
-    algebra,
-    b: torch.Tensor,
-    use_decomposition: bool = True,
-    k: Optional[int] = None,
-    threshold: float = 1e-6,
-    max_iterations: int = 100
-) -> torch.Tensor:
-    """Exponentiate a bivector via decomposition into simple components.
-
-    .. deprecated::
-        Use ``algebra.exp(b)`` with ``algebra.exp_policy`` set instead.
-        This function is kept for backward compatibility.
-
-    When ``use_decomposition`` is True the bivector is decomposed into
-    simple blades (via ``differentiable_invariant_decomposition``), each
-    is exponentiated in closed form, and the rotors are composed via
-    geometric product.
-
-    During training the power iteration loop is **detached** (run in
-    forward-only mode) so that gradients do not flow through the
-    normalization divisions.  Gradients instead flow through the
-    closed-form exp of each component and the final GP composition.
-    This is stable for all bivector magnitudes.
-
-    Args:
-        algebra (CliffordAlgebra): CliffordAlgebra instance.
-        b: Bivector [..., dim].
-        use_decomposition: Enable decomposition (False -> ``algebra._exp_bivector_closed``).
-        k: Number of simple components (auto if None).
-        threshold: Convergence threshold.
-        max_iterations: Power iteration cap.
-
-    Returns:
-        Rotor exp(b) [..., dim].
-    """
-    warnings.warn(
-        "exp_decomposed() is deprecated. Set algebra.exp_policy and use "
-        "algebra.exp() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-
-    if not use_decomposition:
-        return algebra._exp_bivector_closed(b)
-
-    # Detach for decomposition (power iteration is not differentiable)
-    # then re-project the original bivector onto the discovered planes.
-    with torch.no_grad():
-        decomp, _ = differentiable_invariant_decomposition(
-            algebra, b.detach(), k=k, threshold=threshold,
-            max_iterations=max_iterations
-        )
-
-    if len(decomp) == 0:
-        result = torch.zeros_like(b)
-        result[..., 0] = 1.0
-        return result
-
-    bv_mask = algebra.grade_masks[2]
-    if bv_mask.device != b.device:
-        bv_mask = bv_mask.to(b.device)
-
-    rotors = []
-    residual = b
-    for b_i_detached in decomp:
-        # Plane direction (unit simple bivector) -- detached
-        plane_norm = b_i_detached.norm(dim=-1, keepdim=True).clamp(min=algebra.eps_sq)
-        plane_dir = b_i_detached / plane_norm  # detached unit plane
-
-        # Project the live bivector onto this plane
-        bv_live = residual[..., bv_mask]
-        plane_bv = plane_dir[..., bv_mask]
-        coeff = (bv_live * plane_bv).sum(dim=-1, keepdim=True)
-
-        b_i_live = coeff * plane_dir
-        residual = residual - b_i_live
-
-        rotors.append(exp_simple_bivector(algebra, b_i_live))
-
-    result = rotors[0]
-    for R_i in rotors[1:]:
-        result = algebra.geometric_product(result, R_i)
-
-    return result
-
-
 def _power_iteration_compiled_safe(
     algebra,
     b: torch.Tensor,
@@ -284,12 +223,7 @@ def _power_iteration_compiled_safe(
     Returns:
         b_s: Dominant simple bivector projection [..., dim].
     """
-    batch_shape = b.shape[:-1]
-    device = b.device
-    dtype = b.dtype
-
-    v_raw = torch.randn(*batch_shape, algebra.n, device=device, dtype=dtype)
-    v = algebra.embed_vector(v_raw)
+    v = _seed_vector(algebra, b)
     v = v / v.norm(dim=-1, keepdim=True).clamp(min=algebra.eps)
 
     for _ in range(fixed_iterations):

@@ -40,7 +40,7 @@ class CliffordAlgebra(nn.Module):
 
     def __init__(self, p: int, q: int = 0, r: int = 0, device='cuda',
                  dtype: torch.dtype = torch.float32,
-                 exp_policy: str = 'auto',
+                 exp_policy: str = 'balanced',
                  fixed_iterations: Optional[int] = None):
         """Initialize the algebra and cache the Cayley table.
 
@@ -54,12 +54,12 @@ class CliffordAlgebra(nn.Module):
                 ``torch.float16`` when the model will be trained in a reduced
                 precision (e.g. AMP on CUDA bfloat16 mode).
             exp_policy (str or ExpPolicy, optional): Bivector exp policy.
-                ``'auto'`` (default), ``'fast'``, or ``'exact'``.
+                ``'balanced'`` (default) or ``'precise'``.
                 See :class:`core.decomposition.ExpPolicy`.
             fixed_iterations (int, optional): Power-iteration step count for
-                the compiled-safe decomposed exp path (used when n>=4 under
-                AUTO/EXACT policy). ``None`` (default) auto-derives from
-                ``dtype`` via :func:`core.decomposition.resolve_fixed_iterations`,
+                the compiled-safe decomposed exp path (used when n>=4).
+                ``None`` (default) auto-derives from ``(exp_policy, dtype, n)``
+                via :func:`core.decomposition.resolve_fixed_iterations`,
                 pinned statically at init.
         """
         super().__init__()
@@ -81,16 +81,16 @@ class CliffordAlgebra(nn.Module):
         else:
             self._exp_regime = 'mixed'
 
-        # Exp policy: controls decomposition strategy
+        # Exp policy: controls decomposition iteration budget
         from core.decomposition import ExpPolicy, resolve_fixed_iterations
-        if isinstance(exp_policy, str):
-            self._exp_policy = ExpPolicy(exp_policy)
-        else:
-            self._exp_policy = exp_policy
+        self._exp_policy = (
+            exp_policy if isinstance(exp_policy, ExpPolicy)
+            else ExpPolicy(exp_policy)
+        )
 
         self._exp_fixed_iterations: int = (
             int(fixed_iterations) if fixed_iterations is not None
-            else resolve_fixed_iterations(dtype)
+            else resolve_fixed_iterations(self._exp_policy, dtype, self.n)
         )
 
         # Cache Cayley tables to avoid recomputation
@@ -184,10 +184,13 @@ class CliffordAlgebra(nn.Module):
 
     @exp_policy.setter
     def exp_policy(self, value):
-        from core.decomposition import ExpPolicy
-        if isinstance(value, str):
-            value = ExpPolicy(value)
-        self._exp_policy = value
+        from core.decomposition import ExpPolicy, resolve_fixed_iterations
+        self._exp_policy = (
+            value if isinstance(value, ExpPolicy) else ExpPolicy(value)
+        )
+        self._exp_fixed_iterations = resolve_fixed_iterations(
+            self._exp_policy, self.dtype, self.n
+        )
 
     def _init_derived_tables(self):
         """Precompute derived tables for sandwich_product and pseudoscalar_product.
@@ -927,14 +930,12 @@ class CliffordAlgebra(nn.Module):
     def exp(self, mv: torch.Tensor) -> torch.Tensor:
         """Exponentiates a bivector to produce a rotor.
 
-        Dispatches by :attr:`exp_policy`:
+        Dispatch is independent of :attr:`exp_policy` (the policy controls
+        the decomposition iteration budget, set at init):
 
-        - ``FAST``  -- closed-form only (fastest, approximate for
-          non-simple bivectors in n >= 4).
-        - ``AUTO``  (default) -- closed-form for n <= 3 (exact),
-          compiled-safe decomposition for n >= 4.
-        - ``EXACT`` -- always compiled-safe decomposition (exact for
-          all bivectors, ``torch.compile``-safe).
+        - ``n <= 3`` -- every bivector is simple; closed-form is exact.
+        - ``n >= 4`` -- compiled-safe decomposition; per-element selects
+          closed-form vs decomposed via ``torch.where(simple)``.
 
         Three signature regimes handled in the closed-form path:
             - Elliptic  (B^2 < 0): exp(B) = cos(th) + sin(th)/th * B
@@ -947,19 +948,8 @@ class CliffordAlgebra(nn.Module):
         Returns:
             torch.Tensor: Rotor exp(mv) [..., dim].
         """
-        from core.decomposition import ExpPolicy
-
-        policy = self._exp_policy
-
-        if policy == ExpPolicy.FAST:
+        if self.n <= 3:
             return self._exp_bivector_closed(mv)
-
-        if policy == ExpPolicy.AUTO:
-            if self.n <= 3:
-                return self._exp_bivector_closed(mv)
-            return self._exp_compiled_safe(mv)
-
-        # ExpPolicy.EXACT
         return self._exp_compiled_safe(mv)
 
     def _exp_bivector_closed(self, B: torch.Tensor) -> torch.Tensor:
@@ -1108,27 +1098,3 @@ class CliffordAlgebra(nn.Module):
 
         return res
 
-    def exp_decomposed(self, mv: torch.Tensor, **kwargs) -> torch.Tensor:
-        """Exponentiates a bivector via decomposition into simple components.
-
-        .. deprecated::
-            Set :attr:`exp_policy` and call :meth:`exp` instead.
-
-        Args:
-            mv (torch.Tensor): Pure bivector [..., dim].
-            **kwargs: Legacy kwargs (``use_decomposition``, ``k``, etc.).
-
-        Returns:
-            torch.Tensor: Rotor exp(mv) [..., dim].
-        """
-        import warnings
-        warnings.warn(
-            "exp_decomposed() is deprecated. Set algebra.exp_policy and "
-            "use algebra.exp() instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        # Legacy compat: use_decomposition=False means closed-form
-        if kwargs.get('use_decomposition') is False:
-            return self._exp_bivector_closed(mv)
-        return self.exp(mv)

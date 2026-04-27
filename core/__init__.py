@@ -38,7 +38,6 @@ from .decomposition import (
     ga_power_iteration,
     differentiable_invariant_decomposition,
     exp_simple_bivector,
-    exp_decomposed,
     compiled_safe_decomposed_exp,
 )
 
@@ -71,7 +70,6 @@ __all__ = [
     "ga_power_iteration",
     "differentiable_invariant_decomposition",
     "exp_simple_bivector",
-    "exp_decomposed",
     "compiled_safe_decomposed_exp",
     # analysis (lazy)
     "MetricSearch",
