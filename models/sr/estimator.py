@@ -41,7 +41,7 @@ class VersorSR(BaseEstimator, RegressorMixin):
         sparsity_weight=0.01,
         random_state=42,
         max_time=600,
-        exp_policy='auto',
+        exp_policy='balanced',
         max_bivector_norm=10.0,
         basis_config=None,
     ):

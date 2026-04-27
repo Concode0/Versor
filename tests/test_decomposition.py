@@ -22,7 +22,6 @@ from core.decomposition import (
     ga_power_iteration,
     differentiable_invariant_decomposition,
     exp_simple_bivector,
-    exp_decomposed,
     compiled_safe_decomposed_exp,
     _power_iteration_compiled_safe,
 )
@@ -329,9 +328,9 @@ class TestExpDecomposed:
         R_standard = algebra_3d.exp(b)
 
         # Use EXACT policy
-        algebra_3d.exp_policy = ExpPolicy.EXACT
+        algebra_3d.exp_policy = ExpPolicy.PRECISE
         R_exact = algebra_3d.exp(b)
-        algebra_3d.exp_policy = ExpPolicy.AUTO
+        algebra_3d.exp_policy = ExpPolicy.BALANCED
 
         assert torch.allclose(R_standard, R_exact, atol=1e-4)
 
@@ -344,9 +343,9 @@ class TestExpDecomposed:
         for idx, weight in zip(bivector_indices, bivector_weights):
             b[idx] = weight
 
-        algebra_3d.exp_policy = ExpPolicy.EXACT
+        algebra_3d.exp_policy = ExpPolicy.PRECISE
         R = algebra_3d.exp(b)
-        algebra_3d.exp_policy = ExpPolicy.AUTO
+        algebra_3d.exp_policy = ExpPolicy.BALANCED
 
         R_rev = algebra_3d.reverse(R)
         identity = algebra_3d.geometric_product(R, R_rev)
@@ -360,9 +359,9 @@ class TestExpDecomposed:
         """Test gradient flow through EXACT exponential."""
         b = torch.randn(algebra_3d.dim, requires_grad=True)
 
-        algebra_3d.exp_policy = ExpPolicy.EXACT
+        algebra_3d.exp_policy = ExpPolicy.PRECISE
         R = algebra_3d.exp(b)
-        algebra_3d.exp_policy = ExpPolicy.AUTO
+        algebra_3d.exp_policy = ExpPolicy.BALANCED
 
         assert R.requires_grad
 
@@ -372,22 +371,6 @@ class TestExpDecomposed:
         assert b.grad is not None
         assert not torch.isnan(b.grad).any()
         assert not torch.isinf(b.grad).any()
-
-    def test_exp_fast_policy(self, algebra_3d):
-        """Test that FAST policy uses closed-form only."""
-        v1_raw = torch.tensor([1.0, 0.0, 0.0])
-        v2_raw = torch.tensor([0.0, 1.0, 0.0])
-        v1 = algebra_3d.embed_vector(v1_raw)
-        v2 = algebra_3d.embed_vector(v2_raw)
-        b = algebra_3d.wedge(v1, v2)
-
-        R_closed = algebra_3d._exp_bivector_closed(b)
-
-        algebra_3d.exp_policy = ExpPolicy.FAST
-        R_fast = algebra_3d.exp(b)
-        algebra_3d.exp_policy = ExpPolicy.AUTO
-
-        assert torch.allclose(R_closed, R_fast, atol=1e-6)
 
     def test_exp_decomposed_batch(self, algebra_3d):
         """Test EXACT exp works with batched inputs."""
@@ -400,9 +383,9 @@ class TestExpDecomposed:
         for i, idx in enumerate(bivector_indices):
             b[:, idx] = bivector_weights[:, i]
 
-        algebra_3d.exp_policy = ExpPolicy.EXACT
+        algebra_3d.exp_policy = ExpPolicy.PRECISE
         R = algebra_3d.exp(b)
-        algebra_3d.exp_policy = ExpPolicy.AUTO
+        algebra_3d.exp_policy = ExpPolicy.BALANCED
 
         assert R.shape == (batch_size, algebra_3d.dim)
 
@@ -428,7 +411,7 @@ class TestExpPolicy:
         bv_mask = alg.grade_masks[2]
         b = b * bv_mask.float()
 
-        alg.exp_policy = ExpPolicy.AUTO
+        alg.exp_policy = ExpPolicy.BALANCED
         R_auto = alg.exp(b)
         R_closed = alg._exp_bivector_closed(b)
 
@@ -445,7 +428,7 @@ class TestExpPolicy:
         b[bv_indices[0]] = 0.3  # e12
         b[bv_indices[-1]] = 0.5  # e34
 
-        alg.exp_policy = ExpPolicy.AUTO
+        alg.exp_policy = ExpPolicy.BALANCED
         R = alg.exp(b)
         R_rev = alg.reverse(R)
         identity = alg.geometric_product(R, R_rev)
@@ -454,32 +437,16 @@ class TestExpPolicy:
         expected_identity[0] = 1.0
         assert torch.allclose(identity, expected_identity, atol=1e-3)
 
-    def test_policy_fast_nonsimple(self):
-        """FAST should return closed-form even for non-simple bivectors."""
-        alg = CliffordAlgebra(4, 0, device='cpu')
-
-        b = torch.zeros(alg.dim)
-        bv_mask = alg.grade_masks[2]
-        bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
-        b[bv_indices[0]] = 0.3
-        b[bv_indices[-1]] = 0.5
-
-        alg.exp_policy = ExpPolicy.FAST
-        R_fast = alg.exp(b)
-        R_closed = alg._exp_bivector_closed(b)
-
-        assert torch.allclose(R_fast, R_closed, atol=1e-10)
-
     def test_policy_setter_runtime(self):
         """Verify runtime policy changes work."""
         alg = CliffordAlgebra(3, 0, device='cpu')
-        assert alg.exp_policy == ExpPolicy.AUTO
+        assert alg.exp_policy == ExpPolicy.BALANCED
 
-        alg.exp_policy = 'fast'
-        assert alg.exp_policy == ExpPolicy.FAST
+        alg.exp_policy = 'precise'
+        assert alg.exp_policy == ExpPolicy.PRECISE
 
-        alg.exp_policy = ExpPolicy.EXACT
-        assert alg.exp_policy == ExpPolicy.EXACT
+        alg.exp_policy = ExpPolicy.BALANCED
+        assert alg.exp_policy == ExpPolicy.BALANCED
 
     def test_compiled_safe_power_iteration(self):
         """Compiled-safe power iteration produces valid simple bivectors."""
@@ -537,20 +504,6 @@ class TestExpPolicy:
         expected = torch.zeros_like(identity)
         expected[0] = 1.0
         assert torch.allclose(identity, expected, atol=1e-3)
-
-    def test_deprecated_exp_decomposed_warning(self):
-        """exp_decomposed emits DeprecationWarning."""
-        import warnings
-        alg = CliffordAlgebra(3, 0, device='cpu')
-        b = torch.zeros(alg.dim)
-        b[3] = 0.1
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            exp_decomposed(alg, b, use_decomposition=True)
-            assert len(w) >= 1
-            assert issubclass(w[0].category, DeprecationWarning)
-
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

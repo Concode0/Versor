@@ -20,7 +20,7 @@ model:
   max_z: 100
   num_rbf: 20
   rbf_cutoff: 5.0
-  exp_policy: "fast"
+  exp_policy: "balanced"
   use_rotor_backend: true
   use_geo_square: true
   use_checkpoint: false

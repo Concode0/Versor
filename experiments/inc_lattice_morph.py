@@ -274,10 +274,10 @@ class MorphStage(CliffordModule):
     def _make_rotor(self, B: torch.Tensor) -> tuple:
         """Exponentiate bivector to a unit rotor.
 
-        ``self.algebra.exp_policy`` controls the dispatch. The experiment
-        sets it to ``ExpPolicy.AUTO`` so simple bivectors use the closed-form
-        path while non-simple bivectors fall back to the compiled-safe
-        decomposition path.
+        ``self.algebra.exp_policy`` controls the iteration budget. The
+        experiment sets it to ``ExpPolicy.PRECISE`` so simple bivectors
+        use the closed-form path while non-simple bivectors fall back to
+        the compiled-safe decomposition path with knee-point iters.
 
         Args:
             B: Full bivector multivector [..., D].
@@ -454,7 +454,7 @@ class LatticeMorpher:
             p, q = n, 0
         self.algebra = CliffordAlgebra(
             p=p, q=q, device=device, dtype=dtype).to(device)
-        self.algebra.exp_policy = ExpPolicy.AUTO
+        self.algebra.exp_policy = ExpPolicy.PRECISE
         self.signature_q = q
         self.tracker = StructureTracker(self.algebra)
         self.pipeline = MorphPipeline(

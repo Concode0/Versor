@@ -21,7 +21,7 @@ dataset:
 
 model:
   auto_capacity: true
-  exp_policy: "auto"
+  exp_policy: "balanced"
 
 training:
   epochs: 200

@@ -47,7 +47,7 @@ class SRTask(BaseTask):
         model.hidden_channels   : channel count C
         model.num_layers        : residual block count
         model.num_rotors        : K rotors per MultiRotorLayer
-        model.exp_policy        : exp policy ('auto', 'fast', 'exact')
+        model.exp_policy        : exp policy ('balanced', 'precise')
         iterative.max_stages    : maximum unbending iterations
         iterative.stage_epochs  : epochs per stage
         iterative.r2_target     : R2 threshold to stop
@@ -157,7 +157,7 @@ class SRTask(BaseTask):
             p = self.cfg.algebra.p
             q = self.cfg.algebra.get("q", 0)
             r = self.cfg.algebra.get("r", 0)
-        exp_policy = self.cfg.model.get("exp_policy", "auto")
+        exp_policy = self.cfg.model.get("exp_policy", "balanced")
         return CliffordAlgebra(p=p, q=q, r=r, device=self.device,
                                exp_policy=exp_policy)
 

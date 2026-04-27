@@ -285,7 +285,7 @@ class TestExpPolicy:
     def test_with_exact_policy(self, algebra_3d):
         """Test layer with EXACT exp policy."""
         from core.decomposition import ExpPolicy
-        algebra_3d.exp_policy = ExpPolicy.EXACT
+        algebra_3d.exp_policy = ExpPolicy.PRECISE
 
         layer = RotorGadget(
             algebra=algebra_3d,
@@ -298,7 +298,7 @@ class TestExpPolicy:
         out = layer(x)
 
         assert out.shape == (2, 4, algebra_3d.dim)
-        algebra_3d.exp_policy = ExpPolicy.AUTO
+        algebra_3d.exp_policy = ExpPolicy.BALANCED
 
     def test_policy_fast_vs_exact(self, algebra_3d):
         """Compare FAST and EXACT policies (n=3: should match)."""
@@ -322,13 +322,13 @@ class TestExpPolicy:
 
         x = torch.randn(2, 4, algebra_3d.dim)
 
-        algebra_3d.exp_policy = ExpPolicy.FAST
+        algebra_3d.exp_policy = ExpPolicy.BALANCED
         out_fast = layer_a(x)
 
-        algebra_3d.exp_policy = ExpPolicy.EXACT
+        algebra_3d.exp_policy = ExpPolicy.PRECISE
         out_exact = layer_b(x)
 
-        algebra_3d.exp_policy = ExpPolicy.AUTO
+        algebra_3d.exp_policy = ExpPolicy.BALANCED
 
         assert torch.allclose(out_fast, out_exact, atol=1e-3)
 

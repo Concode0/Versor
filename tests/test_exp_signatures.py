@@ -448,7 +448,7 @@ class TestExpDecomposedGradient:
         """EXACT policy should produce finite gradients in Cl(4,0)."""
         from core.decomposition import ExpPolicy
         alg = CliffordAlgebra(4, 0, device=DEVICE)
-        alg.exp_policy = ExpPolicy.EXACT
+        alg.exp_policy = ExpPolicy.PRECISE
         bv_mask = alg.grade_masks[2]
         bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
 
@@ -468,7 +468,7 @@ class TestExpDecomposedGradient:
         """EXACT policy should produce finite gradients in Cl(1,5)."""
         from core.decomposition import ExpPolicy
         alg = CliffordAlgebra(1, 5, device=DEVICE)
-        alg.exp_policy = ExpPolicy.EXACT
+        alg.exp_policy = ExpPolicy.PRECISE
         bv_mask = alg.grade_masks[2]
         bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
 
@@ -489,7 +489,7 @@ class TestExpDecomposedGradient:
         """EXACT exp with grad should approximate inference result."""
         from core.decomposition import ExpPolicy
         alg = CliffordAlgebra(4, 0, device=DEVICE)
-        alg.exp_policy = ExpPolicy.EXACT
+        alg.exp_policy = ExpPolicy.PRECISE
         bv_mask = alg.grade_masks[2]
         bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
 

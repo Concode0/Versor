@@ -70,11 +70,11 @@ class TestLayers:
     def test_rotor_layer_exact_policy(self, algebra_3d):
         """Test RotorLayer with EXACT exp policy."""
         from core.decomposition import ExpPolicy
-        algebra_3d.exp_policy = ExpPolicy.EXACT
+        algebra_3d.exp_policy = ExpPolicy.PRECISE
         x = torch.randn(4, 5, 8)
         layer = RotorLayer(algebra_3d, 5)
         y = layer(x)
-        algebra_3d.exp_policy = ExpPolicy.AUTO
+        algebra_3d.exp_policy = ExpPolicy.BALANCED
 
         # Check output shape
         assert y.shape == (4, 5, 8)
@@ -94,13 +94,13 @@ class TestLayers:
 
         x = torch.randn(2, 3, 8)
 
-        algebra_3d.exp_policy = ExpPolicy.FAST
+        algebra_3d.exp_policy = ExpPolicy.BALANCED
         y_fast = layer_a(x)
 
-        algebra_3d.exp_policy = ExpPolicy.EXACT
+        algebra_3d.exp_policy = ExpPolicy.PRECISE
         y_exact = layer_b(x)
 
-        algebra_3d.exp_policy = ExpPolicy.AUTO
+        algebra_3d.exp_policy = ExpPolicy.BALANCED
 
         # For n=3, all bivectors are simple so results should match
         assert torch.allclose(y_fast, y_exact, atol=1e-3)
@@ -108,7 +108,7 @@ class TestLayers:
     def test_rotor_layer_backward_exact(self, algebra_3d):
         """Test gradient flow through RotorLayer with EXACT policy."""
         from core.decomposition import ExpPolicy
-        algebra_3d.exp_policy = ExpPolicy.EXACT
+        algebra_3d.exp_policy = ExpPolicy.PRECISE
 
         x = torch.randn(2, 3, 8, requires_grad=True)
         layer = RotorLayer(algebra_3d, 3)
@@ -124,23 +124,23 @@ class TestLayers:
         assert not torch.isnan(layer.grade_weights.grad).any()
         assert not torch.isinf(layer.grade_weights.grad).any()
 
-        algebra_3d.exp_policy = ExpPolicy.AUTO
+        algebra_3d.exp_policy = ExpPolicy.BALANCED
 
     def test_multi_rotor_layer_exact_policy(self, algebra_3d):
         """Test MultiRotorLayer with EXACT policy."""
         from core.decomposition import ExpPolicy
-        algebra_3d.exp_policy = ExpPolicy.EXACT
+        algebra_3d.exp_policy = ExpPolicy.PRECISE
         x = torch.randn(4, 5, 8)
         layer = MultiRotorLayer(algebra_3d, 5, num_rotors=4)
         y = layer(x)
-        algebra_3d.exp_policy = ExpPolicy.AUTO
+        algebra_3d.exp_policy = ExpPolicy.BALANCED
 
         assert y.shape == (4, 5, 8)
 
     def test_multi_rotor_layer_backward_exact(self, algebra_3d):
         """Test gradient flow through MultiRotorLayer with EXACT policy."""
         from core.decomposition import ExpPolicy
-        algebra_3d.exp_policy = ExpPolicy.EXACT
+        algebra_3d.exp_policy = ExpPolicy.PRECISE
 
         x = torch.randn(2, 3, 8, requires_grad=True)
         layer = MultiRotorLayer(algebra_3d, 3, num_rotors=4)
@@ -157,12 +157,12 @@ class TestLayers:
         assert not torch.isnan(layer.rotor_bivectors.grad).any()
         assert not torch.isinf(layer.rotor_bivectors.grad).any()
 
-        algebra_3d.exp_policy = ExpPolicy.AUTO
+        algebra_3d.exp_policy = ExpPolicy.BALANCED
 
     def test_rotor_layer_rotor_property(self, algebra_3d):
         """Verify that exp-produced rotors satisfy R * ~R = 1."""
         from core.decomposition import ExpPolicy
-        algebra_3d.exp_policy = ExpPolicy.EXACT
+        algebra_3d.exp_policy = ExpPolicy.PRECISE
 
         layer = RotorLayer(algebra_3d, 2)
 
@@ -182,7 +182,7 @@ class TestLayers:
 
             assert torch.allclose(identity, expected_identity, atol=1e-4)
 
-        algebra_3d.exp_policy = ExpPolicy.AUTO
+        algebra_3d.exp_policy = ExpPolicy.BALANCED
 
     def test_reflection_shape(self, algebra_3d):
         B, C = 4, 5

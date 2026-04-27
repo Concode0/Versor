@@ -119,7 +119,7 @@ class TestMD17ForceNet:
 
     def test_forward_with_exact_policy(self, algebra):
         from core.decomposition import ExpPolicy
-        algebra.exp_policy = ExpPolicy.EXACT
+        algebra.exp_policy = ExpPolicy.PRECISE
         model = MD17ForceNet(
             algebra, hidden_dim=16, num_layers=2,
             num_static_rotors=4, num_dynamic_rotors=2,
@@ -132,7 +132,7 @@ class TestMD17ForceNet:
         energy, force = model(z, pos, batch, edge_index)
         assert energy.shape == (2,)
         assert force.shape == (8, 3)
-        algebra.exp_policy = ExpPolicy.AUTO
+        algebra.exp_policy = ExpPolicy.BALANCED
 
     def test_forward_with_rotor_backend(self, algebra):
         model = MD17ForceNet(
