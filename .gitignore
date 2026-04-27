@@ -11,7 +11,7 @@ wheels/
 .DS_Store
 outputs/
 data/
-benchmarks/results/
+benchmarks/
 
 *.pt
 train_log_*.txt
@@ -19,16 +19,18 @@ train_log_*.txt
 /*.png
 /*.gif
 
-lorentz_plots/
-zeta_plots/
+site/
+
+# Experiments Plots & Benchmarks Logs
+signature.log
+embed_compress/
 gdo_plots/
 ym_plots/
+ns_plots/
+maxwell_plots/
+linear_basis_mixing_plots
+lorentz_plots
+sta_plots/
+pendulum_plots/
 lattice_morph_plots/
-
-experiments/tmp_*
-embed_compress_plots/
-hnn_pedulum_plots/
-linear_research_plots/
-
-
-site/
+experiments/tmp_*.py
