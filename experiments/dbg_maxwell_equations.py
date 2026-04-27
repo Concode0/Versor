@@ -27,10 +27,14 @@ Plane-Wave Maxwell Reconstruction in Cl(3,1).
 Hypothesis
   Versor's geometric bias should reconstruct a plane-wave electromagnetic
   field ``F = E + I·B`` as a pure grade-2 object in Cl(3,1) through
-  backpropagation without breaking. A single masked MSE on the six grade-2
-  slots drives learning, while grade-2 purity, Hodge-dual symmetry, Lorentz
-  invariants ``(|E|^2 - |B|^2, E·B)``, and the source-free Maxwell residual
-  ``||nabla F||`` remain post-training measurements.
+  backpropagation without breaking. The natural loss is masked MSE on the
+  six grade-2 slots **plus** MSE on the two Lorentz scalars
+  ``(F·F)_scalar`` and ``(F·F)_pseudoscalar`` — the latter quadratic in F,
+  so it directly supervises the high-frequency amplitudes that pointwise
+  MSE under-weights. Log-scaled random Fourier features extend the input
+  spectrum by an octave per band so the model can express those high
+  frequencies. Grade-2 purity, Hodge-dual symmetry, the boost-residuals
+  of the invariants, and ``||∇F||`` remain post-training measurements.
 
 Execute Command
   uv run python -m experiments.dbg_maxwell_equations
@@ -167,7 +171,15 @@ class MaxwellNet(CliffordModule):
                  num_layers: int = 6, num_freqs: int = 32):
         super().__init__(algebra)
         self.hidden_dim = hidden_dim
-        self.register_buffer('freq_bands', torch.randn(7, num_freqs) * 0.5)
+        # Log-scaled random Fourier features. Each of `num_freqs` random 7-D
+        # directions is multiplied by a per-column factor 2^l (l ∈ [0, log2(F)])
+        # so adjacent columns differ by an octave. This keeps input_dim fixed
+        # while extending the spectrum well beyond the dataset's k range.
+        directions = torch.randn(7, num_freqs) * 0.5
+        log_scales = 2.0 ** torch.linspace(
+            0.0, math.log2(max(num_freqs, 2)), num_freqs,
+        )
+        self.register_buffer('freq_bands', directions * log_scales.unsqueeze(0))
         input_dim = 7 + 2 * num_freqs
         self.input_lift = nn.Linear(input_dim, hidden_dim * algebra.dim)
         self.input_norm = CliffordLayerNorm(algebra, hidden_dim)
@@ -244,6 +256,23 @@ def _masked_mse(pred: torch.Tensor, target: torch.Tensor,
                 mask: torch.Tensor) -> torch.Tensor:
     diff_sq = (pred - target) ** 2
     return (diff_sq * mask).sum() / (mask.sum() * pred.shape[0] + 1e-12)
+
+
+def _lorentz_invariant_loss(algebra: CliffordAlgebra,
+                            pred: torch.Tensor,
+                            target: torch.Tensor) -> torch.Tensor:
+    """MSE on the two Lorentz scalars of F·F: the scalar and pseudoscalar parts.
+
+    Computed in the same (normalized) space as the masked MSE so the two
+    terms balance without manual weighting. The pseudoscalar part is the
+    Lorentz-invariant ``E·B``; the scalar part is ``|E|² − |B|²``. Both are
+    quadratic in F, so they directly probe the high-frequency amplitudes
+    that the per-component MSE under-weights.
+    """
+    FF_p = algebra.geometric_product(pred, pred)
+    FF_t = algebra.geometric_product(target, target)
+    return (((FF_p[:, 0] - FF_t[:, 0]) ** 2).mean()
+            + ((FF_p[:, PSEUDOSCALAR] - FF_t[:, PSEUDOSCALAR]) ** 2).mean())
 
 
 # ---------------------------------------------------------------------------
@@ -390,7 +419,7 @@ def train(args) -> None:
     print_banner(
         f'Maxwell Reconstruction — Cl(3,1)',
         field='F = E + I·B  (pure grade-2 bivector)',
-        natural_loss='Masked MSE on grade-2 slots {e14,e24,e34,e23,e13,e12}',
+        natural_loss='Masked MSE on grade-2 slots + MSE on (F·F) Lorentz scalars',
     )
 
     train_ds = PlaneWaveDataset(
@@ -432,7 +461,10 @@ def train(args) -> None:
         inputs, k_feat, targets = [b.to(device) for b in batch]
         inp_n, k_n = norms.apply_input(inputs, k_feat)
         norm_targets = (targets - norms.target_mean) / norms.target_std
-        return _masked_mse(_model(inp_n, k_n), norm_targets, g2_mask)
+        pred = _model(inp_n, k_n)
+        masked = _masked_mse(pred, norm_targets, g2_mask)
+        invariants = _lorentz_invariant_loss(algebra, pred, norm_targets)
+        return masked + invariants
 
     def diag_fn(_model, _epoch) -> Dict[str, float]:
         return {'test_l2_g2': test_l2_g2(_model, test_loader, norms, device)}

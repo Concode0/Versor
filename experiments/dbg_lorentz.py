@@ -27,10 +27,13 @@ Lorentz Rotor Recovery in Cl(3,1).
 Hypothesis
   Versor's geometric bias should recover Lorentz boosts in Cl(3,1) from
   ``(original, boosted)`` event pairs through backpropagation without
-  breaking. A single natural loss, Hermitian distance between predicted and
-  true rotor with sign ambiguity handled by ``min``, drives learning;
-  interval preservation, grade confinement, and other physics invariants are
-  measured after training rather than enforced as gradient terms.
+  breaking. A single natural loss, the **action distance**
+  ``||R x R̃ − y||²`` between the rotor's sandwich product on the original
+  event and the boosted target, drives learning; interval preservation,
+  grade confinement, and other physics invariants are measured after
+  training rather than enforced as gradient terms. Action-style supervision
+  resolves the sign ambiguity automatically (R and −R produce the same
+  sandwich) and places mass invariance directly inside the gradient region.
 
 Execute Command
   uv run python -m experiments.dbg_lorentz
@@ -59,7 +62,7 @@ from experiments._lib import (
     set_seed, setup_algebra, signature_metadata,
 )
 from core.metric import (
-    hermitian_distance, hermitian_grade_spectrum,
+    hermitian_grade_spectrum,
     signature_norm_squared, signature_trace_form,
 )
 from layers.primitives.base import CliffordModule
@@ -280,11 +283,24 @@ class LorentzDebugger:
 # Training (single natural loss)
 # ---------------------------------------------------------------------------
 
-def _rotor_hermitian_loss(algebra, pred_rotors, true_rotors) -> torch.Tensor:
-    """Hermitian distance with sign ambiguity; the natural loss for a rotor."""
-    d_pos = hermitian_distance(algebra, pred_rotors, true_rotors).mean()
-    d_neg = hermitian_distance(algebra, pred_rotors, -true_rotors).mean()
-    return torch.min(d_pos, d_neg)
+def _rotor_action_loss(algebra, pred_rotors: torch.Tensor,
+                       events: torch.Tensor) -> torch.Tensor:
+    """Action loss: ||R x R̃ − y||² over the (original, boosted) event pair.
+
+    The loss directly evaluates the rotor's action on the original event and
+    matches the boosted event. Mass invariance, causality, and rapidity all
+    fall inside the gradient region: any rotor that maps x → y exactly is a
+    Lorentz transformation, so the dataset's mass-preserving construction
+    forces the learned R to be (numerically) a unit even-grade versor.
+    Sign ambiguity (R vs −R) is resolved automatically since R x R̃ is
+    invariant under the simultaneous flip R → −R.
+    """
+    x = events[:, 0]
+    y = events[:, 1]
+    Rx = algebra.geometric_product(pred_rotors, x)
+    R_rev = algebra.reverse(pred_rotors)
+    transformed = algebra.geometric_product(Rx, R_rev)
+    return ((transformed - y) ** 2).mean()
 
 
 @torch.no_grad()
@@ -295,7 +311,7 @@ def _evaluate(model, loader, algebra, device) -> Dict[str, torch.Tensor]:
     for events, true_rotors, raps in loader:
         events = events.to(device); true_rotors = true_rotors.to(device)
         pred = model(events)
-        total += _rotor_hermitian_loss(algebra, pred, true_rotors).item() * events.shape[0]
+        total += _rotor_action_loss(algebra, pred, events).item() * events.shape[0]
         n += events.shape[0]
         all_events.append(events.cpu()); all_true.append(true_rotors.cpu())
         all_pred.append(pred.cpu()); all_raps.append(raps)
@@ -318,7 +334,7 @@ def train(args) -> None:
         'Lorentz Debugger — Cl(3,1)',
         signature='(+,+,+,-)',
         boost_type=args.boost_type,
-        natural_loss='Hermitian rotor distance (sign-ambiguous)',
+        natural_loss='Action: ||R x R̃ − y||² over (original, boosted) event pair',
     )
 
     # Pure-algebra sanity (not a loss term)
@@ -350,9 +366,9 @@ def train(args) -> None:
     optimizer = RiemannianAdam(model.parameters(), lr=args.lr, algebra=algebra)
 
     def loss_fn(_model, batch):
-        events, true_rotors, _ = batch
-        events = events.to(device); true_rotors = true_rotors.to(device)
-        return _rotor_hermitian_loss(algebra, _model(events), true_rotors)
+        events, _true_rotors, _ = batch
+        events = events.to(device)
+        return _rotor_action_loss(algebra, _model(events), events)
 
     def diag_fn(_model, _epoch) -> Dict[str, float]:
         ev = _evaluate(_model, test_loader, algebra, device)

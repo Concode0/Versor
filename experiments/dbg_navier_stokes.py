@@ -26,12 +26,15 @@ Navier-Stokes in Cl(3,0) — Supervised IC+BC Reconstruction.
 
 Hypothesis
   A GBN trained on the analytic Taylor-Green vortex should recover the fluid
-  state ``Psi = p + u + omega + h`` on initial and boundary samples through
-  backpropagation without breaking the geometric inductive bias. A single MSE
-  on the full multivector ``Psi`` provides the learning signal; all other
-  physical relations such as incompressibility, vorticity-curl consistency,
-  gauge covariance, and energy or enstrophy balance are evaluated only after
-  training.
+  state ``Psi = p + u + omega + h`` together with the spatial Jacobian
+  ``∂u_i/∂x_j`` on initial and boundary samples through backpropagation
+  without breaking the geometric inductive bias. The natural loss is the
+  joint MSE on the packed multivector and on the 9-component velocity
+  Jacobian; the analytic gradient is supplied as a richer supervised
+  target (Yang-Mills-style — predict the rich operational field, derive
+  invariants post-hoc). Incompressibility, vorticity-curl consistency,
+  gauge covariance, and energy or enstrophy balance are evaluated only
+  after training.
 
 Execute Command
   uv run python -m experiments.dbg_navier_stokes --epochs 200
@@ -90,6 +93,29 @@ def _tgv_vorticity(x, y, z, t, nu, A=1.0):
     w2 = -A * torch.sin(x) * torch.cos(y) * torch.sin(z) * decay
     w3 = 2.0 * A * torch.sin(x) * torch.sin(y) * torch.cos(z) * decay
     return w1, w2, w3
+
+
+def _tgv_velocity_grad(x, y, z, t, nu, A=1.0) -> torch.Tensor:
+    """Spatial Jacobian of u from the TGV closed form.
+
+    Returns ``[B, 9]`` flattened ``∂u_i/∂x_j`` in row-major order
+    ``(∂u₁/∂x, ∂u₁/∂y, ∂u₁/∂z, ∂u₂/∂x, ..., ∂u₃/∂z)``. By construction the
+    diagonal sum is zero (∇·u = 0), and the off-diagonal antisymmetric
+    combinations are the vorticity components.
+    """
+    decay = torch.exp(-3.0 * nu * t)
+    du1_dx =  A * torch.cos(x) * torch.cos(y) * torch.cos(z) * decay
+    du1_dy = -A * torch.sin(x) * torch.sin(y) * torch.cos(z) * decay
+    du1_dz = -A * torch.sin(x) * torch.cos(y) * torch.sin(z) * decay
+    du2_dx =  A * torch.sin(x) * torch.sin(y) * torch.cos(z) * decay
+    du2_dy = -A * torch.cos(x) * torch.cos(y) * torch.cos(z) * decay
+    du2_dz =  A * torch.cos(x) * torch.sin(y) * torch.sin(z) * decay
+    zero = torch.zeros_like(x)
+    return torch.stack(
+        [du1_dx, du1_dy, du1_dz,
+         du2_dx, du2_dy, du2_dz,
+         zero,   zero,   zero], dim=-1,
+    )
 
 
 def _pack_mv(p, u1, u2, u3, w1, w2, w3):
@@ -156,10 +182,12 @@ class TaylorGreenSupervisedDataset(Dataset):
         p = _tgv_pressure(x, y, z, t, nu)
         w1, w2, w3 = _tgv_vorticity(x, y, z, t, nu)
         targets = _pack_mv(p, u1, u2, u3, w1, w2, w3)
+        target_grad = _tgv_velocity_grad(x, y, z, t, nu)
 
         log_re = torch.full_like(x, math.log(re))
         self.coords = torch.stack([x, y, z, t, log_re], dim=-1)
         self.targets = targets
+        self.target_grad = target_grad
 
         print(f"  TGV supervised set: {num_ic} IC + {len(t_b)} BC, "
               f"Re={re:.0f}, nu={nu:.6f}, t_max={t_max}")
@@ -168,7 +196,7 @@ class TaylorGreenSupervisedDataset(Dataset):
         return self.coords.shape[0]
 
     def __getitem__(self, idx: int):
-        return self.coords[idx], self.targets[idx]
+        return self.coords[idx], self.targets[idx], self.target_grad[idx]
 
 
 def _eval_grid(re: float, t: float, n: int) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -194,7 +222,16 @@ class GaugeFluidNet(CliffordModule):
     """GBN for Navier-Stokes in Cl(3,0).
 
     Fourier features → multivector lift → residual blocks
-    (norm → rotor → activation → linear) → readout to [B, 8].
+    (norm → rotor → activation → linear) → two parallel readouts:
+
+    * a packed Cl(3,0) multivector ``[B, 8]`` carrying ``(p, u, ω, h)``;
+    * a flat 9-vector ``[B, 9]`` carrying the spatial Jacobian ``∂u_i/∂x_j``.
+
+    The gradient head is a plain ``nn.Linear`` over the gated hidden state.
+    Both heads share the entire backbone, and the joint MSE loss on the
+    pair is the natural Yang-Mills-style supervision: divergence-freeness
+    and vorticity-curl consistency are inside the loss because their
+    constituent components are inside the target.
     """
 
     def __init__(self, algebra, hidden_dim: int = 32, num_layers: int = 4,
@@ -229,6 +266,7 @@ class GaugeFluidNet(CliffordModule):
         self.output_norm = CliffordLayerNorm(algebra, hidden_dim)
         self.blade_selector = BladeSelector(algebra, channels=hidden_dim)
         self.output_proj = CliffordLinear(algebra, hidden_dim, 1)
+        self.grad_head = nn.Linear(hidden_dim * algebra.dim, 9)
 
     def _features(self, coords: torch.Tensor) -> torch.Tensor:
         x, y, z, t, log_re = coords.unbind(-1)
@@ -245,7 +283,7 @@ class GaugeFluidNet(CliffordModule):
         feats.append(torch.cos(re_proj))
         return torch.cat(feats, dim=-1)
 
-    def forward(self, coords: torch.Tensor) -> torch.Tensor:
+    def forward(self, coords: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         B = coords.shape[0]
         h = self.input_lift(self._features(coords))
         h = h.reshape(B, self.hidden_dim, self.algebra.dim)
@@ -259,7 +297,9 @@ class GaugeFluidNet(CliffordModule):
             h = residual + h
         h = self.output_norm(h)
         h = self.blade_selector(h)
-        return self.output_proj(h).squeeze(1)
+        mv = self.output_proj(h).squeeze(1)
+        grad_u = self.grad_head(h.reshape(B, -1))
+        return mv, grad_u
 
 
 # ---------------------------------------------------------------------------
@@ -267,14 +307,21 @@ class GaugeFluidNet(CliffordModule):
 # ---------------------------------------------------------------------------
 
 @torch.no_grad()
-def supervised_l2(model, loader, device) -> float:
-    sse, n = 0.0, 0
-    for coords, targets in loader:
-        coords = coords.to(device); targets = targets.to(device)
-        pred = model(coords)
-        sse += ((pred - targets) ** 2).mean().item() * coords.shape[0]
+def supervised_l2(model, loader, device) -> Dict[str, float]:
+    """Joint MSE on the (packed mv, ∂u/∂x_i) test pair."""
+    sse_mv, sse_grad, n = 0.0, 0.0, 0
+    for coords, targets, target_grad in loader:
+        coords = coords.to(device)
+        targets = targets.to(device)
+        target_grad = target_grad.to(device)
+        pred_mv, pred_grad = model(coords)
+        sse_mv   += ((pred_mv   - targets    ) ** 2).mean().item() * coords.shape[0]
+        sse_grad += ((pred_grad - target_grad) ** 2).mean().item() * coords.shape[0]
         n += coords.shape[0]
-    return sse / max(n, 1)
+    return {
+        'test_l2_mv':   sse_mv   / max(n, 1),
+        'test_l2_grad': sse_grad / max(n, 1),
+    }
 
 
 def _autograd_div_curl_lap(model: GaugeFluidNet, coords: torch.Tensor,
@@ -290,7 +337,7 @@ def _autograd_div_curl_lap(model: GaugeFluidNet, coords: torch.Tensor,
     log_re = coords[:, 4:5].detach()
     leaf_coords = torch.cat([x, y, z, t, log_re], dim=-1)
 
-    mv = model(leaf_coords)
+    mv, _ = model(leaf_coords)
     u1, u2, u3 = mv[:, 1], mv[:, 2], mv[:, 4]
 
     def grad(out, inp):
@@ -312,7 +359,7 @@ def _autograd_div_curl_lap(model: GaugeFluidNet, coords: torch.Tensor,
 def gauge_covariance_residual(model, algebra, coords, device) -> float:
     """|<u,u>_H − <RuR̃, RuR̃>_H| for a random rotor, averaged over coords."""
     coords = coords.to(device)
-    mv = model(coords)
+    mv, _ = model(coords)
     vel = algebra.grade_projection(mv, 1)
     bv = torch.zeros(1, algebra.dim, device=device)
     bvc = torch.randn(3, device=device) * 0.5
@@ -331,7 +378,7 @@ def gauge_covariance_residual(model, algebra, coords, device) -> float:
 @torch.no_grad()
 def grade_spectrum(model, algebra, coords, device) -> Dict[str, float]:
     coords = coords.to(device)
-    mv = model(coords)
+    mv, _ = model(coords)
     spec = hermitian_grade_spectrum(algebra, mv).mean(dim=0)
     labels = ['g0_pressure', 'g1_velocity', 'g2_vorticity', 'g3_helicity']
     return {labels[k]: spec[k].item() for k in range(4)}
@@ -343,7 +390,7 @@ def post_training_diagnostics(model, algebra, coords, device,
     coords = coords.to(device)
     out = {}
 
-    # autograd-based: divergence, curl-vs-stored vorticity
+    # autograd-based: divergence and curl from the velocity head only.
     derived = _autograd_div_curl_lap(model, coords)
     mv = derived['mv']
     out['div_residual'] = (derived['div_u'] ** 2).mean().item()
@@ -353,13 +400,19 @@ def post_training_diagnostics(model, algebra, coords, device,
         (derived['curl'] - w_pred) ** 2
     ).mean().item()
 
+    # Gradient-head divergence: trace of the predicted ∂u/∂x Jacobian.
+    # Should also collapse toward 0 because every TGV target has zero trace.
+    with torch.no_grad():
+        _, pred_grad = model(coords.detach())
+    trace_div = pred_grad[:, 0] + pred_grad[:, 4] + pred_grad[:, 8]
+    out['div_residual_grad_head'] = (trace_div ** 2).mean().item()
+
     # algebraic / no_grad
     out['gauge_covariance'] = gauge_covariance_residual(
         model, algebra, coords.detach(), device,
     )
     out.update(grade_spectrum(model, algebra, coords.detach(), device))
 
-    # energy-enstrophy balance: |dE/dt + 2νΩ| at t=0 vs t=ε
     return out
 
 
@@ -406,7 +459,7 @@ def main() -> None:
     print_banner(
         'Navier-Stokes — Cl(3,0) supervised reconstruction',
         signature='Cl(3, 0)  grades: G0=p, G1=u, G2=ω, G3=h',
-        natural_loss='MSE on multivector targets at IC + BC samples',
+        natural_loss='MSE on (packed mv, ∂u/∂x_i) at IC + BC samples',
         Re=f'{args.re:.0f}',
         parameters=f'{count_parameters(model):,}',
     )
@@ -414,21 +467,21 @@ def main() -> None:
     optimizer = RiemannianAdam(model.parameters(), lr=args.lr, algebra=algebra)
 
     def loss_fn(_model, batch):
-        coords, targets = (b.to(device) for b in batch)
-        return nn.functional.mse_loss(_model(coords), targets)
+        coords, targets, target_grad = (b.to(device) for b in batch)
+        pred_mv, pred_grad = _model(coords)
+        return (nn.functional.mse_loss(pred_mv,   targets)
+                + nn.functional.mse_loss(pred_grad, target_grad))
 
     def diag_fn(_model, _epoch) -> Dict[str, float]:
-        return {'test_l2': supervised_l2(_model, test_loader, device)}
+        return supervised_l2(_model, test_loader, device)
 
     history = run_supervised_loop(
         model, optimizer, loss_fn, train_loader,
         epochs=args.epochs, diag_interval=args.diag_interval, grad_clip=1.0,
-        diag_fn=diag_fn, history_extra_keys=('test_l2',),
+        diag_fn=diag_fn, history_extra_keys=('test_l2_mv', 'test_l2_grad'),
     )
 
-    diagnostics = {
-        'test_l2': supervised_l2(model, test_loader, device),
-    }
+    diagnostics = supervised_l2(model, test_loader, device)
     diag_coords = test_ds.coords[: min(256, len(test_ds))]
     diagnostics.update(post_training_diagnostics(
         model, algebra, diag_coords, device,

@@ -49,7 +49,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pa
 
 from experiments._lib import (
     build_visualization_metadata, ensure_output_dir, make_experiment_parser,
-    save_experiment_figure, section_header, set_seed, setup_algebra,
+    save_experiment_figure, section_header, set_seed,
     signature_metadata,
 )
 from core.algebra import CliffordAlgebra
@@ -57,6 +57,12 @@ from core.decomposition import ExpPolicy
 from core.metric import induced_norm
 from layers.primitives.base import CliffordModule
 from optimizers.riemannian import RiemannianAdam
+
+
+_DTYPE_MAP = {
+    'float32': torch.float32,
+    'float64': torch.float64,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -68,22 +74,25 @@ def _grade1_indices(n: int) -> list:
     return [1 << i for i in range(n)]
 
 
-def _make_skew_basis(n: int, skew_factor: float, device) -> torch.Tensor:
+def _make_skew_basis(n: int, skew_factor: float, device,
+                     dtype: torch.dtype = torch.float64) -> torch.Tensor:
     """Build a skewed basis matrix: identity + noise then upper-triangular skew.
 
     Args:
         n: Lattice dimension.
         skew_factor: Magnitude of off-diagonal skew (0 = orthogonal).
         device: Tensor device.
+        dtype: Floating-point dtype for the generated basis.
     Returns:
         [n, n] basis matrix.
     """
-    base = torch.eye(n, device=device)
-    noise = torch.randn(n, n, device=device) * 0.1
+    base = torch.eye(n, device=device, dtype=dtype)
+    noise = torch.randn(n, n, device=device, dtype=dtype) * 0.1
     vecs = base + noise
     if skew_factor != 0:
-        skew = torch.eye(n, device=device)
-        upper = torch.triu(torch.randn(n, n, device=device), diagonal=1)
+        skew = torch.eye(n, device=device, dtype=dtype)
+        upper = torch.triu(torch.randn(n, n, device=device, dtype=dtype),
+                           diagonal=1)
         skew = skew + skew_factor * upper
         vecs = vecs @ skew
     return vecs
@@ -239,6 +248,15 @@ class MorphStage(CliffordModule):
         # (c) Dynamic scale — per-basis log-scale (Euclidean)
         self.log_scale = nn.Parameter(torch.zeros(n))
 
+        # Rotor cache populated by forward(); inverse() reuses these so that
+        # forward and inverse share the same approximate decomposition for
+        # n>=4 (otherwise the stochastic power-iteration init drifts between
+        # calls and breaks algebraic invertibility).
+        self._cached_R = None
+        self._cached_R_rev = None
+        self._cached_T = None
+        self._cached_T_rev = None
+
     def _scatter_bv(self, weights: torch.Tensor) -> torch.Tensor:
         """Scatter sparse bivector weights into full multivector.
 
@@ -303,6 +321,12 @@ class MorphStage(CliffordModule):
     def forward(self, basis_mvs: torch.Tensor) -> torch.Tensor:
         """Apply GlobalRotor -> RelativeTwist -> DynamicScale.
 
+        Caches the freshly built rotors on the module so ``inverse()`` can
+        reuse them. This guarantees forward/inverse pairing even when the
+        underlying ``algebra.exp`` takes the approximate decomposition path
+        (n>=4), which would otherwise produce slightly different rotors per
+        call due to stochastic power-iteration initialization.
+
         Args:
             basis_mvs: [n, D] grade-1 multivectors.
         Returns:
@@ -311,11 +335,13 @@ class MorphStage(CliffordModule):
         # --- Global rotation ---
         B_global = self._global_bivector()                     # [D]
         R, R_rev = self._make_rotor(B_global.unsqueeze(0))     # [1, D]
+        self._cached_R, self._cached_R_rev = R, R_rev
         x = self._apply_sandwich(R, basis_mvs, R_rev)          # [n, D]
 
         # --- Relative twist ---
         B_twist = self._twist_bivector()                       # [n, D]
         T, T_rev = self._make_rotor(B_twist)                   # [n, D]
+        self._cached_T, self._cached_T_rev = T, T_rev
         x = self._apply_sandwich(T, x, T_rev)                  # [n, D]
 
         # --- Dynamic scale ---
@@ -327,24 +353,31 @@ class MorphStage(CliffordModule):
     def inverse(self, basis_mvs: torch.Tensor) -> torch.Tensor:
         """Exact inverse: Scale^{-1} -> Twist^{-1} -> Rotation^{-1}.
 
+        Reuses the rotors cached by the most recent ``forward()`` call so
+        the inverse is bit-identical to undoing that forward, regardless of
+        whether ``algebra.exp`` used the closed-form or the approximate
+        decomposition path.
+
         Args:
             basis_mvs: [n, D] morphed multivectors.
         Returns:
             [n, D] reconstructed multivectors.
         """
+        if self._cached_R is None or self._cached_T is None:
+            raise RuntimeError(
+                "MorphStage.inverse() requires a prior forward() call to "
+                "populate the rotor cache."
+            )
+
         # --- Inverse scale ---
         inv_scale = torch.exp(-self.log_scale.clamp(-3.0, 3.0))
         x = basis_mvs * inv_scale.unsqueeze(-1)
 
         # --- Inverse twist (swap T and T_rev) ---
-        B_twist = self._twist_bivector()
-        T, T_rev = self._make_rotor(B_twist)
-        x = self._apply_sandwich(T_rev, x, T)
+        x = self._apply_sandwich(self._cached_T_rev, x, self._cached_T)
 
         # --- Inverse global rotation (swap R and R_rev) ---
-        B_global = self._global_bivector()
-        R, R_rev = self._make_rotor(B_global.unsqueeze(0))
-        x = self._apply_sandwich(R_rev, x, R)
+        x = self._apply_sandwich(self._cached_R_rev, x, self._cached_R)
 
         return x
 
@@ -404,9 +437,11 @@ class LatticeMorpher:
     def __init__(self, n: int = 3, signature: str = 'euclidean',
                  num_stages: int = 3, seed: int = 42, device: str = 'cpu',
                  compound_blades: int = 1, mode: MorphMode = MorphMode.BASIC,
-                 lambda_gram: float = 0.1, lambda_minkowski: float = 0.5):
+                 lambda_gram: float = 0.1, lambda_minkowski: float = 0.5,
+                 dtype: torch.dtype = torch.float64):
         self.n = n
         self.device = device
+        self.dtype = dtype
         self.mode = mode
         self.compound_blades = compound_blades
         self.lambda_gram = lambda_gram
@@ -417,14 +452,15 @@ class LatticeMorpher:
             p, q = n - 1, 1
         else:
             p, q = n, 0
-        self.algebra = setup_algebra(p=p, q=q, device=device)
+        self.algebra = CliffordAlgebra(
+            p=p, q=q, device=device, dtype=dtype).to(device)
         self.algebra.exp_policy = ExpPolicy.AUTO
         self.signature_q = q
         self.tracker = StructureTracker(self.algebra)
         self.pipeline = MorphPipeline(
             self.algebra, n, num_stages,
             compound_blades=compound_blades,
-        ).to(device)
+        ).to(device=device, dtype=dtype)
         self.signature_name = f"Cl({p},{q})"
 
         if mode == MorphMode.MINKOWSKI and q == 0:
@@ -450,9 +486,10 @@ class LatticeMorpher:
             [n, D] grade-1 multivectors.
         """
         if basis_matrix is not None:
-            vecs = basis_matrix.to(self.device, dtype=torch.float32)
+            vecs = basis_matrix.to(self.device, dtype=self.dtype)
         else:
-            vecs = _make_skew_basis(self.n, skew_factor, self.device)
+            vecs = _make_skew_basis(self.n, skew_factor, self.device,
+                                    dtype=self.dtype)
 
         return self.algebra.embed_vector(vecs)  # [n, D]
 
@@ -962,6 +999,7 @@ def run_experiment(args):
     # Auto-detect device
     device = args.device
     ops_mode = MorphMode(args.ops)
+    dtype = _DTYPE_MAP[args.dtype]
 
     morpher = LatticeMorpher(
         n=args.dim, signature=args.signature,
@@ -970,6 +1008,7 @@ def run_experiment(args):
         mode=ops_mode,
         lambda_gram=args.lambda_gram,
         lambda_minkowski=args.lambda_minkowski,
+        dtype=dtype,
     )
 
     # Create source lattice
@@ -989,7 +1028,7 @@ def run_experiment(args):
     target_basis = None
     if args.mode == 'target':
         # Target: orthonormal lattice
-        target_matrix = torch.eye(args.dim, device=device)
+        target_matrix = torch.eye(args.dim, device=device, dtype=dtype)
         target_basis = morpher.create_lattice(target_matrix)
         morpher._print_invariants("Target Lattice", target_basis)
         results = morpher.run_target_morphing(
@@ -1087,6 +1126,9 @@ def parse_args() -> argparse.Namespace:
                         help='Off-diagonal gram penalty weight (ops=skew)')
     parser.add_argument('--lambda-minkowski', type=float, default=0.5,
                         help='Minkowski metric preservation weight (ops=minkowski)')
+    parser.add_argument('--dtype', choices=list(_DTYPE_MAP.keys()),
+                        default='float64',
+                        help='Floating-point precision for algebra and tensors')
     return parser.parse_args()
 
 

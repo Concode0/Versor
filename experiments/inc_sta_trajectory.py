@@ -27,13 +27,17 @@ Hypothesis
   A 7-channel IMU reading ``(accel, gyro, fsr)`` should fit naturally into a
   single Cl(3,1) multivector: accel as a grade-1 spatial vector, gyro as a
   grade-2 Hodge bivector, and fsr as a scalar. A learnable Spin(3,1)
-  calibration rotor, initialized from gravity, followed by a causal rotor TCN
-  should reconstruct 3-D trajectory end to end using the natural supervised
-  loss ``MSE(pos) + 0.5 * MSE(vel)``, while isometry, grade confinement,
-  calibration magnitude, and noise robustness remain post-training checks.
+  calibration rotor, initialized from gravity, followed by a frame-to-frame
+  step-rotor flow (``x_{t+1} = R_t x_t R̃_t``) should reconstruct 3-D
+  trajectories from synthetic Minkowski worldlines using the natural
+  supervised loss ``MSE(pos) + 0.5 * MSE(vel)``. Isometry, grade confinement,
+  calibration magnitude, and Lorentz-invariance residuals remain
+  post-training measurements.
 
 Execute Command
-  uv run python -m experiments.inc_sta_trajectory --data <path-to-h5>
+  uv run python -m experiments.inc_sta_trajectory --regime free_particle
+  uv run python -m experiments.inc_sta_trajectory --regime lorentz_boost
+  uv run python -m experiments.inc_sta_trajectory --regime helical_motion
 """
 
 from __future__ import annotations
@@ -64,11 +68,6 @@ from layers import CliffordLayerNorm, GeometricNeutralizer, MotherEmbedding, Rot
 from layers.primitives.base import CliffordModule
 from functional.activation import GeometricGELU
 from optimizers.riemannian import RiemannianAdam
-
-try:
-    import h5py
-except ImportError:
-    h5py = None
 
 
 # ============================================================================
@@ -119,91 +118,159 @@ def _build_imu_scatter(algebra_dim: int = 16) -> torch.Tensor:
 # Dataset
 # ============================================================================
 
-class IMUTrajectoryDataset(Dataset):
-    """Sliding-window IMU dataset from SimGenerator HDF5."""
+def _synthesize_worldline(regime: str, *, num_trajs: int, window_size: int,
+                          dt: float, rng: np.random.RandomState,
+                          ) -> Tuple[np.ndarray, np.ndarray, np.ndarray,
+                                     np.ndarray]:
+    """Generate (sensor, pos, vel, gravity_b) tensors for a synthetic regime.
 
-    def __init__(self, h5_path: str, window_size: int = 128, stride: int = 16,
-                 split: str = 'train', noise_scale: float = 0.0,
-                 seed: int = 42):
+    All shapes have a leading ``(num_trajs, window_size)`` axis, exactly the
+    layout produced by ``IMUTrajectoryDataset`` after windowing — so the rest
+    of the pipeline doesn't care that the data came from closed-form physics.
+
+    Channels: ``sensor[..., 0:3]`` = body-frame accel,
+    ``sensor[..., 3:6]`` = body-frame gyro (angular velocity), ``sensor[..., 6]``
+    = scalar force placeholder.
+    """
+    g_inertial = np.array([0.0, 0.0, -9.81], dtype=np.float64)
+    T = window_size
+    t_axis = np.arange(T) * dt
+
+    sensors = np.zeros((num_trajs, T, 7), dtype=np.float32)
+    positions = np.zeros((num_trajs, T, 3), dtype=np.float32)
+    velocities = np.zeros((num_trajs, T, 3), dtype=np.float32)
+    gravity_b = np.zeros((num_trajs, T, 3), dtype=np.float32)
+
+    for i in range(num_trajs):
+        if regime == 'free_particle':
+            v0 = rng.uniform(-2.0, 2.0, size=3)
+            x0 = rng.uniform(-1.0, 1.0, size=3)
+            vel = np.broadcast_to(v0, (T, 3)).copy()
+            pos = x0[None, :] + vel * t_axis[:, None]
+            accel_inertial = np.zeros((T, 3))
+            omega = np.zeros((T, 3))
+            R_body = np.broadcast_to(np.eye(3), (T, 3, 3)).copy()
+
+        elif regime == 'lorentz_boost':
+            phi = rng.uniform(-1.0, 1.0)
+            axis = rng.randint(0, 3)
+            beta = math.tanh(phi)
+            v_boost = np.zeros(3); v_boost[axis] = beta * 3.0
+            v0 = v_boost + rng.uniform(-0.5, 0.5, size=3)
+            x0 = rng.uniform(-1.0, 1.0, size=3)
+            vel = np.broadcast_to(v0, (T, 3)).copy()
+            pos = x0[None, :] + vel * t_axis[:, None]
+            accel_inertial = np.zeros((T, 3))
+            omega = np.zeros((T, 3))
+            R_body = np.broadcast_to(np.eye(3), (T, 3, 3)).copy()
+
+        elif regime == 'helical_motion':
+            radius = rng.uniform(0.5, 2.0)
+            omega_z = rng.uniform(0.5, 2.5)
+            phi0 = rng.uniform(-math.pi, math.pi)
+            vz = rng.uniform(-0.5, 0.5)
+            phase = phi0 + omega_z * t_axis
+            pos = np.stack([radius * np.cos(phase),
+                            radius * np.sin(phase),
+                            vz * t_axis], axis=-1)
+            vel = np.stack([-radius * omega_z * np.sin(phase),
+                             radius * omega_z * np.cos(phase),
+                             np.full_like(phase, vz)], axis=-1)
+            accel_inertial = np.stack([
+                -radius * omega_z * omega_z * np.cos(phase),
+                -radius * omega_z * omega_z * np.sin(phase),
+                np.zeros_like(phase),
+            ], axis=-1)
+            omega = np.zeros((T, 3))
+            omega[:, 2] = omega_z
+            cos_p = np.cos(phase); sin_p = np.sin(phase)
+            R_body = np.zeros((T, 3, 3))
+            R_body[:, 0, 0] = cos_p;  R_body[:, 0, 1] = sin_p
+            R_body[:, 1, 0] = -sin_p; R_body[:, 1, 1] = cos_p
+            R_body[:, 2, 2] = 1.0
+
+        else:
+            raise ValueError(f'unknown regime {regime!r}')
+
+        g_tile = np.broadcast_to(g_inertial, (T, 3))
+        proper_accel = accel_inertial - g_tile
+        accel_body = np.einsum('tij,tj->ti', R_body, proper_accel)
+        gyro_body = np.einsum('tij,tj->ti', R_body, omega)
+        gravity_body = np.einsum('tij,tj->ti', R_body, g_tile)
+        fsr = np.linalg.norm(accel_inertial, axis=-1)
+
+        sensors[i, :, 0:3] = accel_body.astype(np.float32)
+        sensors[i, :, 3:6] = gyro_body.astype(np.float32)
+        sensors[i, :, 6] = fsr.astype(np.float32)
+        positions[i] = pos.astype(np.float32)
+        velocities[i] = vel.astype(np.float32)
+        gravity_b[i] = gravity_body.astype(np.float32)
+
+    return sensors, positions, velocities, gravity_b
+
+
+class SyntheticIMUWorldlineDataset(Dataset):
+    """Closed-form Minkowski worldlines as IMU windows.
+
+    Three regimes:
+
+    - ``free_particle``: constant 4-velocity worldline; identity body frame,
+      gravity stays aligned with ``-e_z``.
+    - ``lorentz_boost``: random per-trajectory rapidity along a random spatial
+      axis; same body frame but the inertial velocity carries a relativistic
+      offset, producing the stretched-time signature the model has to learn.
+    - ``helical_motion``: uniform circular motion in (x, y) with linear z
+      drift; body frame rotates at ``omega_z``, so the gyro channel exercises
+      the grade-2 path of the Cl(3,1) embedding.
+
+    Statistics (means/stds) are computed once on the full sample so the
+    interface matches ``IMUTrajectoryDataset`` (sensor / pos / vel triple).
+    """
+
+    def __init__(self, regime: str, *, num_trajs: int = 256,
+                 window_size: int = 128, dt: float = 0.02,
+                 noise_scale: float = 0.0, seed: int = 42):
         super().__init__()
         self.window_size = window_size
         self.noise_scale = noise_scale
-        if h5py is None:
-            raise ImportError('h5py required: uv pip install h5py')
+        self.regime = regime
+        self.dt = dt
 
-        sensors_list, pos_list, vel_list, gravity_list = [], [], [], []
-        with h5py.File(h5_path, 'r') as f:
-            if 'sensor_data' in f:
-                for i in range(f['sensor_data'].shape[0]):
-                    sensors_list.append(np.asarray(f['sensor_data'][i]))
-                    pos_list.append(np.asarray(f['gt_pos_data'][i]))
-                    vel_list.append(np.asarray(f['gt_vel_data'][i]))
-                    gravity_list.append(np.asarray(f['gt_gravity_b_data'][i]))
-            else:
-                keys = sorted(f.keys(), key=lambda k: int(k) if k.isdigit() else k)
-                for key in keys:
-                    if key.isdigit() or key.startswith('sample'):
-                        g = f[key]
-                        sensors_list.append(np.asarray(g['sensor_data']))
-                        pos_list.append(np.asarray(g['gt_pos_data']))
-                        vel_list.append(np.asarray(g['gt_vel_data']))
-                        gravity_list.append(np.asarray(g['gt_gravity_b_data']))
+        rng = np.random.RandomState(seed)
+        sensors, positions, velocities, gravity_b = _synthesize_worldline(
+            regime, num_trajs=num_trajs, window_size=window_size,
+            dt=dt, rng=rng,
+        )
 
-        n_samples = len(sensors_list)
-        assert n_samples > 0, f'No samples found in {h5_path}'
+        # Window-localize positions so each window starts at the origin —
+        # matches what the original dataset did per stride.
+        positions = positions - positions[:, :1, :]
 
-        all_gravity = np.concatenate(gravity_list, axis=0)
-        self.gravity_bivector = compute_gravity_bivector(all_gravity)
-
-        all_sensors = np.concatenate(sensors_list, axis=0)
-        self.sensor_mean = torch.tensor(all_sensors.mean(axis=0), dtype=torch.float32)
+        all_sensor = sensors.reshape(-1, 7)
+        self.sensor_mean = torch.tensor(all_sensor.mean(axis=0), dtype=torch.float32)
         self.sensor_std = torch.tensor(
-            all_sensors.std(axis=0).clip(min=1e-6), dtype=torch.float32)
+            all_sensor.std(axis=0).clip(min=1e-6), dtype=torch.float32)
 
-        # Per-window delta-position std (windows are localized so pos[0]=0)
-        deltas = []
-        for i in range(n_samples):
-            T = sensors_list[i].shape[0]
-            for start in range(0, T - window_size + 1, stride):
-                p = pos_list[i][start:start + window_size]
-                deltas.append(p - p[0:1])
-        all_delta = np.concatenate(deltas, axis=0)
+        delta = positions.reshape(-1, 3)
         self.pos_mean = torch.zeros(3, dtype=torch.float32)
         self.pos_std = torch.tensor(
-            all_delta.std(axis=0).clip(min=1e-6), dtype=torch.float32)
-        all_vel = np.concatenate(vel_list, axis=0)
+            delta.std(axis=0).clip(min=1e-6), dtype=torch.float32)
+
+        all_vel = velocities.reshape(-1, 3)
         self.vel_mean = torch.tensor(all_vel.mean(axis=0), dtype=torch.float32)
         self.vel_std = torch.tensor(
             all_vel.std(axis=0).clip(min=1e-6), dtype=torch.float32)
 
-        rng = np.random.RandomState(seed)
-        indices = np.arange(n_samples)
-        rng.shuffle(indices)
-        n_train = int(0.8 * n_samples)
-        n_val = int(0.1 * n_samples)
-        if split == 'train':
-            split_idx = indices[:n_train]
-        elif split == 'val':
-            split_idx = indices[n_train:n_train + n_val]
-        else:
-            split_idx = indices[n_train + n_val:]
+        sensor_t = torch.from_numpy(sensors)
+        pos_t = torch.from_numpy(positions)
+        vel_t = torch.from_numpy(velocities)
+        self.sensors = (sensor_t - self.sensor_mean) / self.sensor_std
+        self.positions = pos_t / self.pos_std
+        self.velocities = (vel_t - self.vel_mean) / self.vel_std
 
-        sensor_windows, pos_windows, vel_windows = [], [], []
-        for i in split_idx:
-            T = sensors_list[i].shape[0]
-            for start in range(0, T - window_size + 1, stride):
-                end = start + window_size
-                s = torch.tensor(sensors_list[i][start:end], dtype=torch.float32)
-                p = torch.tensor(pos_list[i][start:end], dtype=torch.float32)
-                v = torch.tensor(vel_list[i][start:end], dtype=torch.float32)
-                p = p - p[0:1]
-                sensor_windows.append((s - self.sensor_mean) / self.sensor_std)
-                pos_windows.append(p / self.pos_std)
-                vel_windows.append((v - self.vel_mean) / self.vel_std)
-
-        self.sensors = torch.stack(sensor_windows)
-        self.positions = torch.stack(pos_windows)
-        self.velocities = torch.stack(vel_windows)
+        self.gravity_bivector = compute_gravity_bivector(
+            gravity_b.reshape(-1, 3))
+        self.gravity_b_raw = torch.from_numpy(gravity_b)
 
     def __len__(self) -> int:
         return self.sensors.shape[0]
@@ -265,35 +332,77 @@ class STAEmbed(CliffordModule):
         return mv.reshape(*batch_shape, self.channels, dim)
 
 
-class CausalRotorTCN(CliffordModule):
-    """Left-padded rotor-TCN block (per-frame rotor + causal 1-D conv + rotor).
+class StepRotorFlow(CliffordModule):
+    """Frame-to-frame rotor evolution: ``x_{t+1} = R_t · x_t · R̃_t``.
 
-    Receptive field per layer: ``(k - 1) * dilation + 1``.
+    For each timestep ``t`` a *data-dependent* bivector ``B_t`` is produced by
+    a left-padded causal 1-D conv over the multivector features, then fed
+    through ``algebra.exp(-B_t / 2)`` to obtain the per-frame rotor ``R_t``.
+    The hidden multivector then advances under the sandwich product, which
+    preserves the Cl(3,1) signature norm by construction — this is the
+    implicit coercion that replaces the old ``IsometryLoss`` term.
+
+    A residual channel mix (``CliffordLinear``) follows the rotor sandwich so
+    expressive power is not capped by isometries alone.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, in_channels: int,
-                 hidden_channels: int, kernel_size: int = 3, dilation: int = 1):
+    def __init__(self, algebra: CliffordAlgebra, channels: int,
+                 kernel_size: int = 3, dilation: int = 1):
         super().__init__(algebra)
-        self.rotor = RotorLayer(algebra, in_channels)
-        self.hidden_channels = hidden_channels
+        self.channels = channels
+        self.dilation = dilation
+        self.kernel_size = kernel_size
         self.causal_pad = (kernel_size - 1) * dilation
-        self.tcn = nn.Conv1d(
-            in_channels * algebra.dim, hidden_channels * algebra.dim,
+
+        g2_indices = algebra.grade_masks[2].nonzero(as_tuple=False).squeeze(-1)
+        self.register_buffer('g2_indices', g2_indices)
+        self.num_bivecs = int(g2_indices.numel())
+
+        # Bivector projector: causal conv over the full multivector to
+        # produce a per-frame, per-channel grade-2 element.
+        self.bv_conv = nn.Conv1d(
+            channels * algebra.dim, channels * self.num_bivecs,
             kernel_size=kernel_size, dilation=dilation, padding=0)
-        self.out_rotor = RotorLayer(algebra, hidden_channels)
+        # Channel mix after the sandwich — preserves grade structure.
+        from layers import CliffordLinear  # local import keeps top section tidy
+        self.channel_mix = CliffordLinear(algebra, channels, channels)
+
+    def _bivector_field(self, mv: torch.Tensor) -> torch.Tensor:
+        """[B, T, C, D] → grade-2 bivectors [B*T, C, D]."""
+        b, t, c, d = mv.shape
+        x_in = mv.reshape(b, t, c * d).transpose(1, 2)
+        x_in = F.pad(x_in, (self.causal_pad, 0))
+        coeffs = self.bv_conv(x_in)  # [B, C*num_bv, T]
+        coeffs = coeffs.transpose(1, 2).reshape(b * t, c, self.num_bivecs)
+        B_field = torch.zeros(b * t, c, d, device=mv.device, dtype=mv.dtype)
+        idx = self.g2_indices.view(1, 1, -1).expand(b * t, c, -1)
+        B_field.scatter_(-1, idx, coeffs)
+        return B_field
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, t, c, d = x.shape
-        x_rot = self.rotor(x.reshape(b * t, c, d)).reshape(b, t, c, d)
-        x_in = x_rot.reshape(b, t, c * d).transpose(1, 2)
-        x_in = F.pad(x_in, (self.causal_pad, 0))
-        y = self.tcn(x_in).transpose(1, 2).reshape(b, t, self.hidden_channels, d)
-        y_flat = y.reshape(b * t, self.hidden_channels, d)
-        return self.out_rotor(y_flat).reshape(b, t, self.hidden_channels, d)
+        B_field = self._bivector_field(x)               # [B*T, C, D] grade-2
+        flat = x.reshape(b * t, c, d)
+        # Per-channel rotor sandwich: each (sample, time, channel) gets its
+        # own rotor. Re-pack to [B*T*C, D] and use the algebra's
+        # ``versor_product`` for a single-call sandwich.
+        flat_R = self.algebra.exp(-0.5 * B_field).reshape(b * t * c, d)
+        flat_x = flat.reshape(b * t * c, d)
+        evolved = self.algebra.versor_product(flat_R, flat_x)
+        evolved = evolved.reshape(b * t, c, d)
+        evolved = self.channel_mix(evolved)
+        return evolved.reshape(b, t, c, d)
 
 
 class STATrajectoryNet(CliffordModule):
-    """STAEmbed → stacked CausalRotorTCN → grade-1 spatial readout."""
+    """STAEmbed → stacked StepRotorFlow → grade-1 spatial readout.
+
+    The rotor flow makes time evolution explicitly geometric: every dilation
+    layer learns a per-frame bivector field whose exp produces a rotor that
+    advances the multivector state in place. Receptive field grows the same
+    way a TCN's would — by exponential dilation in the bivector projector —
+    while the actual transformation is signature-preserving.
+    """
 
     def __init__(self, algebra: CliffordAlgebra, channels: int = 32,
                  num_layers: int = 5, kernel_size: int = 3,
@@ -301,12 +410,12 @@ class STATrajectoryNet(CliffordModule):
         super().__init__(algebra)
         self.channels = channels
         self.embedding = STAEmbed(algebra, channels, gravity_bivector)
-        self.tcn_layers = nn.ModuleList()
+        self.flow_layers = nn.ModuleList()
         self.norms = nn.ModuleList()
         self.activations = nn.ModuleList()
         for i in range(num_layers):
-            self.tcn_layers.append(CausalRotorTCN(
-                algebra, channels, channels, kernel_size, dilation=2 ** i))
+            self.flow_layers.append(StepRotorFlow(
+                algebra, channels, kernel_size, dilation=2 ** i))
             self.norms.append(CliffordLayerNorm(algebra, channels))
             self.activations.append(GeometricGELU(algebra, channels))
         self.pos_head = nn.Linear(channels * 3, 3)
@@ -317,18 +426,19 @@ class STATrajectoryNet(CliffordModule):
         mv = self.embedding(x.reshape(B * W, 7))
         return mv.reshape(B, W, self.channels, self.algebra.dim)
 
-    def _tcn(self, mv: torch.Tensor) -> torch.Tensor:
+    def _flow(self, mv: torch.Tensor) -> torch.Tensor:
         features = mv
-        for tcn, norm, act in zip(self.tcn_layers, self.norms, self.activations):
+        for flow, norm, act in zip(self.flow_layers, self.norms,
+                                    self.activations):
             residual = features
-            out = tcn(features)
+            out = flow(features)
             b, w, c, d = out.shape
             out = norm(out.reshape(b * w, c, d)).reshape(b, w, c, d)
             features = act(out) + residual
         return features
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        features = self._tcn(self._embed(x))
+        features = self._flow(self._embed(x))
         spatial = torch.stack(
             [features[..., 1], features[..., 2], features[..., 4]], dim=-1)
         flat = spatial.reshape(*features.shape[:2], self.channels * 3)
@@ -336,9 +446,9 @@ class STATrajectoryNet(CliffordModule):
 
     @torch.no_grad()
     def features(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Return (pre-TCN embedding, post-TCN features) — diagnostics only."""
+        """Return (pre-flow embedding, post-flow features) — diagnostics only."""
         embedding = self._embed(x)
-        return embedding, self._tcn(embedding)
+        return embedding, self._flow(embedding)
 
 
 # ============================================================================
@@ -385,9 +495,54 @@ def isometry_residual(model: STATrajectoryNet, loader: DataLoader,
     return total / max(n, 1)
 
 
+@torch.no_grad()
+def lorentz_invariance_residual(model: STATrajectoryNet, loader: DataLoader,
+                                algebra: CliffordAlgebra, device: str) -> float:
+    """Predicted ``signature_norm_squared`` should be invariant under random
+    Spin(3,1) rotors applied at the embedding stage.
+
+    Constructs a small grade-2 element ``B`` (boost + rotation), exponentiates
+    to a rotor ``R = exp(-B/2)``, applies the sandwich product to the embedded
+    multivector, and re-runs the flow stack. The Hermitian-norm spectrum of
+    the post-flow features should match because every step is an isometry.
+    """
+    model.eval()
+    bv = torch.zeros(1, algebra.dim, device=device)
+    g2_mask = algebra.grade_masks_float[2].to(bv.dtype)
+    bv = bv + torch.randn(1, algebra.dim, device=device) * 0.1 * g2_mask
+    R = algebra.exp(-0.5 * bv)
+    R_rev = algebra.reverse(R)
+
+    sensor, _, _ = next(iter(loader))
+    sensor = sensor.to(device)
+    embedding, post = model.features(sensor)
+    b, w, c, d = embedding.shape
+    flat = embedding.reshape(b * w * c, d)
+    boosted = algebra.geometric_product(
+        algebra.geometric_product(R.expand_as(flat), flat),
+        R_rev.expand_as(flat),
+    ).reshape(b, w, c, d)
+    boosted_post = model._flow(boosted)
+    sq_orig = signature_norm_squared(algebra, post.reshape(-1, d))
+    sq_boost = signature_norm_squared(algebra, boosted_post.reshape(-1, d))
+    return float((sq_orig - sq_boost).abs().mean().item())
+
+
+@torch.no_grad()
+def calibration_recovery_error(model: STATrajectoryNet,
+                               target_bivector: torch.Tensor) -> float:
+    """How close the learned calibration bivector sits to the analytic
+    optimum recovered by ``compute_gravity_bivector`` on the dataset.
+    """
+    learned = model.embedding.calib_bivector.detach().cpu()
+    target = target_bivector.detach().cpu().to(learned.dtype)
+    return float((learned - target).norm().item())
+
+
 def post_training_diagnostics(
     model: STATrajectoryNet, test_loader: DataLoader,
     algebra: CliffordAlgebra, device: str, *,
+    target_calib_bivector: Optional[torch.Tensor] = None,
     noisy_loader: Optional[DataLoader] = None,
 ) -> Dict[str, float]:
     rmse = evaluate_rmse(model, test_loader, device)
@@ -396,9 +551,14 @@ def post_training_diagnostics(
         'test_vel_rmse': rmse['vel_rmse'],
         'isometry_residual': isometry_residual(
             model, test_loader, algebra, device),
+        'lorentz_invariance_residual': lorentz_invariance_residual(
+            model, test_loader, algebra, device),
         'calib_bivector_norm': float(
             model.embedding.calib_bivector.detach().norm().item()),
     }
+    if target_calib_bivector is not None:
+        diagnostics['calib_recovery_error'] = calibration_recovery_error(
+            model, target_calib_bivector)
     feats = []
     with torch.no_grad():
         for sensor, _, _ in test_loader:
@@ -423,12 +583,15 @@ def train(args: argparse.Namespace) -> None:
     device = args.device
     algebra = setup_algebra(p=3, q=1, device='cpu')
 
-    train_ds = IMUTrajectoryDataset(
-        args.data, args.window_size, args.stride, split='train', seed=args.seed)
-    val_ds = IMUTrajectoryDataset(
-        args.data, args.window_size, args.stride, split='val', seed=args.seed)
-    test_ds = IMUTrajectoryDataset(
-        args.data, args.window_size, args.stride, split='test', seed=args.seed)
+    train_ds = SyntheticIMUWorldlineDataset(
+        args.regime, num_trajs=args.num_trajs,
+        window_size=args.window_size, dt=args.dt, seed=args.seed)
+    val_ds = SyntheticIMUWorldlineDataset(
+        args.regime, num_trajs=max(args.num_trajs // 4, 16),
+        window_size=args.window_size, dt=args.dt, seed=args.seed + 1)
+    test_ds = SyntheticIMUWorldlineDataset(
+        args.regime, num_trajs=max(args.num_trajs // 4, 16),
+        window_size=args.window_size, dt=args.dt, seed=args.seed + 2)
 
     use_pin = device != 'cpu'
     num_workers = 2 if device != 'cpu' else 0
@@ -449,8 +612,9 @@ def train(args: argparse.Namespace) -> None:
     ).to(device)
 
     print_banner(
-        'STA Trajectory Incubator — Cl(3,1) IMU reconstruction',
+        'STA Trajectory Incubator — Cl(3,1) synthetic worldline reconstruction',
         signature='Cl(3, 1)  dim=16',
+        regime=args.regime,
         channels=args.channels,
         num_layers=args.num_layers,
         window=args.window_size,
@@ -477,19 +641,23 @@ def train(args: argparse.Namespace) -> None:
 
     noisy_loader = None
     if args.noise_scale > 0.0:
-        noisy_ds = IMUTrajectoryDataset(
-            args.data, args.window_size, args.stride,
-            split='test', noise_scale=args.noise_scale, seed=args.seed)
+        noisy_ds = SyntheticIMUWorldlineDataset(
+            args.regime, num_trajs=max(args.num_trajs // 4, 16),
+            window_size=args.window_size, dt=args.dt,
+            noise_scale=args.noise_scale, seed=args.seed + 2)
         noisy_loader = DataLoader(noisy_ds, batch_size=args.batch_size)
 
     diagnostics = post_training_diagnostics(
-        model, test_loader, algebra, device, noisy_loader=noisy_loader)
+        model, test_loader, algebra, device,
+        target_calib_bivector=train_ds.gravity_bivector,
+        noisy_loader=noisy_loader)
     print(report_diagnostics(
         diagnostics, title='STA trajectory post-training diagnostics'))
 
     ensure_output_dir(args.output_dir)
     metadata = build_visualization_metadata(
         signature_metadata(3, 1),
+        regime=args.regime,
         window_size=args.window_size,
         channels=args.channels,
         seed=args.seed,
@@ -509,17 +677,20 @@ def train(args: argparse.Namespace) -> None:
 
 def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
-        'STA trajectory reconstruction — Cl(3,1) IMU incubator.',
+        'STA trajectory reconstruction — Cl(3,1) synthetic worldlines.',
         include=('seed', 'device', 'epochs', 'lr', 'batch_size',
                  'output_dir', 'diag_interval'),
         defaults={'epochs': 200, 'lr': 0.001, 'batch_size': 64,
                   'output_dir': 'sta_plots', 'diag_interval': 10},
     )
-    p.add_argument('--data', type=str,
-                   default='../Trajecto/data/sta_experiment.h5',
-                   help='HDF5 path from SimGenerator.')
+    p.add_argument('--regime', choices=('free_particle', 'lorentz_boost',
+                                         'helical_motion'),
+                   default='helical_motion',
+                   help='Closed-form Minkowski worldline generator.')
+    p.add_argument('--num-trajs', type=int, default=256)
     p.add_argument('--window-size', type=int, default=128)
-    p.add_argument('--stride', type=int, default=16)
+    p.add_argument('--dt', type=float, default=0.02,
+                   help='Worldline timestep in seconds.')
     p.add_argument('--channels', type=int, default=32)
     p.add_argument('--num-layers', type=int, default=5)
     p.add_argument('--kernel-size', type=int, default=3)
