@@ -141,6 +141,8 @@ Discovers closed-form symbolic formulas from numerical data using iterative geom
 
 **Speed-to-Performance Ratio**: For the 12 first_principles datasets, the entire execution took roughly 5 minutes (avg. ~23s per dataset). This demonstrates a structurally different efficiency from existing Genetic Algorithm-based SR models, proving that Geometric Unbending computes laws deterministically rather than searching for them stochastically.
 
+> Check out the IU-SR Roadmap - [Discussion](https://github.com/Concode0/Versor/discussions/13)
+
 ```bash
 uv run main.py task=sr
 ```
@@ -321,7 +323,7 @@ For a deep dive into the framework, please visit our official documentation site
 
 ## Contributing
 
-Versor is currently in a **Stabilization Phase** as the lead maintainer focuses on academic milestones. While we are not actively seeking major feature contributions at this moment, we highly value community feedback.
+Versor is currently in a **Stabilization Phase** as the lead maintainer focuses on [academic milestones](https://github.com/Concode0/Versor/issues/6). While we are not actively seeking major feature contributions at this moment, we highly value community feedback.
 
 - **Found a Bug?** Please open an [Issue](https://github.com/Concode0/Versor/issues) with a detailed reproduction case.
 - **Have an Idea?** Open an Issue to discuss it before submitting a Pull Request.
