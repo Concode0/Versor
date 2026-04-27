@@ -36,6 +36,31 @@ class ExpPolicy(enum.Enum):
     EXACT = "exact"
 
 
+# Default power-iteration step counts for the compiled-safe decomposed exp
+# path, keyed by tensor dtype. Picked at the cost/benefit knee of a sweep
+# over (n in {4,5,6}, magnitude in {0.1, 0.5, 1.0}) — beyond these counts a
+# 2x cost buys less than ~3 decimal places of additional accuracy.
+#   bfloat16 - mantissa-limited noise floor ~1e-2; saturates at k~8
+#   float32  - n=4 saturates ~3e-7 by k~24; knee at k=32
+#   float64  - knee at k~96 (full machine eps would need k>=256, prohibitive)
+_DTYPE_FIXED_ITERATIONS = {
+    torch.bfloat16: 16,
+    torch.float16: 16,
+    torch.float32: 32,
+    torch.float64: 96,
+}
+_DEFAULT_FIXED_ITERATIONS = 32  # fallback for unknown dtypes
+
+
+def resolve_fixed_iterations(dtype: torch.dtype) -> int:
+    """Return the dtype-keyed default power-iteration count.
+
+    Used by ``CliffordAlgebra`` at init to pin a static iteration budget
+    matched to the algebra's working precision.
+    """
+    return _DTYPE_FIXED_ITERATIONS.get(dtype, _DEFAULT_FIXED_ITERATIONS)
+
+
 def ga_power_iteration(
     algebra,
     b: torch.Tensor,

@@ -14,6 +14,7 @@ for arbitrary signatures Cl(p, q, r).
 import torch
 import torch.nn as nn
 import math
+from typing import Optional
 from core.validation import check_multivector
 
 
@@ -39,7 +40,8 @@ class CliffordAlgebra(nn.Module):
 
     def __init__(self, p: int, q: int = 0, r: int = 0, device='cuda',
                  dtype: torch.dtype = torch.float32,
-                 exp_policy: str = 'auto'):
+                 exp_policy: str = 'auto',
+                 fixed_iterations: Optional[int] = None):
         """Initialize the algebra and cache the Cayley table.
 
         Args:
@@ -54,6 +56,11 @@ class CliffordAlgebra(nn.Module):
             exp_policy (str or ExpPolicy, optional): Bivector exp policy.
                 ``'auto'`` (default), ``'fast'``, or ``'exact'``.
                 See :class:`core.decomposition.ExpPolicy`.
+            fixed_iterations (int, optional): Power-iteration step count for
+                the compiled-safe decomposed exp path (used when n>=4 under
+                AUTO/EXACT policy). ``None`` (default) auto-derives from
+                ``dtype`` via :func:`core.decomposition.resolve_fixed_iterations`,
+                pinned statically at init.
         """
         super().__init__()
 
@@ -75,11 +82,16 @@ class CliffordAlgebra(nn.Module):
             self._exp_regime = 'mixed'
 
         # Exp policy: controls decomposition strategy
-        from core.decomposition import ExpPolicy
+        from core.decomposition import ExpPolicy, resolve_fixed_iterations
         if isinstance(exp_policy, str):
             self._exp_policy = ExpPolicy(exp_policy)
         else:
             self._exp_policy = exp_policy
+
+        self._exp_fixed_iterations: int = (
+            int(fixed_iterations) if fixed_iterations is not None
+            else resolve_fixed_iterations(dtype)
+        )
 
         # Cache Cayley tables to avoid recomputation
         cache_key = (p, q, r, str(device), str(dtype))
@@ -1050,7 +1062,8 @@ class CliffordAlgebra(nn.Module):
         from core.decomposition import compiled_safe_decomposed_exp
 
         R_closed = self._exp_bivector_closed(B)
-        R_decomposed = compiled_safe_decomposed_exp(self, B)
+        R_decomposed = compiled_safe_decomposed_exp(
+            self, B, fixed_iterations=self._exp_fixed_iterations)
 
         BB = self.geometric_product(B, B)
         # Subtract scalar part, check if residual is negligible
