@@ -1,9 +1,24 @@
-"""Pre-optimization landscape analyzer: recommends GDOConfig + strategy label."""
+"""Pre-optimization landscape analyzer: recommends GDOConfig + strategy label.
+
+Two analyses run in :meth:`PreExplorationAnalyzer.analyze`:
+
+1. **Landscape side**: samples loss around the init point, runs
+   dimension/spectral/symmetry/commutator/coherence on the parameter cloud,
+   emits a ``GDOConfig`` recommendation consumed by ``GDOController``.
+
+2. **Architecture side**: walks the model for rotor-bearing layers,
+   decomposes each layer's bivector parameter into simple planes, optionally
+   runs a single forward pass to capture per-layer activation
+   coherence/curvature via ``GeodesicFlow``, and emits a general
+   ``TuningRecommendation`` (lr, init scale, freeze list, signature lift,
+   notes). Mirrors the way ``StatisticalSampler`` uses coherence to stratify
+   data -- here it stratifies layers.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -34,6 +49,53 @@ from .parameter_groups import GeometricParameterController
 
 
 @dataclass
+class LayerTopology:
+    """Per-layer geometric snapshot.
+
+    ``plane_basis`` holds simple (2-blade) bivector components decomposed from
+    the layer's grade-2 parameter; for grade-1 (``ReflectionLayer``) layers it
+    holds the unit reflection vectors instead. ``activation_*`` fields are
+    populated only when ``analyze()`` was given a ``forward_input``.
+    """
+
+    layer_name: str
+    layer_type: str
+    n_params: int
+    plane_basis: torch.Tensor
+    activation_coherence: Optional[float] = None
+    activation_curvature: Optional[float] = None
+
+
+@dataclass
+class TopologyReport:
+    """Cross-layer topology aggregate.
+
+    ``cross_layer_closure_error`` is the mean residual fraction when each
+    pairwise commutator ``[B_l, B_m]`` of layer mean bivectors is projected
+    back onto the span of layer bivectors. Low = composing layers stays in a
+    closed Lie subalgebra; high = composition generates rotation planes.
+    """
+
+    layers: List[LayerTopology] = field(default_factory=list)
+    cross_layer_closure_error: float = 0.0
+    structure_constants_norm: float = 0.0
+    coherence_trajectory: List[float] = field(default_factory=list)
+    summary_label: str = "unknown"
+
+
+@dataclass
+class TuningRecommendation:
+    """General optimizer-agnostic tuning hint derived from the topology report."""
+
+    lr: float = 1e-3
+    bivector_init_scale: float = 1.0
+    warmup_steps: int = 0
+    layers_to_freeze: List[str] = field(default_factory=list)
+    suggested_signature_lift: Optional[Tuple[int, int, int]] = None
+    notes: List[str] = field(default_factory=list)
+
+
+@dataclass
 class PreExplorationResult:
     """Output of PreExplorationAnalyzer."""
 
@@ -53,10 +115,12 @@ class PreExplorationResult:
     landscape_positions: Optional[torch.Tensor] = None
     flow_bivectors: Optional[torch.Tensor] = None
     per_point_coherence: Optional[torch.Tensor] = None
+    topology_report: Optional[TopologyReport] = None
+    recommendation: Optional[TuningRecommendation] = None
 
 
 class PreExplorationAnalyzer:
-    """Pre-optimization landscape analysis pipeline."""
+    """Pre-optimization landscape and architecture analysis pipeline."""
 
     def __init__(
         self,
@@ -106,7 +170,294 @@ class PreExplorationAnalyzer:
 
         return torch.stack(positions), torch.tensor(losses, device=device)
 
-    def analyze(self, model: nn.Module, loss_fn: Callable) -> PreExplorationResult:
+    # ---- Architecture-aware analysis ---------------------------------------
+
+    def _walk_rotor_layers(self, model: nn.Module) -> List[Tuple[str, nn.Module]]:
+        """Find rotor-bearing layers in ``model``.
+
+        Returns list of ``(qualified_name, module)`` for ``RotorLayer``,
+        ``MultiRotorLayer``, ``ReflectionLayer``, and ``RotaryBivectorPE``
+        instances. Lazy-imports the layer types so this module stays cheap to
+        import in non-architecture flows.
+        """
+        from layers.adapters.embedding import RotaryBivectorPE
+        from layers.primitives.multi_rotor import MultiRotorLayer
+        from layers.primitives.reflection import ReflectionLayer
+        from layers.primitives.rotor import RotorLayer
+
+        targets = (RotorLayer, MultiRotorLayer, ReflectionLayer, RotaryBivectorPE)
+        return [(name, mod) for name, mod in model.named_modules() if isinstance(mod, targets)]
+
+    def _scatter_grade(self, weights: torch.Tensor, indices: torch.Tensor, dim: int) -> torch.Tensor:
+        """Scatter ``[N, num_grade_elements]`` weights into ``[N, dim]`` MVs."""
+        N = weights.shape[0]
+        out = torch.zeros(N, dim, device=weights.device, dtype=weights.dtype)
+        idx = indices.unsqueeze(0).expand(N, -1)
+        out.scatter_(1, idx, weights)
+        return out
+
+    def _decompose_layer_planes(self, layer: nn.Module) -> torch.Tensor:
+        """Return simple-bivector basis of a layer's grade parameter.
+
+        For grade-2 layers (``RotorLayer``/``MultiRotorLayer``/
+        ``RotaryBivectorPE``) this calls :meth:`SpectralAnalyzer.bivector_field_spectrum`
+        on the scattered ``[N, 1, dim]`` parameter to extract simple
+        components. For ``ReflectionLayer`` it returns the unit grade-1
+        vectors directly (no plane decomposition; reflections are vector-
+        parameterized).
+        """
+        from layers.adapters.embedding import RotaryBivectorPE
+        from layers.primitives.multi_rotor import MultiRotorLayer
+        from layers.primitives.reflection import ReflectionLayer
+        from layers.primitives.rotor import RotorLayer
+
+        algebra = self.algebra
+        dim = algebra.dim
+        device = algebra.device
+
+        if isinstance(layer, RotorLayer):
+            mv = self._scatter_grade(layer.grade_weights.detach(), layer.grade_indices, dim)
+        elif isinstance(layer, MultiRotorLayer):
+            mv = self._scatter_grade(layer.rotor_grade_weights.detach(), layer.grade_indices, dim)
+        elif isinstance(layer, RotaryBivectorPE):
+            mv = self._scatter_grade(layer.bivector_weights.detach(), layer.bivector_indices, dim)
+        elif isinstance(layer, ReflectionLayer):
+            return self._scatter_grade(layer.vector_weights.detach(), layer.vector_indices, dim)
+        else:
+            return torch.zeros(0, dim, device=device)
+
+        if mv.shape[0] == 0 or algebra.n < 2:
+            return torch.zeros(0, dim, device=mv.device)
+
+        spectral = SpectralAnalyzer(algebra)
+        _sv, components = spectral.bivector_field_spectrum(mv.unsqueeze(1))
+        if not components or components[0].abs().sum().item() < 1e-12:
+            return torch.zeros(0, dim, device=mv.device)
+        return torch.stack(components)
+
+    def _analyze_forward_pass(
+        self,
+        model: nn.Module,
+        sample_input,
+        layer_modules: List[Tuple[str, nn.Module]],
+    ) -> Dict[str, Tuple[float, float]]:
+        """Run one forward pass with hooks; collect per-layer coherence/curvature.
+
+        Returns ``{layer_name: (coherence, curvature)}``. Empty if input or
+        algebra is missing, or if the forward pass raises.
+        """
+        if sample_input is None or self.algebra is None or self.algebra.n < 2:
+            return {}
+
+        captured: Dict[str, torch.Tensor] = {}
+        handles = []
+
+        def make_hook(name):
+            def hook(_module, _inputs, output):
+                captured[name] = output.detach() if torch.is_tensor(output) else output
+
+            return hook
+
+        for name, mod in layer_modules:
+            handles.append(mod.register_forward_hook(make_hook(name)))
+
+        was_training = model.training
+        model.eval()
+        try:
+            with torch.no_grad():
+                if isinstance(sample_input, (tuple, list)):
+                    model(*sample_input)
+                elif isinstance(sample_input, dict):
+                    model(**sample_input)
+                else:
+                    model(sample_input)
+        except Exception:
+            for h in handles:
+                h.remove()
+            if was_training:
+                model.train()
+            return {}
+        finally:
+            for h in handles:
+                h.remove()
+            if was_training:
+                model.train()
+
+        out: Dict[str, Tuple[float, float]] = {}
+        dim = self.algebra.dim
+        for name, act in captured.items():
+            if not torch.is_tensor(act):
+                continue
+            if act.dim() < 2 or act.shape[-1] != dim:
+                continue
+            flat = act.reshape(-1, dim)
+            if flat.shape[0] < 4:
+                continue
+            k = min(8, flat.shape[0] - 1)
+            if k < 2:
+                continue
+            try:
+                gf = GeodesicFlow(self.algebra, k=k)
+                coh = gf.coherence(flat)
+                curv = gf.curvature(flat)
+                out[name] = (float(coh), float(curv))
+            except Exception:
+                continue
+
+        return out
+
+    def _cross_layer_closure(self, planes_per_layer: List[torch.Tensor]) -> Tuple[float, float]:
+        """Pairwise-commutator closure across layer mean bivectors.
+
+        Sums each layer's simple-component basis into one representative
+        bivector, computes pairwise commutators ``[B_l, B_m]``, projects each
+        onto the normalized span of layer bivectors, and reports the mean
+        residual fraction (closure error) and mean projection magnitude
+        (structure-constant norm proxy).
+        """
+        algebra = self.algebra
+        if algebra is None or algebra.n < 2:
+            return 0.0, 0.0
+
+        layer_bvs = []
+        for planes in planes_per_layer:
+            if planes is None or planes.numel() == 0:
+                continue
+            layer_bvs.append(planes.sum(dim=0))
+        if len(layer_bvs) < 2:
+            return 0.0, 0.0
+
+        B = torch.stack(layer_bvs)  # [L, dim]
+        L = B.shape[0]
+        a_idx, b_idx = torch.triu_indices(L, L, offset=1, device=B.device)
+        if a_idx.numel() == 0:
+            return 0.0, 0.0
+
+        brackets = algebra.commutator(B[a_idx], B[b_idx])
+        brackets_bv = algebra.grade_projection(brackets, 2)
+
+        B_norm = F.normalize(B, dim=-1, eps=1e-8)
+        coeffs = brackets_bv @ B_norm.T
+        projected = coeffs @ B_norm
+        residuals = brackets_bv - projected
+
+        bracket_norms = brackets_bv.norm(dim=-1).clamp(min=1e-8)
+        residual_norms = residuals.norm(dim=-1)
+        valid = brackets_bv.norm(dim=-1) > 1e-8
+        if valid.any():
+            closure_error = (residual_norms[valid] / bracket_norms[valid]).mean().item()
+        else:
+            closure_error = 0.0
+        structure_norm = coeffs.abs().mean().item()
+        return float(closure_error), float(structure_norm)
+
+    def _analyze_architecture(self, model: nn.Module, sample_input=None) -> Optional[TopologyReport]:
+        if self.algebra is None:
+            return None
+
+        layer_modules = self._walk_rotor_layers(model)
+        if not layer_modules:
+            return None
+
+        activations = self._analyze_forward_pass(model, sample_input, layer_modules)
+
+        layers: List[LayerTopology] = []
+        planes_per_layer: List[torch.Tensor] = []
+        for name, mod in layer_modules:
+            try:
+                planes = self._decompose_layer_planes(mod)
+            except Exception:
+                planes = torch.zeros(0, self.algebra.dim, device=self.algebra.device)
+            planes_per_layer.append(planes)
+
+            n_params = sum(p.numel() for p in mod.parameters() if p.requires_grad)
+            coh, curv = activations.get(name, (None, None))
+            layers.append(
+                LayerTopology(
+                    layer_name=name,
+                    layer_type=type(mod).__name__,
+                    n_params=n_params,
+                    plane_basis=planes,
+                    activation_coherence=coh,
+                    activation_curvature=curv,
+                )
+            )
+
+        closure_err, struct_norm = self._cross_layer_closure(planes_per_layer)
+        traj = [l.activation_coherence for l in layers if l.activation_coherence is not None]
+        mean_coh = sum(traj) / len(traj) if traj else 0.0
+        max_drop = 0.0
+        for a, b in zip(traj, traj[1:]):
+            max_drop = max(max_drop, a - b)
+
+        if mean_coh < 0.3 or max_drop > 0.4:
+            label = "fragmented"
+        elif mean_coh > 0.6 and closure_err < 0.1:
+            label = "aligned-stack"
+        else:
+            label = "mixed-coupling"
+
+        return TopologyReport(
+            layers=layers,
+            cross_layer_closure_error=closure_err,
+            structure_constants_norm=struct_norm,
+            coherence_trajectory=traj,
+            summary_label=label,
+        )
+
+    def _recommend_tuning(
+        self,
+        result: PreExplorationResult,
+        topology: Optional[TopologyReport],
+    ) -> TuningRecommendation:
+        rec = TuningRecommendation()
+
+        if topology is None:
+            return rec
+
+        if topology.summary_label == "aligned-stack":
+            rec.lr = 2e-3
+            rec.bivector_init_scale = 1.5
+        elif topology.summary_label == "fragmented":
+            rec.lr = 5e-4
+            rec.bivector_init_scale = 0.5
+            rec.warmup_steps = 100
+        elif topology.cross_layer_closure_error > 0.5:
+            rec.lr = 5e-4
+            rec.notes.append(
+                f"High cross-layer non-commutativity (closure_error="
+                f"{topology.cross_layer_closure_error:.2f}); halving lr."
+            )
+
+        for layer in topology.layers:
+            if layer.activation_curvature is not None and layer.activation_curvature > 0.5:
+                rec.bivector_init_scale = min(rec.bivector_init_scale, 0.3)
+                rec.notes.append(
+                    f"Layer {layer.layer_name} has activation_curvature="
+                    f"{layer.activation_curvature:.2f}; consider regularising bivector norm."
+                )
+            if layer.activation_coherence is not None and layer.activation_coherence > 0.85 and layer.layer_name:
+                rec.layers_to_freeze.append(layer.layer_name)
+
+        if result.lifting_report:
+            best = result.lifting_report.get("best")
+            if best and best != "original":
+                sig = result.lifting_report.get(best, {}).get("signature")
+                if isinstance(sig, tuple) and len(sig) == 2:
+                    rec.suggested_signature_lift = (sig[0], sig[1], 0)
+                elif isinstance(sig, tuple) and len(sig) == 3:
+                    rec.suggested_signature_lift = sig
+
+        return rec
+
+    # ---- Top-level entry point --------------------------------------------
+
+    def analyze(
+        self,
+        model: nn.Module,
+        loss_fn: Callable,
+        forward_input=None,
+    ) -> PreExplorationResult:
         result = PreExplorationResult()
 
         positions, losses = self._sample_landscape(model, loss_fn)
@@ -203,6 +554,12 @@ class PreExplorationAnalyzer:
             except Exception:
                 pass
 
+        try:
+            result.topology_report = self._analyze_architecture(model, forward_input)
+        except Exception:
+            result.topology_report = None
+        result.recommendation = self._recommend_tuning(result, result.topology_report)
+
         result.recommended_config = self._recommend_config(result)
         result.strategy_label = self._classify_strategy(result)
 
@@ -265,6 +622,11 @@ class PreExplorationAnalyzer:
                     cfg.entropy_exploration_threshold = 0.8
                 elif ge < 0.3:
                     cfg.sprint_after = min(cfg.sprint_after, 200)
+
+        if result.recommendation is not None:
+            rec = result.recommendation
+            if rec.lr != TuningRecommendation().lr:
+                cfg.lr = rec.lr
 
         return cfg
 
