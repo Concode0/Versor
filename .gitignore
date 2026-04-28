@@ -11,7 +11,7 @@ wheels/
 .DS_Store
 outputs/
 data/
-benchmarks/
+benchmarks/results/
 
 *.pt
 train_log_*.txt
