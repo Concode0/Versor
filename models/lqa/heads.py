@@ -34,16 +34,13 @@ class ChainReasoningHead(CliffordModule):
     for relation composition, with soft gating selecting the composition.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, channels: int,
-                 num_relations: int = 18, hidden_dim: int = 64):
+    def __init__(self, algebra: CliffordAlgebra, channels: int, num_relations: int = 18, hidden_dim: int = 64):
         super().__init__(algebra)
         self.channels = channels
         self.num_relations = num_relations
 
         # Learned relation rotors -- each captures a geometric transformation
-        self.relation_rotors = nn.ModuleList([
-            RotorLayer(algebra, channels) for _ in range(num_relations)
-        ])
+        self.relation_rotors = nn.ModuleList([RotorLayer(algebra, channels) for _ in range(num_relations)])
 
         # Gating MLP: grade-0 features -> softmax weights over K rotors
         self.gate = nn.Sequential(
@@ -138,18 +135,21 @@ class EntailmentHead(CliffordModule):
         H_rev = self.algebra.reverse(hypothesis)
         product = self.algebra.geometric_product(premise, H_rev)  # [B, C, D]
 
-        g0 = product[..., 0]                    # [B, C] -- symmetric
-        g2 = product[..., self.g2_idx]           # [B, C, d2] -- antisymmetric
-        g2_norm = g2.norm(dim=-1)                # [B, C]
+        g0 = product[..., 0]  # [B, C] -- symmetric
+        g2 = product[..., self.g2_idx]  # [B, C, d2] -- antisymmetric
+        g2_norm = g2.norm(dim=-1)  # [B, C]
 
         k = min(self.d2, 4)
-        g2_dir = g2[..., :k]                    # [B, C, k]
+        g2_dir = g2[..., :k]  # [B, C, k]
 
-        features = torch.cat([
-            g0,
-            g2_norm,
-            g2_dir.reshape(g2_dir.shape[0], -1),
-        ], dim=-1)
+        features = torch.cat(
+            [
+                g0,
+                g2_norm,
+                g2_dir.reshape(g2_dir.shape[0], -1),
+            ],
+            dim=-1,
+        )
 
         return g0, g2, g2_norm, g2_dir, features
 
@@ -218,10 +218,10 @@ class NegationHead(CliffordModule):
         combined = self.algebra.geometric_product(passage_mv, question_mv)
         involuted = self.algebra.grade_involution(combined)
 
-        inv_dist = (combined - involuted).norm(dim=-1)   # [B, C]
+        inv_dist = (combined - involuted).norm(dim=-1)  # [B, C]
         neutralized = self.neutralizer(combined)
-        g0_neutralized = neutralized[..., 0]             # [B, C]
-        g0_original = combined[..., 0]                   # [B, C]
+        g0_neutralized = neutralized[..., 0]  # [B, C]
+        g0_original = combined[..., 0]  # [B, C]
 
         features = torch.cat([g0_neutralized, g0_original, inv_dist], dim=-1)
         return self.classifier(features)

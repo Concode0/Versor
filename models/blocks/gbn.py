@@ -14,13 +14,16 @@ from layers import RotorLayer
 from layers import BladeSelector
 from functional.activation import GeometricGELU
 
+
 class GeometricBladeNetwork(CliffordModule):
     """Geometric Blade Network (GBN) reference implementation.
 
     Stacks CliffordLinear and RotorLayer for geometric representation learning.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, in_channels: int, hidden_channels: int, out_channels: int, layers: int = 2):
+    def __init__(
+        self, algebra: CliffordAlgebra, in_channels: int, hidden_channels: int, out_channels: int, layers: int = 2
+    ):
         super().__init__(algebra)
 
         self.net = nn.Sequential()
@@ -34,7 +37,7 @@ class GeometricBladeNetwork(CliffordModule):
             self.net.add_module(f"layer_{i}_linear", CliffordLinear(algebra, hidden_channels, hidden_channels))
             self.net.add_module(f"layer_{i}_act", GeometricGELU(algebra, channels=hidden_channels))
             self.net.add_module(f"layer_{i}_rotor", RotorLayer(algebra, hidden_channels))
-            
+
         # Output Layer
         self.net.add_module("output_linear", CliffordLinear(algebra, hidden_channels, out_channels))
         self.net.add_module("output_selector", BladeSelector(algebra, out_channels))

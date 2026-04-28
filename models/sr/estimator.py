@@ -31,7 +31,9 @@ class VersorSR(BaseEstimator, RegressorMixin):
 
     def __init__(
         self,
-        p=4, q=0, r=0,
+        p=4,
+        q=0,
+        r=0,
         hidden_channels=16,
         num_layers=2,
         num_rotors=4,
@@ -91,8 +93,7 @@ class VersorSR(BaseEstimator, RegressorMixin):
         y_t = torch.from_numpy(y_norm).unsqueeze(-1)
 
         n_vars = X.shape[1]
-        algebra = CliffordAlgebra(p=self.p, q=self.q, r=self.r, device="cpu",
-                                   exp_policy=self.exp_policy)
+        algebra = CliffordAlgebra(p=self.p, q=self.q, r=self.r, device="cpu", exp_policy=self.exp_policy)
 
         self.model_ = SRGBN(
             algebra=algebra,
@@ -120,7 +121,7 @@ class VersorSR(BaseEstimator, RegressorMixin):
 
             perm = torch.randperm(N)
             for i in range(0, N, self.batch_size):
-                idx = perm[i:i + self.batch_size]
+                idx = perm[i : i + self.batch_size]
                 x_b = X_t[idx]
                 y_b = y_t[idx]
 
@@ -146,21 +147,29 @@ class VersorSR(BaseEstimator, RegressorMixin):
             y_std_t = torch.tensor(self.y_std_)
 
             unbender = IterativeUnbender(
-                in_features=n_vars, device="cpu",
-                max_stages=3, stage_epochs=self.epochs // 3,
-                implicit_mode='auto', svd_warmstart=True,
+                in_features=n_vars,
+                device="cpu",
+                max_stages=3,
+                stage_epochs=self.epochs // 3,
+                implicit_mode='auto',
+                svd_warmstart=True,
                 basis_config=self.basis_config or {},
             )
             var_names = [f"x{i + 1}" for i in range(n_vars)]
             result = unbender.run(
-                X_t, y_t, x_mean_t, x_std_t, y_mean_t, y_std_t,
+                X_t,
+                y_t,
+                x_mean_t,
+                x_std_t,
+                y_mean_t,
+                y_std_t,
                 var_names=var_names,
             )
             self.formula_ = result.formula
 
             # Build callable from extracted terms for predict()
             if result.all_terms:
-                syms = [sympy.Symbol(f"x{i+1}") for i in range(n_vars)]
+                syms = [sympy.Symbol(f"x{i + 1}") for i in range(n_vars)]
                 combined = sympy.Integer(0)
                 for t in result.all_terms:
                     if t.expr is not None:
@@ -226,6 +235,7 @@ def complexity(est) -> int:
     """
     try:
         import sympy
+
         formula = getattr(est, "formula_", "")
         formula = formula.replace("y = ", "")
         if not formula or formula == "extraction_failed":

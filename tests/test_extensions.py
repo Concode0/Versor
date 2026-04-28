@@ -34,13 +34,11 @@ class TestExtensions:
         sq = algebra.geometric_product(P, P)
 
         # Check norm of the result (should be 0)
-        assert torch.allclose(sq, torch.zeros_like(sq), atol=1e-5), \
-            f"P^2 should be 0, got {sq[0, :5]}..."
+        assert torch.allclose(sq, torch.zeros_like(sq), atol=1e-5), f"P^2 should be 0, got {sq[0, :5]}..."
 
         # Check reconstruction
         x_recon = embed.extract(P)
-        assert torch.allclose(x, x_recon, atol=1e-5), \
-            "Reconstructed x should match original"
+        assert torch.allclose(x, x_recon, atol=1e-5), "Reconstructed x should match original"
 
     def test_pga_embed_extract_roundtrip(self):
         """Points embedded in PGA can be extracted back."""
@@ -73,6 +71,7 @@ class TestExtensions:
     def test_pga_rotation_via_rotor(self):
         """Rotors in PGA correctly rotate embedded points."""
         import math
+
         algebra = CliffordAlgebra(p=3, q=0, r=1, device='cpu')
         embed = ProjectiveEmbedding(algebra, euclidean_dim=3)
 
@@ -109,11 +108,7 @@ class TestExtensions:
         x = torch.randn(3, 2, 4)
 
         # Adjacency (3x3) - e.g., line graph 0-1-2
-        adj = torch.tensor([
-            [0.0, 1.0, 0.0],
-            [1.0, 0.0, 1.0],
-            [0.0, 1.0, 0.0]
-        ])
+        adj = torch.tensor([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0], [0.0, 1.0, 0.0]])
         # Normalize (simplified)
         adj = adj / (adj.sum(dim=1, keepdim=True) + 1e-6)
 

@@ -83,21 +83,14 @@ class RotorGadget(CliffordModule):
         self.num_bivectors = len(self.bivector_indices)
 
         if self.num_bivectors == 0:
-            raise ValueError(
-                f"Algebra has no bivectors. RotorGadget requires "
-                "at least one bivector for rotation."
-            )
+            raise ValueError(f"Algebra has no bivectors. RotorGadget requires at least one bivector for rotation.")
 
         # Rotor parameters: bivector coefficients for exponential map
         # Left rotors: [num_rotor_pairs, num_bivectors]
-        self.bivector_left = nn.Parameter(
-            torch.randn(num_rotor_pairs, self.num_bivectors) * 0.1
-        )
+        self.bivector_left = nn.Parameter(torch.randn(num_rotor_pairs, self.num_bivectors) * 0.1)
         self.bivector_left._manifold = 'spin'
         # Right rotors: [num_rotor_pairs, num_bivectors]
-        self.bivector_right = nn.Parameter(
-            torch.randn(num_rotor_pairs, self.num_bivectors) * 0.1
-        )
+        self.bivector_right = nn.Parameter(torch.randn(num_rotor_pairs, self.num_bivectors) * 0.1)
         self.bivector_right._manifold = 'spin'
 
         # Channel routing: block diagonal partitioning (paper style)
@@ -107,9 +100,7 @@ class RotorGadget(CliffordModule):
         # Aggregation weights (if learned)
         if aggregation == 'learned':
             # Learned weights for combining rotor outputs
-            self.agg_weights = nn.Parameter(
-                torch.ones(num_rotor_pairs, out_channels) / num_rotor_pairs
-            )
+            self.agg_weights = nn.Parameter(torch.ones(num_rotor_pairs, out_channels) / num_rotor_pairs)
         else:
             self.register_buffer('agg_weights', None)
 
@@ -180,8 +171,7 @@ class RotorGadget(CliffordModule):
             Multivector tensor of shape [..., algebra.dim]
         """
         batch_shape = bivector_coeffs.shape[:-1]
-        mv = torch.zeros(*batch_shape, self.algebra.dim,
-                          device=bivector_coeffs.device, dtype=bivector_coeffs.dtype)
+        mv = torch.zeros(*batch_shape, self.algebra.dim, device=bivector_coeffs.device, dtype=bivector_coeffs.dtype)
         # Expand indices to match batch shape for scatter_
         idx = self.bivector_indices.expand(*batch_shape, -1)
         mv.scatter_(-1, idx, bivector_coeffs)
@@ -238,8 +228,8 @@ class RotorGadget(CliffordModule):
                 self._cached_rotors = (R_left, R_right_rev)
 
         # Vectorized sandwich: map each channel to its rotor pair
-        R_left_expanded = R_left[self._ch2pair].unsqueeze(0)         # [1, in_channels, D]
-        R_right_expanded = R_right_rev[self._ch2pair].unsqueeze(0)   # [1, in_channels, D]
+        R_left_expanded = R_left[self._ch2pair].unsqueeze(0)  # [1, in_channels, D]
+        R_right_expanded = R_right_rev[self._ch2pair].unsqueeze(0)  # [1, in_channels, D]
 
         # Two batched GPs instead of 2*K sequential GPs
         temp = self.algebra.geometric_product(R_left_expanded, x)
@@ -279,7 +269,7 @@ class RotorGadget(CliffordModule):
                 # Average over block channels and weight
                 x_i_mean = x_i.mean(dim=1, keepdim=True)  # [B, 1, dim]
                 # Expand to output channels with weights
-                weighted = x_i_mean * self.agg_weights[i:i+1, :, None]  # [B, out_ch, dim]
+                weighted = x_i_mean * self.agg_weights[i : i + 1, :, None]  # [B, out_ch, dim]
                 outputs.append(weighted)
 
             out = torch.stack(outputs, dim=0).sum(dim=0)  # [B, out_ch, dim]
@@ -291,13 +281,15 @@ class RotorGadget(CliffordModule):
             elif x.shape[1] > self.out_channels:
                 # Pool down by summing
                 fold = x.shape[1] // self.out_channels
-                out = x[:, :fold*self.out_channels, :].reshape(
-                    batch_size, self.out_channels, fold, self.algebra.dim
-                ).sum(dim=2)
+                out = (
+                    x[:, : fold * self.out_channels, :]
+                    .reshape(batch_size, self.out_channels, fold, self.algebra.dim)
+                    .sum(dim=2)
+                )
             else:
                 # Expand by tiling
                 repeats = (self.out_channels + x.shape[1] - 1) // x.shape[1]
-                out = x.repeat(1, repeats, 1)[:, :self.out_channels, :]
+                out = x.repeat(1, repeats, 1)[:, : self.out_channels, :]
 
         else:  # 'mean'
             # Mean pooling
@@ -306,13 +298,15 @@ class RotorGadget(CliffordModule):
             elif x.shape[1] > self.out_channels:
                 # Pool down by averaging
                 fold = x.shape[1] // self.out_channels
-                out = x[:, :fold*self.out_channels, :].reshape(
-                    batch_size, self.out_channels, fold, self.algebra.dim
-                ).mean(dim=2)
+                out = (
+                    x[:, : fold * self.out_channels, :]
+                    .reshape(batch_size, self.out_channels, fold, self.algebra.dim)
+                    .mean(dim=2)
+                )
             else:
                 # Expand by tiling
                 repeats = (self.out_channels + x.shape[1] - 1) // x.shape[1]
-                out = x.repeat(1, repeats, 1)[:, :self.out_channels, :]
+                out = x.repeat(1, repeats, 1)[:, : self.out_channels, :]
 
         return out
 

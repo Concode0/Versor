@@ -16,10 +16,10 @@ _CONFIGURED = False
 
 # ANSI colour codes (used only when stderr is a TTY)
 _COLORS = {
-    logging.DEBUG: "\033[36m",     # cyan
-    logging.INFO: "\033[32m",      # green
-    logging.WARNING: "\033[33m",   # yellow
-    logging.ERROR: "\033[31m",     # red
+    logging.DEBUG: "\033[36m",  # cyan
+    logging.INFO: "\033[32m",  # green
+    logging.WARNING: "\033[33m",  # yellow
+    logging.ERROR: "\033[31m",  # red
     logging.CRITICAL: "\033[35m",  # magenta
 }
 _RESET = "\033[0m"
@@ -62,9 +62,7 @@ def _configure_once() -> None:
     log_file = os.environ.get("VERSOR_LOG_FILE")
     if log_file:
         fh = logging.FileHandler(log_file, mode="a")
-        fh.setFormatter(logging.Formatter(
-            "%(asctime)s %(levelname)s %(name)s: %(message)s"
-        ))
+        fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
         root.addHandler(fh)
 
 

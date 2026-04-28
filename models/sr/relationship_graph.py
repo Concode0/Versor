@@ -33,6 +33,7 @@ class VariableEdge:
         bivector_energy: Energy in the e_i ^ e_j plane from SpectralAnalyzer.
         plane_index: Bivector basis index encoding this pair's plane.
     """
+
     var_i: int
     var_j: int
     edge_type: str
@@ -53,6 +54,7 @@ class VariableNode:
         null_score: Near-null energy score from SymmetryDetector.
         reflection_score: Reflection symmetry score for this direction.
     """
+
     var_idx: int
     var_name: str
     null_score: float = 0.0
@@ -79,6 +81,7 @@ class RelationshipGraph:
         continuous_symmetry_dim: Lie symmetry group dimension.
         null_directions: Indices of near-null basis directions.
     """
+
     nodes: list = field(default_factory=list)
     edges: list = field(default_factory=list)
     group_assignments: dict = field(default_factory=dict)
@@ -94,22 +97,19 @@ class RelationshipGraph:
 
         An edge is "within" a group if both endpoints belong to that group.
         """
-        group_vars = {
-            v for v, g in self.group_assignments.items() if g == group_idx
-        }
-        return [
-            e for e in self.edges
-            if e.var_i in group_vars and e.var_j in group_vars
-        ]
+        group_vars = {v for v, g in self.group_assignments.items() if g == group_idx}
+        return [e for e in self.edges if e.var_i in group_vars and e.var_j in group_vars]
 
     def cross_group_edges(self) -> list:
         """Return edges that span different groups, sorted by strength descending."""
         return [
-            e for e in self.edges
-            if (e.var_i in self.group_assignments
+            e
+            for e in self.edges
+            if (
+                e.var_i in self.group_assignments
                 and e.var_j in self.group_assignments
-                and self.group_assignments[e.var_i]
-                != self.group_assignments[e.var_j])
+                and self.group_assignments[e.var_i] != self.group_assignments[e.var_j]
+            )
         ]
 
     def strongest_edges(self, n: int = 10) -> list:
@@ -119,8 +119,7 @@ class RelationshipGraph:
     def edge_between(self, var_i: int, var_j: int) -> Optional['VariableEdge']:
         """Lookup a specific edge (order-independent)."""
         for e in self.edges:
-            if (e.var_i == var_i and e.var_j == var_j) or \
-               (e.var_i == var_j and e.var_j == var_i):
+            if (e.var_i == var_i and e.var_j == var_j) or (e.var_i == var_j and e.var_j == var_i):
                 return e
         return None
 

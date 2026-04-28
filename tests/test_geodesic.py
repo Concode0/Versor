@@ -61,6 +61,7 @@ def _random_data(N: int = 64, dim: int = 2) -> torch.Tensor:
 
 # TestGeodesicFlow
 
+
 class TestGeodesicFlow:
     """Tests for GeodesicFlow."""
 
@@ -80,8 +81,9 @@ class TestGeodesicFlow:
         """
         gf = GeodesicFlow(alg2, k=4)
         # Use two non-parallel grade-1 vectors that produce a non-zero bivector
-        data = torch.tensor([[1., 0.], [0., 1.], [1., 1.], [-1., 0.],
-                              [0., -1.], [1., -1.], [-1., 1.], [0.5, 0.5]])
+        data = torch.tensor(
+            [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [-1.0, 0.0], [0.0, -1.0], [1.0, -1.0], [-1.0, 1.0], [0.5, 0.5]]
+        )
         mv = gf._embed(data)
         bv = gf._connection_bivectors(mv)  # [N, k, dim]
 
@@ -133,9 +135,7 @@ class TestGeodesicFlow:
         coh_flat = gf.coherence(mv_flat)
         coh_noise = gf.coherence(mv_noise)
 
-        assert coh_flat > coh_noise, (
-            f"Flat-2D-in-3D coherence {coh_flat:.3f} should exceed noise {coh_noise:.3f}"
-        )
+        assert coh_flat > coh_noise, f"Flat-2D-in-3D coherence {coh_flat:.3f} should exceed noise {coh_noise:.3f}"
         # Flat data must be exactly 1.0 (all connections in e_12 plane)
         assert abs(coh_flat - 1.0) < 1e-4, f"Flat coherence should be 1.0, got {coh_flat:.5f}"
 
@@ -157,9 +157,7 @@ class TestGeodesicFlow:
         curv_flat = gf.curvature(mv_flat)
         curv_noise = gf.curvature(mv_noise)
 
-        assert curv_flat < curv_noise, (
-            f"Flat curvature {curv_flat:.3f} should be less than noise {curv_noise:.3f}"
-        )
+        assert curv_flat < curv_noise, f"Flat curvature {curv_flat:.3f} should be less than noise {curv_noise:.3f}"
 
     def test_embed_shape(self, alg3):
         """Embed should produce [N, dim] grade-1 multivectors."""
@@ -181,18 +179,18 @@ class TestGeodesicFlow:
     def test_knn_count(self, alg2):
         """KNN should return min(k, N-1) indices per point."""
         gf = GeodesicFlow(alg2, k=10)
-        data = _circle_data(8)        # fewer points than k
+        data = _circle_data(8)  # fewer points than k
         mv = gf._embed(data)
         idx = gf._knn(mv)
-        assert idx.shape == (8, 7)   # k capped at N-1 = 7
+        assert idx.shape == (8, 7)  # k capped at N-1 = 7
 
     def test_interpolate_endpoints(self, alg3):
         """Interpolated endpoints must match a and b (up to approximation)."""
         gf = GeodesicFlow(alg3, k=4)
         # Use simple unit vectors
-        a = alg3.embed_vector(torch.tensor([[1., 0., 0.]]))  # [1, 8]
-        b = alg3.embed_vector(torch.tensor([[0., 1., 0.]]))  # [1, 8]
-        path = gf.interpolate(a[0], b[0], steps=10)          # [10, 8]
+        a = alg3.embed_vector(torch.tensor([[1.0, 0.0, 0.0]]))  # [1, 8]
+        b = alg3.embed_vector(torch.tensor([[0.0, 1.0, 0.0]]))  # [1, 8]
+        path = gf.interpolate(a[0], b[0], steps=10)  # [10, 8]
         assert path.shape == (10, alg3.dim)
         # Step 0 should be close to a
         assert torch.allclose(path[0], a[0], atol=1e-4)
@@ -200,8 +198,8 @@ class TestGeodesicFlow:
     def test_interpolate_steps(self, alg3):
         """Number of returned frames should equal steps."""
         gf = GeodesicFlow(alg3, k=4)
-        a = alg3.embed_vector(torch.tensor([[1., 0., 0.]]))
-        b = alg3.embed_vector(torch.tensor([[0., 1., 0.]]))
+        a = alg3.embed_vector(torch.tensor([[1.0, 0.0, 0.0]]))
+        b = alg3.embed_vector(torch.tensor([[0.0, 1.0, 0.0]]))
         for steps in [2, 5, 20]:
             path = gf.interpolate(a[0], b[0], steps=steps)
             assert path.shape[0] == steps
@@ -246,6 +244,7 @@ class TestGeodesicFlow:
 
 # TestDimensionLifter
 
+
 class TestDimensionLifter:
     """Tests for DimensionLifter."""
 
@@ -253,7 +252,7 @@ class TestDimensionLifter:
         """Lifted multivectors must have shape [N, target_dim]."""
         lifter = DimensionLifter(device='cpu')
         data = torch.randn(20, 2)
-        alg = CliffordAlgebra(3, 0, device='cpu')   # 2D data -> 3D algebra
+        alg = CliffordAlgebra(3, 0, device='cpu')  # 2D data -> 3D algebra
         mv = lifter.lift(data, alg, fill=1.0)
         assert mv.shape == (20, alg.dim)
 
@@ -277,7 +276,7 @@ class TestDimensionLifter:
     def test_lift_fill_values(self):
         """The extra coordinate should equal `fill` in the extra blade."""
         lifter = DimensionLifter(device='cpu')
-        data = torch.zeros(5, 2)   # all-zero 2D data
+        data = torch.zeros(5, 2)  # all-zero 2D data
         alg = CliffordAlgebra(3, 0, device='cpu')
         # The third grade-1 blade is index 4 (= 1 << 2)
         mv = lifter.lift(data, alg, fill=0.7)
@@ -287,7 +286,7 @@ class TestDimensionLifter:
         """Lifting to a smaller algebra must raise ValueError."""
         lifter = DimensionLifter(device='cpu')
         data = torch.randn(10, 4)
-        alg = CliffordAlgebra(2, 0, device='cpu')   # only 2D
+        alg = CliffordAlgebra(2, 0, device='cpu')  # only 2D
         with pytest.raises(ValueError):
             lifter.lift(data, alg)
 

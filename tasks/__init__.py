@@ -18,14 +18,18 @@ __all__ = [
 def __getattr__(name):
     if name == "SRTask":
         from .symbolic_regression import SRTask
+
         return SRTask
     if name == "MD17Task":
         from .md17 import MD17Task
+
         return MD17Task
     if name == "LQATask":
         from .lqa import LQATask
+
         return LQATask
     if name == "DEAPEEGTask":
         from .deap_eeg import DEAPEEGTask
+
         return DEAPEEGTask
     raise AttributeError(f"module 'tasks' has no attribute {name!r}")

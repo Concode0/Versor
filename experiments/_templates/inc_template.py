@@ -69,6 +69,7 @@ from optimizers.riemannian import RiemannianAdam
 # Data — random 2-D points; target is the same point rotated by a fixed angle.
 # ---------------------------------------------------------------------------
 
+
 def _embed_as_vector(points_2d: torch.Tensor, dim: int) -> torch.Tensor:
     """Embed [..., 2] into a grade-1 multivector [..., dim] for Cl(2,0).
 
@@ -81,8 +82,7 @@ def _embed_as_vector(points_2d: torch.Tensor, dim: int) -> torch.Tensor:
     return mv
 
 
-def make_rotation_dataset(n: int, angle_rad: float, algebra_dim: int,
-                          seed: int) -> Tuple[torch.Tensor, torch.Tensor]:
+def make_rotation_dataset(n: int, angle_rad: float, algebra_dim: int, seed: int) -> Tuple[torch.Tensor, torch.Tensor]:
     """Return ``(x_mv, y_mv)`` where ``y = R_theta @ x`` for a fixed ``theta``."""
     g = torch.Generator().manual_seed(seed)
     pts = torch.randn(n, 2, generator=g)
@@ -96,6 +96,7 @@ def make_rotation_dataset(n: int, angle_rad: float, algebra_dim: int,
 # Model — the smallest GBN that can represent a rotor sandwich.
 # ---------------------------------------------------------------------------
 
+
 class RotorRegressorNet(CliffordModule):
     """Embed → (norm → rotor → act → linear) * num_layers → output.
 
@@ -108,15 +109,19 @@ class RotorRegressorNet(CliffordModule):
         super().__init__(algebra)
         self.hidden_channels = hidden_channels
         self.in_proj = CliffordLinear(algebra, 1, hidden_channels)
-        self.blocks = nn.ModuleList([
-            nn.ModuleDict({
-                'norm':   CliffordLayerNorm(algebra, hidden_channels),
-                'rotor':  RotorLayer(algebra, hidden_channels),
-                'act':    GeometricGELU(algebra, channels=hidden_channels),
-                'linear': CliffordLinear(algebra, hidden_channels, hidden_channels),
-            })
-            for _ in range(num_layers)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                nn.ModuleDict(
+                    {
+                        'norm': CliffordLayerNorm(algebra, hidden_channels),
+                        'rotor': RotorLayer(algebra, hidden_channels),
+                        'act': GeometricGELU(algebra, channels=hidden_channels),
+                        'linear': CliffordLinear(algebra, hidden_channels, hidden_channels),
+                    }
+                )
+                for _ in range(num_layers)
+            ]
+        )
         self.out_norm = CliffordLayerNorm(algebra, hidden_channels)
         self.blade_select = BladeSelector(algebra, channels=hidden_channels)
         self.out_proj = CliffordLinear(algebra, hidden_channels, 1)
@@ -138,6 +143,7 @@ class RotorRegressorNet(CliffordModule):
 # ---------------------------------------------------------------------------
 # Train / eval — local, not imported from _lib (loops vary by experiment).
 # ---------------------------------------------------------------------------
+
 
 def train_one_epoch(model, loader, optimizer, device) -> float:
     model.train()
@@ -170,20 +176,18 @@ def evaluate(model, loader, device) -> float:
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def parse_args() -> argparse.Namespace:
     parser = make_experiment_parser(
         'Incubator template — 2-D rotation regression.',
-        include=('seed', 'device', 'epochs', 'lr', 'batch_size',
-                 'output_dir', 'diag_interval'),
-        defaults={'epochs': 30, 'batch_size': 64,
-                  'output_dir': 'template_inc_plots', 'diag_interval': 5},
+        include=('seed', 'device', 'epochs', 'lr', 'batch_size', 'output_dir', 'diag_interval'),
+        defaults={'epochs': 30, 'batch_size': 64, 'output_dir': 'template_inc_plots', 'diag_interval': 5},
     )
     parser.add_argument('--hidden-channels', type=int, default=8)
     parser.add_argument('--num-layers', type=int, default=2)
     parser.add_argument('--n-train', type=int, default=512)
     parser.add_argument('--n-test', type=int, default=128)
-    parser.add_argument('--angle-deg', type=float, default=45.0,
-                        help='Target rotation angle in degrees.')
+    parser.add_argument('--angle-deg', type=float, default=45.0, help='Target rotation angle in degrees.')
     return parser.parse_args()
 
 
@@ -205,10 +209,8 @@ def main() -> None:
     angle_rad = math.radians(args.angle_deg)
     x_train, y_train = make_rotation_dataset(args.n_train, angle_rad, algebra.dim, args.seed)
     x_test, y_test = make_rotation_dataset(args.n_test, angle_rad, algebra.dim, args.seed + 1)
-    train_loader = DataLoader(TensorDataset(x_train, y_train),
-                              batch_size=args.batch_size, shuffle=True)
-    test_loader = DataLoader(TensorDataset(x_test, y_test),
-                             batch_size=args.batch_size)
+    train_loader = DataLoader(TensorDataset(x_train, y_train), batch_size=args.batch_size, shuffle=True)
+    test_loader = DataLoader(TensorDataset(x_test, y_test), batch_size=args.batch_size)
 
     optimizer = RiemannianAdam(model.parameters(), lr=args.lr, algebra=algebra)
 
@@ -223,8 +225,9 @@ def main() -> None:
             print(f'Epoch {epoch:4d}/{args.epochs} | train={train_loss:.6f} | test={test_loss:.6f}')
 
     out_dir = ensure_output_dir(args.output_dir)
-    saved = save_training_curve(history, os.path.join(out_dir, 'training_curves.png'),
-                                title='Incubator Template — training curves')
+    saved = save_training_curve(
+        history, os.path.join(out_dir, 'training_curves.png'), title='Incubator Template — training curves'
+    )
     print(f'Saved {saved}')
 
 

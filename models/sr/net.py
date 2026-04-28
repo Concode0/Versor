@@ -70,11 +70,7 @@ def bivector_plane_names(algebra) -> list:
     Returns:
         list: List of bivector blade name strings.
     """
-    return [
-        _blade_name(i, algebra.n)
-        for i in range(algebra.dim)
-        if bin(i).count("1") == 2
-    ]
+    return [_blade_name(i, algebra.n) for i in range(algebra.dim) if bin(i).count("1") == 2]
 
 
 @dataclass
@@ -91,6 +87,7 @@ class FormulaResult:
         grade_energy: Per-grade energy fractions from the hidden representation.
         var_names: Physical variable names when available.
     """
+
     formula: str
     coefficients: dict
     r2_vs_model: float
@@ -161,8 +158,7 @@ class SRMultiGradeEmbedding(CliffordModule):
             torch.Tensor: [B, C, 2^p] multivectors.
         """
         B = x.size(0)
-        out = torch.zeros(B, self.channels, self.algebra.dim,
-                          device=x.device, dtype=x.dtype)
+        out = torch.zeros(B, self.channels, self.algebra.dim, device=x.device, dtype=x.dtype)
 
         # Grade-0 bias
         out[:, :, 0] = self.grade0_bias.unsqueeze(0).expand(B, -1)
@@ -190,13 +186,13 @@ class _ResidualBlock(CliffordModule):
         # interpretable (constant scaling absorbed by downstream linear weights).
         # recover=True would inject log1p(||x||) into grade-0, a transcendental
         # function of the hidden state norm that cannot be traced symbolically.
-        self.norm       = CliffordLayerNorm(algebra, channels, recover=False)
-        self.linear     = CliffordLinear(algebra, channels, channels)
+        self.norm = CliffordLayerNorm(algebra, channels, recover=False)
+        self.linear = CliffordLinear(algebra, channels, channels)
         if activation_type == "square":
             self.activation = GeometricSquare(algebra, channels)
         else:
             self.activation = GeometricGELU(algebra, channels)
-        self.rotor      = RotorLayer(algebra, channels)
+        self.rotor = RotorLayer(algebra, channels)
         self.blade = BladeSelector(algebra, channels)
         self.use_skip = use_skip
 
@@ -243,8 +239,7 @@ class SRGBN(CliffordModule):
         Returns:
             SRGBN with num_layers=1, no skip connections.
         """
-        return SRGBN(algebra, in_features, channels=channels,
-                     num_layers=1, use_skip=False)
+        return SRGBN(algebra, in_features, channels=channels, num_layers=1, use_skip=False)
 
     def svd_warmstart(self, Vt, algebra):
         """Initialize first rotor's bivector weights from SVD rotation.
@@ -286,8 +281,7 @@ class SRGBN(CliffordModule):
                 if (i, j) in bv_map:
                     # Rotation angle in (i,j) plane from Vt
                     if i < Vt.shape[0] and j < Vt.shape[1]:
-                        angle = float(np.arctan2(Vt[i, j] - Vt[j, i],
-                                                  Vt[i, i] + Vt[j, j]))
+                        angle = float(np.arctan2(Vt[i, j] - Vt[j, i], Vt[i, i] + Vt[j, j]))
                         if abs(angle) > 1e-8:
                             bv_weights[bv_map[(i, j)]] = angle / 2.0
                             any_set = True
@@ -296,9 +290,7 @@ class SRGBN(CliffordModule):
         if any_set:
             with torch.no_grad():
                 self.blocks[0].rotor.bivector_weights.copy_(
-                    bv_weights.unsqueeze(0).expand_as(
-                        self.blocks[0].rotor.bivector_weights
-                    )
+                    bv_weights.unsqueeze(0).expand_as(self.blocks[0].rotor.bivector_weights)
                 )
 
     @staticmethod
@@ -334,19 +326,15 @@ class SRGBN(CliffordModule):
         self.in_features = in_features
         self.channels = channels
 
-        self.embedding = SRMultiGradeEmbedding(
-            algebra, in_features, channels
+        self.embedding = SRMultiGradeEmbedding(algebra, in_features, channels)
+
+        self.blocks = nn.ModuleList(
+            [_ResidualBlock(algebra, channels, use_skip=use_skip, activation_type="square") for _ in range(num_layers)]
         )
 
-        self.blocks = nn.ModuleList([
-            _ResidualBlock(algebra, channels,
-                           use_skip=use_skip, activation_type="square")
-            for _ in range(num_layers)
-        ])
-
         # Output head also uses recover=False for symbolic traceability.
-        self.output_norm   = CliffordLayerNorm(algebra, channels, recover=False)
-        self.output_blade  = BladeSelector(algebra, channels)
+        self.output_norm = CliffordLayerNorm(algebra, channels, recover=False)
+        self.output_blade = BladeSelector(algebra, channels)
         self.output_linear = CliffordLinear(algebra, channels, 1)
 
         # Readout: learned weighted sum across all blade components.
@@ -368,18 +356,18 @@ class SRGBN(CliffordModule):
         Returns:
             torch.Tensor: [B, 1] predicted (normalised) scalar output.
         """
-        out = self.embedding(x)      # [B, C, dim]
+        out = self.embedding(x)  # [B, C, dim]
 
         for block in self.blocks:
-            out = block(out)         # [B, C, dim]
+            out = block(out)  # [B, C, dim]
 
         # Cache last hidden state for analysis / ortho monitoring.
-        self._last_hidden = out.detach()   # [B, C, dim]
-        self._hidden_for_curvature = out   # non-detached, for curvature loss
+        self._last_hidden = out.detach()  # [B, C, dim]
+        self._hidden_for_curvature = out  # non-detached, for curvature loss
 
         out = self.output_norm(out)
         out = self.output_blade(out)
-        out = self.output_linear(out)          # [B, 1, dim]
+        out = self.output_linear(out)  # [B, 1, dim]
         # Readout: weighted sum across all blade components
         out = (out[:, 0, :] * self.readout).sum(-1, keepdim=True)  # [B, 1]
 
@@ -394,18 +382,20 @@ class SRGBN(CliffordModule):
             bv = rotor.bivector_weights.detach().cpu()  # [C, n_bv]
             bv_mean = bv.abs().mean(0)  # [n_bv]
             dom = bv_mean.argmax().item()
-            results.append({
-                "layer": i,
-                "bivectors": bv,  # [C, n_bv]
-                "plane_names": plane_names,
-                "dominant_plane": plane_names[dom],
-            })
+            results.append(
+                {
+                    "layer": i,
+                    "bivectors": bv,  # [C, n_bv]
+                    "plane_names": plane_names,
+                    "dominant_plane": plane_names[dom],
+                }
+            )
         return results
 
     def get_output_blade_weights(self, algebra) -> dict:
         """Map each basis-blade name -> its weight in the final CliffordLinear bias."""
         # output_linear bias: [out_channels=1, dim]
-        w     = self.output_linear.bias.detach()[0]  # [dim]
+        w = self.output_linear.bias.detach()[0]  # [dim]
         names = blade_names_for_algebra(algebra)
         return {name: w[i].item() for i, name in enumerate(names)}
 

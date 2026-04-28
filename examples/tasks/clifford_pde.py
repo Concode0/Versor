@@ -66,8 +66,10 @@ import math
 from torch.utils.data import DataLoader, TensorDataset
 from core.algebra import CliffordAlgebra
 from layers import (
-    CliffordLinear, CliffordLayerNorm,
-    RotorLayer, CliffordModule,
+    CliffordLinear,
+    CliffordLayerNorm,
+    RotorLayer,
+    CliffordModule,
 )
 from functional.activation import GeometricGELU
 from tasks.base import BaseTask
@@ -76,6 +78,7 @@ from tasks.base import BaseTask
 # ---------------------------------------------------------------------------
 # Model
 # ---------------------------------------------------------------------------
+
 
 class CliffordPDEBlock(CliffordModule):
     """Single Clifford PDE block: spatial conv + algebraic mixing.
@@ -92,8 +95,10 @@ class CliffordPDEBlock(CliffordModule):
         D = algebra.dim  # 4 for Cl(2,0)
         # Spatial mixing: depthwise conv on each (channel, MV-component) pair
         self.spatial = nn.Conv2d(
-            channels * D, channels * D,
-            kernel_size=grid_kernel, padding=grid_kernel // 2,
+            channels * D,
+            channels * D,
+            kernel_size=grid_kernel,
+            padding=grid_kernel // 2,
             groups=channels * D,  # fully depthwise
         )
         # Algebraic mixing: couples grades via geometric product structure
@@ -129,7 +134,7 @@ class CliffordPDEBlock(CliffordModule):
         x_flat = x.reshape(B * HW, C, D)
         x_flat = self.norm(x_flat)
         x_flat = self.act(x_flat)
-        x_flat = self.rotor(x_flat)   # grade coupling via sandwich product
+        x_flat = self.rotor(x_flat)  # grade coupling via sandwich product
         x_flat = self.linear(x_flat)  # channel mixing via geometric product
         x = x_flat.reshape(B, HW, C, D)
 
@@ -151,9 +156,7 @@ class CliffordPDENet(CliffordModule):
         self.D = algebra.dim
 
         self.lift = CliffordLinear(algebra, 1, channels)
-        self.blocks = nn.ModuleList([
-            CliffordPDEBlock(algebra, channels) for _ in range(num_blocks)
-        ])
+        self.blocks = nn.ModuleList([CliffordPDEBlock(algebra, channels) for _ in range(num_blocks)])
         self.project = CliffordLinear(algebra, channels, 1)
 
     def _pack(self, vel, pressure):
@@ -161,8 +164,8 @@ class CliffordPDENet(CliffordModule):
         B, H, W, _ = vel.shape
         mv = torch.zeros(B, H, W, self.D, device=vel.device, dtype=vel.dtype)
         mv[..., 0] = pressure[..., 0]  # grade-0: scalar (pressure)
-        mv[..., 1] = vel[..., 0]       # grade-1: e1 component (u velocity)
-        mv[..., 2] = vel[..., 1]       # grade-1: e2 component (v velocity)
+        mv[..., 1] = vel[..., 0]  # grade-1: e1 component (u velocity)
+        mv[..., 2] = vel[..., 1]  # grade-1: e2 component (v velocity)
         # grade-2 (index 3, bivector e12): left as 0 initially,
         # emerges during processing as vorticity
         return mv.reshape(B, H * W, 1, self.D)
@@ -207,6 +210,7 @@ class CliffordPDENet(CliffordModule):
 # ---------------------------------------------------------------------------
 # Synthetic data: 2D Taylor-Green vortex
 # ---------------------------------------------------------------------------
+
 
 def _generate_taylor_green(n_samples, grid_size, nu=0.01, dt=0.1):
     """Generate 2D Taylor-Green vortex data (analytical Navier-Stokes solution).
@@ -257,6 +261,7 @@ def _generate_taylor_green(n_samples, grid_size, nu=0.01, dt=0.1):
 # Task
 # ---------------------------------------------------------------------------
 
+
 class CliffordPDETask(BaseTask):
     """Clifford PDE surrogate for 2D Navier-Stokes (Taylor-Green vortex).
 
@@ -271,7 +276,8 @@ class CliffordPDETask(BaseTask):
         # Cl(2,0): dim = 2^2 = 4 components
         # grade-0: 1 scalar, grade-1: 2 vectors, grade-2: 1 bivector
         return CliffordAlgebra(
-            p=self.cfg.algebra.p, q=self.cfg.algebra.q,
+            p=self.cfg.algebra.p,
+            q=self.cfg.algebra.q,
             device=self.device,
         )
 
@@ -288,11 +294,16 @@ class CliffordPDETask(BaseTask):
         dt = self.cfg.dataset.get('dt', 0.1)
 
         vel_in, p_in, vel_tgt, p_tgt = _generate_taylor_green(
-            n_samples, grid_size, nu, dt,
+            n_samples,
+            grid_size,
+            nu,
+            dt,
         )
         dataset = TensorDataset(vel_in, p_in, vel_tgt, p_tgt)
         return DataLoader(
-            dataset, batch_size=self.cfg.training.batch_size, shuffle=True,
+            dataset,
+            batch_size=self.cfg.training.batch_size,
+            shuffle=True,
         )
 
     def train_step(self, data):

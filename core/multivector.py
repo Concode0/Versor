@@ -36,25 +36,22 @@ class Multivector:
         return cls(algebra, algebra.embed_vector(vectors))
 
     @classmethod
-    def scalar(cls, algebra: CliffordAlgebra, value: float | torch.Tensor,
-               batch_shape: tuple[int, ...] = ()) -> Multivector:
+    def scalar(
+        cls, algebra: CliffordAlgebra, value: float | torch.Tensor, batch_shape: tuple[int, ...] = ()
+    ) -> Multivector:
         """Creates a scalar multivector (grade 0 only)."""
-        dim = 2 ** algebra.n
-        t = torch.zeros(*batch_shape, dim, device=algebra.device,
-                         dtype=algebra.dtype)
+        dim = 2**algebra.n
+        t = torch.zeros(*batch_shape, dim, device=algebra.device, dtype=algebra.dtype)
         t[..., 0] = value
         return cls(algebra, t)
 
     def __repr__(self):
-        return (f"Multivector(shape={self.tensor.shape}, "
-                f"algebra=Cl({self.algebra.p},{self.algebra.q},{self.algebra.r}))")
+        return f"Multivector(shape={self.tensor.shape}, algebra=Cl({self.algebra.p},{self.algebra.q},{self.algebra.r}))"
 
     def _check_algebra(self, other: Multivector) -> None:
         s, o = self.algebra, other.algebra
         if (s.p, s.q, s.r) != (o.p, o.q, o.r):
-            raise ValueError(
-                f"Algebra mismatch: Cl({s.p},{s.q},{s.r}) "
-                f"vs Cl({o.p},{o.q},{o.r})")
+            raise ValueError(f"Algebra mismatch: Cl({s.p},{s.q},{s.r}) vs Cl({o.p},{o.q},{o.r})")
 
     def _wrap(self, tensor: torch.Tensor) -> Multivector:
         return Multivector(self.algebra, tensor)
@@ -189,6 +186,7 @@ class Multivector:
     def norm(self) -> torch.Tensor:
         """Induced metric norm (returns scalar tensor)."""
         from core.metric import induced_norm
+
         return induced_norm(self.algebra, self.tensor)
 
     def norm_sq(self) -> torch.Tensor:
@@ -216,9 +214,7 @@ class Multivector:
             return self._wrap(self.algebra.sandwich_product(R, xt))
         # General fallback: two GPs
         R_rev = self.algebra.reverse(R)
-        return self._wrap(
-            self.algebra.geometric_product(
-                self.algebra.geometric_product(R, xt), R_rev))
+        return self._wrap(self.algebra.geometric_product(self.algebra.geometric_product(R, xt), R_rev))
 
     def reflect(self, n: Multivector) -> Multivector:
         """Reflect self through hyperplane orthogonal to vector n."""

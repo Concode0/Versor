@@ -140,7 +140,9 @@ class MultiRotorLayer(CliffordModule):
 
         # Action-matrix sandwich: build K matrices once, apply via einsum
         versored_x = self.algebra.multi_rotor_sandwich(
-            V_left, x, V_right,
+            V_left,
+            x,
+            V_right,
         )  # [B, C, K, D]
 
         # Weighted superposition

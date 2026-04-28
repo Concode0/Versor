@@ -10,6 +10,7 @@ from torch.utils.data import Dataset
 import numpy as np
 from core.algebra import CliffordAlgebra
 
+
 class Figure8Dataset(Dataset):
     """Fake data. Figure-8 distorted by z=0.5xy.
 
@@ -23,7 +24,7 @@ class Figure8Dataset(Dataset):
 
     def _generate(self, n):
         """Generates the synthetic manifold data."""
-        t = torch.linspace(0, 2*np.pi, n)
+        t = torch.linspace(0, 2 * np.pi, n)
         x = torch.sin(t)
         y = torch.sin(t) * torch.cos(t)
         z = 0.5 * x * y

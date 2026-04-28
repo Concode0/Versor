@@ -48,8 +48,12 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    build_visualization_metadata, ensure_output_dir, make_experiment_parser,
-    save_experiment_figure, section_header, set_seed,
+    build_visualization_metadata,
+    ensure_output_dir,
+    make_experiment_parser,
+    save_experiment_figure,
+    section_header,
+    set_seed,
     signature_metadata,
 )
 from core.algebra import CliffordAlgebra
@@ -69,13 +73,13 @@ _DTYPE_MAP = {
 # Module helpers
 # ---------------------------------------------------------------------------
 
+
 def _grade1_indices(n: int) -> list:
     """Multivector indices of grade-1 basis vectors e_i (i=0..n-1)."""
     return [1 << i for i in range(n)]
 
 
-def _make_skew_basis(n: int, skew_factor: float, device,
-                     dtype: torch.dtype = torch.float64) -> torch.Tensor:
+def _make_skew_basis(n: int, skew_factor: float, device, dtype: torch.dtype = torch.float64) -> torch.Tensor:
     """Build a skewed basis matrix: identity + noise then upper-triangular skew.
 
     Args:
@@ -91,8 +95,7 @@ def _make_skew_basis(n: int, skew_factor: float, device,
     vecs = base + noise
     if skew_factor != 0:
         skew = torch.eye(n, device=device, dtype=dtype)
-        upper = torch.triu(torch.randn(n, n, device=device, dtype=dtype),
-                           diagonal=1)
+        upper = torch.triu(torch.randn(n, n, device=device, dtype=dtype), diagonal=1)
         skew = skew + skew_factor * upper
         vecs = vecs @ skew
     return vecs
@@ -100,15 +103,17 @@ def _make_skew_basis(n: int, skew_factor: float, device,
 
 class MorphMode(str, Enum):
     """Operation mode for harder lattice morph experiments."""
-    BASIC = 'basic'        # Original behaviour
+
+    BASIC = 'basic'  # Original behaviour
     COMPOUND = 'compound'  # Non-simple bivector morphs (n >= 4)
-    SKEW = 'skew'          # Anisotropic skew + gram regularization
+    SKEW = 'skew'  # Anisotropic skew + gram regularization
     MINKOWSKI = 'minkowski'  # Signature-preserving Minkowski morphs
 
 
 # ---------------------------------------------------------------------------
 # Structure Tracker — lattice invariant computation
 # ---------------------------------------------------------------------------
+
 
 class StructureTracker:
     """Computes lattice geometric invariants from basis multivectors."""
@@ -172,8 +177,7 @@ class StructureTracker:
         outer = norms.unsqueeze(1) * norms.unsqueeze(0)  # [n, n]
         return gram / outer.clamp(min=1e-8)
 
-    def compute_minkowski_invariant(self,
-                                    basis_mvs: torch.Tensor) -> torch.Tensor:
+    def compute_minkowski_invariant(self, basis_mvs: torch.Tensor) -> torch.Tensor:
         """M[i,j] = <b_i b_j>_0 — the indefinite scalar product matrix.
 
         Identical to ``compute_gram_matrix`` (the scalar part of the geometric
@@ -201,6 +205,7 @@ class StructureTracker:
 # MorphStage — single invertible transformation
 # ---------------------------------------------------------------------------
 
+
 class MorphStage(CliffordModule):
     """One invertible morph: GlobalRotor -> RelativeTwist -> DynamicScale.
 
@@ -210,8 +215,7 @@ class MorphStage(CliffordModule):
     :class:`~core.decomposition.ExpPolicy`.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, n: int,
-                 compound_blades: int = 1):
+    def __init__(self, algebra: CliffordAlgebra, n: int, compound_blades: int = 1):
         """
         Args:
             algebra: Clifford algebra instance.
@@ -233,16 +237,14 @@ class MorphStage(CliffordModule):
         if compound_blades == 1:
             self.global_bv = nn.Parameter(torch.randn(num_bv) * 0.01)
         else:
-            self.global_bv = nn.Parameter(
-                torch.randn(compound_blades, num_bv) * 0.01)
+            self.global_bv = nn.Parameter(torch.randn(compound_blades, num_bv) * 0.01)
         self.global_bv._manifold = 'spin'
 
         # (b) Relative twist — per-basis bivectors (or per-basis compound sums)
         if compound_blades == 1:
             self.twist_bvs = nn.Parameter(torch.randn(n, num_bv) * 0.01)
         else:
-            self.twist_bvs = nn.Parameter(
-                torch.randn(n, compound_blades, num_bv) * 0.01)
+            self.twist_bvs = nn.Parameter(torch.randn(n, compound_blades, num_bv) * 0.01)
         self.twist_bvs._manifold = 'spin'
 
         # (c) Dynamic scale — per-basis log-scale (Euclidean)
@@ -289,8 +291,7 @@ class MorphStage(CliffordModule):
         R_rev = self.algebra.reverse(R)
         return R, R_rev
 
-    def _apply_sandwich(self, R: torch.Tensor, x: torch.Tensor,
-                        R_rev: torch.Tensor) -> torch.Tensor:
+    def _apply_sandwich(self, R: torch.Tensor, x: torch.Tensor, R_rev: torch.Tensor) -> torch.Tensor:
         """Sandwich product R x R~ via two geometric products.
 
         Args:
@@ -300,21 +301,19 @@ class MorphStage(CliffordModule):
         Returns:
             [..., D] sandwiched result.
         """
-        return self.algebra.geometric_product(
-            self.algebra.geometric_product(R, x), R_rev
-        )
+        return self.algebra.geometric_product(self.algebra.geometric_product(R, x), R_rev)
 
     def _global_bivector(self) -> torch.Tensor:
         """Build the effective global bivector multivector [D]."""
         if self.compound_blades == 1:
-            return self._scatter_bv(self.global_bv)            # [D]
+            return self._scatter_bv(self.global_bv)  # [D]
         # [compound, num_bv] -> scatter -> [compound, D] -> sum -> [D]
         return self._scatter_bv(self.global_bv).sum(dim=0)
 
     def _twist_bivector(self) -> torch.Tensor:
         """Build the effective per-basis twist bivector multivector [n, D]."""
         if self.compound_blades == 1:
-            return self._scatter_bv(self.twist_bvs)            # [n, D]
+            return self._scatter_bv(self.twist_bvs)  # [n, D]
         # [n, compound, num_bv] -> [n, compound, D] -> sum dim=1 -> [n, D]
         return self._scatter_bv(self.twist_bvs).sum(dim=1)
 
@@ -333,20 +332,20 @@ class MorphStage(CliffordModule):
             [n, D] morphed multivectors.
         """
         # --- Global rotation ---
-        B_global = self._global_bivector()                     # [D]
-        R, R_rev = self._make_rotor(B_global.unsqueeze(0))     # [1, D]
+        B_global = self._global_bivector()  # [D]
+        R, R_rev = self._make_rotor(B_global.unsqueeze(0))  # [1, D]
         self._cached_R, self._cached_R_rev = R, R_rev
-        x = self._apply_sandwich(R, basis_mvs, R_rev)          # [n, D]
+        x = self._apply_sandwich(R, basis_mvs, R_rev)  # [n, D]
 
         # --- Relative twist ---
-        B_twist = self._twist_bivector()                       # [n, D]
-        T, T_rev = self._make_rotor(B_twist)                   # [n, D]
+        B_twist = self._twist_bivector()  # [n, D]
+        T, T_rev = self._make_rotor(B_twist)  # [n, D]
         self._cached_T, self._cached_T_rev = T, T_rev
-        x = self._apply_sandwich(T, x, T_rev)                  # [n, D]
+        x = self._apply_sandwich(T, x, T_rev)  # [n, D]
 
         # --- Dynamic scale ---
-        scale = torch.exp(self.log_scale.clamp(-3.0, 3.0))    # [n]
-        x = x * scale.unsqueeze(-1)                            # [n, D]
+        scale = torch.exp(self.log_scale.clamp(-3.0, 3.0))  # [n]
+        x = x * scale.unsqueeze(-1)  # [n, D]
 
         return x
 
@@ -364,10 +363,7 @@ class MorphStage(CliffordModule):
             [n, D] reconstructed multivectors.
         """
         if self._cached_R is None or self._cached_T is None:
-            raise RuntimeError(
-                "MorphStage.inverse() requires a prior forward() call to "
-                "populate the rotor cache."
-            )
+            raise RuntimeError("MorphStage.inverse() requires a prior forward() call to populate the rotor cache.")
 
         # --- Inverse scale ---
         inv_scale = torch.exp(-self.log_scale.clamp(-3.0, 3.0))
@@ -386,17 +382,16 @@ class MorphStage(CliffordModule):
 # MorphPipeline — sequential stage composition
 # ---------------------------------------------------------------------------
 
+
 class MorphPipeline(nn.Module):
     """Sequential composition of MorphStages with intermediate tracking."""
 
-    def __init__(self, algebra: CliffordAlgebra, n: int, num_stages: int = 3,
-                 compound_blades: int = 1):
+    def __init__(self, algebra: CliffordAlgebra, n: int, num_stages: int = 3, compound_blades: int = 1):
         super().__init__()
         self.compound_blades = compound_blades
-        self.stages = nn.ModuleList([
-            MorphStage(algebra, n, compound_blades=compound_blades)
-            for _ in range(num_stages)
-        ])
+        self.stages = nn.ModuleList(
+            [MorphStage(algebra, n, compound_blades=compound_blades) for _ in range(num_stages)]
+        )
 
     def forward(self, basis_mvs: torch.Tensor):
         """Apply all stages, recording intermediates.
@@ -431,14 +426,23 @@ class MorphPipeline(nn.Module):
 # LatticeMorpher — main experiment class
 # ---------------------------------------------------------------------------
 
+
 class LatticeMorpher:
     """Lattice morphing experiment with invertible GA transformations."""
 
-    def __init__(self, n: int = 3, signature: str = 'euclidean',
-                 num_stages: int = 3, seed: int = 42, device: str = 'cpu',
-                 compound_blades: int = 1, mode: MorphMode = MorphMode.BASIC,
-                 lambda_gram: float = 0.1, lambda_minkowski: float = 0.5,
-                 dtype: torch.dtype = torch.float64):
+    def __init__(
+        self,
+        n: int = 3,
+        signature: str = 'euclidean',
+        num_stages: int = 3,
+        seed: int = 42,
+        device: str = 'cpu',
+        compound_blades: int = 1,
+        mode: MorphMode = MorphMode.BASIC,
+        lambda_gram: float = 0.1,
+        lambda_minkowski: float = 0.5,
+        dtype: torch.dtype = torch.float64,
+    ):
         self.n = n
         self.device = device
         self.dtype = dtype
@@ -452,31 +456,37 @@ class LatticeMorpher:
             p, q = n - 1, 1
         else:
             p, q = n, 0
-        self.algebra = CliffordAlgebra(
-            p=p, q=q, device=device, dtype=dtype).to(device)
+        self.algebra = CliffordAlgebra(p=p, q=q, device=device, dtype=dtype).to(device)
         self.algebra.exp_policy = ExpPolicy.PRECISE
         self.signature_q = q
         self.tracker = StructureTracker(self.algebra)
         self.pipeline = MorphPipeline(
-            self.algebra, n, num_stages,
+            self.algebra,
+            n,
+            num_stages,
             compound_blades=compound_blades,
         ).to(device=device, dtype=dtype)
         self.signature_name = f"Cl({p},{q})"
 
         if mode == MorphMode.MINKOWSKI and q == 0:
-            print("  WARNING: --ops minkowski has no effect on Cl(p,0); "
-                  "use --signature minkowski for an indefinite metric.")
+            print(
+                "  WARNING: --ops minkowski has no effect on Cl(p,0); "
+                "use --signature minkowski for an indefinite metric."
+            )
         if mode == MorphMode.COMPOUND and (n < 4 or compound_blades < 2):
-            print(f"  WARNING: --ops compound is a no-op when n<4 or "
-                  f"compound_blades<2 (got n={n}, compound_blades="
-                  f"{compound_blades}).")
+            print(
+                f"  WARNING: --ops compound is a no-op when n<4 or "
+                f"compound_blades<2 (got n={n}, compound_blades="
+                f"{compound_blades})."
+            )
 
-        print(f"Initialized LatticeMorpher: dim={n}, {self.signature_name}, "
-              f"stages={num_stages}, device={device}, "
-              f"mode={mode.value}, compound_blades={compound_blades}")
+        print(
+            f"Initialized LatticeMorpher: dim={n}, {self.signature_name}, "
+            f"stages={num_stages}, device={device}, "
+            f"mode={mode.value}, compound_blades={compound_blades}"
+        )
 
-    def create_lattice(self, basis_matrix: torch.Tensor = None,
-                       skew_factor: float = 0.0) -> torch.Tensor:
+    def create_lattice(self, basis_matrix: torch.Tensor = None, skew_factor: float = 0.0) -> torch.Tensor:
         """Create a lattice from basis matrix or random.
 
         Args:
@@ -488,13 +498,11 @@ class LatticeMorpher:
         if basis_matrix is not None:
             vecs = basis_matrix.to(self.device, dtype=self.dtype)
         else:
-            vecs = _make_skew_basis(self.n, skew_factor, self.device,
-                                    dtype=self.dtype)
+            vecs = _make_skew_basis(self.n, skew_factor, self.device, dtype=self.dtype)
 
         return self.algebra.embed_vector(vecs)  # [n, D]
 
-    def generate_lattice_points(self, basis_mvs: torch.Tensor,
-                                grid_range: int = 3) -> tuple:
+    def generate_lattice_points(self, basis_mvs: torch.Tensor, grid_range: int = 3) -> tuple:
         """Vectorized lattice point generation.
 
         Args:
@@ -503,8 +511,7 @@ class LatticeMorpher:
         Returns:
             (points [N, D], coeffs [N, n]).
         """
-        coords_1d = torch.arange(-grid_range, grid_range + 1,
-                                  dtype=basis_mvs.dtype, device=basis_mvs.device)
+        coords_1d = torch.arange(-grid_range, grid_range + 1, dtype=basis_mvs.dtype, device=basis_mvs.device)
         grids = [coords_1d] * self.n
         coeffs = torch.cartesian_prod(*grids)  # [(2r+1)^n, n]
         if self.n == 1:
@@ -522,17 +529,14 @@ class LatticeMorpher:
             print(f"    Angles (cos):")
             ang = snap['angles'].cpu().numpy()
             for i in range(self.n):
-                row = "  ".join(f"{ang[i,j]:+.4f}" for j in range(self.n))
+                row = "  ".join(f"{ang[i, j]:+.4f}" for j in range(self.n))
                 print(f"      [{row}]")
 
     def _make_optimizer(self, lr: float):
         """Create the optimizer used by all morphing runs."""
-        return RiemannianAdam.from_model(
-            self.pipeline, lr=lr, algebra=self.algebra
-        )
+        return RiemannianAdam.from_model(self.pipeline, lr=lr, algebra=self.algebra)
 
-    def _mode_extra_loss(self, morphed: torch.Tensor,
-                         reference_gram: torch.Tensor = None) -> torch.Tensor:
+    def _mode_extra_loss(self, morphed: torch.Tensor, reference_gram: torch.Tensor = None) -> torch.Tensor:
         """Mode-specific regularization added on top of the base objective.
 
         - SKEW: penalty on off-diagonal gram entries (drives orthogonality
@@ -563,8 +567,9 @@ class LatticeMorpher:
         optimizer.step()
         return loss.item()
 
-    def _run_morphing_loop(self, source: torch.Tensor, optimizer, loss_fn,
-                           steps: int, title: str, final_frame=None) -> dict:
+    def _run_morphing_loop(
+        self, source: torch.Tensor, optimizer, loss_fn, steps: int, title: str, final_frame=None
+    ) -> dict:
         """Shared optimization loop for target and free morphing."""
         loss_history = []
         invariant_history = []
@@ -581,15 +586,15 @@ class LatticeMorpher:
                 recon_err = (source - reconstructed).pow(2).sum().sqrt().item()
 
                 loss_history.append(loss_val)
-                invariant_history.append({
-                    k: v.detach().cpu() for k, v in snap.items()
-                })
+                invariant_history.append({k: v.detach().cpu() for k, v in snap.items()})
                 recon_errors.append(recon_err)
 
             if step % 50 == 0 or step == steps - 1:
-                print(f"    step {step:4d}: loss={loss_val:.6f}, "
-                      f"vol={snap['volume'].item():.4f}, "
-                      f"recon_err={recon_err:.2e}")
+                print(
+                    f"    step {step:4d}: loss={loss_val:.6f}, "
+                    f"vol={snap['volume'].item():.4f}, "
+                    f"recon_err={recon_err:.2e}"
+                )
 
         with torch.no_grad():
             _, final_intermediates = self.pipeline(source)
@@ -605,8 +610,7 @@ class LatticeMorpher:
             'intermediates': intermediates,
         }
 
-    def run_target_morphing(self, target_basis: torch.Tensor,
-                            lr: float = 0.01, steps: int = 300) -> dict:
+    def run_target_morphing(self, target_basis: torch.Tensor, lr: float = 0.01, steps: int = 300) -> dict:
         """Optimize pipeline to morph source -> target basis.
 
         Args:
@@ -628,15 +632,14 @@ class LatticeMorpher:
             base = (morphed - target).pow(2).sum()
             return base + self._mode_extra_loss(morphed, reference_gram=ref_gram)
 
-        title = (f"\n  Target Morphing: {steps} steps, lr={lr}"
-              f"{' [ops=' + self.mode.value + ']' if self.mode != MorphMode.BASIC else ''}")
-        results = self._run_morphing_loop(
-            source, optimizer, loss_fn, steps, title, final_frame=target
+        title = (
+            f"\n  Target Morphing: {steps} steps, lr={lr}"
+            f"{' [ops=' + self.mode.value + ']' if self.mode != MorphMode.BASIC else ''}"
         )
+        results = self._run_morphing_loop(source, optimizer, loss_fn, steps, title, final_frame=target)
         return results
 
-    def run_free_morphing(self, lr: float = 0.01, steps: int = 200,
-                          objective: str = 'orthogonalize') -> dict:
+    def run_free_morphing(self, lr: float = 0.01, steps: int = 200, objective: str = 'orthogonalize') -> dict:
         """Optimize pipeline toward a geometric objective.
 
         Args:
@@ -669,8 +672,10 @@ class LatticeMorpher:
                 raise ValueError(f"Unknown objective: {objective}")
             return base + self._mode_extra_loss(morphed, reference_gram=ref_gram)
 
-        title = (f"\n  Free Morphing ({objective}): {steps} steps, lr={lr}"
-              f"{' [ops=' + self.mode.value + ']' if self.mode != MorphMode.BASIC else ''}")
+        title = (
+            f"\n  Free Morphing ({objective}): {steps} steps, lr={lr}"
+            f"{' [ops=' + self.mode.value + ']' if self.mode != MorphMode.BASIC else ''}"
+        )
         return self._run_morphing_loop(source, optimizer, loss_fn, steps, title)
 
     def verify_reconstruction(self, tolerance: float = 1e-5) -> dict:
@@ -682,14 +687,13 @@ class LatticeMorpher:
         with torch.no_grad():
             morphed, _ = self.pipeline(self.source_basis)
             reconstructed = self.pipeline.inverse(morphed)
-            per_basis_err = (self.source_basis - reconstructed).pow(2).sum(
-                dim=-1).sqrt()
+            per_basis_err = (self.source_basis - reconstructed).pow(2).sum(dim=-1).sqrt()
             max_err = per_basis_err.max().item()
             passed = max_err < tolerance
 
         print(f"\n  Reconstruction Verification (tol={tolerance:.0e}):")
         for i in range(self.n):
-            print(f"    b_{i+1} error: {per_basis_err[i].item():.2e}")
+            print(f"    b_{i + 1} error: {per_basis_err[i].item():.2e}")
         print(f"    Max error: {max_err:.2e} -> {'PASS' if passed else 'FAIL'}")
 
         return {
@@ -703,11 +707,11 @@ class LatticeMorpher:
 # MorphVisualizer
 # ---------------------------------------------------------------------------
 
+
 class MorphVisualizer:
     """Visualization for lattice morphing."""
 
-    def __init__(self, algebra: CliffordAlgebra, n: int, output_dir: str,
-                 metadata: str, args: argparse.Namespace):
+    def __init__(self, algebra: CliffordAlgebra, n: int, output_dir: str, metadata: str, args: argparse.Namespace):
         self.algebra = algebra
         self.n = n
         self.output_dir = ensure_output_dir(output_dir)
@@ -726,12 +730,11 @@ class MorphVisualizer:
         coords = torch.stack([mvs[..., idx] for idx in self.g1_indices], dim=-1)
         return coords.detach().cpu().numpy()
 
-    def plot_morph_sequence(self, intermediates: list, grid_range: int = 3,
-                            labels: list = None):
+    def plot_morph_sequence(self, intermediates: list, grid_range: int = 3, labels: list = None):
         """Side-by-side lattice plots at each morph stage."""
         n_plots = len(intermediates)
         if labels is None:
-            labels = ['Source'] + [f'Stage {i+1}' for i in range(n_plots - 1)]
+            labels = ['Source'] + [f'Stage {i + 1}' for i in range(n_plots - 1)]
 
         if self.n == 2:
             self._plot_sequence_2d(intermediates, grid_range, labels)
@@ -740,24 +743,21 @@ class MorphVisualizer:
 
     def _generate_points(self, basis_mvs: torch.Tensor, grid_range: int):
         """Vectorized lattice point generation for plotting."""
-        coords_1d = torch.arange(-grid_range, grid_range + 1,
-                                  dtype=basis_mvs.dtype, device=basis_mvs.device)
+        coords_1d = torch.arange(-grid_range, grid_range + 1, dtype=basis_mvs.dtype, device=basis_mvs.device)
         grids = [coords_1d] * self.n
         coeffs = torch.cartesian_prod(*grids)
         if self.n == 1:
             coeffs = coeffs.unsqueeze(-1)
         return torch.matmul(coeffs, basis_mvs)
 
-    def _plot_sequence_2d(self, intermediates: list, grid_range: int,
-                          labels: list):
+    def _plot_sequence_2d(self, intermediates: list, grid_range: int, labels: list):
         n_plots = len(intermediates)
         fig, axes = plt.subplots(1, n_plots, figsize=(5 * n_plots, 5))
         if n_plots == 1:
             axes = [axes]
         colors = plt.cm.coolwarm(np.linspace(0, 1, n_plots))
 
-        for idx, (basis_mvs, ax, label) in enumerate(
-                zip(intermediates, axes, labels)):
+        for idx, (basis_mvs, ax, label) in enumerate(zip(intermediates, axes, labels)):
             pts = self._generate_points(basis_mvs, grid_range)
             xy = self._extract_coords(pts)
             ax.scatter(xy[:, 0], xy[:, 1], c=[colors[idx]], alpha=0.4, s=20)
@@ -765,20 +765,19 @@ class MorphVisualizer:
             # Draw basis vectors as arrows
             basis_xy = self._extract_coords(basis_mvs)
             for i in range(self.n):
-                ax.annotate('', xy=basis_xy[i], xytext=(0, 0),
-                            arrowprops=dict(arrowstyle='->', color='black',
-                                            lw=2))
-                ax.text(basis_xy[i, 0] * 1.15, basis_xy[i, 1] * 1.15,
-                        f'b{i+1}', fontsize=9, ha='center')
+                ax.annotate('', xy=basis_xy[i], xytext=(0, 0), arrowprops=dict(arrowstyle='->', color='black', lw=2))
+                ax.text(basis_xy[i, 0] * 1.15, basis_xy[i, 1] * 1.15, f'b{i + 1}', fontsize=9, ha='center')
 
             # Unit cell parallelogram
-            cell = np.array([
-                [0, 0],
-                basis_xy[0],
-                basis_xy[0] + basis_xy[1],
-                basis_xy[1],
-                [0, 0],
-            ])
+            cell = np.array(
+                [
+                    [0, 0],
+                    basis_xy[0],
+                    basis_xy[0] + basis_xy[1],
+                    basis_xy[1],
+                    [0, 0],
+                ]
+            )
             ax.plot(cell[:, 0], cell[:, 1], 'k--', alpha=0.5, lw=1)
 
             ax.set_title(label, fontsize=11)
@@ -800,8 +799,7 @@ class MorphVisualizer:
         )
         print(f"  Saved: {path}")
 
-    def _plot_sequence_3d(self, intermediates: list, grid_range: int,
-                          labels: list):
+    def _plot_sequence_3d(self, intermediates: list, grid_range: int, labels: list):
         n_plots = len(intermediates)
         fig = plt.figure(figsize=(6 * n_plots, 6))
         colors = plt.cm.coolwarm(np.linspace(0, 1, n_plots))
@@ -810,16 +808,13 @@ class MorphVisualizer:
             ax = fig.add_subplot(1, n_plots, idx + 1, projection='3d')
             pts = self._generate_points(basis_mvs, grid_range)
             xyz = self._extract_coords(pts)
-            ax.scatter(xyz[:, 0], xyz[:, 1], xyz[:, 2],
-                       c=[colors[idx]], alpha=0.2, s=10)
+            ax.scatter(xyz[:, 0], xyz[:, 1], xyz[:, 2], c=[colors[idx]], alpha=0.2, s=10)
 
             # Basis arrows
             basis_xyz = self._extract_coords(basis_mvs)
             for i in range(self.n):
-                ax.plot([0, basis_xyz[i, 0]], [0, basis_xyz[i, 1]],
-                        [0, basis_xyz[i, 2]], color='black', lw=2)
-                ax.text(basis_xyz[i, 0] * 1.15, basis_xyz[i, 1] * 1.15,
-                        basis_xyz[i, 2] * 1.15, f'b{i+1}', fontsize=9)
+                ax.plot([0, basis_xyz[i, 0]], [0, basis_xyz[i, 1]], [0, basis_xyz[i, 2]], color='black', lw=2)
+                ax.text(basis_xyz[i, 0] * 1.15, basis_xyz[i, 1] * 1.15, basis_xyz[i, 2] * 1.15, f'b{i + 1}', fontsize=9)
 
             ax.scatter([0], [0], [0], color='black', s=60, marker='*')
             ax.set_title(label, fontsize=11)
@@ -837,8 +832,7 @@ class MorphVisualizer:
         )
         print(f"  Saved: {path}")
 
-    def plot_invariant_evolution(self, invariant_history: list,
-                                recon_errors: list, loss_history: list):
+    def plot_invariant_evolution(self, invariant_history: list, recon_errors: list, loss_history: list):
         """Plot volume, norms, angles, recon error over optimization."""
         steps = range(len(loss_history))
         volumes = [h['volume'].item() for h in invariant_history]
@@ -860,7 +854,7 @@ class MorphVisualizer:
 
         # Per-basis norms
         for i in range(norms_all.shape[1]):
-            axes[1, 0].plot(steps, norms_all[:, i], label=f'b{i+1}')
+            axes[1, 0].plot(steps, norms_all[:, i], label=f'b{i + 1}')
         axes[1, 0].set_title('Basis Vector Norms')
         axes[1, 0].set_xlabel('Step')
         axes[1, 0].legend()
@@ -885,10 +879,13 @@ class MorphVisualizer:
         )
         print(f"  Saved: {path}")
 
-    def plot_mode_diagnostics(self, mode: 'MorphMode',
-                              invariant_history: list,
-                              pipeline: 'MorphPipeline' = None,
-                              reference_gram: torch.Tensor = None):
+    def plot_mode_diagnostics(
+        self,
+        mode: 'MorphMode',
+        invariant_history: list,
+        pipeline: 'MorphPipeline' = None,
+        reference_gram: torch.Tensor = None,
+    ):
         """Mode-specific diagnostic panel.
 
         SKEW       — off-diagonal gram Frobenius norm over training.
@@ -902,8 +899,7 @@ class MorphVisualizer:
 
         if mode == MorphMode.SKEW:
             mask = 1.0 - torch.eye(self.n)
-            offdiag = [(h['gram'] * mask).pow(2).sum().sqrt().item()
-                       for h in invariant_history]
+            offdiag = [(h['gram'] * mask).pow(2).sum().sqrt().item() for h in invariant_history]
             steps = range(len(offdiag))
             fig, ax = plt.subplots(figsize=(8, 5))
             ax.semilogy(steps, offdiag)
@@ -930,8 +926,7 @@ class MorphVisualizer:
                 print("  Skipping Minkowski plot: no reference gram provided.")
                 return
             ref = reference_gram.detach().cpu()
-            dev = [(h['gram'] - ref).pow(2).sum().sqrt().item()
-                   for h in invariant_history]
+            dev = [(h['gram'] - ref).pow(2).sum().sqrt().item() for h in invariant_history]
             steps = range(len(dev))
             fig, ax = plt.subplots(figsize=(8, 5))
             ax.semilogy(steps, dev)
@@ -991,9 +986,9 @@ class MorphVisualizer:
 # run_experiment
 # ---------------------------------------------------------------------------
 
+
 def run_experiment(args):
-    title = (f" Lattice Morphing Experiment (dim={args.dim}, "
-             f"sig={args.signature}, ops={args.ops})")
+    title = f" Lattice Morphing Experiment (dim={args.dim}, sig={args.signature}, ops={args.ops})"
     print('\n' + section_header(title))
 
     # Auto-detect device
@@ -1002,8 +997,11 @@ def run_experiment(args):
     dtype = _DTYPE_MAP[args.dtype]
 
     morpher = LatticeMorpher(
-        n=args.dim, signature=args.signature,
-        num_stages=args.num_stages, seed=args.seed, device=device,
+        n=args.dim,
+        signature=args.signature,
+        num_stages=args.num_stages,
+        seed=args.seed,
+        device=device,
         compound_blades=args.compound_blades,
         mode=ops_mode,
         lambda_gram=args.lambda_gram,
@@ -1012,8 +1010,7 @@ def run_experiment(args):
     )
 
     # Create source lattice
-    morpher.source_basis = morpher.create_lattice(
-        skew_factor=args.skew_factor)
+    morpher.source_basis = morpher.create_lattice(skew_factor=args.skew_factor)
     morpher._print_invariants("Source Lattice", morpher.source_basis)
 
     # Print basis vectors
@@ -1022,7 +1019,7 @@ def run_experiment(args):
         g1 = _grade1_indices(args.dim)
         for i in range(args.dim):
             coords = [vecs[i, idx] for idx in g1]
-            print(f"    b_{i+1}: {np.array(coords)}")
+            print(f"    b_{i + 1}: {np.array(coords)}")
 
     # Run morphing
     target_basis = None
@@ -1031,11 +1028,9 @@ def run_experiment(args):
         target_matrix = torch.eye(args.dim, device=device, dtype=dtype)
         target_basis = morpher.create_lattice(target_matrix)
         morpher._print_invariants("Target Lattice", target_basis)
-        results = morpher.run_target_morphing(
-            target_basis, lr=args.lr, steps=args.steps)
+        results = morpher.run_target_morphing(target_basis, lr=args.lr, steps=args.steps)
     else:
-        results = morpher.run_free_morphing(
-            lr=args.lr, steps=args.steps, objective=args.objective)
+        results = morpher.run_free_morphing(lr=args.lr, steps=args.steps, objective=args.objective)
 
     # Final state
     with torch.no_grad():
@@ -1056,21 +1051,21 @@ def run_experiment(args):
     if args.dim in [2, 3]:
         print("\nGenerating visualizations...")
         viz = MorphVisualizer(
-            morpher.algebra, morpher.n, args.output_dir, plot_metadata, args,
+            morpher.algebra,
+            morpher.n,
+            args.output_dir,
+            plot_metadata,
+            args,
         )
 
         # Build labels
         n_inter = len(results['intermediates'])
         if args.mode == 'target':
-            labels = (['Source'] +
-                       [f'Stage {i+1}' for i in range(n_inter - 2)] +
-                       ['Target'])
+            labels = ['Source'] + [f'Stage {i + 1}' for i in range(n_inter - 2)] + ['Target']
         else:
-            labels = (['Source'] +
-                       [f'Stage {i+1}' for i in range(n_inter - 1)])
+            labels = ['Source'] + [f'Stage {i + 1}' for i in range(n_inter - 1)]
 
-        viz.plot_morph_sequence(results['intermediates'],
-                                grid_range=3, labels=labels)
+        viz.plot_morph_sequence(results['intermediates'], grid_range=3, labels=labels)
         viz.plot_invariant_evolution(
             results['invariant_history'],
             results['recon_errors'],
@@ -1079,13 +1074,18 @@ def run_experiment(args):
 
     if ops_mode != MorphMode.BASIC:
         viz = MorphVisualizer(
-            morpher.algebra, morpher.n, args.output_dir, plot_metadata, args,
+            morpher.algebra,
+            morpher.n,
+            args.output_dir,
+            plot_metadata,
+            args,
         )
         with torch.no_grad():
             ref_basis = target_basis if target_basis is not None else morpher.source_basis
             ref_gram = morpher.tracker.compute_gram_matrix(ref_basis)
         viz.plot_mode_diagnostics(
-            ops_mode, results['invariant_history'],
+            ops_mode,
+            results['invariant_history'],
             pipeline=morpher.pipeline,
             reference_gram=ref_gram,
         )
@@ -1099,36 +1099,42 @@ def parse_args() -> argparse.Namespace:
         include=('seed', 'device', 'lr', 'output_dir'),
         defaults={'lr': 0.01, 'output_dir': 'lattice_morph_plots'},
     )
-    parser.add_argument('--dim', type=int, default=3,
-                        help='Lattice dimension')
-    parser.add_argument('--signature', choices=['euclidean', 'minkowski'],
-                        default='euclidean', help='Algebra signature')
-    parser.add_argument('--num-stages', type=int, default=3,
-                        help='Number of morph stages')
-    parser.add_argument('--mode', choices=['free', 'target'],
-                        default='target', help='Morphing mode')
-    parser.add_argument('--objective',
-                        choices=['orthogonalize', 'equalize_norms',
-                                 'minimize_volume'],
-                        default='orthogonalize',
-                        help='Free morphing objective')
-    parser.add_argument('--steps', type=int, default=300,
-                        help='Optimization steps')
-    parser.add_argument('--skew-factor', type=float, default=0.5,
-                        help='Skew factor for source lattice')
-    parser.add_argument('--ops', choices=[m.value for m in MorphMode],
-                        default=MorphMode.BASIC.value,
-                        help='Operation mode: basic | compound | skew | minkowski')
-    parser.add_argument('--compound-blades', type=int, default=1,
-                        help='Number of summed simple bivectors per rotor slot '
-                             '(>=2 enables non-simple bivectors; needs n>=4)')
-    parser.add_argument('--lambda-gram', type=float, default=0.1,
-                        help='Off-diagonal gram penalty weight (ops=skew)')
-    parser.add_argument('--lambda-minkowski', type=float, default=0.5,
-                        help='Minkowski metric preservation weight (ops=minkowski)')
-    parser.add_argument('--dtype', choices=list(_DTYPE_MAP.keys()),
-                        default='float64',
-                        help='Floating-point precision for algebra and tensors')
+    parser.add_argument('--dim', type=int, default=3, help='Lattice dimension')
+    parser.add_argument(
+        '--signature', choices=['euclidean', 'minkowski'], default='euclidean', help='Algebra signature'
+    )
+    parser.add_argument('--num-stages', type=int, default=3, help='Number of morph stages')
+    parser.add_argument('--mode', choices=['free', 'target'], default='target', help='Morphing mode')
+    parser.add_argument(
+        '--objective',
+        choices=['orthogonalize', 'equalize_norms', 'minimize_volume'],
+        default='orthogonalize',
+        help='Free morphing objective',
+    )
+    parser.add_argument('--steps', type=int, default=300, help='Optimization steps')
+    parser.add_argument('--skew-factor', type=float, default=0.5, help='Skew factor for source lattice')
+    parser.add_argument(
+        '--ops',
+        choices=[m.value for m in MorphMode],
+        default=MorphMode.BASIC.value,
+        help='Operation mode: basic | compound | skew | minkowski',
+    )
+    parser.add_argument(
+        '--compound-blades',
+        type=int,
+        default=1,
+        help='Number of summed simple bivectors per rotor slot (>=2 enables non-simple bivectors; needs n>=4)',
+    )
+    parser.add_argument('--lambda-gram', type=float, default=0.1, help='Off-diagonal gram penalty weight (ops=skew)')
+    parser.add_argument(
+        '--lambda-minkowski', type=float, default=0.5, help='Minkowski metric preservation weight (ops=minkowski)'
+    )
+    parser.add_argument(
+        '--dtype',
+        choices=list(_DTYPE_MAP.keys()),
+        default='float64',
+        help='Floating-point precision for algebra and tensors',
+    )
     return parser.parse_args()
 
 

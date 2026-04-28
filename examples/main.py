@@ -26,6 +26,7 @@ from examples.tasks.gatr import GATrTask
 from examples.tasks.cgenn import CGENNTask
 from examples.tasks.clifford_pde import CliffordPDETask
 
+
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig):
     """Dispatches example/synthetic tasks."""
@@ -46,6 +47,7 @@ def main(cfg: DictConfig):
     TaskClass = task_map[task_name]
     task = TaskClass(cfg)
     task.run()
+
 
 if __name__ == "__main__":
     main()

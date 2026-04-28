@@ -70,6 +70,7 @@ class TestLayers:
     def test_rotor_layer_exact_policy(self, algebra_3d):
         """Test RotorLayer with EXACT exp policy."""
         from core.decomposition import ExpPolicy
+
         algebra_3d.exp_policy = ExpPolicy.PRECISE
         x = torch.randn(4, 5, 8)
         layer = RotorLayer(algebra_3d, 5)
@@ -108,6 +109,7 @@ class TestLayers:
     def test_rotor_layer_backward_exact(self, algebra_3d):
         """Test gradient flow through RotorLayer with EXACT policy."""
         from core.decomposition import ExpPolicy
+
         algebra_3d.exp_policy = ExpPolicy.PRECISE
 
         x = torch.randn(2, 3, 8, requires_grad=True)
@@ -129,6 +131,7 @@ class TestLayers:
     def test_multi_rotor_layer_exact_policy(self, algebra_3d):
         """Test MultiRotorLayer with EXACT policy."""
         from core.decomposition import ExpPolicy
+
         algebra_3d.exp_policy = ExpPolicy.PRECISE
         x = torch.randn(4, 5, 8)
         layer = MultiRotorLayer(algebra_3d, 5, num_rotors=4)
@@ -140,6 +143,7 @@ class TestLayers:
     def test_multi_rotor_layer_backward_exact(self, algebra_3d):
         """Test gradient flow through MultiRotorLayer with EXACT policy."""
         from core.decomposition import ExpPolicy
+
         algebra_3d.exp_policy = ExpPolicy.PRECISE
 
         x = torch.randn(2, 3, 8, requires_grad=True)
@@ -162,6 +166,7 @@ class TestLayers:
     def test_rotor_layer_rotor_property(self, algebra_3d):
         """Verify that exp-produced rotors satisfy R * ~R = 1."""
         from core.decomposition import ExpPolicy
+
         algebra_3d.exp_policy = ExpPolicy.PRECISE
 
         layer = RotorLayer(algebra_3d, 2)
@@ -175,7 +180,7 @@ class TestLayers:
 
         # R * ~R should be identity
         for i in range(layer.channels):
-            identity = algebra_3d.geometric_product(R[i:i+1], R_rev[i:i+1])
+            identity = algebra_3d.geometric_product(R[i : i + 1], R_rev[i : i + 1])
 
             expected_identity = torch.zeros_like(identity)
             expected_identity[..., 0] = 1.0
@@ -251,21 +256,20 @@ class TestLayers:
         y_action = algebra_3d.multi_rotor_sandwich(V_left, x, V_right)
 
         # Two-GP reference path
-        x_expanded = x.unsqueeze(2)                        # [B, C, 1, D]
-        VL = V_left.view(1, 1, K, -1)                      # [1, 1, K, D]
-        VR = V_right.view(1, 1, K, -1)                     # [1, 1, K, D]
+        x_expanded = x.unsqueeze(2)  # [B, C, 1, D]
+        VL = V_left.view(1, 1, K, -1)  # [1, 1, K, D]
+        VR = V_right.view(1, 1, K, -1)  # [1, 1, K, D]
         Vx = algebra_3d.geometric_product(VL, x_expanded)  # [B, C, K, D]
-        y_gp = algebra_3d.geometric_product(Vx, VR)        # [B, C, K, D]
+        y_gp = algebra_3d.geometric_product(Vx, VR)  # [B, C, K, D]
 
-        assert torch.allclose(y_action, y_gp, atol=1e-5), \
-            f"Max diff: {(y_action - y_gp).abs().max().item():.2e}"
+        assert torch.allclose(y_action, y_gp, atol=1e-5), f"Max diff: {(y_action - y_gp).abs().max().item():.2e}"
 
 
 # --- torch.compile smoke tests ---
 
+
 @pytest.mark.skipif(not hasattr(torch, 'compile'), reason="torch.compile not available")
 class TestCompile:
-
     def test_compile_rotor_layer(self, algebra_3d):
         """RotorLayer compiles with aot_eager fullgraph."""
         layer = RotorLayer(algebra_3d, channels=4)

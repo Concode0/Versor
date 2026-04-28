@@ -31,14 +31,14 @@ logger = get_logger(__name__)
 
 # Helpers
 
+
 def _get_encoder(encoder_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
     """Load a frozen sentence-transformer encoder."""
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError:
         raise ImportError(
-            "sentence-transformers is required for LQA datasets. "
-            "Install via: uv pip install sentence-transformers"
+            "sentence-transformers is required for LQA datasets. Install via: uv pip install sentence-transformers"
         )
     model = SentenceTransformer(encoder_name)
     return model
@@ -46,8 +46,7 @@ def _get_encoder(encoder_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
 
 def _encode_texts(texts: list[str], encoder, batch_size: int = 256) -> torch.Tensor:
     """Encode a list of texts into embeddings [N, encoder_dim]."""
-    embeddings = encoder.encode(texts, batch_size=batch_size, show_progress_bar=True,
-                                convert_to_tensor=True)
+    embeddings = encoder.encode(texts, batch_size=batch_size, show_progress_bar=True, convert_to_tensor=True)
     return embeddings.cpu()
 
 
@@ -59,10 +58,10 @@ def _ensure_dir(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
-def _load_hf_dataset(path: str, name: str = None, split: str = "train",
-                     trust_remote_code: bool = False):
+def _load_hf_dataset(path: str, name: str = None, split: str = "train", trust_remote_code: bool = False):
     """Load a HuggingFace dataset."""
     from datasets import load_dataset
+
     kwargs = {"path": path, "split": split, "trust_remote_code": trust_remote_code}
     if name is not None:
         kwargs["name"] = name
@@ -73,10 +72,24 @@ def _load_hf_dataset(path: str, name: str = None, split: str = "train",
 
 # CLUTRR relation types (18 total in CLUTRR/v1)
 CLUTRR_RELATIONS = [
-    "father", "mother", "son", "daughter", "brother", "sister",
-    "grandfather", "grandmother", "grandson", "granddaughter",
-    "uncle", "aunt", "nephew", "niece",
-    "father-in-law", "mother-in-law", "son-in-law", "daughter-in-law",
+    "father",
+    "mother",
+    "son",
+    "daughter",
+    "brother",
+    "sister",
+    "grandfather",
+    "grandmother",
+    "grandson",
+    "granddaughter",
+    "uncle",
+    "aunt",
+    "nephew",
+    "niece",
+    "father-in-law",
+    "mother-in-law",
+    "son-in-law",
+    "daughter-in-law",
 ]
 
 
@@ -97,8 +110,8 @@ def _clutrr_collate_fn(batch: list[dict]) -> dict:
 
     return {
         "sentence_embeddings": padded_embs,  # [B, L_max, encoder_dim]
-        "chain_length": lengths,              # [B]
-        "label": labels,                      # [B]
+        "chain_length": lengths,  # [B]
+        "label": labels,  # [B]
     }
 
 
@@ -109,9 +122,13 @@ class CLUTRRDataset(Dataset):
     Each sample: per-sentence embeddings [L, 384] + final relation label.
     """
 
-    def __init__(self, data_root: str, split: str = "train",
-                 encoder_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-                 n_samples: int = None):
+    def __init__(
+        self,
+        data_root: str,
+        split: str = "train",
+        encoder_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+        n_samples: int = None,
+    ):
         cache_name = f"clutrr_hf_{split}" + (f"_{n_samples}" if n_samples else "")
         cache = _cache_path(data_root, cache_name)
         if cache.exists():
@@ -123,8 +140,7 @@ class CLUTRRDataset(Dataset):
         else:
             logger.info("Downloading CLUTRR %s from HuggingFace...", split)
             hf_split = "train" if split == "train" else "test"
-            ds = _load_hf_dataset("CLUTRR/v1", "gen_train234_test2to10", hf_split,
-                                trust_remote_code=True)
+            ds = _load_hf_dataset("CLUTRR/v1", "gen_train234_test2to10", hf_split, trust_remote_code=True)
 
             if n_samples is not None and n_samples < len(ds):
                 ds = ds.select(range(n_samples))
@@ -176,11 +192,14 @@ class CLUTRRDataset(Dataset):
             self.labels = torch.tensor(labels, dtype=torch.long)
 
             _ensure_dir(cache)
-            torch.save({
-                "sentence_embeddings": self.sentence_embeddings,
-                "chain_lengths": self.chain_lengths,
-                "labels": self.labels,
-            }, cache)
+            torch.save(
+                {
+                    "sentence_embeddings": self.sentence_embeddings,
+                    "chain_lengths": self.chain_lengths,
+                    "labels": self.labels,
+                },
+                cache,
+            )
             logger.info("Cached CLUTRR %s to %s (%d samples)", split, cache, len(self.labels))
 
         self.num_relations = len(CLUTRR_RELATIONS)
@@ -198,6 +217,7 @@ class CLUTRRDataset(Dataset):
 
 # HANS Dataset -- Asymmetric Entailment (SNLI train + HANS eval)
 
+
 class HANSDataset(Dataset):
     """SNLI (train) + HANS (eval) for entailment asymmetry testing.
 
@@ -205,9 +225,13 @@ class HANSDataset(Dataset):
     Eval: jhu-cogsci/hans -- 30k adversarial NLI examples.
     """
 
-    def __init__(self, data_root: str, split: str = "train",
-                 encoder_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-                 n_samples: int = None):
+    def __init__(
+        self,
+        data_root: str,
+        split: str = "train",
+        encoder_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+        n_samples: int = None,
+    ):
         cache_name = f"hans_bin_{split}" + (f"_{n_samples}" if n_samples else "")
         cache = _cache_path(data_root, cache_name)
         if cache.exists():
@@ -247,11 +271,14 @@ class HANSDataset(Dataset):
             self.labels = torch.tensor(labels, dtype=torch.float32)
 
             _ensure_dir(cache)
-            torch.save({
-                "premise_emb": self.premise_emb,
-                "hypothesis_emb": self.hypothesis_emb,
-                "labels": self.labels,
-            }, cache)
+            torch.save(
+                {
+                    "premise_emb": self.premise_emb,
+                    "hypothesis_emb": self.hypothesis_emb,
+                    "labels": self.labels,
+                },
+                cache,
+            )
             logger.info("Cached HANS %s to %s (%d samples)", split, cache, len(self.labels))
 
     def __len__(self):
@@ -268,11 +295,20 @@ class HANSDataset(Dataset):
 # BoolQ-Neg Dataset -- Negation Sensitivity (Real)
 
 _NEGATION_PREFIXES = [
-    ("Is", "Isn't"), ("Can", "Can't"), ("Does", "Doesn't"),
-    ("Do", "Don't"), ("Was", "Wasn't"), ("Were", "Weren't"),
-    ("Has", "Hasn't"), ("Have", "Haven't"), ("Will", "Won't"),
-    ("Are", "Aren't"), ("Did", "Didn't"), ("Could", "Couldn't"),
-    ("Would", "Wouldn't"), ("Should", "Shouldn't"),
+    ("Is", "Isn't"),
+    ("Can", "Can't"),
+    ("Does", "Doesn't"),
+    ("Do", "Don't"),
+    ("Was", "Wasn't"),
+    ("Were", "Weren't"),
+    ("Has", "Hasn't"),
+    ("Have", "Haven't"),
+    ("Will", "Won't"),
+    ("Are", "Aren't"),
+    ("Did", "Didn't"),
+    ("Could", "Couldn't"),
+    ("Would", "Wouldn't"),
+    ("Should", "Shouldn't"),
 ]
 
 
@@ -280,9 +316,9 @@ def _negate_question(q: str) -> str:
     """Apply rule-based negation to a question."""
     for pos, neg in _NEGATION_PREFIXES:
         if q.startswith(pos + " "):
-            return neg + q[len(pos):]
+            return neg + q[len(pos) :]
         if q.startswith(neg + " "):
-            return pos + q[len(neg):]
+            return pos + q[len(neg) :]
     parts = q.split(" ", 2)
     if len(parts) >= 2:
         return parts[0] + " not " + " ".join(parts[1:])
@@ -296,9 +332,13 @@ class BoolQNegDataset(Dataset):
     original question + negated question (answer flipped).
     """
 
-    def __init__(self, data_root: str, split: str = "train",
-                 encoder_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-                 n_samples: int = None):
+    def __init__(
+        self,
+        data_root: str,
+        split: str = "train",
+        encoder_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+        n_samples: int = None,
+    ):
         cache_name = f"boolqneg_hf_{split}" + (f"_{n_samples}" if n_samples else "")
         cache = _cache_path(data_root, cache_name)
         if cache.exists():
@@ -347,12 +387,15 @@ class BoolQNegDataset(Dataset):
             self.answers = torch.tensor(answers, dtype=torch.float32)
 
             _ensure_dir(cache)
-            torch.save({
-                "passage_emb": self.passage_emb,
-                "question_emb": self.question_emb,
-                "is_negated": self.is_negated,
-                "answers": self.answers,
-            }, cache)
+            torch.save(
+                {
+                    "passage_emb": self.passage_emb,
+                    "question_emb": self.question_emb,
+                    "is_negated": self.is_negated,
+                    "answers": self.answers,
+                },
+                cache,
+            )
             logger.info("Cached BoolQ-Neg %s to %s (%d samples)", split, cache, len(self.answers))
 
     def __len__(self):
@@ -368,6 +411,7 @@ class BoolQNegDataset(Dataset):
 
 
 # Loader helper
+
 
 def get_lqa_loaders(
     data_root: str = "data",
@@ -397,26 +441,40 @@ def get_lqa_loaders(
     if probe == "chain":
         train_ds = CLUTRRDataset(data_root, "train", encoder_name, n_train)
         test_ds = CLUTRRDataset(data_root, "test", encoder_name, n_test)
-        train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-                                  num_workers=num_workers, pin_memory=pin_memory,
-                                  collate_fn=_clutrr_collate_fn)
-        test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
-                                 num_workers=num_workers, pin_memory=pin_memory,
-                                 collate_fn=_clutrr_collate_fn)
+        train_loader = DataLoader(
+            train_ds,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            collate_fn=_clutrr_collate_fn,
+        )
+        test_loader = DataLoader(
+            test_ds,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            collate_fn=_clutrr_collate_fn,
+        )
     elif probe == "entailment":
         train_ds = HANSDataset(data_root, "train", encoder_name, n_train)
         test_ds = HANSDataset(data_root, "test", encoder_name, n_test)
-        train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-                                  num_workers=num_workers, pin_memory=pin_memory)
-        test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
-                                 num_workers=num_workers, pin_memory=pin_memory)
+        train_loader = DataLoader(
+            train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory
+        )
+        test_loader = DataLoader(
+            test_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory
+        )
     elif probe == "negation":
         train_ds = BoolQNegDataset(data_root, "train", encoder_name, n_train)
         test_ds = BoolQNegDataset(data_root, "test", encoder_name, n_test)
-        train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-                                  num_workers=num_workers, pin_memory=pin_memory)
-        test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
-                                 num_workers=num_workers, pin_memory=pin_memory)
+        train_loader = DataLoader(
+            train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory
+        )
+        test_loader = DataLoader(
+            test_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory
+        )
     else:
         raise ValueError(f"Unknown probe: {probe}. Use 'chain', 'entailment', or 'negation'.")
 

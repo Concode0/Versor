@@ -20,7 +20,10 @@ import torch
 from core.algebra import CliffordAlgebra
 from models.sr.translator import RotorTerm
 from models.sr.utils import (
-    safe_sympy_solve, standardize, subsample, safe_svd,
+    safe_sympy_solve,
+    standardize,
+    subsample,
+    safe_svd,
     make_lambdify_fn,
 )
 
@@ -45,9 +48,11 @@ class PrepMixin:
         rel_graph = None
         if self.grouping_enabled:
             from models.sr.grouper import VariableGrouper
+
             gcfg = self.grouping_config
             grouper = VariableGrouper(
-                max_groups=self.max_groups, device=self.device,
+                max_groups=self.max_groups,
+                device=self.device,
                 sample_size=gcfg.get("sample_size", 500),
                 commutator_weight=gcfg.get("commutator_weight", 0.4),
                 coherence_weight=gcfg.get("coherence_weight", 0.3),
@@ -68,6 +73,7 @@ class PrepMixin:
         if self.implicit_mode != 'explicit' and len(groups) == 1:
             try:
                 from models.sr.implicit import ImplicitSolver
+
                 solver = ImplicitSolver(
                     device=self.device,
                     probe_epochs=self.probe_config.get("probe_epochs", 30),
@@ -79,7 +85,9 @@ class PrepMixin:
                 X_probe = probe_data[:, :-1]
                 y_probe = probe_data[:, -1:]
                 solver_result = solver.probe_best_mode(
-                    algebra, X_probe, y_probe,
+                    algebra,
+                    X_probe,
+                    y_probe,
                     geometric_report=geo_report,
                 )
                 if self.implicit_mode == 'auto':
@@ -91,8 +99,11 @@ class PrepMixin:
                 logger.warning(f"Implicit probe failed: {e}")
 
         return _PrepResult(
-            groups=groups, relationship_graph=rel_graph,
-            implicit_form=implicit_form, svd_Vt=Vt, svd_S=S,
+            groups=groups,
+            relationship_graph=rel_graph,
+            implicit_form=implicit_form,
+            svd_Vt=Vt,
+            svd_S=S,
         )
 
     def _single_group_fallback(self, X_orig, y_orig, var_names, Vt):
@@ -111,14 +122,18 @@ class PrepMixin:
             data = data_c @ V[:6].T
 
         from models.sr.utils import safe_metric_search
+
         p, q, r = safe_metric_search(
-            data, self.device, n_vars, max_p=max(n_vars, 2),
+            data,
+            self.device,
+            n_vars,
+            max_p=max(n_vars, 2),
         )
 
         algebra = CliffordAlgebra(p, q, r, device=self.device)
         return VariableGroup(
             var_indices=list(range(n_vars)),
-            var_names=var_names or [f"x{i+1}" for i in range(n_vars)],
+            var_names=var_names or [f"x{i + 1}" for i in range(n_vars)],
             signature=(p, q, r),
             algebra=algebra,
             svd_Vt=Vt,
@@ -135,7 +150,7 @@ class PrepMixin:
         Returns (is_linear_or_powerlaw, terms, r2) where terms are list[RotorTerm].
         """
         N, d = X_raw.shape
-        symbols = [sympy.Symbol(f"x{i+1}") for i in range(d)]
+        symbols = [sympy.Symbol(f"x{i + 1}") for i in range(d)]
 
         # Branch 1: Standard linear fit
         A_lin = np.column_stack([X_raw, np.ones(N)])
@@ -147,6 +162,7 @@ class PrepMixin:
 
         # Branch 2: Log-log fit (power law detection + action)
         from models.sr.numerics import safe_log, safe_exp
+
         eps = 1e-8
         pos_mask = np.all(np.abs(X_raw) > eps, axis=1) & (np.abs(y_raw) > eps)
         r2_log = -1.0
@@ -166,9 +182,7 @@ class PrepMixin:
 
             exponents = coeffs_log[:d]
             log_intercept = coeffs_log[d]
-            has_nonunit = any(
-                abs(e - 1.0) > 0.15 and abs(e) > 0.15 for e in exponents
-            )
+            has_nonunit = any(abs(e - 1.0) > 0.15 and abs(e) > 0.15 for e in exponents)
 
             # Action: if power law fits well, build explicit term
             if r2_log >= 0.90 and has_nonunit:
@@ -189,16 +203,19 @@ class PrepMixin:
                 # Evaluate on full data to compute R2
                 fn = make_lambdify_fn(symbols, expr)
                 from models.sr.utils import safe_evaluate_term
+
                 y_hat_pl = safe_evaluate_term(fn, X_raw)
                 if y_hat_pl is not None:
                     ss_res_pl = np.sum((y_raw - y_hat_pl) ** 2)
                     r2_pl = 1.0 - ss_res_pl / ss_tot
                     powerlaw_term = RotorTerm(
-                        planes=[], weight=1.0, expr=expr, fn=fn,
+                        planes=[],
+                        weight=1.0,
+                        expr=expr,
+                        fn=fn,
                     )
                     logger.info(
-                        f"Power law short-circuit: exponents={rounded_exp}, "
-                        f"R2={r2_pl:.4f} (log-space R2={r2_log:.4f})"
+                        f"Power law short-circuit: exponents={rounded_exp}, R2={r2_pl:.4f} (log-space R2={r2_log:.4f})"
                     )
                     # If power law is great, return immediately
                     if r2_pl >= r2_threshold:
@@ -222,7 +239,10 @@ class PrepMixin:
             # Build quadratic features for BIC comparison
             if d <= 6:
                 bic_prefers_linear = self._bic_prefers_simpler(
-                    X_raw, y_raw, coeffs_lin, ss_res_lin,
+                    X_raw,
+                    y_raw,
+                    coeffs_lin,
+                    ss_res_lin,
                 )
             else:
                 bic_prefers_linear = True  # skip BIC for high-d
@@ -234,17 +254,25 @@ class PrepMixin:
                     w = float(coeffs_lin[i])
                     if abs(w) > 1e-12:
                         expr_i = sympy.Float(w) * symbols[i]
-                        lin_terms.append(RotorTerm(
-                            planes=[], weight=1.0, expr=expr_i,
-                            fn=make_lambdify_fn(symbols, expr_i),
-                        ))
+                        lin_terms.append(
+                            RotorTerm(
+                                planes=[],
+                                weight=1.0,
+                                expr=expr_i,
+                                fn=make_lambdify_fn(symbols, expr_i),
+                            )
+                        )
                 intercept = float(coeffs_lin[d])
                 if abs(intercept) > 1e-8:
                     expr_c = sympy.Float(intercept)
-                    lin_terms.append(RotorTerm(
-                        planes=[], weight=1.0, expr=expr_c,
-                        fn=make_lambdify_fn(symbols, expr_c),
-                    ))
+                    lin_terms.append(
+                        RotorTerm(
+                            planes=[],
+                            weight=1.0,
+                            expr=expr_c,
+                            fn=make_lambdify_fn(symbols, expr_c),
+                        )
+                    )
                 return True, lin_terms, r2_lin
 
         return False, [], r2_lin
@@ -316,12 +344,9 @@ class PrepMixin:
 
         # Build expanded var_names from name_map
         n_expanded = result.X_expanded.shape[1]
-        expanded_names = [result.var_name_map.get(i, f"z{i+1}") for i in range(n_expanded)]
+        expanded_names = [result.var_name_map.get(i, f"z{i + 1}") for i in range(n_expanded)]
 
-        logger.info(
-            f"BasisExpander: {result.n_original} -> {n_expanded} features, "
-            f"log_target={result.log_target}"
-        )
+        logger.info(f"BasisExpander: {result.n_original} -> {n_expanded} features, log_target={result.log_target}")
         return result.X_expanded, y_out, expanded_names
 
     @staticmethod

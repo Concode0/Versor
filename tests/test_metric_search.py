@@ -20,7 +20,11 @@ from core.analysis.signature import _SignatureProbe, _apply_biased_init
 def small_searcher():
     """Create a small MetricSearch instance for testing."""
     return MetricSearch(
-        device='cpu', probe_epochs=60, num_probes=2, probe_channels=2, k=4,
+        device='cpu',
+        probe_epochs=60,
+        num_probes=2,
+        probe_channels=2,
+        k=4,
     )
 
 
@@ -64,14 +68,17 @@ class TestMetricSearchAPI:
         torch.manual_seed(2)
         data = torch.randn(16, 2)
         result = small_searcher.search_detailed(data)
-        for key in ('signature', 'coherence', 'curvature',
-                    'energy_breakdown', 'per_probe_results'):
+        for key in ('signature', 'coherence', 'curvature', 'energy_breakdown', 'per_probe_results'):
             assert key in result, f"Missing key: {key}"
 
     def test_sequential_small_probes(self):
         """Verify sequential path works with num_probes=1."""
         searcher = MetricSearch(
-            device='cpu', probe_epochs=10, num_probes=1, probe_channels=2, k=4,
+            device='cpu',
+            probe_epochs=10,
+            num_probes=1,
+            probe_channels=2,
+            k=4,
         )
         torch.manual_seed(3)
         data = torch.randn(12, 2)

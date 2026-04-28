@@ -20,6 +20,7 @@ DEVICE = "cpu"
 
 # == Helpers ============================================================
 
+
 def _make_bivector(algebra, coeffs):
     """Build a multivector with only grade-2 components from a dict/list."""
     bv_mask = algebra.grade_masks[2]
@@ -48,6 +49,7 @@ def _exp_taylor_reference(algebra, B, order=20):
 
 
 # == Euclidean signatures ==============================================
+
 
 class TestExpEuclidean:
     """Closed-form exp for Cl(p, 0) - all bivectors square to -1."""
@@ -125,6 +127,7 @@ class TestExpEuclidean:
 
 # == Minkowski / mixed signatures =====================================
 
+
 class TestExpMinkowski:
     """Closed-form exp for Cl(p, q) with q > 0."""
 
@@ -157,16 +160,14 @@ class TestExpMinkowski:
         B[0, 3] = 0.8  # e12
         R = alg.exp(B)
         R_taylor = _exp_taylor_reference(alg, B)
-        assert torch.allclose(R, R_taylor, atol=1e-6), \
-            f"Cl(2,1) elliptic: max diff {(R - R_taylor).abs().max()}"
+        assert torch.allclose(R, R_taylor, atol=1e-6), f"Cl(2,1) elliptic: max diff {(R - R_taylor).abs().max()}"
 
         # Test hyperbolic bivector e13 (index 5 = 0b101)
         B2 = torch.zeros(1, 8, dtype=torch.float64)
         B2[0, 5] = 0.8  # e13
         R2 = alg.exp(B2)
         R2_taylor = _exp_taylor_reference(alg, B2)
-        assert torch.allclose(R2, R2_taylor, atol=1e-6), \
-            f"Cl(2,1) hyperbolic: max diff {(R2 - R2_taylor).abs().max()}"
+        assert torch.allclose(R2, R2_taylor, atol=1e-6), f"Cl(2,1) hyperbolic: max diff {(R2 - R2_taylor).abs().max()}"
 
     def test_cl31_spacetime(self):
         """Cl(3,1) Minkowski spacetime - used by GA-Transformer."""
@@ -185,8 +186,9 @@ class TestExpMinkowski:
             B[0, bv_idx.item()] = 0.3
             R = alg.exp(B)
             R_taylor = _exp_taylor_reference(alg, B)
-            assert torch.allclose(R, R_taylor, atol=1e-6), \
+            assert torch.allclose(R, R_taylor, atol=1e-6), (
                 f"Cl(3,1) bv_idx={bv_idx.item()}: max diff {(R - R_taylor).abs().max()}"
+            )
 
     def test_cl41_conformal_simple_bivectors(self):
         """Cl(4,1) conformal GA - each basis bivector should match Taylor exactly."""
@@ -200,8 +202,9 @@ class TestExpMinkowski:
             B[0, bv_idx.item()] = 0.4
             R = alg.exp(B)
             R_taylor = _exp_taylor_reference(alg, B)
-            assert torch.allclose(R, R_taylor, atol=1e-6), \
+            assert torch.allclose(R, R_taylor, atol=1e-6), (
                 f"Cl(4,1) bv_idx={bv_idx.item()}: max diff {(R - R_taylor).abs().max()}"
+            )
 
     def test_cl41_conformal_general_bivector(self):
         """Cl(4,1) general bivector - closed form is approximate for non-simple B."""
@@ -252,12 +255,13 @@ class TestExpMinkowski:
         # Minkowski interval: t**2 - x**2 should be preserved
         # Original: 4 - 1 = 3
         # (note: e1**2=+1, e2**2=-1 in Cl(1,1))
-        interval_orig = v[0, 1].item()**2 - v[0, 2].item()**2
-        interval_boost = v_boosted[0, 1].item()**2 - v_boosted[0, 2].item()**2
+        interval_orig = v[0, 1].item() ** 2 - v[0, 2].item() ** 2
+        interval_boost = v_boosted[0, 1].item() ** 2 - v_boosted[0, 2].item() ** 2
         assert abs(interval_orig - interval_boost) < 1e-7
 
 
 # == Batch and gradient tests =========================================
+
 
 class TestExpBatchGrad:
     """Batch processing and gradient flow."""
@@ -281,7 +285,7 @@ class TestExpBatchGrad:
 
         # Each should be a valid rotor
         for i in range(5):
-            norm = _rotor_norm_sq(algebra, R[i:i+1])
+            norm = _rotor_norm_sq(algebra, R[i : i + 1])
             assert abs(norm.item() - 1.0) < 1e-6
 
     def test_gradient_flow(self, algebra):
@@ -292,9 +296,7 @@ class TestExpBatchGrad:
         B = torch.zeros(1, algebra.dim, requires_grad=True)
         # Can't set indices on leaf tensor, so use scatter
         coeffs = torch.randn(len(bv_indices)) * 0.3
-        B_full = B + torch.zeros_like(B).scatter(
-            -1, bv_indices.unsqueeze(0), coeffs.unsqueeze(0)
-        )
+        B_full = B + torch.zeros_like(B).scatter(-1, bv_indices.unsqueeze(0), coeffs.unsqueeze(0))
         R = algebra.exp(B_full)
         loss = R.sum()
         loss.backward()
@@ -320,6 +322,7 @@ class TestExpBatchGrad:
 
 
 # == Edge cases ========================================================
+
 
 class TestExpEdgeCases:
     """Boundary conditions and numerical stability."""
@@ -359,8 +362,8 @@ class TestExpEdgeCases:
         alg21 = CliffordAlgebra(2, 1, device=DEVICE)
         bv_sq = alg21.bv_sq_scalar
         assert bv_sq[0].item() == -1.0  # e12: -(+1)(+1) = -1
-        assert bv_sq[1].item() == 1.0   # e13: -(+1)(-1) = +1
-        assert bv_sq[2].item() == 1.0   # e23: -(+1)(-1) = +1
+        assert bv_sq[1].item() == 1.0  # e13: -(+1)(-1) = +1
+        assert bv_sq[2].item() == 1.0  # e23: -(+1)(-1) = +1
 
     def test_algebra_init_validation(self):
         """Algebra constructor should reject invalid signatures."""
@@ -397,10 +400,7 @@ class TestExpHighDimGradient:
         bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
 
         B = torch.zeros(1, algebra.dim, requires_grad=True)
-        B_full = B + torch.zeros_like(B).scatter(
-            -1, bv_indices[:1].unsqueeze(0),
-            torch.tensor([[0.5]])
-        )
+        B_full = B + torch.zeros_like(B).scatter(-1, bv_indices[:1].unsqueeze(0), torch.tensor([[0.5]]))
         R = algebra.exp(B_full)
         loss = R.sum()
         loss.backward()
@@ -415,9 +415,7 @@ class TestExpHighDimGradient:
         torch.manual_seed(42)
         coeffs = torch.randn(len(bv_indices)) * 0.3
         B = torch.zeros(1, algebra.dim, requires_grad=True)
-        B_full = B + torch.zeros_like(B).scatter(
-            -1, bv_indices.unsqueeze(0), coeffs.unsqueeze(0)
-        )
+        B_full = B + torch.zeros_like(B).scatter(-1, bv_indices.unsqueeze(0), coeffs.unsqueeze(0))
         R = algebra.exp(B_full)
         loss = R.pow(2).sum()
         loss.backward()
@@ -432,9 +430,7 @@ class TestExpHighDimGradient:
         torch.manual_seed(123)
         coeffs = torch.randn(len(bv_indices)) * 0.01  # very small
         B = torch.zeros(1, algebra.dim, requires_grad=True)
-        B_full = B + torch.zeros_like(B).scatter(
-            -1, bv_indices.unsqueeze(0), coeffs.unsqueeze(0)
-        )
+        B_full = B + torch.zeros_like(B).scatter(-1, bv_indices.unsqueeze(0), coeffs.unsqueeze(0))
         R = algebra.exp(B_full)
         loss = R.sum()
         loss.backward()
@@ -447,6 +443,7 @@ class TestExpDecomposedGradient:
     def test_decomposed_gradient_cl40(self):
         """EXACT policy should produce finite gradients in Cl(4,0)."""
         from core.decomposition import ExpPolicy
+
         alg = CliffordAlgebra(4, 0, device=DEVICE)
         alg.exp_policy = ExpPolicy.PRECISE
         bv_mask = alg.grade_masks[2]
@@ -454,10 +451,7 @@ class TestExpDecomposedGradient:
 
         # Non-simple: e12 + e34
         B = torch.zeros(1, alg.dim, requires_grad=True)
-        B_full = B + torch.zeros_like(B).scatter(
-            -1, bv_indices[[0, 5]].unsqueeze(0),
-            torch.tensor([[0.3, 0.4]])
-        )
+        B_full = B + torch.zeros_like(B).scatter(-1, bv_indices[[0, 5]].unsqueeze(0), torch.tensor([[0.3, 0.4]]))
         R = alg.exp(B_full)
         loss = R.pow(2).sum()
         loss.backward()
@@ -467,6 +461,7 @@ class TestExpDecomposedGradient:
     def test_decomposed_gradient_cl15(self):
         """EXACT policy should produce finite gradients in Cl(1,5)."""
         from core.decomposition import ExpPolicy
+
         alg = CliffordAlgebra(1, 5, device=DEVICE)
         alg.exp_policy = ExpPolicy.PRECISE
         bv_mask = alg.grade_masks[2]
@@ -474,11 +469,9 @@ class TestExpDecomposedGradient:
 
         torch.manual_seed(42)
         coeffs = torch.randn(min(4, len(bv_indices))) * 0.3
-        idx = bv_indices[:len(coeffs)]
+        idx = bv_indices[: len(coeffs)]
         B = torch.zeros(1, alg.dim, requires_grad=True)
-        B_full = B + torch.zeros_like(B).scatter(
-            -1, idx.unsqueeze(0), coeffs.unsqueeze(0)
-        )
+        B_full = B + torch.zeros_like(B).scatter(-1, idx.unsqueeze(0), coeffs.unsqueeze(0))
         R = alg.exp(B_full)
         loss = R.pow(2).sum()
         loss.backward()
@@ -488,6 +481,7 @@ class TestExpDecomposedGradient:
     def test_decomposed_matches_inference(self):
         """EXACT exp with grad should approximate inference result."""
         from core.decomposition import ExpPolicy
+
         alg = CliffordAlgebra(4, 0, device=DEVICE)
         alg.exp_policy = ExpPolicy.PRECISE
         bv_mask = alg.grade_masks[2]
@@ -505,8 +499,9 @@ class TestExpDecomposedGradient:
         with torch.no_grad():
             R_infer = alg.exp(B_data)
 
-        assert torch.allclose(R_train, R_infer, atol=1e-3), \
+        assert torch.allclose(R_train, R_infer, atol=1e-3), (
             f"Train vs inference max diff: {(R_train - R_infer).abs().max()}"
+        )
 
 
 class TestSandwichBPTT:
@@ -529,9 +524,7 @@ class TestSandwichBPTT:
 
         B_param = torch.zeros(1, algebra.dim, requires_grad=True)
         coeffs = torch.randn(min(3, len(bv_indices))) * 0.3
-        B = B_param + torch.zeros_like(B_param).scatter(
-            -1, bv_indices[:len(coeffs)].unsqueeze(0), coeffs.unsqueeze(0)
-        )
+        B = B_param + torch.zeros_like(B_param).scatter(-1, bv_indices[: len(coeffs)].unsqueeze(0), coeffs.unsqueeze(0))
         R = algebra.exp(-0.5 * B)
 
         x = torch.zeros(1, algebra.dim)
@@ -560,9 +553,7 @@ class TestSandwichBPTT:
 
         for param in params:
             coeffs = torch.randn(num_bv) * 0.2
-            B = param + torch.zeros_like(param).scatter(
-                -1, bv_indices[:num_bv].unsqueeze(0), coeffs.unsqueeze(0)
-            )
+            B = param + torch.zeros_like(param).scatter(-1, bv_indices[:num_bv].unsqueeze(0), coeffs.unsqueeze(0))
             R = algebra.exp(-0.5 * B)
             x = self._sandwich(algebra, R, x)
 
@@ -592,9 +583,7 @@ class TestSandwichBPTT:
         R_exp = R.unsqueeze(0).expand(batch, -1, -1)
         R_rev = algebra.reverse(R_exp)
 
-        x_rot = algebra.geometric_product(
-            algebra.geometric_product(R_exp, x), R_rev
-        )
+        x_rot = algebra.geometric_product(algebra.geometric_product(R_exp, x), R_rev)
         loss = x_rot.pow(2).sum()
         loss.backward()
         assert B_param.grad is not None
@@ -607,6 +596,7 @@ class TestDecompositionConvergence:
     def test_simple_bivector_converges_fast(self):
         """A simple bivector should decompose into 1 component."""
         from core.decomposition import differentiable_invariant_decomposition
+
         alg = CliffordAlgebra(4, 0, device=DEVICE)
         bv_mask = alg.grade_masks[2]
         bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
@@ -625,6 +615,7 @@ class TestDecompositionConvergence:
     def test_non_simple_needs_two_components(self):
         """e12 + e34 in Cl(4,0) should decompose into 2 components."""
         from core.decomposition import differentiable_invariant_decomposition
+
         alg = CliffordAlgebra(4, 0, device=DEVICE)
         bv_mask = alg.grade_masks[2]
         bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
@@ -637,12 +628,12 @@ class TestDecompositionConvergence:
         residual = B.clone()
         for b_i in decomp:
             residual = residual - b_i
-        assert residual.norm().item() < 1e-3, \
-            f"Residual norm {residual.norm().item()} too large"
+        assert residual.norm().item() < 1e-3, f"Residual norm {residual.norm().item()} too large"
 
     def test_residual_check_limits_components(self):
         """With tight threshold, simple bivector should yield exactly 1 component."""
         from core.decomposition import differentiable_invariant_decomposition
+
         alg = CliffordAlgebra(4, 0, device=DEVICE)
         bv_mask = alg.grade_masks[2]
         bv_indices = bv_mask.nonzero(as_tuple=False).squeeze(-1)
@@ -650,9 +641,7 @@ class TestDecompositionConvergence:
         B = torch.zeros(1, alg.dim, dtype=torch.float64)
         B[0, bv_indices[0].item()] = 1.0
 
-        decomp, _ = differentiable_invariant_decomposition(
-            alg, B, threshold=1e-4, max_iterations=200
-        )
+        decomp, _ = differentiable_invariant_decomposition(alg, B, threshold=1e-4, max_iterations=200)
         # With the residual check restored, iteration should stop early
         # because residual vanishes after extracting the single simple component
         assert len(decomp) <= 2, f"Expected <=2 components for simple B, got {len(decomp)}"

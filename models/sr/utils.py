@@ -18,10 +18,20 @@ logger = logging.getLogger(__name__)
 # cosh/sinh use safe wrappers to prevent overflow on large theta values.
 from models.sr.numerics import safe_exp, safe_cosh, safe_sinh
 
-LAMBDIFY_MODULES = [{"log": np.log, "sqrt": np.sqrt, "Abs": np.abs,
-                      "sign": np.sign, "exp": safe_exp, "sin": np.sin,
-                      "cos": np.cos, "cosh": safe_cosh, "sinh": safe_sinh},
-                     "numpy"]
+LAMBDIFY_MODULES = [
+    {
+        "log": np.log,
+        "sqrt": np.sqrt,
+        "Abs": np.abs,
+        "sign": np.sign,
+        "exp": safe_exp,
+        "sin": np.sin,
+        "cos": np.cos,
+        "cosh": safe_cosh,
+        "sinh": safe_sinh,
+    },
+    "numpy",
+]
 
 
 def make_lambdify_fn(symbols, expr):
@@ -31,6 +41,7 @@ def make_lambdify_fn(symbols, expr):
 
 def safe_sympy_solve(expr, var, timeout_sec=5):
     """sympy.solve with timeout and validation."""
+
     def handler(signum, frame):
         raise TimeoutError("sympy.solve timed out")
 
@@ -119,8 +130,7 @@ def evaluate_terms(terms, X_np):
     return y_hat
 
 
-def safe_metric_search(data, device, default_n, num_probes=4,
-                       probe_epochs=40, micro_batch_size=64, max_p=None):
+def safe_metric_search(data, device, default_n, num_probes=4, probe_epochs=40, micro_batch_size=64, max_p=None):
     """Run MetricSearch with fallback to default Cl(min(n,4),0,0).
 
     Consolidates the identical MetricSearch try/except pattern used in
@@ -139,11 +149,15 @@ def safe_metric_search(data, device, default_n, num_probes=4,
         (p, q, r) tuple.
     """
     from models.sr.errors import MetricSearchError
+
     try:
         from core.analysis import MetricSearch
+
         searcher = MetricSearch(
-            device=device, num_probes=num_probes,
-            probe_epochs=probe_epochs, micro_batch_size=micro_batch_size,
+            device=device,
+            num_probes=num_probes,
+            probe_epochs=probe_epochs,
+            micro_batch_size=micro_batch_size,
         )
         p, q, r = searcher.search(data)
         n = p + q + r

@@ -13,6 +13,7 @@ from functional.loss import GeometricMSELoss
 from tasks.base import BaseTask
 from core.visualizer import GeneralVisualizer
 
+
 class IdentityNetwork(CliffordModule):
     """The identity network. Verifies pass-through capability."""
 
@@ -24,6 +25,7 @@ class IdentityNetwork(CliffordModule):
     def forward(self, x):
         """Pass through."""
         return self.rotor(x)
+
 
 class SanityCheckTask(BaseTask):
     """Sanity Check. Verifies algebraic consistency.
@@ -56,11 +58,11 @@ class SanityCheckTask(BaseTask):
         """Learn identity."""
         self.optimizer.zero_grad()
         output = self.model(data)
-        
+
         loss = self.criterion(output, data)
         loss.backward()
         self.optimizer.step()
-        
+
         return loss.item(), {}
 
     def evaluate(self, data):

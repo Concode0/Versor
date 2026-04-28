@@ -56,10 +56,18 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    build_visualization_metadata, count_parameters, ensure_output_dir,
-    make_experiment_parser, mean_grade_spectrum, print_banner,
-    report_diagnostics, run_supervised_loop, save_training_curve, set_seed,
-    setup_algebra, signature_metadata,
+    build_visualization_metadata,
+    count_parameters,
+    ensure_output_dir,
+    make_experiment_parser,
+    mean_grade_spectrum,
+    print_banner,
+    report_diagnostics,
+    run_supervised_loop,
+    save_training_curve,
+    set_seed,
+    setup_algebra,
+    signature_metadata,
 )
 
 from core.algebra import CliffordAlgebra
@@ -74,8 +82,8 @@ from optimizers.riemannian import RiemannianAdam
 # Physical priors
 # ============================================================================
 
-def compute_gravity_bivector(gravity_vectors: np.ndarray,
-                             algebra_dim: int = 16) -> torch.Tensor:
+
+def compute_gravity_bivector(gravity_vectors: np.ndarray, algebra_dim: int = 16) -> torch.Tensor:
     """Procrustes bivector: grade-2 element ``B`` of Cl(3,1) such that
     ``exp(-B/2)`` rotates the mean body-frame gravity direction onto ``-e3``.
 
@@ -92,9 +100,9 @@ def compute_gravity_bivector(gravity_vectors: np.ndarray,
 
     B = torch.zeros(algebra_dim, dtype=torch.float32)
     if theta > 1e-6:
-        B[6] = theta * ax      # e23
-        B[5] = -theta * ay     # e13
-        B[3] = 0.0             # e12 (az=0 by construction)
+        B[6] = theta * ax  # e23
+        B[5] = -theta * ay  # e13
+        B[3] = 0.0  # e12 (az=0 by construction)
     return B
 
 
@@ -104,13 +112,13 @@ def _build_imu_scatter(algebra_dim: int = 16) -> torch.Tensor:
     identically to accel under the sandwich product.
     """
     S = torch.zeros(7, algebra_dim, dtype=torch.float32)
-    S[0, 1] = 1.0     # accel_x → e1
-    S[1, 2] = 1.0     # accel_y → e2
-    S[2, 4] = 1.0     # accel_z → e3
-    S[3, 6] = 1.0     # gyro_x  → e23
-    S[4, 5] = -1.0    # gyro_y  → -e13  (= e31)
-    S[5, 3] = 1.0     # gyro_z  → e12
-    S[6, 0] = 1.0     # fsr     → scalar
+    S[0, 1] = 1.0  # accel_x → e1
+    S[1, 2] = 1.0  # accel_y → e2
+    S[2, 4] = 1.0  # accel_z → e3
+    S[3, 6] = 1.0  # gyro_x  → e23
+    S[4, 5] = -1.0  # gyro_y  → -e13  (= e31)
+    S[5, 3] = 1.0  # gyro_z  → e12
+    S[6, 0] = 1.0  # fsr     → scalar
     return S
 
 
@@ -118,10 +126,15 @@ def _build_imu_scatter(algebra_dim: int = 16) -> torch.Tensor:
 # Dataset
 # ============================================================================
 
-def _synthesize_worldline(regime: str, *, num_trajs: int, window_size: int,
-                          dt: float, rng: np.random.RandomState,
-                          ) -> Tuple[np.ndarray, np.ndarray, np.ndarray,
-                                     np.ndarray]:
+
+def _synthesize_worldline(
+    regime: str,
+    *,
+    num_trajs: int,
+    window_size: int,
+    dt: float,
+    rng: np.random.RandomState,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Generate (sensor, pos, vel, gravity_b) tensors for a synthetic regime.
 
     All shapes have a leading ``(num_trajs, window_size)`` axis, exactly the
@@ -155,7 +168,8 @@ def _synthesize_worldline(regime: str, *, num_trajs: int, window_size: int,
             phi = rng.uniform(-1.0, 1.0)
             axis = rng.randint(0, 3)
             beta = math.tanh(phi)
-            v_boost = np.zeros(3); v_boost[axis] = beta * 3.0
+            v_boost = np.zeros(3)
+            v_boost[axis] = beta * 3.0
             v0 = v_boost + rng.uniform(-0.5, 0.5, size=3)
             x0 = rng.uniform(-1.0, 1.0, size=3)
             vel = np.broadcast_to(v0, (T, 3)).copy()
@@ -170,23 +184,27 @@ def _synthesize_worldline(regime: str, *, num_trajs: int, window_size: int,
             phi0 = rng.uniform(-math.pi, math.pi)
             vz = rng.uniform(-0.5, 0.5)
             phase = phi0 + omega_z * t_axis
-            pos = np.stack([radius * np.cos(phase),
-                            radius * np.sin(phase),
-                            vz * t_axis], axis=-1)
-            vel = np.stack([-radius * omega_z * np.sin(phase),
-                             radius * omega_z * np.cos(phase),
-                             np.full_like(phase, vz)], axis=-1)
-            accel_inertial = np.stack([
-                -radius * omega_z * omega_z * np.cos(phase),
-                -radius * omega_z * omega_z * np.sin(phase),
-                np.zeros_like(phase),
-            ], axis=-1)
+            pos = np.stack([radius * np.cos(phase), radius * np.sin(phase), vz * t_axis], axis=-1)
+            vel = np.stack(
+                [-radius * omega_z * np.sin(phase), radius * omega_z * np.cos(phase), np.full_like(phase, vz)], axis=-1
+            )
+            accel_inertial = np.stack(
+                [
+                    -radius * omega_z * omega_z * np.cos(phase),
+                    -radius * omega_z * omega_z * np.sin(phase),
+                    np.zeros_like(phase),
+                ],
+                axis=-1,
+            )
             omega = np.zeros((T, 3))
             omega[:, 2] = omega_z
-            cos_p = np.cos(phase); sin_p = np.sin(phase)
+            cos_p = np.cos(phase)
+            sin_p = np.sin(phase)
             R_body = np.zeros((T, 3, 3))
-            R_body[:, 0, 0] = cos_p;  R_body[:, 0, 1] = sin_p
-            R_body[:, 1, 0] = -sin_p; R_body[:, 1, 1] = cos_p
+            R_body[:, 0, 0] = cos_p
+            R_body[:, 0, 1] = sin_p
+            R_body[:, 1, 0] = -sin_p
+            R_body[:, 1, 1] = cos_p
             R_body[:, 2, 2] = 1.0
 
         else:
@@ -227,9 +245,16 @@ class SyntheticIMUWorldlineDataset(Dataset):
     interface matches ``IMUTrajectoryDataset`` (sensor / pos / vel triple).
     """
 
-    def __init__(self, regime: str, *, num_trajs: int = 256,
-                 window_size: int = 128, dt: float = 0.02,
-                 noise_scale: float = 0.0, seed: int = 42):
+    def __init__(
+        self,
+        regime: str,
+        *,
+        num_trajs: int = 256,
+        window_size: int = 128,
+        dt: float = 0.02,
+        noise_scale: float = 0.0,
+        seed: int = 42,
+    ):
         super().__init__()
         self.window_size = window_size
         self.noise_scale = noise_scale
@@ -238,8 +263,11 @@ class SyntheticIMUWorldlineDataset(Dataset):
 
         rng = np.random.RandomState(seed)
         sensors, positions, velocities, gravity_b = _synthesize_worldline(
-            regime, num_trajs=num_trajs, window_size=window_size,
-            dt=dt, rng=rng,
+            regime,
+            num_trajs=num_trajs,
+            window_size=window_size,
+            dt=dt,
+            rng=rng,
         )
 
         # Window-localize positions so each window starts at the origin —
@@ -248,18 +276,15 @@ class SyntheticIMUWorldlineDataset(Dataset):
 
         all_sensor = sensors.reshape(-1, 7)
         self.sensor_mean = torch.tensor(all_sensor.mean(axis=0), dtype=torch.float32)
-        self.sensor_std = torch.tensor(
-            all_sensor.std(axis=0).clip(min=1e-6), dtype=torch.float32)
+        self.sensor_std = torch.tensor(all_sensor.std(axis=0).clip(min=1e-6), dtype=torch.float32)
 
         delta = positions.reshape(-1, 3)
         self.pos_mean = torch.zeros(3, dtype=torch.float32)
-        self.pos_std = torch.tensor(
-            delta.std(axis=0).clip(min=1e-6), dtype=torch.float32)
+        self.pos_std = torch.tensor(delta.std(axis=0).clip(min=1e-6), dtype=torch.float32)
 
         all_vel = velocities.reshape(-1, 3)
         self.vel_mean = torch.tensor(all_vel.mean(axis=0), dtype=torch.float32)
-        self.vel_std = torch.tensor(
-            all_vel.std(axis=0).clip(min=1e-6), dtype=torch.float32)
+        self.vel_std = torch.tensor(all_vel.std(axis=0).clip(min=1e-6), dtype=torch.float32)
 
         sensor_t = torch.from_numpy(sensors)
         pos_t = torch.from_numpy(positions)
@@ -268,8 +293,7 @@ class SyntheticIMUWorldlineDataset(Dataset):
         self.positions = pos_t / self.pos_std
         self.velocities = (vel_t - self.vel_mean) / self.vel_std
 
-        self.gravity_bivector = compute_gravity_bivector(
-            gravity_b.reshape(-1, 3))
+        self.gravity_bivector = compute_gravity_bivector(gravity_b.reshape(-1, 3))
         self.gravity_b_raw = torch.from_numpy(gravity_b)
 
     def __len__(self) -> int:
@@ -286,6 +310,7 @@ class SyntheticIMUWorldlineDataset(Dataset):
 # Models
 # ============================================================================
 
+
 class STAEmbed(CliffordModule):
     """IMU → Cl(3,1) multivector with learnable Procrustes rotor + Neutralizer.
 
@@ -297,24 +322,19 @@ class STAEmbed(CliffordModule):
     Neutralizer cleans up the stochastic grade-0↔grade-2 covariance leak.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, channels: int,
-                 gravity_bivector: Optional[torch.Tensor] = None):
+    def __init__(self, algebra: CliffordAlgebra, channels: int, gravity_bivector: Optional[torch.Tensor] = None):
         super().__init__(algebra)
         self.channels = channels
 
         self.register_buffer('scatter_matrix', _build_imu_scatter(algebra.dim))
-        self.register_buffer(
-            'g2_mask', algebra.grade_masks[2].to(dtype=torch.float32))
+        self.register_buffer('g2_mask', algebra.grade_masks[2].to(dtype=torch.float32))
 
         if gravity_bivector is None:
             gravity_bivector = torch.zeros(algebra.dim)
-        calib_init = (gravity_bivector.to(dtype=torch.float32,
-                                          device=self.g2_mask.device)
-                      * self.g2_mask)
+        calib_init = gravity_bivector.to(dtype=torch.float32, device=self.g2_mask.device) * self.g2_mask
         self.calib_bivector = nn.Parameter(calib_init.clone())
 
-        self.mother = MotherEmbedding(
-            algebra, input_dim=algebra.dim, channels=channels)
+        self.mother = MotherEmbedding(algebra, input_dim=algebra.dim, channels=channels)
         self.neutralizer = GeometricNeutralizer(algebra, channels)
 
     def calibration_rotor(self) -> torch.Tensor:
@@ -346,8 +366,7 @@ class StepRotorFlow(CliffordModule):
     expressive power is not capped by isometries alone.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, channels: int,
-                 kernel_size: int = 3, dilation: int = 1):
+    def __init__(self, algebra: CliffordAlgebra, channels: int, kernel_size: int = 3, dilation: int = 1):
         super().__init__(algebra)
         self.channels = channels
         self.dilation = dilation
@@ -361,10 +380,11 @@ class StepRotorFlow(CliffordModule):
         # Bivector projector: causal conv over the full multivector to
         # produce a per-frame, per-channel grade-2 element.
         self.bv_conv = nn.Conv1d(
-            channels * algebra.dim, channels * self.num_bivecs,
-            kernel_size=kernel_size, dilation=dilation, padding=0)
+            channels * algebra.dim, channels * self.num_bivecs, kernel_size=kernel_size, dilation=dilation, padding=0
+        )
         # Channel mix after the sandwich — preserves grade structure.
         from layers import CliffordLinear  # local import keeps top section tidy
+
         self.channel_mix = CliffordLinear(algebra, channels, channels)
 
     def _bivector_field(self, mv: torch.Tensor) -> torch.Tensor:
@@ -381,7 +401,7 @@ class StepRotorFlow(CliffordModule):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, t, c, d = x.shape
-        B_field = self._bivector_field(x)               # [B*T, C, D] grade-2
+        B_field = self._bivector_field(x)  # [B*T, C, D] grade-2
         flat = x.reshape(b * t, c, d)
         # Per-channel rotor sandwich: each (sample, time, channel) gets its
         # own rotor. Re-pack to [B*T*C, D] and use the algebra's
@@ -404,9 +424,14 @@ class STATrajectoryNet(CliffordModule):
     while the actual transformation is signature-preserving.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, channels: int = 32,
-                 num_layers: int = 5, kernel_size: int = 3,
-                 gravity_bivector: Optional[torch.Tensor] = None):
+    def __init__(
+        self,
+        algebra: CliffordAlgebra,
+        channels: int = 32,
+        num_layers: int = 5,
+        kernel_size: int = 3,
+        gravity_bivector: Optional[torch.Tensor] = None,
+    ):
         super().__init__(algebra)
         self.channels = channels
         self.embedding = STAEmbed(algebra, channels, gravity_bivector)
@@ -414,8 +439,7 @@ class STATrajectoryNet(CliffordModule):
         self.norms = nn.ModuleList()
         self.activations = nn.ModuleList()
         for i in range(num_layers):
-            self.flow_layers.append(StepRotorFlow(
-                algebra, channels, kernel_size, dilation=2 ** i))
+            self.flow_layers.append(StepRotorFlow(algebra, channels, kernel_size, dilation=2**i))
             self.norms.append(CliffordLayerNorm(algebra, channels))
             self.activations.append(GeometricGELU(algebra, channels))
         self.pos_head = nn.Linear(channels * 3, 3)
@@ -428,8 +452,7 @@ class STATrajectoryNet(CliffordModule):
 
     def _flow(self, mv: torch.Tensor) -> torch.Tensor:
         features = mv
-        for flow, norm, act in zip(self.flow_layers, self.norms,
-                                    self.activations):
+        for flow, norm, act in zip(self.flow_layers, self.norms, self.activations):
             residual = features
             out = flow(features)
             b, w, c, d = out.shape
@@ -439,8 +462,7 @@ class STATrajectoryNet(CliffordModule):
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         features = self._flow(self._embed(x))
-        spatial = torch.stack(
-            [features[..., 1], features[..., 2], features[..., 4]], dim=-1)
+        spatial = torch.stack([features[..., 1], features[..., 2], features[..., 4]], dim=-1)
         flat = spatial.reshape(*features.shape[:2], self.channels * 3)
         return self.pos_head(flat), self.vel_head(flat)
 
@@ -455,9 +477,9 @@ class STATrajectoryNet(CliffordModule):
 # Evaluation & post-training diagnostics
 # ============================================================================
 
+
 @torch.no_grad()
-def evaluate_rmse(model: STATrajectoryNet, loader: DataLoader,
-                  device: str) -> Dict[str, float]:
+def evaluate_rmse(model: STATrajectoryNet, loader: DataLoader, device: str) -> Dict[str, float]:
     model.eval()
     pos_sq, vel_sq, n = 0.0, 0.0, 0
     for sensor, pos_gt, vel_gt in loader:
@@ -475,8 +497,7 @@ def evaluate_rmse(model: STATrajectoryNet, loader: DataLoader,
 
 
 @torch.no_grad()
-def isometry_residual(model: STATrajectoryNet, loader: DataLoader,
-                      algebra: CliffordAlgebra, device: str) -> float:
+def isometry_residual(model: STATrajectoryNet, loader: DataLoader, algebra: CliffordAlgebra, device: str) -> float:
     """Mean |‖pre-TCN‖² − ‖post-TCN‖²| under the signature norm.
 
     Was the old ``IsometryLoss`` in the gradient path; here it measures
@@ -496,8 +517,9 @@ def isometry_residual(model: STATrajectoryNet, loader: DataLoader,
 
 
 @torch.no_grad()
-def lorentz_invariance_residual(model: STATrajectoryNet, loader: DataLoader,
-                                algebra: CliffordAlgebra, device: str) -> float:
+def lorentz_invariance_residual(
+    model: STATrajectoryNet, loader: DataLoader, algebra: CliffordAlgebra, device: str
+) -> float:
     """Predicted ``signature_norm_squared`` should be invariant under random
     Spin(3,1) rotors applied at the embedding stage.
 
@@ -529,8 +551,7 @@ def lorentz_invariance_residual(model: STATrajectoryNet, loader: DataLoader,
 
 
 @torch.no_grad()
-def calibration_recovery_error(model: STATrajectoryNet,
-                               target_bivector: torch.Tensor) -> float:
+def calibration_recovery_error(model: STATrajectoryNet, target_bivector: torch.Tensor) -> float:
     """How close the learned calibration bivector sits to the analytic
     optimum recovered by ``compute_gravity_bivector`` on the dataset.
     """
@@ -540,8 +561,11 @@ def calibration_recovery_error(model: STATrajectoryNet,
 
 
 def post_training_diagnostics(
-    model: STATrajectoryNet, test_loader: DataLoader,
-    algebra: CliffordAlgebra, device: str, *,
+    model: STATrajectoryNet,
+    test_loader: DataLoader,
+    algebra: CliffordAlgebra,
+    device: str,
+    *,
     target_calib_bivector: Optional[torch.Tensor] = None,
     noisy_loader: Optional[DataLoader] = None,
 ) -> Dict[str, float]:
@@ -549,16 +573,12 @@ def post_training_diagnostics(
     diagnostics: Dict[str, float] = {
         'test_pos_rmse': rmse['pos_rmse'],
         'test_vel_rmse': rmse['vel_rmse'],
-        'isometry_residual': isometry_residual(
-            model, test_loader, algebra, device),
-        'lorentz_invariance_residual': lorentz_invariance_residual(
-            model, test_loader, algebra, device),
-        'calib_bivector_norm': float(
-            model.embedding.calib_bivector.detach().norm().item()),
+        'isometry_residual': isometry_residual(model, test_loader, algebra, device),
+        'lorentz_invariance_residual': lorentz_invariance_residual(model, test_loader, algebra, device),
+        'calib_bivector_norm': float(model.embedding.calib_bivector.detach().norm().item()),
     }
     if target_calib_bivector is not None:
-        diagnostics['calib_recovery_error'] = calibration_recovery_error(
-            model, target_calib_bivector)
+        diagnostics['calib_recovery_error'] = calibration_recovery_error(model, target_calib_bivector)
     feats = []
     with torch.no_grad():
         for sensor, _, _ in test_loader:
@@ -578,35 +598,42 @@ def post_training_diagnostics(
 # Training entry point
 # ============================================================================
 
+
 def train(args: argparse.Namespace) -> None:
     set_seed(args.seed)
     device = args.device
     algebra = setup_algebra(p=3, q=1, device='cpu')
 
     train_ds = SyntheticIMUWorldlineDataset(
-        args.regime, num_trajs=args.num_trajs,
-        window_size=args.window_size, dt=args.dt, seed=args.seed)
+        args.regime, num_trajs=args.num_trajs, window_size=args.window_size, dt=args.dt, seed=args.seed
+    )
     val_ds = SyntheticIMUWorldlineDataset(
-        args.regime, num_trajs=max(args.num_trajs // 4, 16),
-        window_size=args.window_size, dt=args.dt, seed=args.seed + 1)
+        args.regime,
+        num_trajs=max(args.num_trajs // 4, 16),
+        window_size=args.window_size,
+        dt=args.dt,
+        seed=args.seed + 1,
+    )
     test_ds = SyntheticIMUWorldlineDataset(
-        args.regime, num_trajs=max(args.num_trajs // 4, 16),
-        window_size=args.window_size, dt=args.dt, seed=args.seed + 2)
+        args.regime,
+        num_trajs=max(args.num_trajs // 4, 16),
+        window_size=args.window_size,
+        dt=args.dt,
+        seed=args.seed + 2,
+    )
 
     use_pin = device != 'cpu'
     num_workers = 2 if device != 'cpu' else 0
     train_loader = DataLoader(
-        train_ds, batch_size=args.batch_size, shuffle=True, drop_last=True,
-        pin_memory=use_pin, num_workers=num_workers)
-    val_loader = DataLoader(
-        val_ds, batch_size=args.batch_size,
-        pin_memory=use_pin, num_workers=num_workers)
-    test_loader = DataLoader(
-        test_ds, batch_size=args.batch_size,
-        pin_memory=use_pin, num_workers=num_workers)
+        train_ds, batch_size=args.batch_size, shuffle=True, drop_last=True, pin_memory=use_pin, num_workers=num_workers
+    )
+    val_loader = DataLoader(val_ds, batch_size=args.batch_size, pin_memory=use_pin, num_workers=num_workers)
+    test_loader = DataLoader(test_ds, batch_size=args.batch_size, pin_memory=use_pin, num_workers=num_workers)
 
     model = STATrajectoryNet(
-        algebra, channels=args.channels, num_layers=args.num_layers,
+        algebra,
+        channels=args.channels,
+        num_layers=args.num_layers,
         kernel_size=args.kernel_size,
         gravity_bivector=train_ds.gravity_bivector,
     ).to(device)
@@ -634,25 +661,33 @@ def train(args: argparse.Namespace) -> None:
         return evaluate_rmse(_model, val_loader, device)
 
     history = run_supervised_loop(
-        model, optimizer, loss_fn, train_loader,
-        epochs=args.epochs, diag_interval=args.diag_interval, grad_clip=5.0,
-        diag_fn=diag_fn, history_extra_keys=('pos_rmse', 'vel_rmse'),
+        model,
+        optimizer,
+        loss_fn,
+        train_loader,
+        epochs=args.epochs,
+        diag_interval=args.diag_interval,
+        grad_clip=5.0,
+        diag_fn=diag_fn,
+        history_extra_keys=('pos_rmse', 'vel_rmse'),
     )
 
     noisy_loader = None
     if args.noise_scale > 0.0:
         noisy_ds = SyntheticIMUWorldlineDataset(
-            args.regime, num_trajs=max(args.num_trajs // 4, 16),
-            window_size=args.window_size, dt=args.dt,
-            noise_scale=args.noise_scale, seed=args.seed + 2)
+            args.regime,
+            num_trajs=max(args.num_trajs // 4, 16),
+            window_size=args.window_size,
+            dt=args.dt,
+            noise_scale=args.noise_scale,
+            seed=args.seed + 2,
+        )
         noisy_loader = DataLoader(noisy_ds, batch_size=args.batch_size)
 
     diagnostics = post_training_diagnostics(
-        model, test_loader, algebra, device,
-        target_calib_bivector=train_ds.gravity_bivector,
-        noisy_loader=noisy_loader)
-    print(report_diagnostics(
-        diagnostics, title='STA trajectory post-training diagnostics'))
+        model, test_loader, algebra, device, target_calib_bivector=train_ds.gravity_bivector, noisy_loader=noisy_loader
+    )
+    print(report_diagnostics(diagnostics, title='STA trajectory post-training diagnostics'))
 
     ensure_output_dir(args.output_dir)
     metadata = build_visualization_metadata(
@@ -678,24 +713,22 @@ def train(args: argparse.Namespace) -> None:
 def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
         'STA trajectory reconstruction — Cl(3,1) synthetic worldlines.',
-        include=('seed', 'device', 'epochs', 'lr', 'batch_size',
-                 'output_dir', 'diag_interval'),
-        defaults={'epochs': 200, 'lr': 0.001, 'batch_size': 64,
-                  'output_dir': 'sta_plots', 'diag_interval': 10},
+        include=('seed', 'device', 'epochs', 'lr', 'batch_size', 'output_dir', 'diag_interval'),
+        defaults={'epochs': 200, 'lr': 0.001, 'batch_size': 64, 'output_dir': 'sta_plots', 'diag_interval': 10},
     )
-    p.add_argument('--regime', choices=('free_particle', 'lorentz_boost',
-                                         'helical_motion'),
-                   default='helical_motion',
-                   help='Closed-form Minkowski worldline generator.')
+    p.add_argument(
+        '--regime',
+        choices=('free_particle', 'lorentz_boost', 'helical_motion'),
+        default='helical_motion',
+        help='Closed-form Minkowski worldline generator.',
+    )
     p.add_argument('--num-trajs', type=int, default=256)
     p.add_argument('--window-size', type=int, default=128)
-    p.add_argument('--dt', type=float, default=0.02,
-                   help='Worldline timestep in seconds.')
+    p.add_argument('--dt', type=float, default=0.02, help='Worldline timestep in seconds.')
     p.add_argument('--channels', type=int, default=32)
     p.add_argument('--num-layers', type=int, default=5)
     p.add_argument('--kernel-size', type=int, default=3)
-    p.add_argument('--noise-scale', type=float, default=1.0,
-                   help='Noise robustness diagnostic scale (0 to disable).')
+    p.add_argument('--noise-scale', type=float, default=1.0, help='Noise robustness diagnostic scale (0 to disable).')
     return p.parse_args()
 
 

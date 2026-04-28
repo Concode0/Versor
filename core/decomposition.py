@@ -31,6 +31,7 @@ class ExpPolicy(enum.Enum):
     - ``PRECISE``  -- saturation iteration count, reaches the dtype noise
       floor at the cost of roughly 2x BALANCED's wall time.
     """
+
     BALANCED = "balanced"
     PRECISE = "precise"
 
@@ -42,12 +43,16 @@ class ExpPolicy(enum.Enum):
 #   fp64  : knee at k~48 (~1e-12), floor ~1e-14 by k~64; 128 = conservative cap
 _ITER_BASE = {
     ExpPolicy.BALANCED: {
-        torch.bfloat16: 8, torch.float16: 8,
-        torch.float32: 24, torch.float64: 48,
+        torch.bfloat16: 8,
+        torch.float16: 8,
+        torch.float32: 24,
+        torch.float64: 48,
     },
     ExpPolicy.PRECISE: {
-        torch.bfloat16: 16, torch.float16: 16,
-        torch.float32: 64, torch.float64: 128,
+        torch.bfloat16: 16,
+        torch.float16: 16,
+        torch.float32: 64,
+        torch.float64: 128,
     },
 }
 # Added to the base count when n >= 6 to compensate for the slight error
@@ -82,9 +87,7 @@ def _seed_vector(algebra, b: torch.Tensor) -> torch.Tensor:
     device, dtype = b.device, b.dtype
     n = algebra.n
 
-    uniform = torch.full(
-        (*batch_shape, n), 1.0 / (n ** 0.5), device=device, dtype=dtype
-    )
+    uniform = torch.full((*batch_shape, n), 1.0 / (n**0.5), device=device, dtype=dtype)
     v_uniform = algebra.embed_vector(uniform)
 
     probe = algebra.right_contraction(b, v_uniform)
@@ -93,11 +96,7 @@ def _seed_vector(algebra, b: torch.Tensor) -> torch.Tensor:
 
 
 def ga_power_iteration(
-    algebra,
-    b: torch.Tensor,
-    v_init: Optional[torch.Tensor] = None,
-    threshold: float = 1e-6,
-    max_iterations: int = 100
+    algebra, b: torch.Tensor, v_init: Optional[torch.Tensor] = None, threshold: float = 1e-6, max_iterations: int = 100
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Find the dominant simple bivector component via power iteration.
 
@@ -143,11 +142,7 @@ def ga_power_iteration(
 
 
 def differentiable_invariant_decomposition(
-    algebra,
-    b: torch.Tensor,
-    k: Optional[int] = None,
-    threshold: float = 1e-6,
-    max_iterations: int = 100
+    algebra, b: torch.Tensor, k: Optional[int] = None, threshold: float = 1e-6, max_iterations: int = 100
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
     """Decompose a bivector into simple components via greedy projection.
 
@@ -178,9 +173,7 @@ def differentiable_invariant_decomposition(
         if residual.norm(dim=-1).max() < threshold:
             break
 
-        b_i, v_i = ga_power_iteration(
-            algebra, residual, threshold=threshold, max_iterations=max_iterations
-        )
+        b_i, v_i = ga_power_iteration(algebra, residual, threshold=threshold, max_iterations=max_iterations)
         decomp.append(b_i)
         vectors.append(v_i)
         residual = residual - b_i
@@ -274,9 +267,7 @@ def _decompose_compiled_safe(
     residual = b
 
     for _ in range(k):
-        b_i = _power_iteration_compiled_safe(
-            algebra, residual, fixed_iterations=fixed_iterations
-        )
+        b_i = _power_iteration_compiled_safe(algebra, residual, fixed_iterations=fixed_iterations)
         # Mask: zero out extraction when residual is already negligible
         active = residual.norm(dim=-1, keepdim=True) > algebra.eps
         b_i = b_i * active.to(b_i.dtype)
@@ -319,9 +310,7 @@ def compiled_safe_decomposed_exp(
 
     # Decompose (no grad -- power iteration not differentiable)
     with torch.no_grad():
-        decomp = _decompose_compiled_safe(
-            algebra, b.detach(), k=k_actual, fixed_iterations=fixed_iterations
-        )
+        decomp = _decompose_compiled_safe(algebra, b.detach(), k=k_actual, fixed_iterations=fixed_iterations)
 
     bv_mask = algebra.grade_masks[2]
 

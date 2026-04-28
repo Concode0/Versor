@@ -58,10 +58,9 @@ class GeometricParameterController:
     ) -> torch.Tensor:
         loss = loss_fn()
         grads = torch.autograd.grad(loss, group, allow_unused=True)
-        return torch.cat([
-            g.reshape(-1) if g is not None else torch.zeros(p.numel(), device=device)
-            for g, p in zip(grads, group)
-        ])
+        return torch.cat(
+            [g.reshape(-1) if g is not None else torch.zeros(p.numel(), device=device) for g, p in zip(grads, group)]
+        )
 
     def compute_fim_diagonal(
         self,
@@ -91,16 +90,20 @@ class GeometricParameterController:
             if isinstance(m, RotorLayer):
                 bv = m.grade_weights.detach()
                 full = torch.zeros(
-                    bv.shape[0], m.algebra.dim,
-                    device=bv.device, dtype=bv.dtype,
+                    bv.shape[0],
+                    m.algebra.dim,
+                    device=bv.device,
+                    dtype=bv.dtype,
                 )
                 full[:, m.grade_indices] = bv
                 mv_list.append(full)
             elif isinstance(m, MultiRotorLayer):
                 bv = m.rotor_grade_weights.detach()
                 full = torch.zeros(
-                    bv.shape[0], m.algebra.dim,
-                    device=bv.device, dtype=bv.dtype,
+                    bv.shape[0],
+                    m.algebra.dim,
+                    device=bv.device,
+                    dtype=bv.dtype,
                 )
                 full[:, m.grade_indices] = bv
                 mv_list.append(full)
@@ -121,9 +124,7 @@ class GeometricParameterController:
         try:
             comm_result = self.core_comm.analyze(mv_params)
             result["comm_result"] = comm_result
-            result["closure_error"] = comm_result.lie_bracket_structure.get(
-                "closure_error", 1.0
-            )
+            result["closure_error"] = comm_result.lie_bracket_structure.get("closure_error", 1.0)
             result["mean_commutator_norm"] = comm_result.mean_commutator_norm
         except Exception:
             pass
@@ -139,9 +140,7 @@ class GeometricParameterController:
 
         if self.spectral is not None:
             try:
-                grade_energy = self.spectral.grade_energy_spectrum(
-                    mv_params.unsqueeze(1)
-                )
+                grade_energy = self.spectral.grade_energy_spectrum(mv_params.unsqueeze(1))
                 result["grade_energy"] = grade_energy
                 ge = grade_energy.clamp(min=0)
                 total = ge.sum()
@@ -173,14 +172,10 @@ class GeometricParameterController:
             try:
                 baseline.append(self._flat_group_grad(loss_fn, g, device))
             except Exception:
-                baseline.append(torch.zeros(
-                    sum(p.numel() for p in g), device=device
-                ))
+                baseline.append(torch.zeros(sum(p.numel() for p in g), device=device))
 
         orig = {id(p): p.data.clone() for g in param_groups for p in g}
-        scores: Dict[Tuple[int, int], float] = {
-            (i, j): 0.0 for i in range(n) for j in range(i + 1, n)
-        }
+        scores: Dict[Tuple[int, int], float] = {(i, j): 0.0 for i in range(n) for j in range(i + 1, n)}
 
         for i in range(n):
             g_i_norm = baseline[i].norm().item()
@@ -191,7 +186,7 @@ class GeometricParameterController:
             ptr = 0
             for p in param_groups[i]:
                 sz = p.numel()
-                p.data -= step_i[ptr:ptr + sz].reshape(p.shape)
+                p.data -= step_i[ptr : ptr + sz].reshape(p.shape)
                 ptr += sz
 
             for j in range(n):
@@ -247,9 +242,7 @@ class GeometricParameterController:
             return {}
 
         device = param_groups[0][0].device
-        scores: Dict[Tuple[int, int], float] = {
-            (i, j): 0.0 for i in range(n) for j in range(i + 1, n)
-        }
+        scores: Dict[Tuple[int, int], float] = {(i, j): 0.0 for i in range(n) for j in range(i + 1, n)}
 
         # Tier 0: algebraic scores from commutativity matrix (free)
         alg_scores: Dict[Tuple[int, int], float] = {}
@@ -271,12 +264,11 @@ class GeometricParameterController:
             try:
                 group_grads.append(self._flat_group_grad(loss_fn, g, device))
             except Exception:
-                group_grads.append(torch.zeros(
-                    sum(p.numel() for p in g), device=device
-                ))
+                group_grads.append(torch.zeros(sum(p.numel() for p in g), device=device))
 
         group_norms = torch.tensor(
-            [g.norm().item() for g in group_grads], device=device,
+            [g.norm().item() for g in group_grads],
+            device=device,
         )
 
         cosine_scores: Dict[Tuple[int, int], float] = {}
@@ -290,7 +282,7 @@ class GeometricParameterController:
             ptr = 0
             for p in param_groups[i]:
                 sz = p.numel()
-                p.data -= step[ptr:ptr + sz].reshape(p.shape)
+                p.data -= step[ptr : ptr + sz].reshape(p.shape)
                 ptr += sz
 
             for j in range(i + 1, n):
@@ -317,9 +309,7 @@ class GeometricParameterController:
 
         return scores
 
-    def parallel_groups(
-        self, scores: Dict[Tuple[int, int], float], n_groups: int
-    ) -> List[List[int]]:
+    def parallel_groups(self, scores: Dict[Tuple[int, int], float], n_groups: int) -> List[List[int]]:
         conflicts = {i: set() for i in range(n_groups)}
         for (i, j), s in scores.items():
             if s > self.commutator_threshold:
@@ -351,8 +341,7 @@ class GeometricParameterController:
             return [[i] for i in range(n_groups)]
 
         budget = self.config.color_conflict_budget
-        use_manifold = (self.config.manifold_compat_constraint
-                        and group_meta is not None)
+        use_manifold = self.config.manifold_compat_constraint and group_meta is not None
 
         adj: Dict[int, Dict[int, float]] = {i: {} for i in range(n_groups)}
         for (i, j), w in scores.items():
@@ -372,38 +361,28 @@ class GeometricParameterController:
                 if colors[node] >= 0:
                     continue
                 sat = len(neighbor_colors[node])
-                wdeg = sum(
-                    adj[node].get(nb, 0.0)
-                    for nb in range(n_groups)
-                    if colors[nb] >= 0
-                )
-                if (sat > best_sat
-                        or (sat == best_sat and wdeg > best_wdeg)):
+                wdeg = sum(adj[node].get(nb, 0.0) for nb in range(n_groups) if colors[nb] >= 0)
+                if sat > best_sat or (sat == best_sat and wdeg > best_wdeg):
                     best_node = node
                     best_sat = sat
                     best_wdeg = wdeg
             if best_node < 0:
                 break
 
-            node_manifold = (group_meta[best_node].get("manifold")
-                             if use_manifold else None)
+            node_manifold = group_meta[best_node].get("manifold") if use_manifold else None
             assigned_color = -1
             for c in sorted(color_members.keys()):
                 has_hard_conflict = any(
-                    adj[best_node].get(m, 0.0) > self.commutator_threshold
-                    for m in color_members[c]
+                    adj[best_node].get(m, 0.0) > self.commutator_threshold for m in color_members[c]
                 )
                 if has_hard_conflict:
                     continue
-                total_weight = sum(
-                    adj[best_node].get(m, 0.0) for m in color_members[c]
-                )
+                total_weight = sum(adj[best_node].get(m, 0.0) for m in color_members[c])
                 if total_weight > budget:
                     continue
                 if use_manifold:
                     compat = all(
-                        group_meta[m].get("manifold") == node_manifold
-                        or adj[best_node].get(m, 0.0) == 0.0
+                        group_meta[m].get("manifold") == node_manifold or adj[best_node].get(m, 0.0) == 0.0
                         for m in color_members[c]
                     )
                     if not compat:
@@ -478,20 +457,28 @@ class GeometricParameterController:
 
         if self.config.interaction_estimation == "efficient":
             hybrid_scores = self.build_hybrid_scores_efficient(
-                loss_fn, param_groups, geo_scores,
+                loss_fn,
+                param_groups,
+                geo_scores,
             )
         elif self.config.interaction_estimation == "gradient_only":
             hybrid_scores = self.build_hybrid_scores_efficient(
-                loss_fn, param_groups, {},
+                loss_fn,
+                param_groups,
+                {},
             )
         else:
             hybrid_scores = self.build_hybrid_scores(
-                loss_fn, param_groups, geo_scores,
+                loss_fn,
+                param_groups,
+                geo_scores,
             )
 
         if self.config.dsatur_enabled:
             schedule = self.parallel_groups_dsatur(
-                hybrid_scores, len(param_groups), group_meta,
+                hybrid_scores,
+                len(param_groups),
+                group_meta,
             )
         else:
             schedule = self.parallel_groups(hybrid_scores, len(param_groups))

@@ -113,10 +113,7 @@ class RotaryBivectorPE(CliffordModule):
 
         # Identify grade-2 basis elements
         indices = [i for i in range(algebra.dim) if bin(i).count('1') == 2]
-        self.register_buffer(
-            'bivector_indices',
-            torch.tensor(indices, dtype=torch.long)
-        )
+        self.register_buffer('bivector_indices', torch.tensor(indices, dtype=torch.long))
         self.num_bivectors = len(indices)
 
         # Sinusoidal initialization
@@ -132,10 +129,9 @@ class RotaryBivectorPE(CliffordModule):
         """Sinusoidal initialization: B[p, k] = p * 10000^(-2k/num_bv) * 0.01."""
         # Compute in float32 for numerical precision, then cast to algebra dtype.
         positions = torch.arange(L, dtype=torch.float32).unsqueeze(1)  # [L, 1]
-        freqs = torch.pow(
-            10000.0,
-            -2.0 * torch.arange(num_bv, dtype=torch.float32) / max(num_bv, 1)
-        ).unsqueeze(0)  # [1, num_bv]
+        freqs = torch.pow(10000.0, -2.0 * torch.arange(num_bv, dtype=torch.float32) / max(num_bv, 1)).unsqueeze(
+            0
+        )  # [1, num_bv]
         return (positions * freqs * 0.01).to(dtype=self.algebra.dtype)  # [L, num_bv]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

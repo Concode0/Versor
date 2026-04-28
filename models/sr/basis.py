@@ -34,19 +34,19 @@ logger = logging.getLogger(__name__)
 class BasisExpansionResult:
     """Result of basis expansion analysis."""
 
-    X_expanded: np.ndarray          # [N, n_expanded] expanded feature matrix
-    var_name_map: dict              # col_index -> display name (e.g. "log(D)")
-    var_expr_map: dict              # col_index -> sympy.Expr in original variables
-    log_target: bool                # whether y was log-transformed
-    n_original: int                 # original variable count
-    original_var_names: list        # original variable names
+    X_expanded: np.ndarray  # [N, n_expanded] expanded feature matrix
+    var_name_map: dict  # col_index -> display name (e.g. "log(D)")
+    var_expr_map: dict  # col_index -> sympy.Expr in original variables
+    log_target: bool  # whether y was log-transformed
+    n_original: int  # original variable count
+    original_var_names: list  # original variable names
 
 
 def _abs_correlation(a: np.ndarray, b: np.ndarray) -> float:
     """Absolute Pearson correlation, NaN-safe."""
     a_c = a - np.mean(a)
     b_c = b - np.mean(b)
-    denom = np.sqrt(np.sum(a_c ** 2) * np.sum(b_c ** 2))
+    denom = np.sqrt(np.sum(a_c**2) * np.sum(b_c**2))
     if denom < 1e-30:
         return 0.0
     r = float(np.dot(a_c, b_c) / denom)
@@ -139,12 +139,14 @@ class BasisExpander:
                         log_xi = np.log(xi)
                         corr = _abs_correlation(log_xi, y)
                         if corr > self.corr_threshold:
-                            candidates.append((
-                                log_xi,
-                                f"log({var_names[i]})",
-                                sympy.log(sym_i),
-                                corr,
-                            ))
+                            candidates.append(
+                                (
+                                    log_xi,
+                                    f"log({var_names[i]})",
+                                    sympy.log(sym_i),
+                                    corr,
+                                )
+                            )
 
             # 1/xi: nonzero and reasonable range
             if self.enable_reciprocal:
@@ -154,12 +156,14 @@ class BasisExpander:
                         recip_xi = 1.0 / xi
                         corr = _abs_correlation(recip_xi, y)
                         if corr > self.corr_threshold:
-                            candidates.append((
-                                recip_xi,
-                                f"1/({var_names[i]})",
-                                1 / sym_i,
-                                corr,
-                            ))
+                            candidates.append(
+                                (
+                                    recip_xi,
+                                    f"1/({var_names[i]})",
+                                    1 / sym_i,
+                                    corr,
+                                )
+                            )
 
             # sqrt(xi): non-negative
             if self.enable_sqrt:
@@ -167,12 +171,14 @@ class BasisExpander:
                     sqrt_xi = np.sqrt(xi)
                     corr = _abs_correlation(sqrt_xi, y)
                     if corr > self.corr_threshold:
-                        candidates.append((
-                            sqrt_xi,
-                            f"sqrt({var_names[i]})",
-                            sympy.sqrt(sym_i),
-                            corr,
-                        ))
+                        candidates.append(
+                            (
+                                sqrt_xi,
+                                f"sqrt({var_names[i]})",
+                                sympy.sqrt(sym_i),
+                                corr,
+                            )
+                        )
 
             # exp(xi): only if safe (max(|xi|) <= exp_max_input)
             if self.enable_exp:
@@ -181,17 +187,19 @@ class BasisExpander:
                     if np.all(np.isfinite(exp_xi)):
                         corr = _abs_correlation(exp_xi, y)
                         if corr > self.corr_threshold:
-                            candidates.append((
-                                exp_xi,
-                                f"exp({var_names[i]})",
-                                sympy.exp(sym_i),
-                                corr,
-                            ))
+                            candidates.append(
+                                (
+                                    exp_xi,
+                                    f"exp({var_names[i]})",
+                                    sympy.exp(sym_i),
+                                    corr,
+                                )
+                            )
 
         # Sort by correlation (descending) and cap total features
         candidates.sort(key=lambda c: c[3], reverse=True)
         max_new = self.max_expansion_factor * k - k
-        candidates = candidates[:max(max_new, 0)]
+        candidates = candidates[: max(max_new, 0)]
 
         # Build expanded matrix
         columns = [X_raw[:, i] for i in range(k)]

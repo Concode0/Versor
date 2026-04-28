@@ -51,11 +51,19 @@ def create_optimizer(
         return ExponentialSGD.from_model(model, lr=lr, algebra=algebra), "ExponentialSGD"
     elif name == 'gdo':
         assert loss_fn is not None, "GDO requires loss_fn"
-        gdo_opt = GDOOptimizer.from_model(model, lr=lr, algebra=algebra) if algebra else \
-            GDOOptimizer(model.parameters(), lr=lr)
+        gdo_opt = (
+            GDOOptimizer.from_model(model, lr=lr, algebra=algebra)
+            if algebra
+            else GDOOptimizer(model.parameters(), lr=lr)
+        )
         controller = GDOController(
-            model, loss_fn, optimizer=gdo_opt,
-            config=config, algebra=algebra, device=device, lr=lr,
+            model,
+            loss_fn,
+            optimizer=gdo_opt,
+            config=config,
+            algebra=algebra,
+            device=device,
+            lr=lr,
         )
         return controller, "GDO"
     else:
@@ -97,8 +105,10 @@ def train_loop_standard(
             print(f"  [{label}] Step {s:5d}: loss={loss.item():.6f}")
 
     return ExperimentResult(
-        name="", optimizer_name=label,
-        losses=losses, wall_times=wall_times,
+        name="",
+        optimizer_name=label,
+        losses=losses,
+        wall_times=wall_times,
         metrics=metrics,
         final_loss=losses[-1] if losses else float('inf'),
         total_wall_time=sum(wall_times),
@@ -137,8 +147,10 @@ def train_loop_gdo(
             print(f"  [GDO] Step {s:5d}: loss={info['loss']:.6f}  mode={info['mode']}")
 
     return ExperimentResult(
-        name="", optimizer_name="GDO",
-        losses=losses, wall_times=wall_times,
+        name="",
+        optimizer_name="GDO",
+        losses=losses,
+        wall_times=wall_times,
         metrics=metrics,
         final_loss=losses[-1] if losses else float('inf'),
         total_wall_time=sum(wall_times),
@@ -178,8 +190,7 @@ def run_comparison(
         if opt_name == 'gdo':
             if pre_explore and algebra is not None:
                 try:
-                    pre_analyzer = PreExplorationAnalyzer(
-                        algebra=algebra, n_samples=100, device=config.device)
+                    pre_analyzer = PreExplorationAnalyzer(algebra=algebra, n_samples=100, device=config.device)
                     pre_result = pre_analyzer.analyze(model, loss_fn)
                     print(f"  Strategy: {pre_result.strategy_label}")
                     gdo_config = pre_result.recommended_config
@@ -189,17 +200,22 @@ def run_comparison(
                 gdo_config = config.gdo_config or GDOConfig(lr=config.lr)
 
             controller_or_opt, label = create_optimizer(
-                'gdo', model, config.lr, algebra=algebra,
-                loss_fn=loss_fn, config=gdo_config, device=config.device)
+                'gdo', model, config.lr, algebra=algebra, loss_fn=loss_fn, config=gdo_config, device=config.device
+            )
             result = train_loop_gdo(
-                model, controller_or_opt, config.steps,
-                metric_fn=metric_fn, log_interval=max(config.steps // 5, 1))
+                model, controller_or_opt, config.steps, metric_fn=metric_fn, log_interval=max(config.steps // 5, 1)
+            )
         else:
-            opt, label = create_optimizer(
-                opt_name, model, config.lr, algebra=algebra, device=config.device)
+            opt, label = create_optimizer(opt_name, model, config.lr, algebra=algebra, device=config.device)
             result = train_loop_standard(
-                model, opt, loss_fn, config.steps,
-                metric_fn=metric_fn, log_interval=max(config.steps // 5, 1), label=label)
+                model,
+                opt,
+                loss_fn,
+                config.steps,
+                metric_fn=metric_fn,
+                log_interval=max(config.steps // 5, 1),
+                label=label,
+            )
 
         result.name = task_name
         result.optimizer_name = label
@@ -210,9 +226,15 @@ def run_comparison(
 
 def _new_history() -> Dict:
     return {
-        "losses": [], "modes": [], "probe_steps": [],
-        "curvatures": [], "grad_norms": [], "betas": [],
-        "lifts": [], "plateaus": [], "trajectory": [],
+        "losses": [],
+        "modes": [],
+        "probe_steps": [],
+        "curvatures": [],
+        "grad_norms": [],
+        "betas": [],
+        "lifts": [],
+        "plateaus": [],
+        "trajectory": [],
         "angle_errors": [],
     }
 
@@ -226,9 +248,11 @@ def _collect_history(controller, info, history):
         history["grad_norms"].append(info["probe"]["grad_norm"])
         history["betas"].append(info["probe"]["beta"])
     if "lift_oracle" in info:
-        history["lifts"].append({
-            "step": info["step"],
-            "loss": info["loss"],
-            "success": "improved" in str(info["lift_oracle"]),
-            "sigma": getattr(controller.lift_oracle, '_current_sigma', 0),
-        })
+        history["lifts"].append(
+            {
+                "step": info["step"],
+                "loss": info["loss"],
+                "success": "improved" in str(info["lift_oracle"]),
+                "sigma": getattr(controller.lift_oracle, '_current_sigma', 0),
+            }
+        )

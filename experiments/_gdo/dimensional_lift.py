@@ -61,17 +61,18 @@ class DimensionalLiftOracle:
         idx = 0
         for p in model.parameters():
             sz = p.numel()
-            p.data.copy_(flat[idx:idx + sz].reshape(p.shape))
+            p.data.copy_(flat[idx : idx + sz].reshape(p.shape))
             idx += sz
 
     @staticmethod
     def _flat_grad(model: nn.Module) -> torch.Tensor:
         device = next(model.parameters()).device
-        return torch.cat([
-            p.grad.reshape(-1) if p.grad is not None
-            else torch.zeros(p.numel(), device=device)
-            for p in model.parameters()
-        ])
+        return torch.cat(
+            [
+                p.grad.reshape(-1) if p.grad is not None else torch.zeros(p.numel(), device=device)
+                for p in model.parameters()
+            ]
+        )
 
     @staticmethod
     def _compute_bottom_eigvecs(
@@ -92,16 +93,17 @@ class DimensionalLiftOracle:
 
         for j in range(k):
             grads = torch.autograd.grad(loss, params, create_graph=True, allow_unused=True)
-            flat_g = torch.cat([
-                g.reshape(-1) if g is not None else torch.zeros(p.numel(), device=device)
-                for g, p in zip(grads, params)
-            ])
+            flat_g = torch.cat(
+                [
+                    g.reshape(-1) if g is not None else torch.zeros(p.numel(), device=device)
+                    for g, p in zip(grads, params)
+                ]
+            )
             gv = (flat_g * q_curr.detach()).sum()
             hvp = torch.autograd.grad(gv, params, allow_unused=True)
-            Hq = torch.cat([
-                h.reshape(-1) if h is not None else torch.zeros(p.numel(), device=device)
-                for h, p in zip(hvp, params)
-            ])
+            Hq = torch.cat(
+                [h.reshape(-1) if h is not None else torch.zeros(p.numel(), device=device) for h, p in zip(hvp, params)]
+            )
 
             a = (q_curr * Hq).sum().item()
             alpha.append(a)
@@ -126,9 +128,9 @@ class DimensionalLiftOracle:
         T = torch.zeros(m, m, device=device)
         for i, a in enumerate(alpha):
             T[i, i] = a
-        for i, b in enumerate(beta[1:min(len(beta), m)]):
-            T[i, i+1] = b
-            T[i+1, i] = b
+        for i, b in enumerate(beta[1 : min(len(beta), m)]):
+            T[i, i + 1] = b
+            T[i + 1, i] = b
 
         eigvals, eigvecs_T = torch.linalg.eigh(T)
         Q_mat = torch.stack(Q[:m])
@@ -154,16 +156,15 @@ class DimensionalLiftOracle:
         sigma = self._current_sigma
         scaled_lr = self.oracle_lr * max(1.0, sigma / self.lift_sigma)
 
-        print(f"  [LiftOracle] #{self._lift_count}: sigma={sigma:.4f}  "
-              f"oracle_lr={scaled_lr:.5f}  loss={current_loss:.5f}")
+        print(
+            f"  [LiftOracle] #{self._lift_count}: sigma={sigma:.4f}  oracle_lr={scaled_lr:.5f}  loss={current_loss:.5f}"
+        )
 
         directions: List[torch.Tensor] = []
 
         if hessian_vecs is None:
             try:
-                hessian_vals, hessian_vecs = self._compute_bottom_eigvecs(
-                    loss_fn, model, k=min(4, n)
-                )
+                hessian_vals, hessian_vecs = self._compute_bottom_eigvecs(loss_fn, model, k=min(4, n))
             except Exception:
                 hessian_vecs = None
                 hessian_vals = None
@@ -216,7 +217,7 @@ class DimensionalLiftOracle:
                     R[i] = R[i] / norm
             directions.extend([R[i] for i in range(n_rand)])
 
-        candidates = [flat_orig + sigma * d for d in directions[:self.k]]
+        candidates = [flat_orig + sigma * d for d in directions[: self.k]]
 
         best_params = None
         best_loss = current_loss
@@ -238,8 +239,8 @@ class DimensionalLiftOracle:
                 with torch.no_grad():
                     m = beta1 * m + (1 - beta1) * g
                     v = beta2 * v + (1 - beta2) * g * g
-                    m_hat = m / (1 - beta1 ** t)
-                    v_hat = v / (1 - beta2 ** t)
+                    m_hat = m / (1 - beta1**t)
+                    v_hat = v / (1 - beta2**t)
                     psi = psi - scaled_lr * m_hat / (v_hat.sqrt() + eps)
 
             self._set_flat(model, psi)
@@ -266,9 +267,8 @@ class DimensionalLiftOracle:
 
         self._consecutive_fails += 1
         self._current_sigma = min(
-            self.lift_sigma * (self.sigma_scale ** self._consecutive_fails),
+            self.lift_sigma * (self.sigma_scale**self._consecutive_fails),
             self.max_sigma,
         )
-        print(f"  [LiftOracle] [fail] no improvement. "
-              f"Escalating sigma: {sigma:.4f} -> {self._current_sigma:.4f}")
+        print(f"  [LiftOracle] [fail] no improvement. Escalating sigma: {sigma:.4f} -> {self._current_sigma:.4f}")
         return None, current_loss

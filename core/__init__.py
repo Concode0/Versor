@@ -105,6 +105,7 @@ _ANALYSIS_NAMES = {
 def __getattr__(name: str):
     if name in _ANALYSIS_NAMES:
         from . import analysis as _analysis  # noqa: F811
+
         obj = getattr(_analysis, name)
         # Cache on the module to avoid repeated __getattr__ calls
         globals()[name] = obj

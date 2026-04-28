@@ -24,6 +24,7 @@ DEVICE = "cpu"
 
 # == Cl(p,q,r) basics ====================================================
 
+
 class TestDegenerate:
     """Core properties of degenerate dimensions."""
 
@@ -94,8 +95,9 @@ class TestDegenerate:
                 pq = alg.p + alg.q
                 if a >= pq or b >= pq:
                     # Contains null dimension -> bv_sq_scalar should be 0
-                    assert abs(alg.bv_sq_scalar[idx_pos].item()) < 1e-10, \
+                    assert abs(alg.bv_sq_scalar[idx_pos].item()) < 1e-10, (
                         f"Bivector e_{a}{b} (blade {blade_idx}) should have bv_sq=0"
+                    )
                 elif a < alg.p and b < alg.p:
                     # Both positive -> -1
                     assert abs(alg.bv_sq_scalar[idx_pos].item() - (-1.0)) < 1e-10
@@ -113,8 +115,8 @@ class TestDegenerate:
 
         R = alg.exp(B)
         # Parabolic: exp(B) = 1 + B
-        assert abs(R[0, 0].item() - 1.0) < 1e-7, f"Scalar should be ~1, got {R[0,0].item()}"
-        assert abs(R[0, 5].item() - 0.3) < 1e-7, f"e13 coeff should be ~0.3, got {R[0,5].item()}"
+        assert abs(R[0, 0].item() - 1.0) < 1e-7, f"Scalar should be ~1, got {R[0, 0].item()}"
+        assert abs(R[0, 5].item() - 0.3) < 1e-7, f"e13 coeff should be ~0.3, got {R[0, 5].item()}"
 
     def test_wedge_with_null_vectors(self):
         """Wedge product with null vectors should be non-zero."""
@@ -154,8 +156,9 @@ class TestDegenerate:
         assert alg_201.dim == alg_210.dim
 
         # gp_signs should differ
-        assert not torch.allclose(alg_201.gp_signs.float(), alg_210.gp_signs.float()), \
+        assert not torch.allclose(alg_201.gp_signs.float(), alg_210.gp_signs.float()), (
             "Cl(2,0,1) and Cl(2,1,0) should have different Cayley tables"
+        )
 
     def test_cl201_mixed_bivector_exp(self):
         """Cl(2,0,1) with mixed bivector: e12 (elliptic) + e13 (parabolic)."""
@@ -163,8 +166,8 @@ class TestDegenerate:
 
         # e12 is purely Euclidean, e13 involves null e3
         B = torch.zeros(1, 8, dtype=torch.float64)
-        B[0, 3] = 0.5   # e12 (elliptic: bv_sq = -1)
-        B[0, 5] = 0.3   # e13 (parabolic: bv_sq = 0)
+        B[0, 3] = 0.5  # e12 (elliptic: bv_sq = -1)
+        B[0, 5] = 0.3  # e13 (parabolic: bv_sq = 0)
 
         R = alg.exp(B)
         # Rotor should be valid (unit norm via reverse product)
@@ -186,6 +189,7 @@ class TestDegenerate:
 
 # == Adaptive exp for n >= 4 =============================================
 
+
 class TestAdaptiveExp:
     """Tests for the adaptive exp strategy on n >= 4."""
 
@@ -199,8 +203,7 @@ class TestAdaptiveExp:
 
         R = alg.exp(B)
         R_taylor = alg._exp_taylor(B, order=20)
-        assert torch.allclose(R, R_taylor, atol=1e-5), \
-            f"Simple bivector: max diff {(R - R_taylor).abs().max()}"
+        assert torch.allclose(R, R_taylor, atol=1e-5), f"Simple bivector: max diff {(R - R_taylor).abs().max()}"
 
     def test_non_simple_bivector_n4_closed_form_approx(self):
         """exp() uses closed-form for non-simple bivectors (training-friendly approx)."""
@@ -217,8 +220,9 @@ class TestAdaptiveExp:
         # Closed-form is approximate for non-simple, but produces a unit rotor
         R_rev = alg.reverse(R)
         RR = alg.geometric_product(R, R_rev)
-        assert abs(RR[0, 0].item() - 1.0) < 0.01, \
+        assert abs(RR[0, 0].item() - 1.0) < 0.01, (
             f"exp() should produce near-unit rotor, got scalar part {RR[0, 0].item()}"
+        )
 
     def test_non_simple_bivector_n4_decomposed_inference(self):
         """exp_decomposed() is exact for non-simple bivectors at inference."""
@@ -231,13 +235,15 @@ class TestAdaptiveExp:
         B[0, bv_indices[5].item()] = 0.4  # e34
 
         from core.decomposition import ExpPolicy
+
         alg.exp_policy = ExpPolicy.PRECISE
         with torch.no_grad():
             R = alg.exp(B)
         alg.exp_policy = ExpPolicy.BALANCED
         R_taylor = alg._exp_taylor(B, order=20)
-        assert torch.allclose(R, R_taylor, atol=1e-3), \
+        assert torch.allclose(R, R_taylor, atol=1e-3), (
             f"Decomposed exp at inference: max diff {(R - R_taylor).abs().max()}"
+        )
 
     def test_adaptive_unit_rotor(self):
         """Adaptive exp should produce unit rotors in Cl(4,0)."""

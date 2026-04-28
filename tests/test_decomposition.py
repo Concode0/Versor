@@ -27,7 +27,6 @@ from core.decomposition import (
 )
 
 
-
 class TestGeometricOperations:
     """Tests for new geometric operations in CliffordAlgebra."""
 
@@ -182,9 +181,7 @@ class TestBivectorDecomposition:
         v2 = algebra_3d.embed_vector(v2_raw)
         b_simple = algebra_3d.wedge(v1, v2)
 
-        decomp, vectors = differentiable_invariant_decomposition(
-            algebra_3d, b_simple, k=2, threshold=1e-6
-        )
+        decomp, vectors = differentiable_invariant_decomposition(algebra_3d, b_simple, k=2, threshold=1e-6)
 
         # Should find 1 component (the bivector itself)
         # Second component should be negligible
@@ -211,9 +208,7 @@ class TestBivectorDecomposition:
         # Sum
         b_sum = b1 + b2
 
-        decomp, vectors = differentiable_invariant_decomposition(
-            algebra_3d, b_sum, k=2, threshold=1e-6
-        )
+        decomp, vectors = differentiable_invariant_decomposition(algebra_3d, b_sum, k=2, threshold=1e-6)
 
         # Should find 2 components
         assert len(decomp) >= 1
@@ -232,9 +227,7 @@ class TestBivectorDecomposition:
         for idx, weight in zip(bivector_indices, bivector_weights):
             b[idx] = weight
 
-        decomp, vectors = differentiable_invariant_decomposition(
-            algebra_3d, b, threshold=1e-6
-        )
+        decomp, vectors = differentiable_invariant_decomposition(algebra_3d, b, threshold=1e-6)
 
         # Compute residual
         b_reconstructed = sum(decomp)
@@ -256,9 +249,7 @@ class TestBivectorDecomposition:
         b = b.clone()
         b.requires_grad_(True)
 
-        decomp, vectors = differentiable_invariant_decomposition(
-            algebra_3d, b, k=2
-        )
+        decomp, vectors = differentiable_invariant_decomposition(algebra_3d, b, k=2)
 
         # Components should track gradients
         for b_i in decomp:
@@ -504,6 +495,7 @@ class TestExpPolicy:
         expected = torch.zeros_like(identity)
         expected[0] = 1.0
         assert torch.allclose(identity, expected, atol=1e-3)
+
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

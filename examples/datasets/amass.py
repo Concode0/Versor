@@ -10,6 +10,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from core.algebra import CliffordAlgebra
 
+
 class AMASSDataset(Dataset):
     """Synthetic AMASS. Because the real one is huge and licensed.
 
@@ -22,36 +23,36 @@ class AMASSDataset(Dataset):
         self.algebra = algebra
         self.num_samples = num_samples
         self.subset = subset
-        
+
         self.classes = ['Walking', 'Running', 'Jumping']
         self.num_classes = len(self.classes)
-        
+
         self.data, self.labels = self._generate_synthetic_motion()
 
     def _generate_synthetic_motion(self):
         """Generates synthetic motion trajectories."""
-        feature_dim = 45 
+        feature_dim = 45
         data = []
         labels = []
-        
+
         # Random projection matrix
         P = np.random.randn(2, feature_dim)
-        
+
         for i in range(self.num_samples):
             label = np.random.randint(0, self.num_classes)
-            
-            if label == 0: # Walking
+
+            if label == 0:  # Walking
                 base = np.random.normal(loc=[-2, 0], scale=0.5, size=(2,))
-            elif label == 1: # Running
+            elif label == 1:  # Running
                 base = np.random.normal(loc=[2, 0], scale=0.5, size=(2,))
-            else: # Jumping
+            else:  # Jumping
                 base = np.random.normal(loc=[0, 3], scale=0.5, size=(2,))
-                
+
             motion_vec = np.tanh(np.dot(base, P)) + 0.1 * np.random.randn(feature_dim)
-            
+
             data.append(torch.tensor(motion_vec, dtype=torch.float32))
             labels.append(label)
-            
+
         return torch.stack(data), torch.tensor(labels, dtype=torch.long)
 
     def __len__(self):

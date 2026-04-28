@@ -108,9 +108,9 @@ class DeviceConfig:
             return torch.compile(model, backend=backend)
         except Exception as e:
             import warnings
+
             warnings.warn(
-                f"torch.compile(backend={backend!r}) failed: {e}. "
-                f"Falling back to eager mode.",
+                f"torch.compile(backend={backend!r}) failed: {e}. Falling back to eager mode.",
                 RuntimeWarning,
             )
             return model

@@ -20,16 +20,18 @@ class CriticalPointType(Enum):
 @dataclass
 class CriticalPoint:
     """A detected critical point in the loss landscape."""
-    params: torch.Tensor          # Parameter vector at critical point
-    loss: float                   # Loss value
-    morse_index: int              # Number of negative Hessian eigenvalues
-    eigenvalues: torch.Tensor     # Hessian eigenvalues (sorted ascending)
+
+    params: torch.Tensor  # Parameter vector at critical point
+    loss: float  # Loss value
+    morse_index: int  # Number of negative Hessian eigenvalues
+    eigenvalues: torch.Tensor  # Hessian eigenvalues (sorted ascending)
     point_type: CriticalPointType
-    step: int = 0                 # Training step when detected
+    step: int = 0  # Training step when detected
 
     @classmethod
-    def from_hessian(cls, params: torch.Tensor, loss: float,
-                     eigenvalues: torch.Tensor, step: int = 0) -> "CriticalPoint":
+    def from_hessian(
+        cls, params: torch.Tensor, loss: float, eigenvalues: torch.Tensor, step: int = 0
+    ) -> "CriticalPoint":
         n_neg = (eigenvalues < 0).sum().item()
         n_pos = (eigenvalues > 0).sum().item()
         if n_neg == 0:
@@ -48,14 +50,15 @@ class CriticalPoint:
         )
 
     def __repr__(self) -> str:
-        return (f"CriticalPoint({self.point_type.value}, "
-                f"loss={self.loss:.4f}, index={self.morse_index}, "
-                f"step={self.step})")
+        return (
+            f"CriticalPoint({self.point_type.value}, loss={self.loss:.4f}, index={self.morse_index}, step={self.step})"
+        )
 
 
 @dataclass
 class LandscapeMap:
     """Accumulated topology map of the loss landscape."""
+
     critical_points: List[CriticalPoint] = field(default_factory=list)
     curvature_history: List[float] = field(default_factory=list)
     gradient_norm_history: List[float] = field(default_factory=list)
@@ -67,15 +70,14 @@ class LandscapeMap:
 
     def lower_minima(self, current_loss: float) -> List[CriticalPoint]:
         """Return known minima with loss lower than current."""
-        return [cp for cp in self.critical_points
-                if cp.point_type == CriticalPointType.MINIMUM
-                and cp.loss < current_loss]
+        return [
+            cp for cp in self.critical_points if cp.point_type == CriticalPointType.MINIMUM and cp.loss < current_loss
+        ]
 
     def summary(self) -> str:
         n_min = sum(1 for c in self.critical_points if c.point_type == CriticalPointType.MINIMUM)
         n_sad = sum(1 for c in self.critical_points if c.point_type == CriticalPointType.SADDLE)
-        return (f"LandscapeMap: {n_min} minima, {n_sad} saddles | "
-                f"{len(self.plateau_episodes)} plateau episodes")
+        return f"LandscapeMap: {n_min} minima, {n_sad} saddles | {len(self.plateau_episodes)} plateau episodes"
 
 
 class LandscapeTopologySearch:
@@ -117,21 +119,17 @@ class LandscapeTopologySearch:
     def _flat_params(self, params: List[torch.Tensor]) -> torch.Tensor:
         return torch.cat([p.detach().reshape(-1) for p in params])
 
-    def _hessian_vector_product(
-        self, loss: torch.Tensor, params: List[torch.Tensor], v: torch.Tensor
-    ) -> torch.Tensor:
+    def _hessian_vector_product(self, loss: torch.Tensor, params: List[torch.Tensor], v: torch.Tensor) -> torch.Tensor:
         """Compute H*v via double backprop."""
         grads = torch.autograd.grad(loss, params, create_graph=True, allow_unused=True)
-        flat_grad = torch.cat([
-            g.reshape(-1) if g is not None else torch.zeros(p.numel(), device=p.device)
-            for g, p in zip(grads, params)
-        ])
+        flat_grad = torch.cat(
+            [g.reshape(-1) if g is not None else torch.zeros(p.numel(), device=p.device) for g, p in zip(grads, params)]
+        )
         gv = (flat_grad * v.detach()).sum()
         hvp = torch.autograd.grad(gv, params, allow_unused=True)
-        return torch.cat([
-            h.reshape(-1) if h is not None else torch.zeros(p.numel(), device=p.device)
-            for h, p in zip(hvp, params)
-        ])
+        return torch.cat(
+            [h.reshape(-1) if h is not None else torch.zeros(p.numel(), device=p.device) for h, p in zip(hvp, params)]
+        )
 
     def _lanczos_eigenvalues(
         self, loss: torch.Tensor, params: List[torch.Tensor], k: int = 10
@@ -174,28 +172,25 @@ class LandscapeTopologySearch:
         T = torch.zeros(m, m, device=device)
         for i, a in enumerate(alpha):
             T[i, i] = a
-        for i, b in enumerate(beta[1:min(len(beta), m)]):
-            T[i, i+1] = b
-            T[i+1, i] = b
+        for i, b in enumerate(beta[1 : min(len(beta), m)]):
+            T[i, i + 1] = b
+            T[i + 1, i] = b
 
         eigvals, eigvecs_T = torch.linalg.eigh(T)
         Q_mat = torch.stack(Q[:m])
         H_vecs = F.normalize(Q_mat.T @ eigvecs_T, dim=0)
         return eigvals.detach(), H_vecs.detach()
 
-    def check(
-        self, loss: torch.Tensor, params: List[torch.Tensor], step: int
-    ) -> Optional[CriticalPoint]:
+    def check(self, loss: torch.Tensor, params: List[torch.Tensor], step: int) -> Optional[CriticalPoint]:
         """Check if current point is a critical point. Returns CriticalPoint or None."""
         self._step = step
         if step % self.detect_every != 0:
             return None
 
         grads = torch.autograd.grad(loss, params, retain_graph=True, allow_unused=True)
-        flat_g = torch.cat([
-            g.reshape(-1) if g is not None else torch.zeros(p.numel(), device=p.device)
-            for g, p in zip(grads, params)
-        ])
+        flat_g = torch.cat(
+            [g.reshape(-1) if g is not None else torch.zeros(p.numel(), device=p.device) for g, p in zip(grads, params)]
+        )
         grad_norm = flat_g.norm().item()
 
         if grad_norm > self.grad_tol * 10:
@@ -203,9 +198,7 @@ class LandscapeTopologySearch:
 
         flat_p = self._flat_params(params)
         try:
-            eigenvalues, eigenvecs = self._lanczos_eigenvalues(
-                loss, params, k=min(20, flat_p.numel())
-            )
+            eigenvalues, eigenvecs = self._lanczos_eigenvalues(loss, params, k=min(20, flat_p.numel()))
             self._last_eigenvalues = eigenvalues
             self._last_eigenvecs = eigenvecs
             cp = CriticalPoint.from_hessian(flat_p, loss.item(), eigenvalues, step)

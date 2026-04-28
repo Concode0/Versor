@@ -59,7 +59,7 @@ class CurvatureProbe:
                 idx = 0
                 for p in params:
                     sz = p.numel()
-                    p.data += offset[idx:idx+sz].reshape(p.shape)
+                    p.data += offset[idx : idx + sz].reshape(p.shape)
                     idx += sz
                 loss_plus = loss_fn().item()
 
@@ -69,11 +69,11 @@ class CurvatureProbe:
                 idx = 0
                 for p in params:
                     sz = p.numel()
-                    p.data -= offset[idx:idx+sz].reshape(p.shape)
+                    p.data -= offset[idx : idx + sz].reshape(p.shape)
                     idx += sz
                 loss_minus = loss_fn().item()
 
-                k = (loss_plus - 2 * loss_0 + loss_minus) / (self.probe_radius ** 2)
+                k = (loss_plus - 2 * loss_0 + loss_minus) / (self.probe_radius**2)
                 curvatures.append(k)
 
                 for p, o in zip(params, orig):
@@ -92,10 +92,12 @@ class CurvatureProbe:
         loss_val = loss_fn()
         try:
             grads = torch.autograd.grad(loss_val, params, allow_unused=True)
-            g_flat = torch.cat([
-                g.reshape(-1) if g is not None else torch.zeros(p.numel(), device=p.device)
-                for g, p in zip(grads, params)
-            ])
+            g_flat = torch.cat(
+                [
+                    g.reshape(-1) if g is not None else torch.zeros(p.numel(), device=p.device)
+                    for g, p in zip(grads, params)
+                ]
+            )
             grad_norm = g_flat.norm().item()
         except Exception:
             grad_norm = 0.0
@@ -180,7 +182,7 @@ class LorentzWarpOptimizer:
 
     @property
     def gamma(self) -> float:
-        return 1.0 / math.sqrt(max(1.0 - self._beta ** 2, 1e-6))
+        return 1.0 / math.sqrt(max(1.0 - self._beta**2, 1e-6))
 
     def update(
         self,
@@ -188,10 +190,7 @@ class LorentzWarpOptimizer:
         plateau_score: float,
         min_curvature_dir: torch.Tensor,
     ) -> bool:
-        on_plateau = (
-            grad_norm < self.plateau_grad_thresh
-            and plateau_score > self.plateau_curvature_thresh
-        )
+        on_plateau = grad_norm < self.plateau_grad_thresh and plateau_score > self.plateau_curvature_thresh
 
         if on_plateau:
             self._on_plateau = True
@@ -213,7 +212,7 @@ class LorentzWarpOptimizer:
             g = self.gamma
             d = self._boost_dir
             if d.shape[0] == flat_grad_shape:
-                boost_factor = 1.0 + (g - 1.0) * d ** 2
+                boost_factor = 1.0 + (g - 1.0) * d**2
                 lr_vec = lr_vec * boost_factor
 
         return lr_vec

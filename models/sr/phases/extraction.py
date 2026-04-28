@@ -23,7 +23,10 @@ from core.analysis import GeodesicFlow, MetricSearch
 from models.sr.translator import RotorTranslator, RotorTerm
 from models.sr.net import SRGBN
 from models.sr.utils import (
-    safe_sympy_solve, safe_float, standardize, subsample,
+    safe_sympy_solve,
+    safe_float,
+    standardize,
+    subsample,
     make_lambdify_fn,
 )
 from optimizers.riemannian import RiemannianAdam
@@ -34,8 +37,7 @@ logger = logging.getLogger(__name__)
 class ExtractionMixin:
     """Phase 1 methods: per-group extraction, training, GA elimination."""
 
-    def _process_group(self, group, group_idx, prep, X_orig, y_orig,
-                       X_norm, y_norm):
+    def _process_group(self, group, group_idx, prep, X_orig, y_orig, X_norm, y_norm):
         """Single-rotor iterative extraction for one variable group.
 
         Dispatches to implicit or explicit extraction based on prep result.
@@ -46,16 +48,27 @@ class ExtractionMixin:
         # If implicit mode selected, use implicit extraction for this group
         if prep.implicit_form is not None and prep.implicit_form.mode == "implicit":
             terms, stages = self._process_group_implicit(
-                group, group_idx, prep, X_orig, y_orig, X_norm, y_norm,
+                group,
+                group_idx,
+                prep,
+                X_orig,
+                y_orig,
+                X_norm,
+                y_norm,
             )
             return terms, stages
 
         return self._process_group_explicit(
-            group, group_idx, prep, X_orig, y_orig, X_norm, y_norm,
+            group,
+            group_idx,
+            prep,
+            X_orig,
+            y_orig,
+            X_norm,
+            y_norm,
         )
 
-    def _process_group_implicit(self, group, group_idx, prep, X_orig, y_orig,
-                                 X_norm, y_norm):
+    def _process_group_implicit(self, group, group_idx, prep, X_orig, y_orig, X_norm, y_norm):
         """Implicit extraction: train F(x,y)=0, extract via sympy.solve.
 
         Returns:
@@ -73,9 +86,7 @@ class ExtractionMixin:
         impl_algebra = CliffordAlgebra(p + 1, q, r, device=self.device)
 
         # Augmented data Z = [X_group_norm, y_norm]
-        X_group_norm = standardize(
-            torch.tensor(X_orig[:, var_indices], dtype=torch.float32, device=self.device)
-        )
+        X_group_norm = standardize(torch.tensor(X_orig[:, var_indices], dtype=torch.float32, device=self.device))
         Z = torch.cat([X_group_norm, y_norm], dim=-1)  # [N, k+1]
 
         # Train implicit model
@@ -83,7 +94,9 @@ class ExtractionMixin:
 
         auto = SRGBN.auto_config(Z.shape[0], n_group_vars + 1, impl_algebra.dim)
         model = SRGBN.single_rotor(
-            impl_algebra, n_group_vars + 1, channels=max(auto["channels"], 16),
+            impl_algebra,
+            n_group_vars + 1,
+            channels=max(auto["channels"], 16),
         )
         model = model.to(self.device)
 
@@ -94,7 +107,9 @@ class ExtractionMixin:
                     torch.nn.init.normal_(m.grade0_bias, std=1.0)
 
         model = solver.train_implicit(
-            model, Z, impl_algebra,
+            model,
+            Z,
+            impl_algebra,
             epochs=max(self.stage_epochs * 3, 60),
             lr=self.stage_lr,
         )
@@ -113,10 +128,15 @@ class ExtractionMixin:
             impl_terms = translator.translate_implicit(model, target_var_idx=n_group_vars)
 
         if not impl_terms:
-            logger.info(f"  Group {group_idx}: implicit extraction found no terms, "
-                         f"falling back to explicit")
+            logger.info(f"  Group {group_idx}: implicit extraction found no terms, falling back to explicit")
             return self._process_group_explicit(
-                group, group_idx, prep, X_orig, y_orig, X_norm, y_norm,
+                group,
+                group_idx,
+                prep,
+                X_orig,
+                y_orig,
+                X_norm,
+                y_norm,
             )
 
         # Build F expression and solve for y
@@ -125,7 +145,7 @@ class ExtractionMixin:
             F_expr += t.weight * t.expr
 
         y_sym = sympy.Symbol("y")
-        var_syms = [sympy.Symbol(f"x{i+1}") for i in range(n_group_vars)]
+        var_syms = [sympy.Symbol(f"x{i + 1}") for i in range(n_group_vars)]
 
         explicit_expr = safe_sympy_solve(F_expr, y_sym)
 
@@ -142,6 +162,7 @@ class ExtractionMixin:
                 if s not in var_syms and s != y_sym:
                     explicit_expr = explicit_expr.subs(s, 0)
             from models.sr.numerics import safe_simplify
+
             n_terms = len(sympy.Add.make_args(explicit_expr))
             if n_terms <= 20:
                 explicit_expr = safe_simplify(explicit_expr)
@@ -158,6 +179,7 @@ class ExtractionMixin:
 
         # Evaluate R2
         from models.sr.utils import safe_evaluate_term
+
         r2 = 0.0
         if result_term.fn is not None:
             y_hat = safe_evaluate_term(result_term.fn, X_orig, var_indices)
@@ -168,19 +190,24 @@ class ExtractionMixin:
             logger.info(f"  Group {group_idx}: implicit extraction R2={r2:.4f}")
 
         stage = StageResult(
-            stage_idx=0, signature=group.signature,
-            terms=[result_term], fitted_values=np.zeros(len(y_orig)),
-            residual_before=y_orig, residual_after=np.zeros(len(y_orig)),
-            curvature_before=0.5, curvature_after=0.0,
-            coherence_before=0.5, coherence_after=0.5,
-            rotor_planes=[], accepted=True,
+            stage_idx=0,
+            signature=group.signature,
+            terms=[result_term],
+            fitted_values=np.zeros(len(y_orig)),
+            residual_before=y_orig,
+            residual_after=np.zeros(len(y_orig)),
+            curvature_before=0.5,
+            curvature_after=0.0,
+            coherence_before=0.5,
+            coherence_after=0.5,
+            rotor_planes=[],
+            accepted=True,
             group_idx=group_idx,
         )
 
         return [result_term], [stage]
 
-    def _process_group_explicit(self, group, group_idx, prep, X_orig, y_orig,
-                                 X_norm, y_norm):
+    def _process_group_explicit(self, group, group_idx, prep, X_orig, y_orig, X_norm, y_norm):
         """Explicit single-rotor iterative extraction for one variable group.
 
         Uses the relationship graph (if available) to guide extraction
@@ -198,21 +225,25 @@ class ExtractionMixin:
 
         # Data for this group
         X_group = X_orig[:, var_indices]
-        X_group_norm = standardize(
-            torch.tensor(X_group, dtype=torch.float32, device=self.device)
-        )
+        X_group_norm = standardize(torch.tensor(X_group, dtype=torch.float32, device=self.device))
 
         # Build residual multivector for GA elimination
         residual = y_orig.copy()
-        residual_mv = algebra.embed_vector(
-            torch.tensor(
-                np.column_stack([X_group, residual.reshape(-1, 1)]),
-                dtype=torch.float32, device=self.device,
+        residual_mv = (
+            algebra.embed_vector(
+                torch.tensor(
+                    np.column_stack([X_group, residual.reshape(-1, 1)]),
+                    dtype=torch.float32,
+                    device=self.device,
+                )
             )
-        ) if algebra.n >= n_group_vars + 1 else None
+            if algebra.n >= n_group_vars + 1
+            else None
+        )
 
         prev_coherence = safe_float(
-            self._measure_coherence(X_group, residual, algebra), 0.5,
+            self._measure_coherence(X_group, residual, algebra),
+            0.5,
         )
 
         # Graph-guided extraction ordering
@@ -220,20 +251,18 @@ class ExtractionMixin:
         if self.graph_guided and prep.relationship_graph is not None:
             group_edges = prep.relationship_graph.edges_for_group(group_idx)
             extraction_order = self._plan_extraction_order(
-                group_edges, group,
+                group_edges,
+                group,
             )
             if extraction_order:
-                logger.info(
-                    f"  Group {group_idx}: graph-guided order with "
-                    f"{len(extraction_order)} target planes"
-                )
+                logger.info(f"  Group {group_idx}: graph-guided order with {len(extraction_order)} target planes")
 
         terms = []
         stages = []
         ss_tot = np.sum((y_orig - y_orig.mean()) ** 2) + 1e-12
 
         for stage_idx in range(self.max_stages):
-            r2_current = 1.0 - np.sum(residual ** 2) / ss_tot
+            r2_current = 1.0 - np.sum(residual**2) / ss_tot
             if r2_current >= self.r2_target:
                 logger.info(f"  Group {group_idx} R2={r2_current:.6f} >= target")
                 break
@@ -243,36 +272,44 @@ class ExtractionMixin:
             auto = SRGBN.auto_config(N_group, n_group_vars, algebra.dim)
             channels = max(auto["channels"], 8)
             model = SRGBN.single_rotor(
-                algebra, n_group_vars, channels=channels,
+                algebra,
+                n_group_vars,
+                channels=channels,
             )
             model = model.to(self.device)
 
             # Warm-start: prefer graph-guided plane bias, fall back to SVD
             plane_biased = False
-            if (self.graph_guided and stage_idx < len(extraction_order)):
+            if self.graph_guided and stage_idx < len(extraction_order):
                 target = extraction_order[stage_idx]
                 plane_biased = self._bias_rotor_to_plane(
-                    model, target[0], target[1], target[2], algebra,
+                    model,
+                    target[0],
+                    target[1],
+                    target[2],
+                    algebra,
                 )
             if not plane_biased and self.svd_warmstart and group.svd_Vt is not None:
                 model.svd_warmstart(group.svd_Vt, algebra)
 
             # Normalize residual for training
-            residual_t = torch.tensor(
-                residual, dtype=torch.float32, device=self.device
-            ).unsqueeze(-1)
+            residual_t = torch.tensor(residual, dtype=torch.float32, device=self.device).unsqueeze(-1)
             res_mean = residual_t.mean()
             res_std = residual_t.std().clamp(min=1e-8)
             residual_norm = (residual_t - res_mean) / res_std
 
             # Probe curvature
             probe_curv = safe_float(
-                self._measure_curvature(X_group, residual, algebra), 0.5,
+                self._measure_curvature(X_group, residual, algebra),
+                0.5,
             )
 
             # Train with MSE-primary objective for single-rotor extraction
             model, curv_after, coh_after = self._train_single_rotor(
-                model, X_group_norm, residual_norm, algebra,
+                model,
+                X_group_norm,
+                residual_norm,
+                algebra,
             )
             curv_after = safe_float(curv_after, 0.5)
             coh_after = safe_float(coh_after, 0.5)
@@ -293,7 +330,9 @@ class ExtractionMixin:
             if residual_mv is not None:
                 blade = self._extract_dominant_blade(model, algebra)
                 residual_mv, elim_result = self._orthogonal_eliminate(
-                    residual_mv, blade, algebra,
+                    residual_mv,
+                    blade,
+                    algebra,
                 )
 
             # Numerical residual update (for R2 tracking)
@@ -310,12 +349,13 @@ class ExtractionMixin:
 
             # Coherence check
             new_coh = safe_float(
-                self._measure_coherence(X_group, new_residual, algebra), 0.5,
+                self._measure_coherence(X_group, new_residual, algebra),
+                0.5,
             )
             degradation = prev_coherence - new_coh
 
             ss_tot_local = np.sum((residual - residual.mean()) ** 2) + 1e-12
-            ss_res_local = np.sum(new_residual ** 2)
+            ss_res_local = np.sum(new_residual**2)
             r2_extraction = 1.0 - ss_res_local / ss_tot_local
 
             n_vars = X_group.shape[1]
@@ -413,9 +453,7 @@ class ExtractionMixin:
         # Find the RotorLayer's bivector parameter
         rotor_layer = None
         for m in model.modules():
-            if hasattr(m, 'bivector') and isinstance(
-                getattr(m, 'bivector', None), torch.nn.Parameter
-            ):
+            if hasattr(m, 'bivector') and isinstance(getattr(m, 'bivector', None), torch.nn.Parameter):
                 rotor_layer = m
                 break
 
@@ -452,10 +490,7 @@ class ExtractionMixin:
             elif bv.ndim == 1:
                 bv[target_pos] = init_angle
 
-        logger.info(
-            f"    Biased rotor to plane e{var_i}^e{var_j} "
-            f"({edge_type}, angle={init_angle:.2f})"
-        )
+        logger.info(f"    Biased rotor to plane e{var_i}^e{var_j} ({edge_type}, angle={init_angle:.2f})")
         return True
 
     def _orthogonal_eliminate(self, data_mv, blade, algebra):
@@ -471,19 +506,17 @@ class ExtractionMixin:
         proj_energy = proj.pow(2).sum(dim=-1)
 
         # Soft sigmoid mask
-        soft_mask = torch.sigmoid(
-            self.soft_rejection_alpha * (proj_energy - self.soft_rejection_threshold)
-        )
+        soft_mask = torch.sigmoid(self.soft_rejection_alpha * (proj_energy - self.soft_rejection_threshold))
         rejected = data_mv - soft_mask.unsqueeze(-1) * proj
 
         proj_energy_total = proj_energy.sum().item()
         rej_energy = rejected.pow(2).sum().item()
 
         # Fraction preserved (borderline terms kept)
-        near_threshold = (proj_energy > self.soft_rejection_threshold * 0.5) & \
-                         (proj_energy < self.soft_rejection_threshold * 2.0)
-        preserved = (1.0 - soft_mask[near_threshold]).mean().item() \
-            if near_threshold.any() else 1.0
+        near_threshold = (proj_energy > self.soft_rejection_threshold * 0.5) & (
+            proj_energy < self.soft_rejection_threshold * 2.0
+        )
+        preserved = (1.0 - soft_mask[near_threshold]).mean().item() if near_threshold.any() else 1.0
 
         return rejected, OrthogonalEliminationResult(
             projection_energy=proj_energy_total,
@@ -546,7 +579,7 @@ class ExtractionMixin:
     def _build_stage_model(self, algebra, n_train, stage_idx=0):
         """Build a stage-specific SRGBN with capacity decay."""
         auto = SRGBN.auto_config(n_train, self.in_features, algebra.dim)
-        decay = 0.7 ** stage_idx
+        decay = 0.7**stage_idx
         channels = max(4, int(auto["channels"] * decay))
         num_layers = auto["num_layers"]
 
@@ -565,9 +598,7 @@ class ExtractionMixin:
             (model, final_curvature, final_coherence)
         """
         gf = GeodesicFlow(algebra, k=self.geodesic_k)
-        optimizer = RiemannianAdam(
-            model.parameters(), lr=self.stage_lr, algebra=algebra
-        )
+        optimizer = RiemannianAdam(model.parameters(), lr=self.stage_lr, algebra=algebra)
         N = X_norm.shape[0]
         micro_bs = min(256, N)
 
@@ -626,9 +657,7 @@ class ExtractionMixin:
             (model, final_curvature, final_coherence)
         """
         gf = GeodesicFlow(algebra, k=self.geodesic_k)
-        optimizer = RiemannianAdam(
-            model.parameters(), lr=self.stage_lr, algebra=algebra
-        )
+        optimizer = RiemannianAdam(model.parameters(), lr=self.stage_lr, algebra=algebra)
         N = X_norm.shape[0]
         micro_bs = min(256, N)
 
@@ -696,7 +725,7 @@ class ExtractionMixin:
         if d > n:
             # Keep residual (last column), truncate X columns to fit
             residual_col = data[:, -1:]
-            x_cols = data[:, :n - 1]
+            x_cols = data[:, : n - 1]
             data = torch.cat([x_cols, residual_col], dim=-1)
         elif d < n:
             pad = torch.zeros(data.shape[0], n - d, device=self.device)

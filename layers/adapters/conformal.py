@@ -37,8 +37,7 @@ class ConformalEmbedding(CliffordModule):
         super().__init__(algebra)
         d = euclidean_dim
         assert algebra.p >= d + 1 and algebra.q >= 1, (
-            f"Conformal embedding needs Cl(>={d + 1}, >=1), "
-            f"got Cl({algebra.p},{algebra.q},{algebra.r})"
+            f"Conformal embedding needs Cl(>={d + 1}, >=1), got Cl({algebra.p},{algebra.q},{algebra.r})"
         )
         self.euclidean_dim = d
 
@@ -68,8 +67,7 @@ class ConformalEmbedding(CliffordModule):
             Conformal multivectors [..., dim].
         """
         d = self.euclidean_dim
-        x_mv = torch.zeros(*x.shape[:-1], self.algebra.dim,
-                            device=x.device, dtype=x.dtype)
+        x_mv = torch.zeros(*x.shape[:-1], self.algebra.dim, device=x.device, dtype=x.dtype)
         x_mv.scatter_(-1, self._g1_idx.expand_as(x), x)
 
         x_sq = (x * x).sum(dim=-1, keepdim=True)  # [..., 1]

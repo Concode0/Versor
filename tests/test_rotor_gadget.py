@@ -18,7 +18,6 @@ from layers import CliffordLinear
 pytestmark = pytest.mark.unit
 
 
-
 class TestRotorGadgetShapes:
     """Test shape preservation and basic functionality."""
 
@@ -38,13 +37,16 @@ class TestRotorGadgetShapes:
 
         assert out.shape == (batch_size, 8, algebra_2d.dim)
 
-    @pytest.mark.parametrize("in_ch,out_ch,num_pairs", [
-        (1, 1, 1),
-        (1, 10, 2),
-        (10, 1, 2),
-        (5, 5, 3),
-        (16, 32, 4),
-    ])
+    @pytest.mark.parametrize(
+        "in_ch,out_ch,num_pairs",
+        [
+            (1, 1, 1),
+            (1, 10, 2),
+            (10, 1, 2),
+            (5, 5, 3),
+            (16, 32, 4),
+        ],
+    )
     def test_various_channel_combinations(self, algebra_3d, in_ch, out_ch, num_pairs):
         """Test different input/output channel combinations."""
         layer = RotorGadget(
@@ -109,22 +111,24 @@ class TestRotorProperties:
         # Check unit norm by computing R * ~R = 1 (scalar component)
         # For a unit rotor, the scalar part of R * ~R should be 1
         for i in range(layer.num_rotor_pairs):
-            R = R_left[i:i+1, :]
+            R = R_left[i : i + 1, :]
             R_rev = algebra_3d.reverse(R)
             product = algebra_3d.geometric_product(R, R_rev)
 
             # Scalar component should be ~1
             scalar_part = product[0, 0]
-            assert torch.allclose(scalar_part, torch.tensor(1.0), atol=1e-4), \
+            assert torch.allclose(scalar_part, torch.tensor(1.0), atol=1e-4), (
                 f"Left rotor {i} scalar(R * ~R) = {scalar_part.item()}, expected 1.0"
+            )
 
             # Similar for right rotor
-            R = algebra_3d.reverse(R_right_rev[i:i+1, :])
-            R_rev = R_right_rev[i:i+1, :]
+            R = algebra_3d.reverse(R_right_rev[i : i + 1, :])
+            R_rev = R_right_rev[i : i + 1, :]
             product = algebra_3d.geometric_product(R, R_rev)
             scalar_part = product[0, 0]
-            assert torch.allclose(scalar_part, torch.tensor(1.0), atol=1e-4), \
+            assert torch.allclose(scalar_part, torch.tensor(1.0), atol=1e-4), (
                 f"Right rotor {i} scalar(R * ~R) = {scalar_part.item()}, expected 1.0"
+            )
 
     def test_rotor_inverse_property(self, algebra_3d):
         """Verify that R * ~R = 1 for all rotors."""
@@ -140,7 +144,7 @@ class TestRotorProperties:
 
         # For left rotors: R * ~R should be scalar 1
         for i in range(layer.num_rotor_pairs):
-            R = R_left[i:i+1, :]
+            R = R_left[i : i + 1, :]
             R_rev = algebra_3d.reverse(R)
             product = algebra_3d.geometric_product(R, R_rev)
 
@@ -148,20 +152,18 @@ class TestRotorProperties:
             expected = torch.zeros_like(product)
             expected[0, 0] = 1.0  # Scalar component
 
-            assert torch.allclose(product, expected, atol=1e-5), \
-                f"Left rotor {i} * reverse is not identity"
+            assert torch.allclose(product, expected, atol=1e-5), f"Left rotor {i} * reverse is not identity"
 
         # For right rotors
         for i in range(layer.num_rotor_pairs):
-            R_rev = R_right_rev[i:i+1, :]
+            R_rev = R_right_rev[i : i + 1, :]
             R = algebra_3d.reverse(R_rev)  # Reverse back
             product = algebra_3d.geometric_product(R, R_rev)
 
             expected = torch.zeros_like(product)
             expected[0, 0] = 1.0
 
-            assert torch.allclose(product, expected, atol=1e-5), \
-                f"Right rotor {i} * reverse is not identity"
+            assert torch.allclose(product, expected, atol=1e-5), f"Right rotor {i} * reverse is not identity"
 
 
 class TestGradientFlow:
@@ -200,7 +202,7 @@ class TestGradientFlow:
         x = torch.randn(4, 8, algebra_3d.dim, requires_grad=True)
         out = layer(x)
 
-        loss = (out ** 2).sum()
+        loss = (out**2).sum()
         loss.backward()
 
         assert not torch.isnan(layer.bivector_left.grad).any()
@@ -285,6 +287,7 @@ class TestExpPolicy:
     def test_with_exact_policy(self, algebra_3d):
         """Test layer with EXACT exp policy."""
         from core.decomposition import ExpPolicy
+
         algebra_3d.exp_policy = ExpPolicy.PRECISE
 
         layer = RotorGadget(
@@ -362,12 +365,13 @@ class TestParameterEfficiency:
         rotor_params = sum(p.numel() for p in rotor.parameters())
 
         # Rotor should have fewer parameters
-        assert rotor_params < traditional_params, \
+        assert rotor_params < traditional_params, (
             f"Rotor params ({rotor_params}) >= Traditional params ({traditional_params})"
+        )
 
         print(f"Traditional: {traditional_params} params")
         print(f"Rotor: {rotor_params} params")
-        print(f"Reduction: {100 * (1 - rotor_params/traditional_params):.1f}%")
+        print(f"Reduction: {100 * (1 - rotor_params / traditional_params):.1f}%")
 
     def test_scaling_behavior(self, algebra_3d):
         """Test how parameters scale with channel count."""
@@ -398,8 +402,7 @@ class TestParameterEfficiency:
         gap_small = traditional_params[0] - rotor_params[0]
         gap_large = traditional_params[-1] - rotor_params[-1]
 
-        assert gap_large > gap_small, \
-            "Parameter advantage should increase with scale"
+        assert gap_large > gap_small, "Parameter advantage should increase with scale"
 
 
 class TestIntegration:
@@ -545,13 +548,7 @@ class TestShuffleOptions:
 
     def test_no_shuffle_default(self, algebra_3d):
         """Test that shuffle='none' is the default and works correctly."""
-        layer = RotorGadget(
-            algebra=algebra_3d,
-            in_channels=8,
-            out_channels=8,
-            num_rotor_pairs=2,
-            shuffle='none'
-        )
+        layer = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle='none')
 
         x = torch.randn(2, 8, algebra_3d.dim)
         out = layer(x)
@@ -562,13 +559,7 @@ class TestShuffleOptions:
 
     def test_fixed_shuffle(self, algebra_3d):
         """Test fixed shuffle creates consistent permutation."""
-        layer = RotorGadget(
-            algebra=algebra_3d,
-            in_channels=8,
-            out_channels=8,
-            num_rotor_pairs=2,
-            shuffle='fixed'
-        )
+        layer = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle='fixed')
 
         # Check that permutation exists and is valid
         assert layer.channel_permutation is not None
@@ -587,13 +578,7 @@ class TestShuffleOptions:
     def test_random_shuffle(self, algebra_3d):
         """Test random shuffle generates different permutations each forward pass."""
         torch.manual_seed(42)  # For reproducibility of test
-        layer = RotorGadget(
-            algebra=algebra_3d,
-            in_channels=8,
-            out_channels=8,
-            num_rotor_pairs=2,
-            shuffle='random'
-        )
+        layer = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle='random')
 
         assert layer.shuffle == 'random'
         assert layer.channel_permutation is None
@@ -621,13 +606,7 @@ class TestShuffleOptions:
         """Test that shuffle doesn't affect output shape."""
         x = torch.randn(2, 8, algebra_3d.dim)
 
-        layer = RotorGadget(
-            algebra=algebra_3d,
-            in_channels=8,
-            out_channels=16,
-            num_rotor_pairs=2,
-            shuffle=shuffle_mode
-        )
+        layer = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=16, num_rotor_pairs=2, shuffle=shuffle_mode)
 
         out = layer(x)
         assert out.shape == (2, 16, algebra_3d.dim)
@@ -635,13 +614,7 @@ class TestShuffleOptions:
     @pytest.mark.parametrize("shuffle_mode", ['none', 'fixed', 'random'])
     def test_shuffle_gradient_flow(self, algebra_3d, shuffle_mode):
         """Test that gradients flow correctly with shuffle."""
-        layer = RotorGadget(
-            algebra=algebra_3d,
-            in_channels=8,
-            out_channels=8,
-            num_rotor_pairs=2,
-            shuffle=shuffle_mode
-        )
+        layer = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle=shuffle_mode)
 
         x = torch.randn(2, 8, algebra_3d.dim, requires_grad=True)
         out = layer(x)
@@ -655,21 +628,9 @@ class TestShuffleOptions:
 
     def test_fixed_shuffle_different_per_layer(self, algebra_3d):
         """Test that different layer instances get different fixed permutations."""
-        layer1 = RotorGadget(
-            algebra=algebra_3d,
-            in_channels=8,
-            out_channels=8,
-            num_rotor_pairs=2,
-            shuffle='fixed'
-        )
+        layer1 = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle='fixed')
 
-        layer2 = RotorGadget(
-            algebra=algebra_3d,
-            in_channels=8,
-            out_channels=8,
-            num_rotor_pairs=2,
-            shuffle='fixed'
-        )
+        layer2 = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle='fixed')
 
         # Different instances should have different permutations
         # (with very high probability)
@@ -678,12 +639,7 @@ class TestShuffleOptions:
     def test_shuffle_in_clifford_linear_backend(self, algebra_3d):
         """Test shuffle parameter works via CliffordLinear backend."""
         layer = CliffordLinear(
-            algebra=algebra_3d,
-            in_channels=8,
-            out_channels=8,
-            backend='rotor',
-            num_rotor_pairs=2,
-            shuffle='fixed'
+            algebra=algebra_3d, in_channels=8, out_channels=8, backend='rotor', num_rotor_pairs=2, shuffle='fixed'
         )
 
         x = torch.randn(2, 8, algebra_3d.dim)
@@ -696,13 +652,7 @@ class TestShuffleOptions:
     @pytest.mark.parametrize("shuffle_mode", ['none', 'fixed', 'random'])
     def test_shuffle_repr(self, algebra_3d, shuffle_mode):
         """Test that shuffle appears in string representation."""
-        layer = RotorGadget(
-            algebra=algebra_3d,
-            in_channels=8,
-            out_channels=8,
-            num_rotor_pairs=2,
-            shuffle=shuffle_mode
-        )
+        layer = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle=shuffle_mode)
 
         repr_str = repr(layer)
         assert f'shuffle={shuffle_mode}' in repr_str

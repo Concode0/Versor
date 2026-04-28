@@ -85,11 +85,11 @@ class GeodesicFlow:
         """
         N = mv.shape[0]
         k = min(self.k, N - 1)
-        diff = mv.unsqueeze(1) - mv.unsqueeze(0)     # [N, N, dim]
-        dists = diff.norm(dim=-1)                    # [N, N]
+        diff = mv.unsqueeze(1) - mv.unsqueeze(0)  # [N, N, dim]
+        dists = diff.norm(dim=-1)  # [N, N]
         dists.fill_diagonal_(float('inf'))
         _, idx = dists.topk(k, dim=-1, largest=False)
-        return idx                                    # [N, k]
+        return idx  # [N, k]
 
     def _connection_bivectors(self, mv: torch.Tensor) -> torch.Tensor:
         """Computes unit connection bivectors for all (point, neighbour) pairs.
@@ -109,14 +109,14 @@ class GeodesicFlow:
         k = min(self.k, N - 1)
         nn_idx = self._knn(mv)
 
-        neighbors = mv[nn_idx]                          # [N, k, dim]
+        neighbors = mv[nn_idx]  # [N, k, dim]
         xi = mv.unsqueeze(1).expand(N, k, D).reshape(N * k, D)
         xj_rev = self.algebra.reverse(neighbors.reshape(N * k, D))
 
         # For grade-1 inputs, <xi * ~xj>_2 = wedge(xi, xj_rev) -- single pass
-        bv_raw = self.algebra.wedge(xi, xj_rev)                   # [N*k, dim]
+        bv_raw = self.algebra.wedge(xi, xj_rev)  # [N*k, dim]
         bv_norm = bv_raw.norm(dim=-1, keepdim=True).clamp(min=self.algebra.eps)
-        return (bv_raw / bv_norm).reshape(N, k, D)               # [N, k, dim]
+        return (bv_raw / bv_norm).reshape(N, k, D)  # [N, k, dim]
 
     def flow_bivectors(self, mv: torch.Tensor) -> torch.Tensor:
         """Computes the mean flow bivector at each data point.
@@ -138,8 +138,8 @@ class GeodesicFlow:
         Returns:
             torch.Tensor: ``[N, dim]`` mean flow bivectors.
         """
-        bv = self._connection_bivectors(mv)   # [N, k, dim]
-        return bv.mean(dim=1)                 # [N, dim]
+        bv = self._connection_bivectors(mv)  # [N, k, dim]
+        return bv.mean(dim=1)  # [N, dim]
 
     def _coherence_tensor(self, mv: torch.Tensor) -> torch.Tensor:
         """Differentiable coherence -- returns a scalar tensor with grad_fn.
@@ -150,15 +150,15 @@ class GeodesicFlow:
         Returns:
             torch.Tensor: Scalar coherence in [0, 1].
         """
-        bv = self._connection_bivectors(mv)   # [N, k, dim]
+        bv = self._connection_bivectors(mv)  # [N, k, dim]
         N, k, D = bv.shape
 
-        bi = bv.unsqueeze(2)                  # [N, k, 1, dim]
-        bj = bv.unsqueeze(1)                  # [N, 1, k, dim]
-        abs_cos = (bi * bj).sum(dim=-1).abs() # [N, k, k]
+        bi = bv.unsqueeze(2)  # [N, k, 1, dim]
+        bj = bv.unsqueeze(1)  # [N, 1, k, dim]
+        abs_cos = (bi * bj).sum(dim=-1).abs()  # [N, k, k]
 
         mask = ~torch.eye(k, dtype=torch.bool, device=mv.device)  # [k, k]
-        off_diag = abs_cos[:, mask]           # [N, k*(k-1)]
+        off_diag = abs_cos[:, mask]  # [N, k*(k-1)]
         return off_diag.mean()
 
     def coherence(self, mv: torch.Tensor) -> float:
@@ -194,18 +194,18 @@ class GeodesicFlow:
         Returns:
             torch.Tensor: Scalar curvature in [0, 1].
         """
-        bv = self._connection_bivectors(mv)   # [N, k, dim]
+        bv = self._connection_bivectors(mv)  # [N, k, dim]
         N, k, D = bv.shape
-        nn_idx = self._knn(mv)                # [N, k_nn]
+        nn_idx = self._knn(mv)  # [N, k_nn]
 
-        bi = bv.unsqueeze(2)                             # [N, k, 1, dim]
-        bj_all = bv[nn_idx]                              # [N, k_nn, k, dim]
+        bi = bv.unsqueeze(2)  # [N, k, 1, dim]
+        bj_all = bv[nn_idx]  # [N, k_nn, k, dim]
 
-        bj = bj_all[:, 0]                                # [N, k, dim]
-        bj = bj.unsqueeze(1)                             # [N, 1, k, dim]
+        bj = bj_all[:, 0]  # [N, k, dim]
+        bj = bj.unsqueeze(1)  # [N, 1, k, dim]
 
-        cross_cos = (bi * bj).sum(dim=-1).abs()          # [N, k, k]
-        alignment = cross_cos.mean(dim=(-1, -2))         # [N]
+        cross_cos = (bi * bj).sum(dim=-1).abs()  # [N, k, k]
+        alignment = cross_cos.mean(dim=(-1, -2))  # [N]
 
         return 1.0 - alignment.mean()
 
@@ -263,11 +263,11 @@ class GeodesicFlow:
 
         # a_inv = ~a / <a . ~a>_0
         a_rev = self.algebra.reverse(a)
-        a_sq = (a * a_rev)[..., 0:1].clamp(min=self.algebra.eps)   # grade-0 scalar
-        a_inv = a_rev / a_sq                            # [1, dim]
+        a_sq = (a * a_rev)[..., 0:1].clamp(min=self.algebra.eps)  # grade-0 scalar
+        a_inv = a_rev / a_sq  # [1, dim]
 
         # Transition element T = a_inv . b
-        T = self.algebra.geometric_product(a_inv, b)    # [1, dim]
+        T = self.algebra.geometric_product(a_inv, b)  # [1, dim]
 
         # Log approximation: grade-2 part of (T - 1)
         T_shift = T.clone()
@@ -289,6 +289,7 @@ class GeodesicFlow:
         In Cl(n), the bivector space has ``n*(n-1)/2`` dimensions.
         """
         import math
+
         n = self.algebra.n
         d = n * (n - 1) // 2
         if d <= 1:
@@ -327,8 +328,8 @@ class GeodesicFlow:
             'causal': is_causal,
             'label': (
                 'Causal - smooth, aligned flow (low curvature)'
-                if is_causal else
-                'Noisy - fragmented, colliding flow (high curvature)'
+                if is_causal
+                else 'Noisy - fragmented, colliding flow (high curvature)'
             ),
         }
 
@@ -344,14 +345,14 @@ class GeodesicFlow:
         Returns:
             torch.Tensor: ``[N]`` coherence scores in [0, 1].
         """
-        bv = self._connection_bivectors(mv)   # [N, k, dim]
+        bv = self._connection_bivectors(mv)  # [N, k, dim]
         N, k, D = bv.shape
 
-        bi = bv.unsqueeze(2)                  # [N, k, 1, dim]
-        bj = bv.unsqueeze(1)                  # [N, 1, k, dim]
-        abs_cos = (bi * bj).sum(dim=-1).abs() # [N, k, k]
+        bi = bv.unsqueeze(2)  # [N, k, 1, dim]
+        bj = bv.unsqueeze(1)  # [N, 1, k, dim]
+        abs_cos = (bi * bj).sum(dim=-1).abs()  # [N, k, k]
 
         mask = ~torch.eye(k, dtype=torch.bool, device=mv.device)  # [k, k]
         # Mean over off-diagonal pairs per point
         off_diag = abs_cos[:, mask].reshape(N, -1)  # [N, k*(k-1)]
-        return off_diag.mean(dim=1)                 # [N]
+        return off_diag.mean(dim=1)  # [N]

@@ -22,8 +22,10 @@ from models.blocks.gbn import GeometricBladeNetwork
 
 # --- Category: Analytic Functions ---
 
+
 class RosenbrockModel(nn.Module):
     """2D Rosenbrock function. Famous narrow curved valley."""
+
     def __init__(self, a: float = 1.0, b: float = 100.0):
         super().__init__()
         self.a = a
@@ -32,11 +34,12 @@ class RosenbrockModel(nn.Module):
         self.y = nn.Parameter(torch.tensor([1.5]))
 
     def forward(self) -> torch.Tensor:
-        return (self.a - self.x) ** 2 + self.b * (self.y - self.x ** 2) ** 2
+        return (self.a - self.x) ** 2 + self.b * (self.y - self.x**2) ** 2
 
 
 class RastriginModel(nn.Module):
     """N-dimensional Rastrigin function. Many local minima; global at x=0."""
+
     def __init__(self, n_dims: int = 4, A: float = 10.0):
         super().__init__()
         self.A = A
@@ -45,12 +48,13 @@ class RastriginModel(nn.Module):
 
     def forward(self) -> torch.Tensor:
         x = self.x
-        return self.A * self.n + (x ** 2 - self.A * torch.cos(2 * math.pi * x)).sum()
+        return self.A * self.n + (x**2 - self.A * torch.cos(2 * math.pi * x)).sum()
 
 
 class AckleyModel(nn.Module):
     """N-dimensional Ackley function. Nearly flat plateau with narrow central well.
     Tests Lorentz warp effectiveness."""
+
     def __init__(self, n_dims: int = 10, a: float = 20.0, b: float = 0.2, c: float = 2 * math.pi):
         super().__init__()
         self._a = a
@@ -60,7 +64,7 @@ class AckleyModel(nn.Module):
 
     def forward(self) -> torch.Tensor:
         x = self.x
-        sum_sq = (x ** 2).mean()
+        sum_sq = (x**2).mean()
         sum_cos = (torch.cos(self._c * x)).mean()
         return -self._a * torch.exp(-self._b * sum_sq.sqrt()) - torch.exp(sum_cos) + self._a + math.e
 
@@ -68,16 +72,18 @@ class AckleyModel(nn.Module):
 class StyblinskiTangModel(nn.Module):
     """N-dimensional Styblinski-Tang. Multiple asymmetric wells.
     Tests topology search for finding global basin."""
+
     def __init__(self, n_dims: int = 6):
         super().__init__()
         self.x = nn.Parameter(torch.randn(n_dims) * 3.0)
 
     def forward(self) -> torch.Tensor:
         x = self.x
-        return 0.5 * (x ** 4 - 16 * x ** 2 + 5 * x).sum()
+        return 0.5 * (x**4 - 16 * x**2 + 5 * x).sum()
 
 
 # --- Category: Geometric Primitives ---
+
 
 class SmallGBNModel(CliffordModule):
     """Small Geometric Blade Network for testing optimizer on actual GA model."""
@@ -155,9 +161,7 @@ class RotorRegistrationModel(CliffordModule):
 
     def angular_error(self) -> float:
         with torch.no_grad():
-            learned_bv = torch.zeros(
-                self.algebra.dim, device=self.gt_bivector.device
-            )
+            learned_bv = torch.zeros(self.algebra.dim, device=self.gt_bivector.device)
             learned_bv[self.rotor.grade_indices] = self.rotor.grade_weights[0]
             r_learned = self.algebra.exp(-0.5 * learned_bv.unsqueeze(0))
             r_gt = self.algebra.exp(-0.5 * self.gt_bivector.unsqueeze(0))
@@ -170,6 +174,7 @@ class RotorRegistrationModel(CliffordModule):
 class MinkowskiRotorModel(CliffordModule):
     """Fit a Lorentz boost in Cl(2,1) to align spacetime events.
     Tests optimizer on indefinite signature (mixed exp map regime)."""
+
     def __init__(self, n_events: int = 30, boost_rapidity: float = 0.8, device: str = 'cpu'):
         algebra = CliffordAlgebra(2, 1, device=device)
         super().__init__(algebra)
@@ -213,6 +218,7 @@ class MinkowskiRotorModel(CliffordModule):
 class ConformalRegistrationModel(CliffordModule):
     """Fit a conformal rotor in Cl(4,1) for rotation+translation.
     Tests optimizer on 32-dimensional multivectors."""
+
     def __init__(self, n_points: int = 40, device: str = 'cpu'):
         algebra = CliffordAlgebra(4, 1, device=device)
         super().__init__(algebra)
@@ -254,6 +260,7 @@ class ConformalRegistrationModel(CliffordModule):
 class MultiRotorRegistrationModel(CliffordModule):
     """Fit a MultiRotorLayer to align multi-cluster point clouds.
     Tests commutator scheduling and multi-modal optimization."""
+
     def __init__(self, n_clusters: int = 3, points_per_cluster: int = 20, device: str = 'cpu'):
         algebra = CliffordAlgebra(3, 0, device=device)
         super().__init__(algebra)
@@ -297,16 +304,20 @@ class MultiRotorRegistrationModel(CliffordModule):
 
 # --- Category: GA Neural Networks ---
 
+
 class MediumGBNModel(CliffordModule):
     """Medium GBN using GeometricBladeNetwork. 3 layers, 16ch.
     Task: learn regression on multivector inputs."""
+
     def __init__(self, p=3, q=0, channels=16, layers=3, n_samples=64, device='cpu'):
         algebra = CliffordAlgebra(p, q, device=device)
         super().__init__(algebra)
         dim = self.algebra.dim
         self.gbn = GeometricBladeNetwork(
-            self.algebra, in_channels=channels,
-            hidden_channels=channels, out_channels=channels,
+            self.algebra,
+            in_channels=channels,
+            hidden_channels=channels,
+            out_channels=channels,
             layers=layers,
         )
         torch.manual_seed(42)
@@ -322,13 +333,16 @@ class MediumGBNModel(CliffordModule):
 class MultiSigGBNModel(CliffordModule):
     """GBN in Minkowski signature Cl(2,1). 2 layers, 8ch.
     Tests optimizer with mixed exp map regime."""
+
     def __init__(self, channels=8, layers=2, n_samples=48, device='cpu'):
         algebra = CliffordAlgebra(2, 1, device=device)
         super().__init__(algebra)
         dim = self.algebra.dim
         self.gbn = GeometricBladeNetwork(
-            self.algebra, in_channels=channels,
-            hidden_channels=channels, out_channels=channels,
+            self.algebra,
+            in_channels=channels,
+            hidden_channels=channels,
+            out_channels=channels,
             layers=layers,
         )
         torch.manual_seed(42)
@@ -343,9 +357,11 @@ class MultiSigGBNModel(CliffordModule):
 
 # --- Category: Manifold Tasks ---
 
+
 class SO3InterpolationModel(CliffordModule):
     """Learn a smooth rotor trajectory through waypoints on SO(3).
     Tests geodesic integrator on curved manifold."""
+
     def __init__(self, n_waypoints: int = 8, device: str = 'cpu'):
         algebra = CliffordAlgebra(3, 0, device=device)
         super().__init__(algebra)
@@ -372,7 +388,7 @@ class SO3InterpolationModel(CliffordModule):
 
         targets = []
         for i in range(n_waypoints):
-            R = waypoint_rotors[i:i+1]
+            R = waypoint_rotors[i : i + 1]
             v = test_vec.unsqueeze(0)
             rotated = self.algebra.sandwich_product(R, v.unsqueeze(1)).squeeze(1)
             targets.append(rotated)
@@ -388,8 +404,7 @@ class SO3InterpolationModel(CliffordModule):
     def geodesic_deviation(self) -> float:
         """Measure how far learned rotors are from ground-truth on SO(3)."""
         with torch.no_grad():
-            learned_bv = torch.zeros(self.n_waypoints, self.algebra.dim,
-                                     device=self.target_rotors.device)
+            learned_bv = torch.zeros(self.n_waypoints, self.algebra.dim, device=self.target_rotors.device)
             learned_bv[:, self.rotor_bank.grade_indices] = self.rotor_bank.grade_weights
             r_learned = self.algebra.exp(-0.5 * learned_bv)
             r_gt_rev = self.algebra.reverse(self.target_rotors)

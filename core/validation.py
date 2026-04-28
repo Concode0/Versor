@@ -19,12 +19,9 @@ def check_multivector(x: torch.Tensor, algebra, name: str = "x") -> None:
     """
     if not VALIDATE:
         return
-    assert x.ndim >= 1, (
-        f"{name}: expected ndim >= 1, got shape {tuple(x.shape)}"
-    )
+    assert x.ndim >= 1, f"{name}: expected ndim >= 1, got shape {tuple(x.shape)}"
     assert x.shape[-1] == algebra.dim, (
-        f"{name}: last dim should be {algebra.dim} (algebra dim), "
-        f"got {x.shape[-1]} (shape {tuple(x.shape)})"
+        f"{name}: last dim should be {algebra.dim} (algebra dim), got {x.shape[-1]} (shape {tuple(x.shape)})"
     )
 
 
@@ -35,10 +32,5 @@ def check_channels(x: torch.Tensor, expected: int, name: str = "x") -> None:
     """
     if not VALIDATE:
         return
-    assert x.ndim >= 3, (
-        f"{name}: expected ndim >= 3 for channel check, got shape {tuple(x.shape)}"
-    )
-    assert x.shape[-2] == expected, (
-        f"{name}: expected {expected} channels, got {x.shape[-2]} "
-        f"(shape {tuple(x.shape)})"
-    )
+    assert x.ndim >= 3, f"{name}: expected ndim >= 3 for channel check, got shape {tuple(x.shape)}"
+    assert x.shape[-2] == expected, f"{name}: expected {expected} channels, got {x.shape[-2]} (shape {tuple(x.shape)})"

@@ -56,11 +56,9 @@ class RefinementMixin:
                 n_expected = t.fn.__code__.co_argcount
                 args = [X_orig[:, i] for i in range(min(n_vars, n_expected))]
                 if len(args) < n_expected:
-                    args.extend([np.zeros(X_orig.shape[0])
-                                 for _ in range(n_expected - len(args))])
+                    args.extend([np.zeros(X_orig.shape[0]) for _ in range(n_expected - len(args))])
                 pred = t.fn(*args)
-                pred = np.broadcast_to(np.asarray(pred, dtype=np.float64),
-                                       (X_orig.shape[0],)).copy()
+                pred = np.broadcast_to(np.asarray(pred, dtype=np.float64), (X_orig.shape[0],)).copy()
                 if np.all(np.isfinite(pred)):
                     term_preds.append(pred)
                 else:
@@ -73,36 +71,40 @@ class RefinementMixin:
 
         # Include intercept column for constant offset fitting
         from models.sr.numerics import safe_lstsq
+
         A = np.column_stack(term_preds + [np.ones(X_orig.shape[0])])
         new_weights = safe_lstsq(A, y_orig)
 
         refined = []
         for i, t in enumerate(all_terms):
-            refined.append(RotorTerm(
-                planes=t.planes,
-                weight=float(new_weights[i]),
-                expr=t.expr,
-                fn=t.fn,
-            ))
+            refined.append(
+                RotorTerm(
+                    planes=t.planes,
+                    weight=float(new_weights[i]),
+                    expr=t.expr,
+                    fn=t.fn,
+                )
+            )
 
         # Add intercept term if significant
         intercept = float(new_weights[-1])
         if abs(intercept) > 1e-8:
             n_vars = X_orig.shape[1]
-            intercept_syms = [sympy.Symbol(f"x{i+1}") for i in range(n_vars)]
+            intercept_syms = [sympy.Symbol(f"x{i + 1}") for i in range(n_vars)]
             intercept_expr = sympy.Float(intercept)
-            refined.append(RotorTerm(
-                planes=[],
-                weight=1.0,
-                expr=intercept_expr,
-                fn=make_lambdify_fn(intercept_syms, intercept_expr),
-            ))
+            refined.append(
+                RotorTerm(
+                    planes=[],
+                    weight=1.0,
+                    expr=intercept_expr,
+                    fn=make_lambdify_fn(intercept_syms, intercept_expr),
+                )
+            )
             all_ops = list(all_ops) + ["sub"]
 
         return refined, all_ops
 
-    def _assemble_formula(self, all_terms, var_names, all_ops=None,
-                          implicit_form=None):
+    def _assemble_formula(self, all_terms, var_names, all_ops=None, implicit_form=None):
         """Build simplified formula string from extracted terms."""
         if not all_terms:
             return "y = 0"
@@ -110,7 +112,7 @@ class RefinementMixin:
             all_ops = ["sub"] * len(all_terms)
 
         n_vars = len(var_names)
-        symbols = [sympy.Symbol(f"x{i+1}") for i in range(n_vars)]
+        symbols = [sympy.Symbol(f"x{i + 1}") for i in range(n_vars)]
         subs = {symbols[i]: sympy.Symbol(var_names[i]) for i in range(n_vars)}
 
         result_expr = sympy.Integer(0)

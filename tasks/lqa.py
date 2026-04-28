@@ -104,8 +104,7 @@ class LQATask(BaseTask):
 
     def _to_device(self, batch: dict) -> dict:
         """Move batch tensors to device."""
-        return {k: v.to(self.device) if isinstance(v, torch.Tensor) else v
-                for k, v in batch.items()}
+        return {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
     def train_step(self, batch):
         """Forward + multi-loss backward."""
@@ -163,12 +162,14 @@ class LQATask(BaseTask):
                 if n_pairs > 0:
                     orig_features = self.model.head.get_features(
                         output["passage_mv"][orig_mask][:n_pairs],
-                        output["question_mv"][orig_mask][:n_pairs] if "question_mv" in output
+                        output["question_mv"][orig_mask][:n_pairs]
+                        if "question_mv" in output
                         else output["passage_mv"][orig_mask][:n_pairs],
                     )
                     neg_features = self.model.head.get_features(
                         output["passage_mv"][neg_mask][:n_pairs],
-                        output["question_mv"][neg_mask][:n_pairs] if "question_mv" in output
+                        output["question_mv"][neg_mask][:n_pairs]
+                        if "question_mv" in output
                         else output["passage_mv"][neg_mask][:n_pairs],
                     )
                     inv_loss_fn = InvolutionConsistencyLoss()
@@ -308,8 +309,13 @@ class LQATask(BaseTask):
 
     def run(self):
         """Full training loop with validation."""
-        logger.info("Starting GLR Task: probe=%s, algebra=Cl(%d,%d,%d)",
-                     self.probe, self.algebra.p, self.algebra.q, self.algebra.r)
+        logger.info(
+            "Starting GLR Task: probe=%s, algebra=Cl(%d,%d,%d)",
+            self.probe,
+            self.algebra.p,
+            self.algebra.q,
+            self.algebra.r,
+        )
 
         train_loader = self.get_data()
 
@@ -322,6 +328,7 @@ class LQATask(BaseTask):
         best_acc = 0.0
 
         from tqdm import tqdm
+
         pbar = tqdm(range(self.epochs))
 
         for epoch in pbar:

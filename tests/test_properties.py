@@ -36,8 +36,7 @@ class TestGeometricProperties:
         expected = torch.zeros_like(prod)
         expected[0, 0] = 1.0
 
-        assert torch.allclose(prod, expected, atol=1e-5), \
-            f"R * R~ should be 1, got {prod}"
+        assert torch.allclose(prod, expected, atol=1e-5), f"R * R~ should be 1, got {prod}"
 
     def test_normalization_layer(self, algebra_3d):
         """
@@ -57,8 +56,7 @@ class TestGeometricProperties:
         # Note: Bias in our implementation affects the scalar part,
         # but initialized to 0. So norm should be 1.
 
-        assert torch.allclose(norms, expected_norms, atol=1e-5), \
-            f"Norms should be 1, got {norms}"
+        assert torch.allclose(norms, expected_norms, atol=1e-5), f"Norms should be 1, got {norms}"
 
     def test_scaling_squaring_stability(self, algebra_3d):
         """
@@ -74,5 +72,6 @@ class TestGeometricProperties:
 
         # Norm of a rotor should always be 1
         norm = R.norm(dim=-1)
-        assert torch.allclose(norm, torch.tensor([1.0]), atol=1e-4), \
+        assert torch.allclose(norm, torch.tensor([1.0]), atol=1e-4), (
             f"Rotor norm should be 1 even for large inputs, got {norm}"
+        )

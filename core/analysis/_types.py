@@ -46,6 +46,7 @@ class AnalysisConstants:
         gp_spectrum_n_samples: Number of data samples used when building
             the GP left-multiplication matrix.
     """
+
     curvature_causal_threshold: float = 0.5
     bv_sq_elliptic_bound: float = -0.5
     bv_sq_hyperbolic_bound: float = 0.5
@@ -74,6 +75,7 @@ class SamplingConfig:
         n_strata: Number of clusters for ``"stratified"`` sampling.
             Auto-determined when *None*.
     """
+
     strategy: str = "random"
     max_samples: int = 500
     seed: int = 42
@@ -98,6 +100,7 @@ class AnalysisConfig:
         k_neighbors: Number of nearest neighbours for local analyses.
         verbose: Print progress messages.
     """
+
     device: str = "cpu"
     sampling: SamplingConfig = field(default_factory=SamplingConfig)
     run_dimension: bool = True
@@ -125,6 +128,7 @@ class DimensionResult:
         explained_variance_ratio: Per-component explained variance ratio.
         local_dims: Per-point local dimension estimates (optional).
     """
+
     intrinsic_dim: int
     participation_ratio: float
     eigenvalues: torch.Tensor
@@ -146,6 +150,7 @@ class SignatureResult:
         effective_dim_used: Reduced dimension that was actually searched
             (``None`` if no reduction was applied).
     """
+
     signature: Tuple[int, int, int]
     coherence: float
     curvature: float
@@ -165,6 +170,7 @@ class SpectralResult:
         gp_eigenvalues: Eigenvalues of the geometric-product left-action
             operator (``None`` if the algebra was too large).
     """
+
     grade_energy: torch.Tensor
     bivector_spectrum: torch.Tensor
     simple_components: List[torch.Tensor]
@@ -186,6 +192,7 @@ class SymmetryResult:
         continuous_symmetry_dim: Dimension of the detected continuous
             symmetry group.
     """
+
     null_directions: List[int]
     null_scores: torch.Tensor
     involution_symmetry: float
@@ -204,6 +211,7 @@ class CommutatorResult:
         lie_bracket_structure: Dict with ``structure_constants`` ``[k, k, k]``
             tensor, ``closure_error`` scalar, and ``basis_indices`` list.
     """
+
     commutativity_matrix: torch.Tensor
     exchange_spectrum: torch.Tensor
     mean_commutator_norm: float
@@ -222,6 +230,7 @@ class AnalysisReport:
         commutator: Commutator analysis results.
         metadata: Timing, configuration, and data-shape information.
     """
+
     dimension: Optional[DimensionResult] = None
     signature: Optional[SignatureResult] = None
     spectral: Optional[SpectralResult] = None

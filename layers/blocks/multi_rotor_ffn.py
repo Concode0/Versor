@@ -72,10 +72,10 @@ class MultiRotorFFN(CliffordModule):
         Returns:
             torch.Tensor: Output ``[B, C, D]``.
         """
-        h = self.expand(x)    # [B, ffn_channels, D]
-        h = self.norm(h)      # [B, ffn_channels, D]
-        h = self.toolbox(h)   # [B, ffn_channels, D]  - K-rotor superposition
-        h = self.act(h)       # [B, ffn_channels, D]
+        h = self.expand(x)  # [B, ffn_channels, D]
+        h = self.norm(h)  # [B, ffn_channels, D]
+        h = self.toolbox(h)  # [B, ffn_channels, D]  - K-rotor superposition
+        h = self.act(h)  # [B, ffn_channels, D]
         h = self.contract(h)  # [B, channels, D]
-        h = self.gate(h)      # [B, channels, D]      - per-blade gating
+        h = self.gate(h)  # [B, channels, D]      - per-blade gating
         return h

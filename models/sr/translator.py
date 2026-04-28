@@ -21,6 +21,7 @@ Pipeline:
   3. Compose actions across layers
   4. Read off input->output mapping as symbolic expression
 """
+
 import logging
 from dataclasses import dataclass, field
 from typing import List
@@ -55,17 +56,16 @@ def _correlation(a: np.ndarray, b: np.ndarray) -> float:
     """Absolute Pearson correlation, NaN-safe."""
     a_c = a - a.mean()
     b_c = b - b.mean()
-    denom = np.sqrt((a_c ** 2).sum() * (b_c ** 2).sum())
+    denom = np.sqrt((a_c**2).sum() * (b_c**2).sum())
     if denom < 1e-30:
         return 0.0
     return abs(float(np.dot(a_c, b_c) / denom))
 
 
-
 class RotorTranslator:
     def __init__(self, algebra: CliffordAlgebra, var_expr_map: dict = None):
         self.algebra = algebra
-        self.symbols = [sympy.Symbol(f"x{i+1}") for i in range(algebra.n)]
+        self.symbols = [sympy.Symbol(f"x{i + 1}") for i in range(algebra.n)]
         # Optional mapping from column index -> sympy.Expr in original variables.
         # When set, final expressions substitute _zi placeholders with these.
         self.var_expr_map = var_expr_map
@@ -141,12 +141,14 @@ class RotorTranslator:
             expr = self._apply_var_expr_map(expr)
             fn = make_lambdify_fn(self.symbols, expr)
 
-            terms.append(RotorTerm(
-                planes=planes,
-                weight=1.0,
-                expr=expr,
-                fn=fn,
-            ))
+            terms.append(
+                RotorTerm(
+                    planes=planes,
+                    weight=1.0,
+                    expr=expr,
+                    fn=fn,
+                )
+            )
 
         return terms
 
@@ -183,6 +185,7 @@ class RotorTranslator:
             final_expr += t.weight * t.expr
 
         from models.sr.numerics import safe_simplify
+
         return f"y = {safe_simplify(final_expr)}"
 
     def translate_implicit(self, model, target_var_idx: int) -> List[RotorTerm]:
@@ -200,7 +203,7 @@ class RotorTranslator:
         """
         # Extend symbols to include the target variable
         n_total = self.algebra.n
-        all_symbols = [sympy.Symbol(f"x{i+1}") for i in range(n_total)]
+        all_symbols = [sympy.Symbol(f"x{i + 1}") for i in range(n_total)]
         if target_var_idx < len(all_symbols):
             all_symbols[target_var_idx] = sympy.Symbol("y")
 
@@ -227,7 +230,7 @@ class RotorTranslator:
             dict: {blade_idx: sympy_expr} result.
         """
         cayley = self.algebra.cayley_indices.cpu().numpy()  # [D, D]
-        signs = self.algebra.cayley_signs.cpu().numpy()      # [D, D]
+        signs = self.algebra.cayley_signs.cpu().numpy()  # [D, D]
 
         result = {}
         for i, expr_a in mv_a.items():
@@ -265,16 +268,14 @@ class RotorTranslator:
             if idx < len(B_weights):
                 B[0, 0, bv_idx] = -B_weights[idx] / 2.0
 
-        R = algebra.exp(B)            # [1, 1, dim]
-        R_rev = algebra.reverse(R)    # [1, 1, dim]
+        R = algebra.exp(B)  # [1, 1, dim]
+        R_rev = algebra.reverse(R)  # [1, 1, dim]
 
         r_np = R[0, 0].cpu().numpy()
         r_rev_np = R_rev[0, 0].cpu().numpy()
 
-        R_sym = {i: sympy.Float(float(r_np[i]))
-                 for i in range(len(r_np)) if abs(r_np[i]) > 1e-10}
-        R_rev_sym = {i: sympy.Float(float(r_rev_np[i]))
-                     for i in range(len(r_rev_np)) if abs(r_rev_np[i]) > 1e-10}
+        R_sym = {i: sympy.Float(float(r_np[i])) for i in range(len(r_np)) if abs(r_np[i]) > 1e-10}
+        R_rev_sym = {i: sympy.Float(float(r_rev_np[i])) for i in range(len(r_rev_np)) if abs(r_rev_np[i]) > 1e-10}
 
         temp = self._symbolic_gp(R_sym, sym_mv)
         return self._symbolic_gp(temp, R_rev_sym)
@@ -291,7 +292,7 @@ class RotorTranslator:
         dim = self.algebra.dim
         C = emb.channels
 
-        x_syms = [sympy.Symbol(f"x{i+1}") for i in range(k)]
+        x_syms = [sympy.Symbol(f"x{i + 1}") for i in range(k)]
 
         # Grade-1 projection weights: [C*n_g1, k]
         W1 = emb.grade1_proj.weight.detach().cpu().numpy()
@@ -434,7 +435,7 @@ class RotorTranslator:
         n = self.algebra.n
         dim = self.algebra.dim
         C = model.channels
-        x_syms = [sympy.Symbol(f"x{i+1}") for i in range(k)]
+        x_syms = [sympy.Symbol(f"x{i + 1}") for i in range(k)]
 
         # 1. Build symbolic embedding per channel
         channel_mvs = self._build_symbolic_input(model)
@@ -479,9 +480,7 @@ class RotorTranslator:
                     gp_sq = self._symbolic_gp(sym_mv, sym_mv)
                     # Prune GP result immediately
                     gp_sq = self._prune_mv(gp_sq)
-                    gate_val = float(torch.sigmoid(
-                        block.activation.gate_logit[c]
-                    ).item())
+                    gate_val = float(torch.sigmoid(block.activation.gate_logit[c]).item())
                     activated = {}
                     all_keys = set(sym_mv.keys()) | set(gp_sq.keys())
                     for idx in all_keys:
@@ -531,7 +530,7 @@ class RotorTranslator:
 
         # output_linear: weight [1, C], bias [1, dim]
         out_w = model.output_linear.weight.detach().cpu().numpy()  # [1, C]
-        out_b = model.output_linear.bias.detach().cpu().numpy()    # [1, dim]
+        out_b = model.output_linear.bias.detach().cpu().numpy()  # [1, dim]
 
         # Combine channels: sum_c weight[0, c] * channel_mvs[c] + bias
         combined_mv = {}
@@ -541,17 +540,13 @@ class RotorTranslator:
                 continue
             for blade_idx, expr in channel_mvs[c].items():
                 scaled = w_c * expr
-                combined_mv[blade_idx] = combined_mv.get(
-                    blade_idx, sympy.Integer(0)
-                ) + scaled
+                combined_mv[blade_idx] = combined_mv.get(blade_idx, sympy.Integer(0)) + scaled
 
         # Add bias
         for blade_idx in range(dim):
             b_val = float(out_b[0, blade_idx])
             if abs(b_val) > 1e-10:
-                combined_mv[blade_idx] = combined_mv.get(
-                    blade_idx, sympy.Integer(0)
-                ) + b_val
+                combined_mv[blade_idx] = combined_mv.get(blade_idx, sympy.Integer(0)) + b_val
 
         # 4. Apply readout weights across all blade components
         readout_w = model.readout.detach().cpu().numpy()  # [dim]
@@ -563,10 +558,11 @@ class RotorTranslator:
 
         # 5. Zero out phantom variables (beyond in_features)
         for i in range(k, n):
-            expr = expr.subs(sympy.Symbol(f"x{i+1}"), 0)
+            expr = expr.subs(sympy.Symbol(f"x{i + 1}"), 0)
 
         # 6. Prune and simplify (use expand+collect, not simplify which can hang)
         from models.sr.numerics import safe_simplify
+
         expr = self._prune_expr(expr)
         n_terms = len(sympy.Add.make_args(expr))
         if n_terms <= 20:
@@ -590,12 +586,14 @@ class RotorTranslator:
         # Use explicit numpy module dict to ensure ufuncs work on compound exprs
         fn = make_lambdify_fn(self.symbols, expr)
 
-        return [RotorTerm(
-            planes=[],
-            weight=1.0,
-            expr=expr,
-            fn=fn,
-        )]
+        return [
+            RotorTerm(
+                planes=[],
+                weight=1.0,
+                expr=expr,
+                fn=fn,
+            )
+        ]
 
     def _apply_var_expr_map(self, expr: sympy.Expr) -> sympy.Expr:
         """Substitute xi placeholders with var_expr_map expressions."""

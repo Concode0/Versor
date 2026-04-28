@@ -60,8 +60,7 @@ class GeometricProductAttention(CliffordModule):
             dropout: Dropout rate on attention weights.
         """
         super().__init__(algebra)
-        assert channels % num_heads == 0, \
-            f"channels ({channels}) must be divisible by num_heads ({num_heads})"
+        assert channels % num_heads == 0, f"channels ({channels}) must be divisible by num_heads ({num_heads})"
 
         self.channels = channels
         self.num_heads = num_heads
@@ -128,7 +127,7 @@ class GeometricProductAttention(CliffordModule):
             b_idx = torch.zeros(0, D, dtype=torch.long, device=alg.device)
             g2_sign = torch.zeros(0, D, device=alg.device)
 
-        self.register_buffer('_g2_b_idx', b_idx)   # [n_g2, D] long
+        self.register_buffer('_g2_b_idx', b_idx)  # [n_g2, D] long
         self.register_buffer('_g2_sign', g2_sign)  # [n_g2, D] float
 
     def _compute_score(
@@ -161,9 +160,9 @@ class GeometricProductAttention(CliffordModule):
         # == Grade-0 score ====================================================
         # <Q * rev(K)>_0 = Sum_c Sum_d  Q[c,d] * K[c,d] * metric_rev[d]
         # Implemented as a batched matrix multiply: [B,H,Lq,Hc*D] @ [B,H,Hc*D,Lk]
-        q_weighted = q_head * self._metric_rev          # [B, H, Lq, Hc, D]
+        q_weighted = q_head * self._metric_rev  # [B, H, Lq, Hc, D]
         q_flat = q_weighted.reshape(B, H, Lq, Hc * D)  # [B, H, Lq, Hc*D]
-        k_flat = k_head.reshape(B, H, Lk, Hc * D)      # [B, H, Lk, Hc*D]
+        k_flat = k_head.reshape(B, H, Lk, Hc * D)  # [B, H, Lk, Hc*D]
         score_g0 = torch.matmul(q_flat, k_flat.transpose(-2, -1))  # [B, H, Lq, Lk]
 
         # == Grade-2 score ====================================================
@@ -182,7 +181,7 @@ class GeometricProductAttention(CliffordModule):
             comp = torch.bmm(q_2d, k_g2_2d.transpose(-2, -1))
             # Sum squared components over n_g2, then sum over Hc -> [B, H, Lq, Lk]
             comp_sq = comp.reshape(B * H * Hc, Lq, Lk, n_g2).pow(2).sum(-1)  # [B*H*Hc, Lq, Lk]
-            score_g2_sq = comp_sq.reshape(B, H, Hc, Lq, Lk).sum(2)           # [B, H, Lq, Lk]
+            score_g2_sq = comp_sq.reshape(B, H, Hc, Lq, Lk).sum(2)  # [B, H, Lq, Lk]
             score_g2 = score_g2_sq.sqrt()
         else:
             score_g2 = torch.zeros_like(score_g0)
@@ -243,16 +242,12 @@ class GeometricProductAttention(CliffordModule):
             # Apply causal mask
             if causal_mask is not None:
                 mask_block = causal_mask[q_start:q_end, :]  # [Lq, L]
-                scores = scores.masked_fill(
-                    mask_block.unsqueeze(0).unsqueeze(0), float('-inf')
-                )
+                scores = scores.masked_fill(mask_block.unsqueeze(0).unsqueeze(0), float('-inf'))
 
             # Apply key padding mask: True = padded -> -inf
             if key_padding_mask is not None:
                 # key_padding_mask: [B, L] -> [B, 1, 1, L]
-                scores = scores.masked_fill(
-                    key_padding_mask.unsqueeze(1).unsqueeze(2), float('-inf')
-                )
+                scores = scores.masked_fill(key_padding_mask.unsqueeze(1).unsqueeze(2), float('-inf'))
 
             # Softmax + dropout
             attn_weights = F.softmax(scores, dim=-1)  # [B, H, Lq, L]

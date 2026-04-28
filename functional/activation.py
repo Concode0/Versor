@@ -46,10 +46,10 @@ class GeometricGELU(CliffordModule):
             torch.Tensor: Activated multivector.
         """
         norm = x.norm(dim=-1, keepdim=True)
-        
+
         eps = 1e-6
         scale = F.gelu(norm + self.bias.view(1, -1, 1)) / (norm + eps)
-        
+
         return x * scale
 
 
@@ -122,9 +122,7 @@ class GradeSwish(CliffordModule):
         norms = torch.sqrt(norm_sq.clamp(min=1e-12))  # [..., G]
 
         # Compute gates: sigmoid(w * norm + b) for each grade
-        gates = torch.sigmoid(
-            self.grade_weights * norms + self.grade_biases
-        )  # [..., G]
+        gates = torch.sigmoid(self.grade_weights * norms + self.grade_biases)  # [..., G]
 
         # Broadcast gate per component: lookup gate[grade_map[d]] for each d
         per_component_gate = gates.gather(-1, grade_idx)  # [..., D]

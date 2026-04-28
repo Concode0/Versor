@@ -42,8 +42,7 @@ class ProjectiveEmbedding(CliffordModule):
         super().__init__(algebra)
         d = euclidean_dim
         assert algebra.p >= d and algebra.r >= 1, (
-            f"Projective embedding needs Cl(>={d}, 0, >=1), "
-            f"got Cl({algebra.p},{algebra.q},{algebra.r})"
+            f"Projective embedding needs Cl(>={d}, 0, >=1), got Cl({algebra.p},{algebra.q},{algebra.r})"
         )
         self.euclidean_dim = d
 
@@ -71,8 +70,7 @@ class ProjectiveEmbedding(CliffordModule):
         Returns:
             PGA multivectors [..., dim].
         """
-        x_mv = torch.zeros(*x.shape[:-1], self.algebra.dim,
-                            device=x.device, dtype=x.dtype)
+        x_mv = torch.zeros(*x.shape[:-1], self.algebra.dim, device=x.device, dtype=x.dtype)
         x_mv.scatter_(-1, self._g1_idx.expand_as(x), x)
         return x_mv + self._e0
 
@@ -87,8 +85,7 @@ class ProjectiveEmbedding(CliffordModule):
         Returns:
             PGA multivectors [..., dim] with zero e_0 component.
         """
-        x_mv = torch.zeros(*v.shape[:-1], self.algebra.dim,
-                            device=v.device, dtype=v.dtype)
+        x_mv = torch.zeros(*v.shape[:-1], self.algebra.dim, device=v.device, dtype=v.dtype)
         x_mv.scatter_(-1, self._g1_idx.expand_as(v), v)
         return x_mv
 

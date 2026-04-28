@@ -11,6 +11,7 @@ from core.algebra import CliffordAlgebra
 from utils.compat import safe_linalg_solve
 from .base import CliffordModule
 
+
 class BladeSelector(CliffordModule):
     """Blade Selector. Filters insignificant components.
 
@@ -28,9 +29,9 @@ class BladeSelector(CliffordModule):
             channels (int): Input features.
         """
         super().__init__(algebra)
-        
+
         self.weights = nn.Parameter(torch.Tensor(channels, algebra.dim))
-        
+
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -107,13 +108,13 @@ class GeometricNeutralizer(CliffordModule):
         """
         # x: [B, C, D]
         scalar = x[..., self.g0_idx]  # [B, C, D0]
-        bivec = x[..., self.g2_idx]   # [B, C, D2]
+        bivec = x[..., self.g2_idx]  # [B, C, D2]
         B, C, _ = scalar.shape
 
         if self.training:
             # Compute batch statistics
             batch_mean_s = scalar.mean(dim=0)  # [C, D0]
-            batch_mean_b = bivec.mean(dim=0)   # [C, D2]
+            batch_mean_b = bivec.mean(dim=0)  # [C, D2]
 
             # Center the batch
             s_centered = scalar - batch_mean_s.unsqueeze(0)
@@ -144,9 +145,7 @@ class GeometricNeutralizer(CliffordModule):
 
         # Perform Projection
         # Solve: cur_cov_bb * W = cur_cov_bs  => W = inv(cur_cov_bb) * cur_cov_bs
-        reg = 1e-6 * torch.eye(
-            self.d2, device=cur_cov_bb.device, dtype=cur_cov_bb.dtype
-        ).unsqueeze(0)
+        reg = 1e-6 * torch.eye(self.d2, device=cur_cov_bb.device, dtype=cur_cov_bb.dtype).unsqueeze(0)
         weights = safe_linalg_solve(cur_cov_bb + reg, cur_cov_bs)
 
         # Center based on current means

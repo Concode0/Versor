@@ -10,7 +10,7 @@
 Two personalities live here, separated by filename prefix:
 
 * ``dbg_*`` — **Mathematical Debugger**. Validates a known algebraic or
-  physical identity (Lorentz invariance, Yang–Mills action, 
+  physical identity (Lorentz invariance, Yang–Mills action,
   rotor round-trip). Success criterion: residuals below a fixed
   tolerance. No SOTA chasing — these exist to surface regressions when
   core/layers break an invariant.

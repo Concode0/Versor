@@ -69,9 +69,7 @@ class StatisticalSampler:
         return min(n_total, max(500, 20 * n_features))
 
     @staticmethod
-    def _random(
-        data: torch.Tensor, config: SamplingConfig
-    ) -> Tuple[torch.Tensor, Dict]:
+    def _random(data: torch.Tensor, config: SamplingConfig) -> Tuple[torch.Tensor, Dict]:
         N = data.shape[0]
         k = min(N, config.max_samples)
         gen = torch.Generator(device="cpu").manual_seed(config.seed)
@@ -83,9 +81,7 @@ class StatisticalSampler:
         }
 
     @staticmethod
-    def _stratified(
-        data: torch.Tensor, config: SamplingConfig
-    ) -> Tuple[torch.Tensor, Dict]:
+    def _stratified(data: torch.Tensor, config: SamplingConfig) -> Tuple[torch.Tensor, Dict]:
         """Coherence-based stratified sampling.
 
         Embeds data as grade-1 in a default Euclidean algebra, computes
@@ -146,9 +142,7 @@ class StatisticalSampler:
         }
 
     @staticmethod
-    def _bootstrap(
-        data: torch.Tensor, config: SamplingConfig
-    ) -> Tuple[List[torch.Tensor], Dict]:
+    def _bootstrap(data: torch.Tensor, config: SamplingConfig) -> Tuple[List[torch.Tensor], Dict]:
         N = data.shape[0]
         k = min(N, config.max_samples)
         gen = torch.Generator(device="cpu").manual_seed(config.seed)

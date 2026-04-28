@@ -15,6 +15,7 @@ from core.visualizer import GeneralVisualizer
 from examples.datasets.synthetic import Figure8Dataset
 from torch.utils.data import DataLoader
 
+
 class ManifoldNetwork(CliffordModule):
     """The Unbender.
 
@@ -31,6 +32,7 @@ class ManifoldNetwork(CliffordModule):
         """Forward pass."""
         x_rot = self.rotor(x)
         return self.selector(x_rot)
+
 
 class ManifoldTask(BaseTask):
     """Manifold Unbending. Flattening the manifold.
@@ -55,7 +57,7 @@ class ManifoldTask(BaseTask):
         for i in range(self.algebra.dim):
             if bin(i).count('1') == 1:
                 grade_1_indices.append(i)
-                
+
         return SubspaceLoss(self.algebra, target_indices=grade_1_indices)
 
     def get_data(self):
@@ -65,7 +67,7 @@ class ManifoldTask(BaseTask):
 
     def inject_noise(self, data):
         """Adds Gaussian noise to the multivectors.
-        
+
         Only injects noise if dataset.noise_std > 0.
         """
         noise_std = self.cfg.dataset.get("noise_std", 0.0)
@@ -78,21 +80,21 @@ class ManifoldTask(BaseTask):
         """Flatten it."""
         data = data.to(self.device)
         data = self.inject_noise(data)
-        
+
         self.optimizer.zero_grad()
         output = self.model(data)
-        
+
         loss = self.criterion(output)
-        
+
         if self.algebra.dim > 4:
-            z_energy = (output[..., 4]**2).mean()
+            z_energy = (output[..., 4] ** 2).mean()
             loss = loss + z_energy
         else:
             z_energy = torch.tensor(0.0)
 
         loss.backward()
         self.optimizer.step()
-        
+
         return loss.item(), {"Loss": loss.item(), "Z": z_energy.item()}
 
     def evaluate(self, data):
@@ -101,7 +103,7 @@ class ManifoldTask(BaseTask):
         output = self.model(data)
         loss = self.criterion(output).item()
         print(f"Final Reconstruction Loss: {loss:.6f}")
-        
+
         # Run noise robustness test
         self.noise_test(data)
 
@@ -122,10 +124,10 @@ class ManifoldTask(BaseTask):
         """Plots the evidence."""
         data = data.to(self.device)
         viz = GeneralVisualizer(self.algebra)
-        
+
         viz.plot_3d(data, title="Original Distorted Manifold (Z = 0.5 * X * Y)")
         viz.save("manifold_original.png")
-        
+
         output = self.model(data)
         viz.plot_3d(output, title="Unbent Latent Space (Z -> 0)")
         viz.save("manifold_latent.png")

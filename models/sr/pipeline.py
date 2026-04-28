@@ -33,9 +33,11 @@ logger = logging.getLogger(__name__)
 # Dataclasses
 # =========================================================================
 
+
 @dataclass
 class OrthogonalEliminationResult:
     """Result of GA blade rejection (orthogonal elimination)."""
+
     projection_energy: float
     rejection_energy: float
     soft_threshold: float
@@ -81,6 +83,7 @@ class UnbendingResult:
 @dataclass
 class _PrepResult:
     """Internal result of Phase 0 data preparation."""
+
     groups: list
     relationship_graph: object  # RelationshipGraph or None
     implicit_form: object  # ImplicitFormulation or None
@@ -95,6 +98,7 @@ class ConvergenceState:
     Used when feedback.enabled=True to decide whether to re-enter
     earlier phases based on per-term contribution analysis.
     """
+
     outer_iteration: int = 0
     r2_history: list = field(default_factory=list)
     stall_count: int = 0
@@ -105,6 +109,7 @@ class ConvergenceState:
 # =========================================================================
 # Main class
 # =========================================================================
+
 
 class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMixin):
     """Iterative geometric unbending v2 for symbolic regression.
@@ -193,15 +198,15 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
         y_norm = y_norm.to(self.device)
 
         X_orig = self._to_numpy(X_norm * x_std.to(self.device) + x_mean.to(self.device))
-        y_orig = self._to_numpy(
-            y_norm.squeeze(-1) * y_std.to(self.device) + y_mean.to(self.device)
-        )
+        y_orig = self._to_numpy(y_norm.squeeze(-1) * y_std.to(self.device) + y_mean.to(self.device))
 
         # Phase 0: Basis expansion (before linearity check)
         self._basis_result = None
         if self.basis_config.get("enabled", False):
             X_orig, y_orig, var_names = self._apply_basis_expansion(
-                X_orig, y_orig, var_names,
+                X_orig,
+                y_orig,
+                var_names,
             )
             # Update in_features for downstream model building
             self.in_features = X_orig.shape[1]
@@ -219,7 +224,7 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
         is_linear, lin_terms, lin_r2 = self._check_linearity(X_orig, y_orig)
         if is_linear:
             logger.info(f"Linear model sufficient (R2={lin_r2:.4f}), skipping unbending")
-            vnames = var_names if var_names else [f"x{i+1}" for i in range(self.in_features)]
+            vnames = var_names if var_names else [f"x{i + 1}" for i in range(self.in_features)]
             lin_ops = ["sub"] * len(lin_terms)
             formula = self._assemble_formula(lin_terms, vnames, lin_ops)
             # Wrap in exp() if target was log-transformed
@@ -259,8 +264,10 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
             convergence.outer_iteration = outer_iter
 
             if outer_iter > 0:
-                logger.info(f"Feedback iteration {outer_iter}: "
-                            f"re-extracting from residual (R2={convergence.r2_history[-1]:.4f})")
+                logger.info(
+                    f"Feedback iteration {outer_iter}: "
+                    f"re-extracting from residual (R2={convergence.r2_history[-1]:.4f})"
+                )
 
             # Phase 1: Per-group extraction
             logger.info("Phase 1: Per-group iterative extraction")
@@ -280,7 +287,13 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
 
             for group_idx, group in enumerate(prep.groups):
                 terms, stages = self._process_group(
-                    group, group_idx, prep, X_orig, residual_target, X_norm, y_norm,
+                    group,
+                    group_idx,
+                    prep,
+                    X_orig,
+                    residual_target,
+                    X_norm,
+                    y_norm,
                 )
                 iter_terms.extend(terms)
                 iter_ops.extend(["sub"] * len(terms))
@@ -294,7 +307,11 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
             if len(prep.groups) > 1 and outer_iter == 0:
                 logger.info("Phase 2: Mother algebra cross-term discovery")
                 cross_terms, cross_energy = self._mother_algebra_joint(
-                    prep.groups, X_orig, y_orig, X_norm, prep,
+                    prep.groups,
+                    X_orig,
+                    y_orig,
+                    X_norm,
+                    prep,
                 )
                 all_terms.extend(cross_terms)
                 all_ops.extend(["sub"] * len(cross_terms))
@@ -303,7 +320,11 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
                 # Feedback B: Cross-term re-evaluation of Phase 1 terms
                 if feedback_enabled and cross_term_reeval and cross_terms:
                     all_terms, all_ops = self._reeval_after_cross_terms(
-                        all_terms, all_ops, X_orig, y_orig, ss_tot,
+                        all_terms,
+                        all_ops,
+                        X_orig,
+                        y_orig,
+                        ss_tot,
                         reextract_threshold,
                     )
             elif outer_iter == 0:
@@ -313,7 +334,10 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
             logger.info("Phase 3: Joint refinement")
             if all_terms:
                 all_terms, all_ops = self._refine_all_terms(
-                    all_terms, X_orig, y_orig, all_ops,
+                    all_terms,
+                    X_orig,
+                    y_orig,
+                    all_ops,
                 )
 
             # Compute R2
@@ -328,7 +352,11 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
             # Feedback C: Refinement-driven re-extraction
             terms_before = len(all_terms)
             all_terms, all_ops = self._prune_low_contribution_terms(
-                all_terms, all_ops, X_orig, y_orig, ss_tot,
+                all_terms,
+                all_ops,
+                X_orig,
+                y_orig,
+                ss_tot,
                 reextract_threshold,
             )
             terms_pruned = terms_before - len(all_terms)
@@ -351,30 +379,41 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
 
         # If explicit R2 is poor and implicit wasn't tried, try implicit fallback
         implicit_form = prep.implicit_form
-        if (r2_final < 0.5
-                and self.implicit_mode != 'explicit'
-                and len(prep.groups) == 1
-                and (implicit_form is None or implicit_form.mode != "implicit")):
+        if (
+            r2_final < 0.5
+            and self.implicit_mode != 'explicit'
+            and len(prep.groups) == 1
+            and (implicit_form is None or implicit_form.mode != "implicit")
+        ):
             logger.info(f"Explicit R2={r2_final:.4f} < 0.5, trying implicit fallback")
             from models.sr.implicit import ImplicitFormulation
+
             fallback_form = ImplicitFormulation(
-                target_var_idx=X_norm.shape[1], mode="implicit",
+                target_var_idx=X_norm.shape[1],
+                mode="implicit",
             )
             fallback_prep = _PrepResult(
-                groups=prep.groups, relationship_graph=prep.relationship_graph,
+                groups=prep.groups,
+                relationship_graph=prep.relationship_graph,
                 implicit_form=fallback_form,
-                svd_Vt=prep.svd_Vt, svd_S=prep.svd_S,
+                svd_Vt=prep.svd_Vt,
+                svd_S=prep.svd_S,
             )
             impl_terms, impl_stages = self._process_group_implicit(
-                prep.groups[0], 0, fallback_prep, X_orig, y_orig, X_norm, y_norm,
+                prep.groups[0],
+                0,
+                fallback_prep,
+                X_orig,
+                y_orig,
+                X_norm,
+                y_norm,
             )
             if impl_terms:
                 impl_y_hat = evaluate_terms(impl_terms, X_orig)
                 impl_ss_res = np.sum((y_orig - impl_y_hat) ** 2)
                 impl_r2 = 1.0 - impl_ss_res / ss_tot
                 if impl_r2 > r2_final:
-                    logger.info(f"Implicit fallback improved R2: "
-                                f"{r2_final:.4f} -> {impl_r2:.4f}")
+                    logger.info(f"Implicit fallback improved R2: {r2_final:.4f} -> {impl_r2:.4f}")
                     all_terms = impl_terms
                     all_ops = ["sub"] * len(impl_terms)
                     all_stages = impl_stages
@@ -382,9 +421,12 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
                     implicit_form = fallback_form
 
         # Assemble formula
-        vnames = var_names if var_names else [f"x{i+1}" for i in range(self.in_features)]
+        vnames = var_names if var_names else [f"x{i + 1}" for i in range(self.in_features)]
         formula = self._assemble_formula(
-            all_terms, vnames, all_ops, implicit_form=implicit_form,
+            all_terms,
+            vnames,
+            all_ops,
+            implicit_form=implicit_form,
         )
         # Wrap in exp() if target was log-transformed
         if self._basis_result is not None and self._basis_result.log_target:
@@ -406,8 +448,7 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
     # Feedback helpers
     # ------------------------------------------------------------------
 
-    def _prune_low_contribution_terms(self, all_terms, all_ops, X_orig,
-                                       y_orig, ss_tot, threshold):
+    def _prune_low_contribution_terms(self, all_terms, all_ops, X_orig, y_orig, ss_tot, threshold):
         """Remove terms whose relative contribution is below threshold.
 
         Contribution = |weight| * var(prediction) / total_variance.
@@ -442,15 +483,11 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
                 surviving_terms.append(t)
                 surviving_ops.append(all_ops[i] if i < len(all_ops) else "sub")
             else:
-                logger.info(
-                    f"  Feedback: pruning term {i} "
-                    f"(contribution={term_contribution:.4f} < {threshold})"
-                )
+                logger.info(f"  Feedback: pruning term {i} (contribution={term_contribution:.4f} < {threshold})")
 
         return surviving_terms, surviving_ops
 
-    def _reeval_after_cross_terms(self, all_terms, all_ops, X_orig, y_orig,
-                                   ss_tot, threshold):
+    def _reeval_after_cross_terms(self, all_terms, all_ops, X_orig, y_orig, ss_tot, threshold):
         """After Phase 2, re-evaluate Phase 1 term contributions.
 
         Cross-terms may explain variance that Phase 1 terms also claimed.
@@ -481,10 +518,7 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
                 surviving_terms.append(t)
                 surviving_ops.append(all_ops[i] if i < len(all_ops) else "sub")
             else:
-                logger.info(
-                    f"  Cross-term reeval: pruning term {i} "
-                    f"(R2 contribution={contribution:.4f})"
-                )
+                logger.info(f"  Cross-term reeval: pruning term {i} (R2 contribution={contribution:.4f})")
 
         return surviving_terms, surviving_ops
 

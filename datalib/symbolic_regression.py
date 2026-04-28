@@ -87,8 +87,7 @@ def get_dataset_ids(category: str = "all") -> list[str]:
     elif category == "all":
         return list(SRBENCH_DATASETS)
     else:
-        raise ValueError(f"Unknown category '{category}'. "
-                         f"Choose from: first_principles, blackbox, all")
+        raise ValueError(f"Unknown category '{category}'. Choose from: first_principles, blackbox, all")
 
 
 def _fetch_pmlb_data(dataset_name: str, cache_dir: str) -> pd.DataFrame:
@@ -103,14 +102,14 @@ def _fetch_pmlb_data(dataset_name: str, cache_dir: str) -> pd.DataFrame:
     """
     # Try local cache first
     if cache_dir:
-        cached_path = os.path.join(cache_dir, dataset_name,
-                                   dataset_name + '.tsv.gz')
+        cached_path = os.path.join(cache_dir, dataset_name, dataset_name + '.tsv.gz')
         if os.path.exists(cached_path):
             return pd.read_csv(cached_path, sep='\t', compression='gzip')
 
     # Try pmlb.fetch_data (works for datasets in the PyPI index)
     try:
         import pmlb
+
         if dataset_name in pmlb.dataset_names:
             return pmlb.fetch_data(dataset_name, local_cache_dir=cache_dir)
     except ImportError:
@@ -191,8 +190,7 @@ class SRDataset(Dataset):
         aug_sigma (float): Gaussian noise std for input perturbation.
     """
 
-    def __init__(self, x: torch.Tensor, y: torch.Tensor,
-                 training: bool = False, aug_sigma: float = 0.0):
+    def __init__(self, x: torch.Tensor, y: torch.Tensor, training: bool = False, aug_sigma: float = 0.0):
         self.x = x
         self.y = y
         self.training = training
@@ -305,15 +303,14 @@ def get_sr_loaders(
         elif n_train < 50:
             aug_sigma = 0.05
 
-    train_ds = SRDataset(_norm_x(train_X), _norm_y(train_y),
-                         training=True, aug_sigma=aug_sigma)
+    train_ds = SRDataset(_norm_x(train_X), _norm_y(train_y), training=True, aug_sigma=aug_sigma)
     test_ds = SRDataset(_norm_x(test_X), _norm_y(test_y))
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-                              drop_last=False, num_workers=num_workers,
-                              pin_memory=pin_memory)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
-                             drop_last=False, num_workers=num_workers,
-                             pin_memory=pin_memory)
+    train_loader = DataLoader(
+        train_ds, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=num_workers, pin_memory=pin_memory
+    )
+    test_loader = DataLoader(
+        test_ds, batch_size=batch_size, shuffle=False, drop_last=False, num_workers=num_workers, pin_memory=pin_memory
+    )
 
     return train_loader, test_loader, x_mean, x_std, y_mean, y_std, var_names

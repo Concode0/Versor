@@ -46,9 +46,7 @@ def tag_manifold(param: nn.Parameter, manifold: str) -> nn.Parameter:
         The same parameter (for chaining).
     """
     if manifold not in _VALID_MANIFOLDS:
-        raise ValueError(
-            f"Unknown manifold '{manifold}'. Must be one of {_VALID_MANIFOLDS}"
-        )
+        raise ValueError(f"Unknown manifold '{manifold}'. Must be one of {_VALID_MANIFOLDS}")
     param._manifold = manifold
     return param
 
@@ -115,12 +113,7 @@ class ExponentialSGD(Optimizer):
     """
 
     def __init__(
-        self,
-        params,
-        lr: float = 0.01,
-        momentum: float = 0,
-        algebra=None,
-        max_bivector_norm: Optional[float] = 10.0
+        self, params, lr: float = 0.01, momentum: float = 0, algebra=None, max_bivector_norm: Optional[float] = 10.0
     ):
         if lr < 0.0:
             raise ValueError(f"Invalid learning rate: {lr}")
@@ -169,8 +162,7 @@ class ExponentialSGD(Optimizer):
                 param_groups.append({'params': params, 'manifold': manifold})
         if not param_groups:
             raise ValueError("Model has no parameters")
-        return cls(param_groups, lr=lr, momentum=momentum, algebra=algebra,
-                   max_bivector_norm=max_bivector_norm)
+        return cls(param_groups, lr=lr, momentum=momentum, algebra=algebra, max_bivector_norm=max_bivector_norm)
 
     @torch.no_grad()
     def step(self, closure=None) -> Optional[torch.Tensor]:
@@ -222,9 +214,7 @@ class ExponentialSGD(Optimizer):
                     # 'spin' or None (legacy): bivector norm clipping
                     if self.max_bivector_norm is not None:
                         p_norm = p.norm(dim=-1, keepdim=True)
-                        scale = torch.clamp(
-                            p_norm / self.max_bivector_norm, min=1.0
-                        )
+                        scale = torch.clamp(p_norm / self.max_bivector_norm, min=1.0)
                         p.div_(scale)
 
         return loss
@@ -257,7 +247,7 @@ class RiemannianAdam(Optimizer):
         betas: tuple = (0.9, 0.999),
         eps: float = 1e-8,
         algebra=None,
-        max_bivector_norm: Optional[float] = 10.0
+        max_bivector_norm: Optional[float] = 10.0,
     ):
         if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
@@ -312,8 +302,7 @@ class RiemannianAdam(Optimizer):
                 param_groups.append({'params': params, 'manifold': manifold})
         if not param_groups:
             raise ValueError("Model has no parameters")
-        return cls(param_groups, lr=lr, betas=betas, eps=eps, algebra=algebra,
-                   max_bivector_norm=max_bivector_norm)
+        return cls(param_groups, lr=lr, betas=betas, eps=eps, algebra=algebra, max_bivector_norm=max_bivector_norm)
 
     @torch.no_grad()
     def step(self, closure=None) -> Optional[torch.Tensor]:
@@ -369,7 +358,7 @@ class RiemannianAdam(Optimizer):
 
                 # Compute step size
                 step_size = lr / bias_correction1
-                bias_correction2_sqrt = bias_correction2 ** 0.5
+                bias_correction2_sqrt = bias_correction2**0.5
 
                 # Adam update in parameter space
                 denom = (exp_avg_sq.sqrt() / bias_correction2_sqrt).add_(eps)
@@ -386,9 +375,7 @@ class RiemannianAdam(Optimizer):
                     # 'spin' or None (legacy): bivector norm clipping
                     if self.max_bivector_norm is not None:
                         p_norm = p.norm(dim=-1, keepdim=True)
-                        scale = torch.clamp(
-                            p_norm / self.max_bivector_norm, min=1.0
-                        )
+                        scale = torch.clamp(p_norm / self.max_bivector_norm, min=1.0)
                         p.div_(scale)
 
         return loss

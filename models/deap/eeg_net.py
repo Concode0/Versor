@@ -48,8 +48,8 @@ class MultiTargetPhaseShiftHead(CliffordModule):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B = x.size(0)
-        flat_mv = x.reshape(B, -1)          # [B, channels * dim]
-        raw_logits = self.proj(flat_mv)     # [B, num_targets]
+        flat_mv = x.reshape(B, -1)  # [B, channels * dim]
+        raw_logits = self.proj(flat_mv)  # [B, num_targets]
         return raw_logits * self.log_scale.exp() + self.bias
 
 
@@ -118,17 +118,23 @@ class EEGNet(CliffordModule):
         for name, size in group_sizes.items():
             U = profiles[name]['U'] if profiles and name in profiles else 0.0
             V = profiles[name]['V'] if profiles and name in profiles else None
-            self.embeddings[name] = MotherEmbedding(
-                self.algebra, size, channels, U, V
-            )
+            self.embeddings[name] = MotherEmbedding(self.algebra, size, channels, U, V)
 
-        self.blocks = nn.ModuleList([
-            GeometricTransformerBlock(
-                self.algebra, channels, num_heads, num_rotors,
-                dropout=dropout, use_entropy_gating=True, eta=eta, H_base=H_base,
-            )
-            for _ in range(num_layers)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                GeometricTransformerBlock(
+                    self.algebra,
+                    channels,
+                    num_heads,
+                    num_rotors,
+                    dropout=dropout,
+                    use_entropy_gating=True,
+                    eta=eta,
+                    H_base=H_base,
+                )
+                for _ in range(num_layers)
+            ]
+        )
 
         self.final_norm = CliffordLayerNorm(self.algebra, channels)
         self.neutralizer = GeometricNeutralizer(self.algebra, channels)

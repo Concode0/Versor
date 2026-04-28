@@ -49,8 +49,7 @@ class MD17Task(BaseTask):
     def setup_algebra(self):
         """Use Cl(3,0,1) PGA for SE(3) rigid-body motions."""
         exp_policy = self.cfg.model.get("exp_policy", "balanced")
-        return CliffordAlgebra(p=3, q=0, r=self.cfg.algebra.get("r", 1),
-                               device=self.device, exp_policy=exp_policy)
+        return CliffordAlgebra(p=3, q=0, r=self.cfg.algebra.get("r", 1), device=self.device, exp_policy=exp_policy)
 
     def setup_model(self):
         """Build MD17ForceNet model with PGA motors, dynamic rotors, and RBF."""
@@ -95,7 +94,7 @@ class MD17Task(BaseTask):
         batch = batch.to(self.device)
 
         energy_target = batch.energy  # [B]
-        force_target = batch.force    # [N, 3]
+        force_target = batch.force  # [N, 3]
 
         energy_norm = (energy_target - self.energy_mean) / (self.energy_std + 1e-6)
         force_norm = (force_target - self.force_mean) / (self.force_std + 1e-6)
@@ -137,11 +136,13 @@ class MD17Task(BaseTask):
             grade_reg_loss = torch.tensor(0.0, device=self.device)
 
         w_sparsity = self.loss_weights.get('sparsity', 0.0)
-        loss = (self.loss_weights['energy'] * energy_loss +
-                self.loss_weights['force'] * force_loss +
-                w_sparsity * sparsity_loss +
-                w_conservative * conservative_loss +
-                w_grade_reg * grade_reg_loss)
+        loss = (
+            self.loss_weights['energy'] * energy_loss
+            + self.loss_weights['force'] * force_loss
+            + w_sparsity * sparsity_loss
+            + w_conservative * conservative_loss
+            + w_grade_reg * grade_reg_loss
+        )
 
         loss.backward()
         # Guard: zero out NaN/Inf gradients before clipping (defense in depth)
@@ -181,9 +182,7 @@ class MD17Task(BaseTask):
                 energy_target = batch.energy
                 force_target = batch.force
 
-                energy_pred_norm, force_pred_norm = self.model(
-                    batch.z, batch.pos, batch.batch, batch.edge_index
-                )
+                energy_pred_norm, force_pred_norm = self.model(batch.z, batch.pos, batch.batch, batch.edge_index)
 
                 energy_pred = energy_pred_norm * self.energy_std + self.energy_mean
                 # force_pred_norm = -d(E_norm)/d(pos); actual force = E_std * force_pred_norm
@@ -196,10 +195,7 @@ class MD17Task(BaseTask):
         avg_energy_mae = total_energy_mae / count
         avg_force_mae = total_force_mae / (count * force_target.size(-2))  # Normalize by num_atoms
 
-        return {
-            'Energy_MAE': avg_energy_mae,
-            'Force_MAE': avg_force_mae
-        }
+        return {'Energy_MAE': avg_energy_mae, 'Force_MAE': avg_force_mae}
 
     def visualize(self, val_loader):
         self.model.eval()
@@ -210,9 +206,7 @@ class MD17Task(BaseTask):
         force_target = batch.force
 
         with torch.no_grad():
-            energy_pred_norm, force_pred_norm = self.model(
-                batch.z, batch.pos, batch.batch, batch.edge_index
-            )
+            energy_pred_norm, force_pred_norm = self.model(batch.z, batch.pos, batch.batch, batch.edge_index)
             energy_pred = energy_pred_norm * self.energy_std + self.energy_mean
             force_pred = force_pred_norm * self.energy_std
 
@@ -263,6 +257,7 @@ class MD17Task(BaseTask):
         train_loader, val_loader, test_loader = self.get_data()
 
         from tqdm import tqdm
+
         pbar = tqdm(range(self.epochs))
 
         best_val_metric = float('inf')
@@ -300,7 +295,7 @@ class MD17Task(BaseTask):
                 'F_MAE': avg_f_mae,
                 'Val_E_MAE': val_metrics['Energy_MAE'],
                 'Val_F_MAE': val_metrics['Force_MAE'],
-                'LR': self.optimizer.param_groups[0]['lr']
+                'LR': self.optimizer.param_groups[0]['lr'],
             }
             desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])
             pbar.set_description(desc)

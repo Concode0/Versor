@@ -8,18 +8,19 @@
 import torch.nn as nn
 from core.algebra import CliffordAlgebra
 
+
 class CliffordModule(nn.Module):
     """Base module for Clifford algebra layers.
-    
-    This module securely stores a reference to a shared ``CliffordAlgebra`` instance 
-    without registering it as a PyTorch submodule. In the Versor architecture, 
-    a single algebra instance (which contains precomputed geometric tensors) 
-    is heavily shared across multiple layers. 
-    
-    By bypassing standard submodule registration (via ``object.__setattr__``) and 
+
+    This module securely stores a reference to a shared ``CliffordAlgebra`` instance
+    without registering it as a PyTorch submodule. In the Versor architecture,
+    a single algebra instance (which contains precomputed geometric tensors)
+    is heavily shared across multiple layers.
+
+    By bypassing standard submodule registration (via ``object.__setattr__``) and
     overriding ``_apply``, this base class ensures that:
     1. No ownership conflicts occur in PyTorch's computational graph.
-    2. Device and dtype casting (e.g., ``.to(device)``, ``.cuda()``, ``.half()``) 
+    2. Device and dtype casting (e.g., ``.to(device)``, ``.cuda()``, ``.half()``)
        are automatically and safely propagated to the shared algebra buffers.
     """
 

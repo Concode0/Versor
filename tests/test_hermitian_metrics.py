@@ -6,10 +6,18 @@ from core.algebra import CliffordAlgebra
 
 pytestmark = pytest.mark.unit
 from core.metric import (
-    inner_product, induced_norm, geometric_distance,
-    clifford_conjugate, hermitian_inner_product, hermitian_norm,
-    hermitian_distance, hermitian_angle, grade_hermitian_norm,
-    hermitian_grade_spectrum, signature_trace_form, signature_norm_squared,
+    inner_product,
+    induced_norm,
+    geometric_distance,
+    clifford_conjugate,
+    hermitian_inner_product,
+    hermitian_norm,
+    hermitian_distance,
+    hermitian_angle,
+    grade_hermitian_norm,
+    hermitian_grade_spectrum,
+    signature_trace_form,
+    signature_norm_squared,
     _hermitian_signs,
 )
 
@@ -49,8 +57,7 @@ class TestHermitianSigns:
         prod = algebra_minkowski.geometric_product(A_bar.unsqueeze(0), B.unsqueeze(0))
         ip_gp = prod[0, 0]  # scalar part
 
-        assert torch.allclose(ip_signed, ip_gp, atol=1e-5), \
-            f"Signed IP {ip_signed.item():.6f} != GP {ip_gp.item():.6f}"
+        assert torch.allclose(ip_signed, ip_gp, atol=1e-5), f"Signed IP {ip_signed.item():.6f} != GP {ip_gp.item():.6f}"
 
     def test_matches_gp_conformal(self, algebra_conformal):
         """Same verification for Cl(4,1)."""
@@ -65,8 +72,7 @@ class TestHermitianSigns:
         prod = algebra_conformal.geometric_product(A_bar.unsqueeze(0), B.unsqueeze(0))
         ip_gp = prod[0, 0]
 
-        assert torch.allclose(ip_signed, ip_gp, atol=1e-4), \
-            f"Signed IP {ip_signed.item():.6f} != GP {ip_gp.item():.6f}"
+        assert torch.allclose(ip_signed, ip_gp, atol=1e-4), f"Signed IP {ip_signed.item():.6f} != GP {ip_gp.item():.6f}"
 
 
 class TestCliffordConjugate:
@@ -116,7 +122,7 @@ class TestHermitianInnerProduct:
         assert torch.allclose(
             hermitian_inner_product(algebra_minkowski, a, b),
             hermitian_inner_product(algebra_minkowski, b, a),
-            atol=1e-6
+            atol=1e-6,
         )
 
     def test_linearity(self, algebra_minkowski):
@@ -125,7 +131,9 @@ class TestHermitianInnerProduct:
         c = torch.randn(algebra_minkowski.dim)
         alpha = 2.5
         lhs = hermitian_inner_product(algebra_minkowski, alpha * a + b, c)
-        rhs = alpha * hermitian_inner_product(algebra_minkowski, a, c) + hermitian_inner_product(algebra_minkowski, b, c)
+        rhs = alpha * hermitian_inner_product(algebra_minkowski, a, c) + hermitian_inner_product(
+            algebra_minkowski, b, c
+        )
         assert torch.allclose(lhs, rhs, atol=1e-4)
 
     def test_has_negative_signs(self, algebra_minkowski):

@@ -64,9 +64,7 @@ class SymmetryDetector:
         null_dirs, null_scores = self.detect_null_directions(flat)
         inv_sym = self.detect_involution_symmetry(flat)
         refl_syms = self.detect_reflection_symmetries(flat)
-        cont_dim = self.detect_continuous_symmetries(
-            flat, commutator_result=commutator_result
-        )
+        cont_dim = self.detect_continuous_symmetries(flat, commutator_result=commutator_result)
 
         return SymmetryResult(
             null_directions=null_dirs,
@@ -76,9 +74,7 @@ class SymmetryDetector:
             continuous_symmetry_dim=cont_dim,
         )
 
-    def detect_null_directions(
-        self, mv_data: torch.Tensor
-    ) -> Tuple[List[int], torch.Tensor]:
+    def detect_null_directions(self, mv_data: torch.Tensor) -> Tuple[List[int], torch.Tensor]:
         """Detect effectively null basis-vector directions.
 
         For each basis vector ``e_i``, computes the mean squared
@@ -97,7 +93,7 @@ class SymmetryDetector:
 
         # Energy on each grade-1 component
         g1_coeffs = mv_data[:, g1_idx]  # [N, n]
-        scores = (g1_coeffs ** 2).mean(dim=0)  # [n]
+        scores = (g1_coeffs**2).mean(dim=0)  # [n]
 
         # Normalise so max is 1
         smax = scores.max()
@@ -123,13 +119,11 @@ class SymmetryDetector:
         """
         alpha = self.algebra.grade_involution(mv_data)  # [N, dim]
         odd_part = (mv_data - alpha) / 2.0
-        odd_energy = (odd_part ** 2).sum(dim=-1)
-        total_energy = (mv_data ** 2).sum(dim=-1).clamp(min=self.algebra.eps_sq)
+        odd_energy = (odd_part**2).sum(dim=-1)
+        total_energy = (mv_data**2).sum(dim=-1).clamp(min=self.algebra.eps_sq)
         return (odd_energy / total_energy).mean().item()
 
-    def detect_reflection_symmetries(
-        self, mv_data: torch.Tensor
-    ) -> List[Dict]:
+    def detect_reflection_symmetries(self, mv_data: torch.Tensor) -> List[Dict]:
         """Test reflection symmetry along each basis-vector direction.
 
         For each basis vector ``e_i``, reflects the data
@@ -158,7 +152,7 @@ class SymmetryDetector:
         orig_sorted = mv_data.sort(dim=0).values.unsqueeze(0).expand(n, N, dim)
         refl_sorted = reflected.sort(dim=1).values  # sort along N
         dist = ((orig_sorted - refl_sorted) ** 2).sum(dim=-1).mean(dim=-1)  # [n]
-        norm = (mv_data ** 2).sum(dim=-1).mean().clamp(min=self.algebra.eps_sq)
+        norm = (mv_data**2).sum(dim=-1).mean().clamp(min=self.algebra.eps_sq)
         scores = dist / norm  # [n]
 
         results = [{"direction": i, "score": scores[i].item()} for i in range(n)]

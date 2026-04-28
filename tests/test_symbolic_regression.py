@@ -41,34 +41,35 @@ _TEST_DATASET = "192_vineyard"
 _TEST_CACHE = "./data/pmlb_cache"
 
 
-def _make_cfg(dataset_name=_TEST_DATASET, hidden_channels=4, num_layers=1,
-              n_samples=200, auto=False):
-    return OmegaConf.create({
-        "name": "sr",
-        "algebra": {"p": 4, "q": 0, "r": 0, "device": "cpu", "auto": auto},
-        "dataset": {
-            "dataset_name": dataset_name,
-            "category": "blackbox",
-            "n_samples": n_samples,
-            "noise": 0.0,
-            "cache_dir": _TEST_CACHE,
-        },
-        "model": {
-            "hidden_channels": hidden_channels,
-            "num_layers": num_layers,
-            "exp_policy": "balanced",
-        },
-        "training": {
-            "epochs": 1,
-            "lr": 0.001,
-            "batch_size": 16,
-            "optimizer_type": "riemannian_adam",
-            "max_bivector_norm": 10.0,
-            "sparsity_weight": 0.01,
-            "seed": 0,
-        },
-        "checkpoint": None,
-    })
+def _make_cfg(dataset_name=_TEST_DATASET, hidden_channels=4, num_layers=1, n_samples=200, auto=False):
+    return OmegaConf.create(
+        {
+            "name": "sr",
+            "algebra": {"p": 4, "q": 0, "r": 0, "device": "cpu", "auto": auto},
+            "dataset": {
+                "dataset_name": dataset_name,
+                "category": "blackbox",
+                "n_samples": n_samples,
+                "noise": 0.0,
+                "cache_dir": _TEST_CACHE,
+            },
+            "model": {
+                "hidden_channels": hidden_channels,
+                "num_layers": num_layers,
+                "exp_policy": "balanced",
+            },
+            "training": {
+                "epochs": 1,
+                "lr": 0.001,
+                "batch_size": 16,
+                "optimizer_type": "riemannian_adam",
+                "max_bivector_norm": 10.0,
+                "sparsity_weight": 0.01,
+                "seed": 0,
+            },
+            "checkpoint": None,
+        }
+    )
 
 
 def test_dataset_categories():
@@ -103,15 +104,14 @@ def test_pmlb_dataset_load():
 
 def test_sr_loaders():
     """get_sr_loaders returns normalized data with correct shapes."""
-    train_loader, test_loader, x_mean, x_std, y_mean, y_std, var_names = \
-        get_sr_loaders(
-            dataset_name=_TEST_DATASET,
-            n_samples=200,
-            batch_size=32,
-            cache_dir=_TEST_CACHE,
-            seed=42,
-            num_workers=0,
-        )
+    train_loader, test_loader, x_mean, x_std, y_mean, y_std, var_names = get_sr_loaders(
+        dataset_name=_TEST_DATASET,
+        n_samples=200,
+        batch_size=32,
+        cache_dir=_TEST_CACHE,
+        seed=42,
+        num_workers=0,
+    )
 
     assert len(var_names) > 0
     assert x_mean.shape[0] == len(var_names)
@@ -125,10 +125,8 @@ def test_sr_loaders():
     x_all = torch.cat(x_all)
     y_all = torch.cat(y_all)
 
-    assert x_all.mean(0).abs().max().item() < 0.15, \
-        "Normalised x mean should be near zero"
-    assert y_all.mean().abs().item() < 0.15, \
-        "Normalised y mean should be near zero"
+    assert x_all.mean(0).abs().max().item() < 0.15, "Normalised x mean should be near zero"
+    assert y_all.mean().abs().item() < 0.15, "Normalised y mean should be near zero"
 
 
 def test_embedding_shape(algebra):
@@ -137,8 +135,7 @@ def test_embedding_shape(algebra):
     emb = SRMultiGradeEmbedding(algebra, in_features=k, channels=C)
     x = torch.randn(B, k)
     out = emb(x)
-    assert out.shape == (B, C, algebra.dim), \
-        f"Expected ({B}, {C}, {algebra.dim}), got {out.shape}"
+    assert out.shape == (B, C, algebra.dim), f"Expected ({B}, {C}, {algebra.dim}), got {out.shape}"
 
 
 def test_embedding_grade1_nonzero(algebra):
@@ -150,8 +147,7 @@ def test_embedding_grade1_nonzero(algebra):
 
     g1_idx = [i for i in range(algebra.dim) if bin(i).count("1") == 1]
     g1_components = out[:, :, g1_idx]
-    assert g1_components.abs().max().item() > 1e-7, \
-        "Grade-1 components should be non-zero for non-zero input"
+    assert g1_components.abs().max().item() > 1e-7, "Grade-1 components should be non-zero for non-zero input"
 
 
 def test_embedding_grade2_zero(algebra):
@@ -162,8 +158,7 @@ def test_embedding_grade2_zero(algebra):
     g2_idx = [i for i in range(algebra.dim) if bin(i).count("1") == 2]
     emb = SRMultiGradeEmbedding(algebra, in_features=k, channels=C)
     out = emb(x)
-    assert out[:, :, g2_idx].abs().max().item() == 0.0, \
-        "Grade-2 components should be zero (no LUT)"
+    assert out[:, :, g2_idx].abs().max().item() == 0.0, "Grade-2 components should be zero (no LUT)"
 
 
 def test_model_forward_shape(algebra):
@@ -188,8 +183,7 @@ def test_model_gradient_flow(algebra):
 
     for name, param in model.named_parameters():
         if param.grad is not None:
-            assert torch.isfinite(param.grad).all(), \
-                f"NaN/Inf gradient in {name}"
+            assert torch.isfinite(param.grad).all(), f"NaN/Inf gradient in {name}"
 
 
 def test_sparsity_loss(algebra):
@@ -235,15 +229,16 @@ def test_blade_names(algebra):
     assert names[15] == "e1234", f"idx=15 should be 'e1234', got {names[15]!r}"
 
     g1_names = [names[i] for i in range(16) if bin(i).count("1") == 1]
-    assert all(len(n) == 2 and n.startswith("e") for n in g1_names), \
-        "Grade-1 blades should be 'e1', 'e2', 'e3', 'e4'"
+    assert all(len(n) == 2 and n.startswith("e") for n in g1_names), "Grade-1 blades should be 'e1', 'e2', 'e3', 'e4'"
 
 
 def test_get_rotor_analysis(algebra):
     """get_rotor_analysis() returns one dict per layer with expected keys."""
     num_layers = 2
     model = SRGBN(
-        algebra, in_features=3, channels=4,
+        algebra,
+        in_features=3,
+        channels=4,
         num_layers=num_layers,
     )
     x = torch.randn(8, 3)
@@ -251,13 +246,11 @@ def test_get_rotor_analysis(algebra):
 
     analysis = model.get_rotor_analysis()
 
-    assert len(analysis) == num_layers, \
-        f"Expected {num_layers} layer dicts, got {len(analysis)}"
+    assert len(analysis) == num_layers, f"Expected {num_layers} layer dicts, got {len(analysis)}"
 
     expected_keys = {"layer", "bivectors", "plane_names", "dominant_plane"}
     for item in analysis:
-        assert expected_keys.issubset(item.keys()), \
-            f"Missing keys: {expected_keys - item.keys()}"
+        assert expected_keys.issubset(item.keys()), f"Missing keys: {expected_keys - item.keys()}"
 
 
 def test_variable_importance_shape():
@@ -270,8 +263,7 @@ def test_variable_importance_shape():
     x_batch = torch.randn(8, task.n_vars)
     imp = task.variable_importance(x_batch)
 
-    assert imp.shape == (task.n_vars,), \
-        f"Expected shape ({task.n_vars},), got {imp.shape}"
+    assert imp.shape == (task.n_vars,), f"Expected shape ({task.n_vars},), got {imp.shape}"
     assert torch.isfinite(imp).all(), "variable_importance contains NaN/Inf"
 
 
@@ -316,18 +308,23 @@ def test_extract_formula_smoke():
 
     cfg = _make_cfg(n_samples=50, hidden_channels=4, num_layers=1)
     # Add iterative config for extract_formula
-    cfg = OmegaConf.merge(cfg, OmegaConf.create({
-        "iterative": {
-            "max_stages": 1,
-            "stage_epochs": 5,
-            "r2_target": 0.999,
-        },
-        "implicit": {"mode": "explicit"},
-        "grouping": {"enabled": False},
-        "svd": {"warmstart": False},
-        "rejection": {"soft_alpha": 10.0, "soft_threshold": 0.01},
-        "mother_algebra": {"cross_term_threshold": 0.01},
-    }))
+    cfg = OmegaConf.merge(
+        cfg,
+        OmegaConf.create(
+            {
+                "iterative": {
+                    "max_stages": 1,
+                    "stage_epochs": 5,
+                    "r2_target": 0.999,
+                },
+                "implicit": {"mode": "explicit"},
+                "grouping": {"enabled": False},
+                "svd": {"warmstart": False},
+                "rejection": {"soft_alpha": 10.0, "soft_threshold": 0.01},
+                "mother_algebra": {"cross_term_threshold": 0.01},
+            }
+        ),
+    )
     task = SRTask(cfg)
     train_loader, test_loader = task.get_data()
 

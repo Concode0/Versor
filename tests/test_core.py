@@ -118,8 +118,7 @@ class TestCliffordAlgebra:
         B = torch.randn(3, 8)
         AB = alg.geometric_product(A, B)
         lhs = alg.grade_involution(AB)
-        rhs = alg.geometric_product(
-            alg.grade_involution(A), alg.grade_involution(B))
+        rhs = alg.geometric_product(alg.grade_involution(A), alg.grade_involution(B))
         assert torch.allclose(lhs, rhs, atol=1e-5)
 
     def test_clifford_conjugation_sign_pattern(self):
@@ -130,10 +129,9 @@ class TestCliffordAlgebra:
             mask = alg.grade_masks[k]
             mv[0, mask] = 1.0
             result = alg.clifford_conjugation(mv)
-            assert torch.allclose(
-                result[0, mask],
-                expected_sign * torch.ones(mask.sum()),
-                atol=1e-6), f"Failed at grade {k}"
+            assert torch.allclose(result[0, mask], expected_sign * torch.ones(mask.sum()), atol=1e-6), (
+                f"Failed at grade {k}"
+            )
 
     def test_clifford_conjugation_equals_reverse_then_involution(self):
         """bar(x) = hat(~x)."""
@@ -150,8 +148,7 @@ class TestCliffordAlgebra:
         B = torch.randn(3, 8)
         AB = alg.geometric_product(A, B)
         lhs = alg.clifford_conjugation(AB)
-        rhs = alg.geometric_product(
-            alg.clifford_conjugation(B), alg.clifford_conjugation(A))
+        rhs = alg.geometric_product(alg.clifford_conjugation(B), alg.clifford_conjugation(A))
         assert torch.allclose(lhs, rhs, atol=1e-5)
 
     def test_norm_sq_scalar(self):
@@ -195,9 +192,12 @@ class TestCliffordAlgebra:
         """e1 _| e12 = e2, e2 _| e12 = -e1 in Cl(3,0)."""
         alg = CliffordAlgebra(p=3, q=0, device='cpu')
 
-        e1 = torch.zeros(1, 8); e1[0, 1] = 1.0
-        e2 = torch.zeros(1, 8); e2[0, 2] = 1.0
-        e12 = torch.zeros(1, 8); e12[0, 3] = 1.0
+        e1 = torch.zeros(1, 8)
+        e1[0, 1] = 1.0
+        e2 = torch.zeros(1, 8)
+        e2[0, 2] = 1.0
+        e12 = torch.zeros(1, 8)
+        e12[0, 3] = 1.0
 
         r1 = alg.left_contraction(e1, e12)
         assert abs(r1[0, 2].item() - 1.0) < 1e-6
@@ -212,7 +212,8 @@ class TestCliffordAlgebra:
     def test_left_contraction_scalar(self):
         """Scalar _| X = scalar * X."""
         alg = CliffordAlgebra(p=3, q=0, device='cpu')
-        s = torch.zeros(1, 8); s[0, 0] = 3.0
+        s = torch.zeros(1, 8)
+        s[0, 0] = 3.0
         X = torch.randn(1, 8)
         result = alg.left_contraction(s, X)
         assert torch.allclose(result, 3.0 * X, atol=1e-5)
@@ -220,8 +221,10 @@ class TestCliffordAlgebra:
     def test_left_contraction_higher_grade_vanishes(self):
         """e12 _| e1 = 0 (grade(A) > grade(B) -> zero)."""
         alg = CliffordAlgebra(p=3, q=0, device='cpu')
-        e12 = torch.zeros(1, 8); e12[0, 3] = 1.0
-        e1 = torch.zeros(1, 8); e1[0, 1] = 1.0
+        e12 = torch.zeros(1, 8)
+        e12[0, 3] = 1.0
+        e1 = torch.zeros(1, 8)
+        e1[0, 1] = 1.0
         result = alg.left_contraction(e12, e1)
         assert torch.allclose(result, torch.zeros_like(result), atol=1e-6)
 
@@ -247,12 +250,12 @@ class TestCliffordAlgebra:
             target_energy = result[0, target_mask].abs().sum()
             total_energy = result[0].abs().sum()
             if total_energy > 1e-8:
-                assert target_energy / total_energy > 0.99, \
-                    f"Dual of grade-{k} not concentrated in grade-{3 - k}"
+                assert target_energy / total_energy > 0.99, f"Dual of grade-{k} not concentrated in grade-{3 - k}"
 
     def test_dual_scalar_to_pseudoscalar(self):
         alg = CliffordAlgebra(p=3, q=0, device='cpu')
-        s = torch.zeros(1, 8); s[0, 0] = 1.0
+        s = torch.zeros(1, 8)
+        s[0, 0] = 1.0
         result = alg.dual(s)
         g3_mask = alg.grade_masks[3]
         assert result[0, g3_mask].abs().sum() > 0.5
@@ -340,13 +343,13 @@ class TestCliffordAlgebra:
     def test_versor_product_rotor_equals_sandwich(self):
         """For a rotor, versor_product = RxR~."""
         alg = CliffordAlgebra(p=3, q=0, device='cpu')
-        B = torch.zeros(1, 8); B[0, 3] = 0.7
+        B = torch.zeros(1, 8)
+        B[0, 3] = 0.7
         R = alg.exp(B)
         x = alg.embed_vector(torch.tensor([[1.0, 2.0, 3.0]]))
         vp = alg.versor_product(R, x)
         R_rev = alg.reverse(R)
-        sandwich = alg.geometric_product(
-            alg.geometric_product(R, x), R_rev)
+        sandwich = alg.geometric_product(alg.geometric_product(R, x), R_rev)
         assert torch.allclose(vp, sandwich, atol=1e-5)
 
     def test_versor_product_vector_equals_reflection(self):
@@ -361,7 +364,8 @@ class TestCliffordAlgebra:
     def test_versor_product_preserves_grade(self):
         """Versor product of a vector remains a vector."""
         alg = CliffordAlgebra(p=3, q=0, device='cpu')
-        B = torch.zeros(1, 8); B[0, 5] = 0.3
+        B = torch.zeros(1, 8)
+        B[0, 5] = 0.3
         R = alg.exp(B)
         v = alg.embed_vector(torch.tensor([[1.0, 2.0, 0.0]]))
         result = alg.versor_product(R, v)
@@ -372,8 +376,10 @@ class TestCliffordAlgebra:
     def test_versor_product_composition(self):
         """V2(V1 x V1^-1)V2^-1 = (V2 V1) x (V2 V1)^-1."""
         alg = CliffordAlgebra(p=3, q=0, device='cpu')
-        B1 = torch.zeros(1, 8); B1[0, 3] = 0.3
-        B2 = torch.zeros(1, 8); B2[0, 5] = 0.5
+        B1 = torch.zeros(1, 8)
+        B1[0, 3] = 0.3
+        B2 = torch.zeros(1, 8)
+        B2[0, 5] = 0.5
         R1 = alg.exp(B1)
         R2 = alg.exp(B2)
         x = alg.embed_vector(torch.tensor([[1.0, 0.0, 0.0]]))

@@ -57,9 +57,16 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    build_visualization_metadata, count_parameters, ensure_output_dir,
-    make_experiment_parser, print_banner, report_diagnostics,
-    run_supervised_loop, save_training_curve, set_seed, setup_algebra,
+    build_visualization_metadata,
+    count_parameters,
+    ensure_output_dir,
+    make_experiment_parser,
+    print_banner,
+    report_diagnostics,
+    run_supervised_loop,
+    save_training_curve,
+    set_seed,
+    setup_algebra,
     signature_metadata,
 )
 from core.metric import hermitian_inner_product, hermitian_grade_spectrum
@@ -73,6 +80,7 @@ from optimizers.riemannian import RiemannianAdam
 # Taylor-Green vortex (analytic)
 # ---------------------------------------------------------------------------
 
+
 def _tgv_velocity(x, y, z, t, nu, A=1.0):
     decay = torch.exp(-3.0 * nu * t)
     u1 = A * torch.sin(x) * torch.cos(y) * torch.cos(z) * decay
@@ -83,8 +91,7 @@ def _tgv_velocity(x, y, z, t, nu, A=1.0):
 
 def _tgv_pressure(x, y, z, t, nu, A=1.0):
     decay = torch.exp(-6.0 * nu * t)
-    return (A * A / 16.0) * (torch.cos(2 * x) + torch.cos(2 * y)) * \
-           (torch.cos(2 * z) + 2.0) * decay
+    return (A * A / 16.0) * (torch.cos(2 * x) + torch.cos(2 * y)) * (torch.cos(2 * z) + 2.0) * decay
 
 
 def _tgv_vorticity(x, y, z, t, nu, A=1.0):
@@ -104,17 +111,16 @@ def _tgv_velocity_grad(x, y, z, t, nu, A=1.0) -> torch.Tensor:
     combinations are the vorticity components.
     """
     decay = torch.exp(-3.0 * nu * t)
-    du1_dx =  A * torch.cos(x) * torch.cos(y) * torch.cos(z) * decay
+    du1_dx = A * torch.cos(x) * torch.cos(y) * torch.cos(z) * decay
     du1_dy = -A * torch.sin(x) * torch.sin(y) * torch.cos(z) * decay
     du1_dz = -A * torch.sin(x) * torch.cos(y) * torch.sin(z) * decay
-    du2_dx =  A * torch.sin(x) * torch.sin(y) * torch.cos(z) * decay
+    du2_dx = A * torch.sin(x) * torch.sin(y) * torch.cos(z) * decay
     du2_dy = -A * torch.cos(x) * torch.cos(y) * torch.cos(z) * decay
-    du2_dz =  A * torch.cos(x) * torch.sin(y) * torch.sin(z) * decay
+    du2_dz = A * torch.cos(x) * torch.sin(y) * torch.sin(z) * decay
     zero = torch.zeros_like(x)
     return torch.stack(
-        [du1_dx, du1_dy, du1_dz,
-         du2_dx, du2_dy, du2_dz,
-         zero,   zero,   zero], dim=-1,
+        [du1_dx, du1_dy, du1_dz, du2_dx, du2_dy, du2_dz, zero, zero, zero],
+        dim=-1,
     )
 
 
@@ -142,6 +148,7 @@ def _pack_mv(p, u1, u2, u3, w1, w2, w3):
 # Dataset — analytic IC (t=0) + BC (periodic-face) supervision
 # ---------------------------------------------------------------------------
 
+
 class TaylorGreenSupervisedDataset(Dataset):
     """Analytic samples on the IC slab and the six periodic faces.
 
@@ -149,8 +156,7 @@ class TaylorGreenSupervisedDataset(Dataset):
     on samples whose target is the closed-form TGV solution.
     """
 
-    def __init__(self, num_ic: int, num_bc: int, re: float,
-                 t_max: float = 1.0, seed: int = 42):
+    def __init__(self, num_ic: int, num_bc: int, re: float, t_max: float = 1.0, seed: int = 42):
         rng = np.random.RandomState(seed)
         nu = 1.0 / re
         self.nu = nu
@@ -189,8 +195,7 @@ class TaylorGreenSupervisedDataset(Dataset):
         self.targets = targets
         self.target_grad = target_grad
 
-        print(f"  TGV supervised set: {num_ic} IC + {len(t_b)} BC, "
-              f"Re={re:.0f}, nu={nu:.6f}, t_max={t_max}")
+        print(f"  TGV supervised set: {num_ic} IC + {len(t_b)} BC, Re={re:.0f}, nu={nu:.6f}, t_max={t_max}")
 
     def __len__(self) -> int:
         return self.coords.shape[0]
@@ -218,6 +223,7 @@ def _eval_grid(re: float, t: float, n: int) -> Tuple[torch.Tensor, torch.Tensor]
 # Network
 # ---------------------------------------------------------------------------
 
+
 class GaugeFluidNet(CliffordModule):
     """GBN for Navier-Stokes in Cl(3,0).
 
@@ -234,34 +240,39 @@ class GaugeFluidNet(CliffordModule):
     constituent components are inside the target.
     """
 
-    def __init__(self, algebra, hidden_dim: int = 32, num_layers: int = 4,
-                 num_spatial_freqs: int = 6, num_temporal_freqs: int = 8):
+    def __init__(
+        self,
+        algebra,
+        hidden_dim: int = 32,
+        num_layers: int = 4,
+        num_spatial_freqs: int = 6,
+        num_temporal_freqs: int = 8,
+    ):
         super().__init__(algebra)
         self.hidden_dim = hidden_dim
 
         spatial_freqs = torch.arange(1, num_spatial_freqs + 1, dtype=torch.float32)
         self.register_buffer('spatial_freqs', spatial_freqs)
-        self.register_buffer('temporal_freqs',
-                             torch.randn(num_temporal_freqs) * 2.0)
-        self.register_buffer('re_freqs',
-                             torch.randn(num_temporal_freqs) * 0.5)
+        self.register_buffer('temporal_freqs', torch.randn(num_temporal_freqs) * 2.0)
+        self.register_buffer('re_freqs', torch.randn(num_temporal_freqs) * 0.5)
 
-        input_dim = (5
-                     + 3 * 2 * num_spatial_freqs
-                     + 2 * num_temporal_freqs
-                     + 2 * num_temporal_freqs)
+        input_dim = 5 + 3 * 2 * num_spatial_freqs + 2 * num_temporal_freqs + 2 * num_temporal_freqs
 
         self.input_lift = nn.Linear(input_dim, hidden_dim * algebra.dim)
         self.input_norm = CliffordLayerNorm(algebra, hidden_dim)
 
         self.blocks = nn.ModuleList()
         for _ in range(num_layers):
-            self.blocks.append(nn.ModuleDict({
-                'norm':   CliffordLayerNorm(algebra, hidden_dim),
-                'rotor':  RotorLayer(algebra, hidden_dim),
-                'act':    GeometricGELU(algebra, channels=hidden_dim),
-                'linear': CliffordLinear(algebra, hidden_dim, hidden_dim),
-            }))
+            self.blocks.append(
+                nn.ModuleDict(
+                    {
+                        'norm': CliffordLayerNorm(algebra, hidden_dim),
+                        'rotor': RotorLayer(algebra, hidden_dim),
+                        'act': GeometricGELU(algebra, channels=hidden_dim),
+                        'linear': CliffordLinear(algebra, hidden_dim, hidden_dim),
+                    }
+                )
+            )
 
         self.output_norm = CliffordLayerNorm(algebra, hidden_dim)
         self.blade_selector = BladeSelector(algebra, channels=hidden_dim)
@@ -306,6 +317,7 @@ class GaugeFluidNet(CliffordModule):
 # Post-training diagnostics — every ex-loss-term, now a measurement
 # ---------------------------------------------------------------------------
 
+
 @torch.no_grad()
 def supervised_l2(model, loader, device) -> Dict[str, float]:
     """Joint MSE on the (packed mv, ∂u/∂x_i) test pair."""
@@ -315,17 +327,19 @@ def supervised_l2(model, loader, device) -> Dict[str, float]:
         targets = targets.to(device)
         target_grad = target_grad.to(device)
         pred_mv, pred_grad = model(coords)
-        sse_mv   += ((pred_mv   - targets    ) ** 2).mean().item() * coords.shape[0]
+        sse_mv += ((pred_mv - targets) ** 2).mean().item() * coords.shape[0]
         sse_grad += ((pred_grad - target_grad) ** 2).mean().item() * coords.shape[0]
         n += coords.shape[0]
     return {
-        'test_l2_mv':   sse_mv   / max(n, 1),
+        'test_l2_mv': sse_mv / max(n, 1),
         'test_l2_grad': sse_grad / max(n, 1),
     }
 
 
-def _autograd_div_curl_lap(model: GaugeFluidNet, coords: torch.Tensor,
-                           ) -> Dict[str, torch.Tensor]:
+def _autograd_div_curl_lap(
+    model: GaugeFluidNet,
+    coords: torch.Tensor,
+) -> Dict[str, torch.Tensor]:
     """Compute div(u), curl(u) and ∇²u from the trained model via autograd.
 
     Used post-training only — not in the gradient path.
@@ -341,17 +355,20 @@ def _autograd_div_curl_lap(model: GaugeFluidNet, coords: torch.Tensor,
     u1, u2, u3 = mv[:, 1], mv[:, 2], mv[:, 4]
 
     def grad(out, inp):
-        return torch.autograd.grad(out.sum(), inp, create_graph=False,
-                                   retain_graph=True)[0].squeeze(-1)
+        return torch.autograd.grad(out.sum(), inp, create_graph=False, retain_graph=True)[0].squeeze(-1)
 
-    du1_dx = grad(u1, x); du1_dy = grad(u1, y); du1_dz = grad(u1, z)
-    du2_dx = grad(u2, x); du2_dy = grad(u2, y); du2_dz = grad(u2, z)
-    du3_dx = grad(u3, x); du3_dy = grad(u3, y); du3_dz = grad(u3, z)
+    du1_dx = grad(u1, x)
+    du1_dy = grad(u1, y)
+    du1_dz = grad(u1, z)
+    du2_dx = grad(u2, x)
+    du2_dy = grad(u2, y)
+    du2_dz = grad(u2, z)
+    du3_dx = grad(u3, x)
+    du3_dy = grad(u3, y)
+    du3_dz = grad(u3, z)
 
     div_u = du1_dx + du2_dy + du3_dz
-    curl = torch.stack([du3_dy - du2_dz,
-                        du1_dz - du3_dx,
-                        du2_dx - du1_dy], dim=-1)
+    curl = torch.stack([du3_dy - du2_dz, du1_dz - du3_dx, du2_dx - du1_dy], dim=-1)
     return {'mv': mv.detach(), 'div_u': div_u.detach(), 'curl': curl.detach()}
 
 
@@ -384,8 +401,12 @@ def grade_spectrum(model, algebra, coords, device) -> Dict[str, float]:
     return {labels[k]: spec[k].item() for k in range(4)}
 
 
-def post_training_diagnostics(model, algebra, coords, device,
-                              ) -> Dict[str, float]:
+def post_training_diagnostics(
+    model,
+    algebra,
+    coords,
+    device,
+) -> Dict[str, float]:
     """Single-pass gather of all demoted diagnostics."""
     coords = coords.to(device)
     out = {}
@@ -396,20 +417,21 @@ def post_training_diagnostics(model, algebra, coords, device,
     out['div_residual'] = (derived['div_u'] ** 2).mean().item()
 
     w_pred = torch.stack([mv[:, 6], -mv[:, 5], mv[:, 3]], dim=-1)
-    out['vorticity_consistency'] = (
-        (derived['curl'] - w_pred) ** 2
-    ).mean().item()
+    out['vorticity_consistency'] = ((derived['curl'] - w_pred) ** 2).mean().item()
 
     # Gradient-head divergence: trace of the predicted ∂u/∂x Jacobian.
     # Should also collapse toward 0 because every TGV target has zero trace.
     with torch.no_grad():
         _, pred_grad = model(coords.detach())
     trace_div = pred_grad[:, 0] + pred_grad[:, 4] + pred_grad[:, 8]
-    out['div_residual_grad_head'] = (trace_div ** 2).mean().item()
+    out['div_residual_grad_head'] = (trace_div**2).mean().item()
 
     # algebraic / no_grad
     out['gauge_covariance'] = gauge_covariance_residual(
-        model, algebra, coords.detach(), device,
+        model,
+        algebra,
+        coords.detach(),
+        device,
     )
     out.update(grade_spectrum(model, algebra, coords.detach(), device))
 
@@ -419,6 +441,7 @@ def post_training_diagnostics(model, algebra, coords, device,
 # ---------------------------------------------------------------------------
 # Training entry point
 # ---------------------------------------------------------------------------
+
 
 def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
@@ -443,17 +466,26 @@ def main() -> None:
     algebra = setup_algebra(p=3, q=0, device=device)
 
     train_ds = TaylorGreenSupervisedDataset(
-        args.num_ic, args.num_bc, re=args.re, t_max=args.t_max, seed=args.seed,
+        args.num_ic,
+        args.num_bc,
+        re=args.re,
+        t_max=args.t_max,
+        seed=args.seed,
     )
     test_ds = TaylorGreenSupervisedDataset(
-        args.num_test // 2, args.num_test // 2, re=args.re,
-        t_max=args.t_max, seed=args.seed + 1,
+        args.num_test // 2,
+        args.num_test // 2,
+        re=args.re,
+        t_max=args.t_max,
+        seed=args.seed + 1,
     )
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)
 
     model = GaugeFluidNet(
-        algebra, hidden_dim=args.hidden_dim, num_layers=args.num_layers,
+        algebra,
+        hidden_dim=args.hidden_dim,
+        num_layers=args.num_layers,
     ).to(device)
 
     print_banner(
@@ -469,26 +501,39 @@ def main() -> None:
     def loss_fn(_model, batch):
         coords, targets, target_grad = (b.to(device) for b in batch)
         pred_mv, pred_grad = _model(coords)
-        return (nn.functional.mse_loss(pred_mv,   targets)
-                + nn.functional.mse_loss(pred_grad, target_grad))
+        return nn.functional.mse_loss(pred_mv, targets) + nn.functional.mse_loss(pred_grad, target_grad)
 
     def diag_fn(_model, _epoch) -> Dict[str, float]:
         return supervised_l2(_model, test_loader, device)
 
     history = run_supervised_loop(
-        model, optimizer, loss_fn, train_loader,
-        epochs=args.epochs, diag_interval=args.diag_interval, grad_clip=1.0,
-        diag_fn=diag_fn, history_extra_keys=('test_l2_mv', 'test_l2_grad'),
+        model,
+        optimizer,
+        loss_fn,
+        train_loader,
+        epochs=args.epochs,
+        diag_interval=args.diag_interval,
+        grad_clip=1.0,
+        diag_fn=diag_fn,
+        history_extra_keys=('test_l2_mv', 'test_l2_grad'),
     )
 
     diagnostics = supervised_l2(model, test_loader, device)
     diag_coords = test_ds.coords[: min(256, len(test_ds))]
-    diagnostics.update(post_training_diagnostics(
-        model, algebra, diag_coords, device,
-    ))
-    print(report_diagnostics(
-        diagnostics, title='Navier-Stokes post-training physics diagnostics',
-    ))
+    diagnostics.update(
+        post_training_diagnostics(
+            model,
+            algebra,
+            diag_coords,
+            device,
+        )
+    )
+    print(
+        report_diagnostics(
+            diagnostics,
+            title='Navier-Stokes post-training physics diagnostics',
+        )
+    )
 
     ensure_output_dir(args.output_dir)
     metadata = build_visualization_metadata(

@@ -92,9 +92,7 @@ class SpectralAnalyzer:
         spectrum = hermitian_grade_spectrum(self.algebra, flat)  # [N, n+1]
         return spectrum.mean(dim=0)  # [n+1]
 
-    def bivector_field_spectrum(
-        self, mv_data: torch.Tensor
-    ) -> tuple:
+    def bivector_field_spectrum(self, mv_data: torch.Tensor) -> tuple:
         """Decompose the mean bivector into simple components.
 
         Args:
@@ -155,9 +153,7 @@ class SpectralAnalyzer:
 
         return sv, components
 
-    def gp_operator_spectrum(
-        self, mv_data: torch.Tensor, n_samples: Optional[int] = None
-    ) -> torch.Tensor:
+    def gp_operator_spectrum(self, mv_data: torch.Tensor, n_samples: Optional[int] = None) -> torch.Tensor:
         """Eigenvalue magnitudes of the left-multiplication operator.
 
         For a subsample of data points, constructs the explicit matrix
@@ -187,9 +183,7 @@ class SpectralAnalyzer:
         mean_x = flat.mean(dim=0)  # [dim]
         # Batched GP: expand mean_x to [dim, dim], basis is [dim, dim]
         # Result[j, :] = gp(mean_x, e_j) = L[:, j], so transpose
-        L = self.algebra.geometric_product(
-            mean_x.unsqueeze(0).expand(dim, -1), basis
-        ).T
+        L = self.algebra.geometric_product(mean_x.unsqueeze(0).expand(dim, -1), basis).T
 
         eigvals = torch.linalg.eigvals(L)  # complex
         magnitudes = eigvals.abs()

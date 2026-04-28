@@ -76,9 +76,11 @@ def analyze_experiment_results(
         for opt_name, res in task_results.items():
             cm = compute_convergence_metrics(res)
             if cm:
-                lines.append(f"    {opt_name}: 50%@{cm.get('steps_to_50pct','?')}, "
-                             f"90%@{cm.get('steps_to_90pct','?')}, "
-                             f"99%@{cm.get('steps_to_99pct','?')}")
+                lines.append(
+                    f"    {opt_name}: 50%@{cm.get('steps_to_50pct', '?')}, "
+                    f"90%@{cm.get('steps_to_90pct', '?')}, "
+                    f"99%@{cm.get('steps_to_99pct', '?')}"
+                )
 
     lines.append("\n3. WALL-TIME EFFICIENCY")
     lines.append("-" * 50)
@@ -86,8 +88,7 @@ def analyze_experiment_results(
         lines.append(f"\n  {task_name}:")
         for opt_name, res in task_results.items():
             ms_per_step = (res.total_wall_time / max(len(res.losses), 1)) * 1000
-            lines.append(f"    {opt_name}: {res.total_wall_time:.1f}s total, "
-                         f"{ms_per_step:.1f}ms/step")
+            lines.append(f"    {opt_name}: {res.total_wall_time:.1f}s total, {ms_per_step:.1f}ms/step")
 
     lines.append("\n4. GDO OVERHEAD RATIO (vs RiemannianAdam)")
     lines.append("-" * 50)

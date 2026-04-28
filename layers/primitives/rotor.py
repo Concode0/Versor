@@ -11,6 +11,7 @@ from core.algebra import CliffordAlgebra
 from core.validation import check_multivector, check_channels
 from .base import CliffordModule
 
+
 class RotorLayer(CliffordModule):
     """Learnable versor layer with universal grade parameterization.
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Callable, Dict, List, Tuple
 
 import matplotlib
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
@@ -61,17 +62,23 @@ def plot_pre_exploration(
     if pre_result.dim_result is not None:
         ev = pre_result.dim_result.eigenvalues.cpu().numpy()
         ax.semilogy(range(1, len(ev) + 1), ev, 'b.-')
-        ax.axhline(y=ev[pre_result.dim_result.broken_stick_threshold - 1]
-                    if pre_result.dim_result.broken_stick_threshold > 0
-                    else ev[-1],
-                    color='r', linestyle='--', alpha=0.7, label='broken-stick')
-        ax.set_title(f"Eigenvalue Spectrum\n"
-                     f"intrinsic_dim={pre_result.dim_result.intrinsic_dim}, "
-                     f"PR={pre_result.dim_result.participation_ratio:.1f}")
+        ax.axhline(
+            y=ev[pre_result.dim_result.broken_stick_threshold - 1]
+            if pre_result.dim_result.broken_stick_threshold > 0
+            else ev[-1],
+            color='r',
+            linestyle='--',
+            alpha=0.7,
+            label='broken-stick',
+        )
+        ax.set_title(
+            f"Eigenvalue Spectrum\n"
+            f"intrinsic_dim={pre_result.dim_result.intrinsic_dim}, "
+            f"PR={pre_result.dim_result.participation_ratio:.1f}"
+        )
         ax.legend()
     else:
-        ax.text(0.5, 0.5, "No dimension\nanalysis", ha='center', va='center',
-                transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No dimension\nanalysis", ha='center', va='center', transform=ax.transAxes)
     ax.set_xlabel("Component")
     ax.set_ylabel("Eigenvalue")
     ax.grid(True, alpha=0.3)
@@ -80,8 +87,12 @@ def plot_pre_exploration(
     if pre_result.dim_result is not None and pre_result.dim_result.local_dims is not None:
         ld = pre_result.dim_result.local_dims.cpu().numpy()
         ax.hist(ld, bins=20, color='steelblue', edgecolor='white', alpha=0.8)
-        ax.axvline(pre_result.dim_result.participation_ratio, color='red',
-                   linestyle='--', label=f'PR={pre_result.dim_result.participation_ratio:.1f}')
+        ax.axvline(
+            pre_result.dim_result.participation_ratio,
+            color='red',
+            linestyle='--',
+            label=f'PR={pre_result.dim_result.participation_ratio:.1f}',
+        )
         ax.set_title("Local Dimension Distribution")
         ax.legend()
     else:
@@ -114,8 +125,7 @@ def plot_pre_exploration(
         ax.set_ylabel("Energy")
         ax.set_title("Grade Energy Spectrum")
     else:
-        ax.text(0.5, 0.5, "No spectral\nanalysis", ha='center', va='center',
-                transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No spectral\nanalysis", ha='center', va='center', transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[1, 0]
@@ -152,8 +162,7 @@ def plot_pre_exploration(
         ax.set_xlim(0, max(1.0, max(vals_gs) * 1.1))
         ax.set_title("Geometric Signals")
     else:
-        ax.text(0.5, 0.5, "No geometric\nscores", ha='center', va='center',
-                transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No geometric\nscores", ha='center', va='center', transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[1, 2]
@@ -169,14 +178,24 @@ def plot_pre_exploration(
         f"lorentz_max_beta: {cfg.lorentz_max_beta}",
         f"commutator_threshold: {cfg.commutator_threshold}",
     ]
-    ax.text(0.05, 0.95, "Recommended Config\n" + "-" * 25 + "\n" + "\n".join(lines),
-            transform=ax.transAxes, va='top', fontsize=9, family='monospace',
-            bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8))
+    ax.text(
+        0.05,
+        0.95,
+        "Recommended Config\n" + "-" * 25 + "\n" + "\n".join(lines),
+        transform=ax.transAxes,
+        va='top',
+        fontsize=9,
+        family='monospace',
+        bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8),
+    )
 
     plt.tight_layout()
     path = _save_gdo_figure(
-        fig, output_dir=output_dir, metadata=metadata,
-        plot_name=f'{title}_pre_exploration', args=args,
+        fig,
+        output_dir=output_dir,
+        metadata=metadata,
+        plot_name=f'{title}_pre_exploration',
+        args=args,
     )
     print(f"  Saved: {path}")
     return fig
@@ -205,8 +224,7 @@ def plot_optimization_trajectory(
             start = 0
             for i, m in enumerate(modes + [None]):
                 if m != prev or i == len(modes):
-                    ax.axvspan(start, i, alpha=0.15,
-                               color=mode_colors.get(prev, '#ffffff'))
+                    ax.axvspan(start, i, alpha=0.15, color=mode_colors.get(prev, '#ffffff'))
                     prev = m
                     start = i
     ax.set_xlabel("Step")
@@ -229,8 +247,7 @@ def plot_optimization_trajectory(
         ax.legend(loc='upper left', fontsize=8)
         ax2.legend(loc='upper right', fontsize=8)
     else:
-        ax.text(0.5, 0.5, "No probe data", ha='center', va='center',
-                transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No probe data", ha='center', va='center', transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[1, 0]
@@ -242,8 +259,7 @@ def plot_optimization_trajectory(
         ax.set_title("Lorentz Warp Factor")
         ax.axhline(0.0, color='gray', linestyle='--', alpha=0.3)
     else:
-        ax.text(0.5, 0.5, "No warp data", ha='center', va='center',
-                transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No warp data", ha='center', va='center', transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[1, 1]
@@ -256,26 +272,28 @@ def plot_optimization_trajectory(
         ax.set_xlabel("Step")
         ax.set_ylabel("Loss at Lift")
         ax.set_title(f"Lift Oracle Events ({len(lifts)} total)")
-        patches = [Patch(color='green', label='Success'),
-                   Patch(color='red', label='Fail')]
+        patches = [Patch(color='green', label='Success'), Patch(color='red', label='Fail')]
         ax.legend(handles=patches, fontsize=8)
     else:
         if modes:
             mode_counts = {}
             for m in modes:
                 mode_counts[m] = mode_counts.get(m, 0) + 1
-            ax.bar(mode_counts.keys(), mode_counts.values(),
-                   color=['steelblue', 'seagreen', 'orange'][:len(mode_counts)])
+            ax.bar(
+                mode_counts.keys(), mode_counts.values(), color=['steelblue', 'seagreen', 'orange'][: len(mode_counts)]
+            )
             ax.set_title("Mode Distribution")
         else:
-            ax.text(0.5, 0.5, "No lift/mode data", ha='center', va='center',
-                    transform=ax.transAxes)
+            ax.text(0.5, 0.5, "No lift/mode data", ha='center', va='center', transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
     path = _save_gdo_figure(
-        fig, output_dir=output_dir, metadata=metadata,
-        plot_name=f'{title}_trajectory', args=args,
+        fig,
+        output_dir=output_dir,
+        metadata=metadata,
+        plot_name=f'{title}_trajectory',
+        args=args,
     )
     print(f"  Saved: {path}")
     return fig
@@ -303,8 +321,7 @@ def plot_geometric_controller(
         ax.set_ylabel("Mean FIM")
         ax.set_title("Fisher Information (per group)")
     else:
-        ax.text(0.5, 0.5, "No FIM data", ha='center', va='center',
-                transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No FIM data", ha='center', va='center', transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[0, 1]
@@ -334,8 +351,7 @@ def plot_geometric_controller(
             fig.colorbar(im, ax=ax, shrink=0.8)
             ax.set_title("Hybrid Commutativity Scores")
         else:
-            ax.text(0.5, 0.5, "No commutativity\ndata", ha='center', va='center',
-                    transform=ax.transAxes)
+            ax.text(0.5, 0.5, "No commutativity\ndata", ha='center', va='center', transform=ax.transAxes)
     ax.grid(False)
 
     ax = axes[1, 0]
@@ -358,8 +374,7 @@ def plot_geometric_controller(
         ax.set_ylabel("Update Scale")
         ax.set_title("Group Update Scales\n(green=trust, red=caution)")
     else:
-        ax.text(0.5, 0.5, "No scale data", ha='center', va='center',
-                transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No scale data", ha='center', va='center', transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[1, 1]
@@ -377,14 +392,16 @@ def plot_geometric_controller(
             title_parts.append(f"closure={gs['closure_error']:.3f}")
         ax.set_title(" | ".join(title_parts))
     else:
-        ax.text(0.5, 0.5, "No grade energy\ndata", ha='center', va='center',
-                transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No grade energy\ndata", ha='center', va='center', transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
     path = _save_gdo_figure(
-        fig, output_dir=output_dir, metadata=metadata,
-        plot_name='geometric_controller', args=args,
+        fig,
+        output_dir=output_dir,
+        metadata=metadata,
+        plot_name='geometric_controller',
+        args=args,
     )
     print(f"  Saved: {path}")
     return fig
@@ -409,10 +426,9 @@ def plot_topology_map(
     xr = np.linspace(-2.5, 2.5, 100)
     yr = np.linspace(-1.5, 3.5, 100)
     X, Y = np.meshgrid(xr, yr)
-    Z = (model.a - X) ** 2 + model.b * (Y - X ** 2) ** 2
+    Z = (model.a - X) ** 2 + model.b * (Y - X**2) ** 2
     ax.contourf(X, Y, np.log10(Z + 1e-10), levels=30, cmap='terrain', alpha=0.7)
-    ax.contour(X, Y, np.log10(Z + 1e-10), levels=15, colors='gray',
-               linewidths=0.3, alpha=0.5)
+    ax.contour(X, Y, np.log10(Z + 1e-10), levels=15, colors='gray', linewidths=0.3, alpha=0.5)
 
     cp_markers = {
         CriticalPointType.MINIMUM: ('o', 'blue', 'Minimum'),
@@ -421,25 +437,33 @@ def plot_topology_map(
     }
     for cp in landscape.critical_points:
         if cp.params.shape[0] >= 2:
-            marker, color, cp_label = cp_markers.get(
-                cp.point_type, ('x', 'black', 'Unknown'))
-            ax.scatter(cp.params[0].item(), cp.params[1].item(),
-                       marker=marker, c=color, s=80, zorder=5,
-                       edgecolors='white', linewidths=1, label=cp_label)
+            marker, color, cp_label = cp_markers.get(cp.point_type, ('x', 'black', 'Unknown'))
+            ax.scatter(
+                cp.params[0].item(),
+                cp.params[1].item(),
+                marker=marker,
+                c=color,
+                s=80,
+                zorder=5,
+                edgecolors='white',
+                linewidths=1,
+                label=cp_label,
+            )
 
     if trajectory:
         mode_colors_traj = {"explore": "blue", "navigate": "green", "sprint": "orange"}
         for i in range(1, len(trajectory)):
             m = modes[i] if i < len(modes) else "explore"
-            ax.plot([trajectory[i - 1][0], trajectory[i][0]],
-                    [trajectory[i - 1][1], trajectory[i][1]],
-                    color=mode_colors_traj.get(m, "blue"), linewidth=0.5, alpha=0.7)
-        ax.scatter(*trajectory[0], marker='*', c='lime', s=150, zorder=6,
-                   edgecolors='black', label='Start')
-        ax.scatter(*trajectory[-1], marker='*', c='red', s=150, zorder=6,
-                   edgecolors='black', label='End')
-        ax.scatter(1.0, 1.0, marker='D', c='gold', s=100, zorder=6,
-                   edgecolors='black', label='Optimum')
+            ax.plot(
+                [trajectory[i - 1][0], trajectory[i][0]],
+                [trajectory[i - 1][1], trajectory[i][1]],
+                color=mode_colors_traj.get(m, "blue"),
+                linewidth=0.5,
+                alpha=0.7,
+            )
+        ax.scatter(*trajectory[0], marker='*', c='lime', s=150, zorder=6, edgecolors='black', label='Start')
+        ax.scatter(*trajectory[-1], marker='*', c='red', s=150, zorder=6, edgecolors='black', label='End')
+        ax.scatter(1.0, 1.0, marker='D', c='gold', s=100, zorder=6, edgecolors='black', label='Optimum')
 
     ax.set_xlabel("x")
     ax.set_ylabel("y")
@@ -447,8 +471,11 @@ def plot_topology_map(
     ax.legend(fontsize=8)
     plt.tight_layout()
     path = _save_gdo_figure(
-        fig, output_dir=output_dir, metadata=metadata,
-        plot_name='topology_map', args=args,
+        fig,
+        output_dir=output_dir,
+        metadata=metadata,
+        plot_name='topology_map',
+        args=args,
     )
     print(f"  Saved: {path}")
     return fig
@@ -467,14 +494,20 @@ def plot_three_way_comparison(
     fig.suptitle(title, fontsize=14, fontweight='bold')
 
     styles = {
-        "GDO": ("b-", 2.0), "RiemannianAdam": ("r--", 1.5),
-        "Adam": ("g:", 1.2), "Adam (no algebra)": ("g:", 1.2),
-        "ExponentialSGD": ("m-.", 1.2), "SGD": ("m-.", 1.2),
+        "GDO": ("b-", 2.0),
+        "RiemannianAdam": ("r--", 1.5),
+        "Adam": ("g:", 1.2),
+        "Adam (no algebra)": ("g:", 1.2),
+        "ExponentialSGD": ("m-.", 1.2),
+        "SGD": ("m-.", 1.2),
     }
     color_map = {
-        "GDO": "steelblue", "RiemannianAdam": "salmon",
-        "Adam": "seagreen", "Adam (no algebra)": "seagreen",
-        "ExponentialSGD": "plum", "SGD": "plum",
+        "GDO": "steelblue",
+        "RiemannianAdam": "salmon",
+        "Adam": "seagreen",
+        "Adam (no algebra)": "seagreen",
+        "ExponentialSGD": "plum",
+        "SGD": "plum",
     }
 
     ax = axes[0, 0]
@@ -520,8 +553,11 @@ def plot_three_way_comparison(
 
     plt.tight_layout()
     path = _save_gdo_figure(
-        fig, output_dir=output_dir, metadata=metadata,
-        plot_name=f'{title}_comparison', args=args,
+        fig,
+        output_dir=output_dir,
+        metadata=metadata,
+        plot_name=f'{title}_comparison',
+        args=args,
     )
     print(f"  Saved: {path}")
     return fig
@@ -566,7 +602,7 @@ def plot_convergence_rate(
         if len(res.losses) > window:
             losses_arr = np.array(res.losses)
             rate = -(losses_arr[window:] - losses_arr[:-window]) / window
-            smoothed = np.convolve(rate, np.ones(20)/20, mode='valid')
+            smoothed = np.convolve(rate, np.ones(20) / 20, mode='valid')
             ax.plot(smoothed, styles.get(name, "k-"), label=name, linewidth=1.2)
     ax.set_xlabel("Step")
     ax.set_ylabel("Convergence Rate (loss drop/step)")
@@ -578,8 +614,11 @@ def plot_convergence_rate(
 
     plt.tight_layout()
     path = _save_gdo_figure(
-        fig, output_dir=output_dir, metadata=metadata,
-        plot_name=f'{title}_convergence', args=args,
+        fig,
+        output_dir=output_dir,
+        metadata=metadata,
+        plot_name=f'{title}_convergence',
+        args=args,
     )
     print(f"  Saved: {path}")
     return fig
@@ -604,7 +643,7 @@ def plot_timing_breakdown(
         wt = np.array(res.wall_times) * 1000
         window = max(1, len(wt) // 100)
         if window > 1:
-            wt_smooth = np.convolve(wt, np.ones(window)/window, mode='valid')
+            wt_smooth = np.convolve(wt, np.ones(window) / window, mode='valid')
         else:
             wt_smooth = wt
         ax.plot(wt_smooth, color=styles.get(name, 'k'), label=name, linewidth=0.8, alpha=0.8)
@@ -627,8 +666,11 @@ def plot_timing_breakdown(
 
     plt.tight_layout()
     path = _save_gdo_figure(
-        fig, output_dir=output_dir, metadata=metadata,
-        plot_name=f'{title}_timing', args=args,
+        fig,
+        output_dir=output_dir,
+        metadata=metadata,
+        plot_name=f'{title}_timing',
+        args=args,
     )
     print(f"  Saved: {path}")
     return fig
@@ -659,8 +701,11 @@ def plot_bivector_trajectory(
 
     plt.tight_layout()
     path = _save_gdo_figure(
-        fig, output_dir=output_dir, metadata=metadata,
-        plot_name=f'{title}_bivector_trajectory', args=args,
+        fig,
+        output_dir=output_dir,
+        metadata=metadata,
+        plot_name=f'{title}_bivector_trajectory',
+        args=args,
     )
     print(f"  Saved: {path}")
     return fig
@@ -714,9 +759,16 @@ def plot_optimizer_state_dashboard(
     lines.append(f"Consecutive fails: {lift.get('consecutive_fails', 0)}")
     lines.append(f"Current sigma: {lift.get('current_sigma', 0):.4f}")
 
-    ax.text(0.05, 0.95, "\n".join(lines), transform=ax.transAxes,
-            va='top', fontsize=10, family='monospace',
-            bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8))
+    ax.text(
+        0.05,
+        0.95,
+        "\n".join(lines),
+        transform=ax.transAxes,
+        va='top',
+        fontsize=10,
+        family='monospace',
+        bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8),
+    )
     ax.set_title("GDO State Summary")
 
     ax = axes[1, 0]
@@ -727,8 +779,7 @@ def plot_optimizer_state_dashboard(
         ax.set_ylabel("Mean Curvature")
         ax.set_title("Curvature History")
     else:
-        ax.text(0.5, 0.5, "No curvature data", ha='center', va='center',
-                transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No curvature data", ha='center', va='center', transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[1, 1]
@@ -739,14 +790,16 @@ def plot_optimizer_state_dashboard(
         ax.set_ylabel("Gradient Norm")
         ax.set_title("Gradient Norm History")
     else:
-        ax.text(0.5, 0.5, "No gradient data", ha='center', va='center',
-                transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No gradient data", ha='center', va='center', transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
     path = _save_gdo_figure(
-        fig, output_dir=output_dir, metadata=metadata,
-        plot_name=f'{title}_gdo_state', args=args,
+        fig,
+        output_dir=output_dir,
+        metadata=metadata,
+        plot_name=f'{title}_gdo_state',
+        args=args,
     )
     print(f"  Saved: {path}")
     return fig
@@ -785,14 +838,14 @@ def plot_loss_landscape_2d_slice(
                 idx = 0
                 for p in params:
                     sz = p.numel()
-                    p.data.copy_(flat_p[idx:idx+sz].reshape(p.shape))
+                    p.data.copy_(flat_p[idx : idx + sz].reshape(p.shape))
                     idx += sz
                 Z[j, i] = loss_fn().item()
 
     idx = 0
     for p in params:
         sz = p.numel()
-        p.data.copy_(flat_center[idx:idx+sz].reshape(p.shape))
+        p.data.copy_(flat_center[idx : idx + sz].reshape(p.shape))
         idx += sz
 
     fig, ax = plt.subplots(figsize=(8, 7))
@@ -807,8 +860,11 @@ def plot_loss_landscape_2d_slice(
 
     plt.tight_layout()
     path = _save_gdo_figure(
-        fig, output_dir=output_dir, metadata=metadata,
-        plot_name=f'{title}_loss_landscape', args=args,
+        fig,
+        output_dir=output_dir,
+        metadata=metadata,
+        plot_name=f'{title}_loss_landscape',
+        args=args,
     )
     print(f"  Saved: {path}")
     return fig

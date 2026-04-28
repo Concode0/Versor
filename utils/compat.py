@@ -18,6 +18,7 @@ import torch
 
 
 if torch.backends.mps.is_available():
+
     def safe_linalg_solve(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         if A.is_mps:
             return torch.linalg.solve(A.cpu(), B.cpu()).to(A.device)

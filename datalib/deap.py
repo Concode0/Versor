@@ -32,31 +32,59 @@ logger = get_logger(__name__)
 
 # -- DEAP 10-20 channel order (indices 0-31) ----------------------------------
 DEAP_CHANNELS = [
-    'Fp1', 'AF3', 'F3', 'F7', 'FC5', 'FC1', 'C3', 'T7',
-    'CP5', 'CP1', 'P3', 'P7', 'PO3', 'O1', 'Oz', 'Pz',
-    'Fp2', 'AF4', 'F4', 'F8', 'FC6', 'FC2', 'C4', 'T8',
-    'CP6', 'CP2', 'P4', 'P8', 'PO4', 'O2', 'Fz', 'Cz',
+    'Fp1',
+    'AF3',
+    'F3',
+    'F7',
+    'FC5',
+    'FC1',
+    'C3',
+    'T7',
+    'CP5',
+    'CP1',
+    'P3',
+    'P7',
+    'PO3',
+    'O1',
+    'Oz',
+    'Pz',
+    'Fp2',
+    'AF4',
+    'F4',
+    'F8',
+    'FC6',
+    'FC2',
+    'C4',
+    'T8',
+    'CP6',
+    'CP2',
+    'P4',
+    'P8',
+    'PO4',
+    'O2',
+    'Fz',
+    'Cz',
 ]
 
 # -- Brain region groups ------------------------------------------------------
 REGION_GROUPS = {
-    'frontal':   [0, 1, 2, 3, 4, 5, 16, 17, 18, 19, 20, 21, 30],  # 13 channels
-    'central':   [6, 8, 9, 22, 24, 25, 31],                        # 7 channels
-    'temporal':  [7, 23],                                            # 2 channels
-    'parietal':  [10, 11, 26, 27, 15],                              # 5 channels
-    'occipital': [12, 13, 14, 28, 29],                              # 5 channels
+    'frontal': [0, 1, 2, 3, 4, 5, 16, 17, 18, 19, 20, 21, 30],  # 13 channels
+    'central': [6, 8, 9, 22, 24, 25, 31],  # 7 channels
+    'temporal': [7, 23],  # 2 channels
+    'parietal': [10, 11, 26, 27, 15],  # 5 channels
+    'occipital': [12, 13, 14, 28, 29],  # 5 channels
 }
 
 # -- Frequency bands (Hz) -----------------------------------------------------
 BANDS = {
     'theta': (4.0, 8.0),
     'alpha': (8.0, 14.0),
-    'beta':  (14.0, 31.0),
+    'beta': (14.0, 31.0),
     'gamma': (31.0, 50.0),
 }
 
 SAMPLING_RATE = 128
-BASELINE_SAMPLES = 384   # 3 seconds x 128 Hz
+BASELINE_SAMPLES = 384  # 3 seconds x 128 Hz
 STIMULUS_SAMPLES = 7680  # 60 seconds x 128 Hz
 
 NUM_BANDS = len(BANDS)
@@ -156,6 +184,7 @@ def get_group_sizes(region_groups=None, num_bands=NUM_BANDS):
 
 # -- Subject-wise normalization ------------------------------------------------
 
+
 def _normalize_subject_samples(samples):
     """Z-score normalize a single subject's samples using that subject's stats.
 
@@ -214,8 +243,7 @@ class DEAPDataset(Dataset):
         normalize: Whether to apply subject-wise z-score normalization.
     """
 
-    def __init__(self, data_root, subjects, window_size=512, stride=None,
-                 bands=None, normalize=True):
+    def __init__(self, data_root, subjects, window_size=512, stride=None, bands=None, normalize=True):
         super().__init__()
         self.data_root = data_root
         self.window_size = window_size
@@ -223,8 +251,8 @@ class DEAPDataset(Dataset):
         self.bands = bands or BANDS
         self.normalize = normalize
 
-        self.samples = []       # list of (group_features_dict, labels_array)
-        self.subject_ids = []   # parallel list: subject id for each sample
+        self.samples = []  # list of (group_features_dict, labels_array)
+        self.subject_ids = []  # parallel list: subject id for each sample
         self._subject_stats = {}  # {sid: (means_dict, stds_dict)}
 
         self._load_subjects(subjects)
@@ -239,9 +267,7 @@ class DEAPDataset(Dataset):
         n_bands = len(self.bands)
 
         for sid in subjects:
-            cache_path = _deap_cache_path(
-                self.data_root, sid, self.window_size, self.stride, n_bands
-            )
+            cache_path = _deap_cache_path(self.data_root, sid, self.window_size, self.stride, n_bands)
 
             if cache_path.exists():
                 cached = torch.load(cache_path, weights_only=False)
@@ -256,16 +282,16 @@ class DEAPDataset(Dataset):
                 with open(path, 'rb') as f:
                     dat = pickle.load(f, encoding='latin1')
 
-                data = dat['data']     # (40, 40, 8064) -- trials x channels x samples
-                labels = dat['labels'] # (40, 4) -- VADL
+                data = dat['data']  # (40, 40, 8064) -- trials x channels x samples
+                labels = dat['labels']  # (40, 4) -- VADL
 
                 subject_samples = []
                 for trial_idx in range(data.shape[0]):
                     eeg = data[trial_idx, :32, :]  # 32 EEG channels only
-                    vadl = labels[trial_idx]        # [4]
+                    vadl = labels[trial_idx]  # [4]
 
                     # Strip baseline, keep stimulus
-                    stimulus = eeg[:, BASELINE_SAMPLES:BASELINE_SAMPLES + STIMULUS_SAMPLES]
+                    stimulus = eeg[:, BASELINE_SAMPLES : BASELINE_SAMPLES + STIMULUS_SAMPLES]
 
                     # Window the stimulus
                     n_windows = (STIMULUS_SAMPLES - self.window_size) // self.stride + 1
@@ -307,17 +333,23 @@ class DEAPDataset(Dataset):
 def _collate_deap(batch):
     """Custom collate for dict-based group data."""
     group_names = list(batch[0][0].keys())
-    group_data = {
-        name: torch.stack([item[0][name] for item in batch])
-        for name in group_names
-    }
+    group_data = {name: torch.stack([item[0][name] for item in batch]) for name in group_names}
     labels = torch.stack([item[1] for item in batch])
     return group_data, labels
 
 
-def get_deap_loaders(data_root, subject_id=1, mode='cross_subject',
-                     batch_size=32, window_size=512, stride=None,
-                     fold=0, n_folds=5, num_workers=0, return_datasets=False):
+def get_deap_loaders(
+    data_root,
+    subject_id=1,
+    mode='cross_subject',
+    batch_size=32,
+    window_size=512,
+    stride=None,
+    fold=0,
+    n_folds=5,
+    num_workers=0,
+    return_datasets=False,
+):
     """Create DEAP train/val DataLoaders.
 
     Normalization is always **subject-wise**: each subject's DE features are
@@ -378,12 +410,18 @@ def get_deap_loaders(data_root, subject_id=1, mode='cross_subject',
         raise ValueError(f"Unknown mode: {mode}. Use 'cross_subject' or 'within_subject'.")
 
     train_loader = DataLoader(
-        train_ds, batch_size=batch_size, shuffle=True,
-        collate_fn=_collate_deap, num_workers=num_workers,
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=_collate_deap,
+        num_workers=num_workers,
     )
     val_loader = DataLoader(
-        val_ds, batch_size=batch_size, shuffle=False,
-        collate_fn=_collate_deap, num_workers=num_workers,
+        val_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=_collate_deap,
+        num_workers=num_workers,
     )
 
     logger.info("Train: %d samples, Val: %d samples", len(train_ds), len(val_ds))

@@ -20,6 +20,7 @@ from core.algebra import CliffordAlgebra
 
 from ._types import CONSTANTS, DimensionResult
 
+
 class EffectiveDimensionAnalyzer:
     """Estimate effective intrinsic dimensionality of data.
 
@@ -104,7 +105,7 @@ class EffectiveDimensionAnalyzer:
         centered = data - mean
         # Economy SVD
         U, S, Vh = torch.linalg.svd(centered, full_matrices=False)
-        return (U[:, :target_dim] * S[:target_dim].unsqueeze(0))
+        return U[:, :target_dim] * S[:target_dim].unsqueeze(0)
 
     @staticmethod
     def _covariance_eigenvalues(data: torch.Tensor) -> torch.Tensor:
@@ -120,10 +121,10 @@ class EffectiveDimensionAnalyzer:
     def _participation_ratio(self, eigenvalues: torch.Tensor) -> float:
         """``(Sum lam)^2 / Sum lam^2`` -- smooth dimensionality estimator."""
         s1 = eigenvalues.sum()
-        s2 = (eigenvalues ** 2).sum()
+        s2 = (eigenvalues**2).sum()
         if s2 < self._eps_sq:
             return 0.0
-        return (s1 ** 2 / s2).item()
+        return (s1**2 / s2).item()
 
     @staticmethod
     def _broken_stick(d: int, dtype: torch.dtype = torch.float32) -> torch.Tensor:
@@ -137,24 +138,18 @@ class EffectiveDimensionAnalyzer:
         expected = inv.flip(0).cumsum(0).flip(0) / d
         return expected.to(dtype=dtype)
 
-    def _broken_stick_threshold(
-        self, eigenvalues: torch.Tensor, d: int
-    ) -> int:
+    def _broken_stick_threshold(self, eigenvalues: torch.Tensor, d: int) -> int:
         """Number of components exceeding the broken-stick null."""
         if d <= 0:
             return 0
-        expected = self._broken_stick(d, dtype=eigenvalues.dtype).to(
-            eigenvalues.device
-        )
+        expected = self._broken_stick(d, dtype=eigenvalues.dtype).to(eigenvalues.device)
         total = eigenvalues.sum()
         if total < self._eps_sq:
             return 0
         normed = eigenvalues[:d] / total
-        return int((normed > expected[:len(normed)]).sum().item())
+        return int((normed > expected[: len(normed)]).sum().item())
 
-    def _local_dimensions(
-        self, data: torch.Tensor, k: int
-    ) -> torch.Tensor:
+    def _local_dimensions(self, data: torch.Tensor, k: int) -> torch.Tensor:
         """Per-point local dimension via neighbourhood PCA."""
         dists = torch.cdist(data, data)  # [N, N]
         # k+1 because the closest point is itself
@@ -170,8 +165,8 @@ class EffectiveDimensionAnalyzer:
 
         # Vectorized participation ratio
         s1 = eigvals.sum(dim=-1)
-        s2 = (eigvals ** 2).sum(dim=-1)
-        local_dims = torch.where(s2 > self._eps_sq, s1 ** 2 / s2, torch.zeros_like(s1))
+        s2 = (eigvals**2).sum(dim=-1)
+        local_dims = torch.where(s2 > self._eps_sq, s1**2 / s2, torch.zeros_like(s1))
 
         return local_dims
 
@@ -226,8 +221,10 @@ class DimensionLifter:
             return target_algebra.embed_vector(data.to(self.device))
 
         pad = torch.full(
-            (N, n - d), fill,
-            device=self.device, dtype=data.dtype,
+            (N, n - d),
+            fill,
+            device=self.device,
+            dtype=data.dtype,
         )
         lifted = torch.cat([data.to(self.device), pad], dim=-1)
         return target_algebra.embed_vector(lifted)
@@ -276,7 +273,7 @@ class DimensionLifter:
             }
 
         alg_orig = CliffordAlgebra(p, q, device=self.device)
-        mv_orig = alg_orig.embed_vector(data[..., :alg_orig.n])
+        mv_orig = alg_orig.embed_vector(data[..., : alg_orig.n])
         results['original'] = _measure(alg_orig, mv_orig)
 
         alg_pos = CliffordAlgebra(p + 1, q, device=self.device)
@@ -304,8 +301,6 @@ class DimensionLifter:
             coh = r['coherence']
             curv = r['curvature']
             causal = 'O Causal' if r['causal'] else 'X Noisy'
-            lines.append(
-                f"  Cl({p},{q})  coherence={coh:+.3f}  curvature={curv:.3f}  {causal}"
-            )
+            lines.append(f"  Cl({p},{q})  coherence={coh:+.3f}  curvature={curv:.3f}  {causal}")
         lines.append(f"\n  Best algebra: {results['best']}")
         return '\n'.join(lines)

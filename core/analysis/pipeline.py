@@ -81,16 +81,12 @@ class GeometricAnalyzer:
             # Full raw mode
             report = self._run_full_pipeline(data, report)
         else:
-            raise ValueError(
-                f"Unexpected data shape {data.shape}. Expected [N, D] or [N, C, dim]."
-            )
+            raise ValueError(f"Unexpected data shape {data.shape}. Expected [N, D] or [N, C, dim].")
 
         report.metadata["elapsed_seconds"] = round(time.time() - t0, 2)
         return report
 
-    def _run_full_pipeline(
-        self, data: torch.Tensor, report: AnalysisReport
-    ) -> AnalysisReport:
+    def _run_full_pipeline(self, data: torch.Tensor, report: AnalysisReport) -> AnalysisReport:
         cfg = self.config
 
         # 1. Sampling
@@ -148,9 +144,7 @@ class GeometricAnalyzer:
         if cfg.run_spectral:
             tasks["spectral"] = lambda: SpectralAnalyzer(algebra).analyze(mv_data)
         if cfg.run_symmetry:
-            tasks["symmetry"] = lambda: SymmetryDetector(
-                algebra, null_threshold=cfg.energy_threshold
-            ).analyze(mv_data)
+            tasks["symmetry"] = lambda: SymmetryDetector(algebra, null_threshold=cfg.energy_threshold).analyze(mv_data)
         if cfg.run_commutator:
             tasks["commutator"] = lambda: CommutatorAnalyzer(algebra).analyze(mv_data)
 
@@ -166,23 +160,14 @@ class GeometricAnalyzer:
                     setattr(report, name, fut.result())
 
         # Refine continuous symmetries with commutator result
-        if (
-            cfg.run_symmetry
-            and cfg.run_commutator
-            and report.symmetry is not None
-            and report.commutator is not None
-        ):
+        if cfg.run_symmetry and cfg.run_commutator and report.symmetry is not None and report.commutator is not None:
             if mv_data.ndim == 3:
                 flat = mv_data.mean(dim=1)
             else:
                 flat = mv_data
-            detector = SymmetryDetector(
-                algebra, null_threshold=cfg.energy_threshold
-            )
-            report.symmetry.continuous_symmetry_dim = (
-                detector.detect_continuous_symmetries(
-                    flat, commutator_result=report.commutator
-                )
+            detector = SymmetryDetector(algebra, null_threshold=cfg.energy_threshold)
+            report.symmetry.continuous_symmetry_dim = detector.detect_continuous_symmetries(
+                flat, commutator_result=report.commutator
             )
 
         return report
@@ -195,9 +180,7 @@ class GeometricAnalyzer:
         if D > n:
             data = data[:, :n]
         elif D < n:
-            pad = torch.zeros(
-                data.shape[0], n - D, device=data.device, dtype=data.dtype
-            )
+            pad = torch.zeros(data.shape[0], n - D, device=data.device, dtype=data.dtype)
             data = torch.cat([data, pad], dim=-1)
         mv = algebra.embed_vector(data.float())  # [N, dim]
         return mv.unsqueeze(1)  # [N, 1, dim]

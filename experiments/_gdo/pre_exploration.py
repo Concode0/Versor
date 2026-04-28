@@ -34,6 +34,7 @@ from .parameter_groups import GeometricParameterController
 @dataclass
 class PreExplorationResult:
     """Output of PreExplorationAnalyzer."""
+
     dim_result: Optional[DimensionResult] = None
     spectral_result: Optional[SpectralResult] = None
     symmetry_result: Optional[SymmetryResult] = None
@@ -76,12 +77,10 @@ class PreExplorationAnalyzer:
         idx = 0
         for p in model.parameters():
             sz = p.numel()
-            p.data.copy_(flat[idx:idx + sz].reshape(p.shape))
+            p.data.copy_(flat[idx : idx + sz].reshape(p.shape))
             idx += sz
 
-    def _sample_landscape(
-        self, model: nn.Module, loss_fn: Callable
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _sample_landscape(self, model: nn.Module, loss_fn: Callable) -> Tuple[torch.Tensor, torch.Tensor]:
         theta0 = self._get_flat(model).clone()
         n_params = theta0.shape[0]
         device = theta0.device
@@ -105,9 +104,7 @@ class PreExplorationAnalyzer:
 
         return torch.stack(positions), torch.tensor(losses, device=device)
 
-    def analyze(
-        self, model: nn.Module, loss_fn: Callable
-    ) -> PreExplorationResult:
+    def analyze(self, model: nn.Module, loss_fn: Callable) -> PreExplorationResult:
         result = PreExplorationResult()
 
         positions, losses = self._sample_landscape(model, loss_fn)
@@ -180,12 +177,10 @@ class PreExplorationAnalyzer:
                 result.causal_report = {
                     'coherence': result.landscape_coherence,
                     'curvature': result.landscape_curvature,
-                    'causal': (result.landscape_coherence > 0.5
-                               and result.landscape_curvature < 0.5),
+                    'causal': (result.landscape_coherence > 0.5 and result.landscape_curvature < 0.5),
                     'label': (
                         'Causal - smooth, aligned flow'
-                        if (result.landscape_coherence > 0.5
-                            and result.landscape_curvature < 0.5)
+                        if (result.landscape_coherence > 0.5 and result.landscape_curvature < 0.5)
                         else 'Noisy - fragmented flow'
                     ),
                 }
@@ -201,7 +196,8 @@ class PreExplorationAnalyzer:
                     reduced_lift = eda.reduce(sampled, lift_dim)
                     lifter = DimensionLifter(device=self.device)
                     result.lifting_report = lifter.test(
-                        reduced_lift, p=lift_dim, q=0, k=min(8, reduced_lift.shape[0] - 1))
+                        reduced_lift, p=lift_dim, q=0, k=min(8, reduced_lift.shape[0] - 1)
+                    )
             except Exception:
                 pass
 

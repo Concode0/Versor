@@ -69,6 +69,7 @@ class OrthogonalitySettings:
         coupling_warn_threshold: Issue a warning when max off-diagonal coupling
                                  exceeds this threshold (0 = warn always, 1 = never).
     """
+
     enabled: bool = True
     mode: str = 'loss'
     weight: float = 0.1
@@ -126,7 +127,7 @@ class StrictOrthogonality(CliffordModule):
         if target_grades is None:
             target_grades = list(range(n_grades))
 
-        target_mask = masks[target_grades].any(dim=0)   # [dim]
+        target_mask = masks[target_grades].any(dim=0)  # [dim]
         self.register_buffer('target_mask', target_mask)
         self.register_buffer('parasitic_mask', ~target_mask)
 
@@ -145,7 +146,7 @@ class StrictOrthogonality(CliffordModule):
         if parasitic.numel() == 0:
             # No parasitic grades (target_grades covers everything) -> zero loss.
             return x.new_zeros(())
-        return (parasitic ** 2).mean()
+        return (parasitic**2).mean()
 
     def project(self, x: torch.Tensor) -> torch.Tensor:
         """Hard projection: zero out parasitic grade components.
@@ -178,8 +179,7 @@ class StrictOrthogonality(CliffordModule):
 
     # Weight Annealing
 
-    def anneal_weight(self, epoch: int, warmup_epochs: int,
-                      total_epochs: int) -> float:
+    def anneal_weight(self, epoch: int, warmup_epochs: int, total_epochs: int) -> float:
         """Compute linearly annealed weight for progressive enforcement.
 
         The penalty ramps from 0 -> settings.weight over the first
@@ -216,9 +216,9 @@ class StrictOrthogonality(CliffordModule):
         """
         energies = {}
         for g in range(self._n_grades):
-            mask = self.grade_masks_tensor[g]          # [dim] bool, on correct device
+            mask = self.grade_masks_tensor[g]  # [dim] bool, on correct device
             components = x[..., mask]
-            energies[g] = (components ** 2).mean().item()
+            energies[g] = (components**2).mean().item()
         return energies
 
     def parasitic_ratio(self, x: torch.Tensor) -> float:
@@ -253,18 +253,18 @@ class StrictOrthogonality(CliffordModule):
         # Per-sample grade energy: [n_grades, B]
         energies = []
         for g in range(n_grades):
-            mask = self.grade_masks_tensor[g]          # [dim] bool, correct device
+            mask = self.grade_masks_tensor[g]  # [dim] bool, correct device
             comp = x[..., mask]
-            e = (comp ** 2).reshape(B, -1).sum(dim=-1)  # [B]
+            e = (comp**2).reshape(B, -1).sum(dim=-1)  # [B]
             energies.append(e)
-        energies = torch.stack(energies, dim=0)        # [n_grades, B]
+        energies = torch.stack(energies, dim=0)  # [n_grades, B]
 
         # Normalize per grade (z-score)
         means = energies.mean(dim=1, keepdim=True)
         stds = energies.std(dim=1, keepdim=True) + 1e-8
-        normed = (energies - means) / stds             # [n_grades, B]
+        normed = (energies - means) / stds  # [n_grades, B]
 
-        coupling = (normed @ normed.t()) / B           # [n_grades, n_grades]
+        coupling = (normed @ normed.t()) / B  # [n_grades, n_grades]
         return coupling
 
     @torch.no_grad()
@@ -299,7 +299,8 @@ class StrictOrthogonality(CliffordModule):
                     f"High cross-grade coupling detected: max_off_diag={max_off:.4f} "
                     f"(threshold={self.settings.coupling_warn_threshold}). "
                     "The network may be mixing grades.",
-                    RuntimeWarning, stacklevel=2
+                    RuntimeWarning,
+                    stacklevel=2,
                 )
 
         return {
@@ -339,8 +340,7 @@ class StrictOrthogonality(CliffordModule):
 
         lines.append(f"  Parasitic ratio: {d['parasitic_ratio']:.4%}")
         status = "YES" if d['orthogonality_satisfied'] else "NO"
-        lines.append(f"  Orthogonality satisfied: {status} "
-                     f"(tol={self.settings.tolerance})")
+        lines.append(f"  Orthogonality satisfied: {status} (tol={self.settings.tolerance})")
 
         if d['coupling_matrix'] is not None:
             max_off = d['coupling_max_off_diag']
@@ -350,8 +350,7 @@ class StrictOrthogonality(CliffordModule):
 
     # Visualization
 
-    def visualize_coupling(self, x: torch.Tensor,
-                           title: str = "Cross-Grade Coupling") -> Optional[object]:
+    def visualize_coupling(self, x: torch.Tensor, title: str = "Cross-Grade Coupling") -> Optional[object]:
         """Plot the cross-grade coupling matrix as a heatmap.
 
         Target grades are highlighted with lime-colored borders.
@@ -365,6 +364,7 @@ class StrictOrthogonality(CliffordModule):
         """
         try:
             import matplotlib
+
             matplotlib.use('Agg')
             import matplotlib.pyplot as plt
             import numpy as np
@@ -377,16 +377,14 @@ class StrictOrthogonality(CliffordModule):
 
         n = coupling.shape[0]
         fig, ax = plt.subplots(figsize=(max(5, n + 1), max(5, n + 1)))
-        im = ax.imshow(coupling, cmap='RdBu_r', vmin=-1.0, vmax=1.0,
-                       aspect='auto', interpolation='nearest')
+        im = ax.imshow(coupling, cmap='RdBu_r', vmin=-1.0, vmax=1.0, aspect='auto', interpolation='nearest')
 
         # Annotate cells
         for i in range(n):
             for j in range(n):
                 val = coupling[i, j]
                 color = 'white' if abs(val) > 0.5 else 'black'
-                ax.text(j, i, f'{val:.2f}', ha='center', va='center',
-                        fontsize=9, color=color)
+                ax.text(j, i, f'{val:.2f}', ha='center', va='center', fontsize=9, color=color)
 
         ax.set_xticks(range(n))
         ax.set_yticks(range(n))
@@ -400,9 +398,7 @@ class StrictOrthogonality(CliffordModule):
         target_grades = self.settings.target_grades or list(range(n))
         for g in target_grades:
             if 0 <= g < n:
-                rect = plt.Rectangle((g - 0.5, g - 0.5), 1, 1,
-                                     linewidth=2, edgecolor='lime',
-                                     facecolor='none')
+                rect = plt.Rectangle((g - 0.5, g - 0.5), 1, 1, linewidth=2, edgecolor='lime', facecolor='none')
                 ax.add_patch(rect)
 
         plt.colorbar(im, ax=ax, label='Correlation', fraction=0.046, pad=0.04)

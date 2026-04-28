@@ -72,17 +72,13 @@ def _apply_biased_init(
     for rotor in probe.get_rotor_layers():
         with torch.no_grad():
             if bias_type == 'euclidean':
-                weights = torch.where(
-                    bv_sq < ell, torch.tensor(1.0), torch.tensor(0.1)
-                )
+                weights = torch.where(bv_sq < ell, torch.tensor(1.0), torch.tensor(0.1))
                 rotor.bivector_weights.copy_(
                     weights.unsqueeze(0).expand_as(rotor.bivector_weights)
                     + torch.randn_like(rotor.bivector_weights) * 0.05
                 )
             elif bias_type == 'minkowski':
-                weights = torch.where(
-                    bv_sq.abs() > hyp, torch.tensor(1.0), torch.tensor(0.1)
-                )
+                weights = torch.where(bv_sq.abs() > hyp, torch.tensor(1.0), torch.tensor(0.1))
                 rotor.bivector_weights.copy_(
                     weights.unsqueeze(0).expand_as(rotor.bivector_weights)
                     + torch.randn_like(rotor.bivector_weights) * 0.05
@@ -139,11 +135,11 @@ class MetricSearch:
 
         if X + 2 > 12:
             warnings.warn(
-                f"Data dimension {X} yields algebra dim 2^{X+2}={2**(X+2)}. "
+                f"Data dimension {X} yields algebra dim 2^{X + 2}={2 ** (X + 2)}. "
                 f"Consider PCA pre-reduction to X <= 10 for tractable computation."
             )
 
-        norm_sq = 0.5 * (data ** 2).sum(dim=-1, keepdim=True)
+        norm_sq = 0.5 * (data**2).sum(dim=-1, keepdim=True)
         ones = torch.ones(N, 1, device=self.device, dtype=data.dtype)
         lifted = torch.cat([data, norm_sq, ones], dim=-1)
 
@@ -173,7 +169,7 @@ class MetricSearch:
 
         for _ in range(self.probe_epochs):
             if self.micro_batch_size and self.micro_batch_size < N:
-                idx = torch.randperm(N, device=mv_data.device)[:self.micro_batch_size]
+                idx = torch.randperm(N, device=mv_data.device)[: self.micro_batch_size]
                 batch = mv_data[idx]
             else:
                 batch = mv_data
@@ -185,15 +181,9 @@ class MetricSearch:
             coherence_t = gf._coherence_tensor(output_flat)
             curvature_t = gf._curvature_tensor(output_flat)
 
-            sparsity = sum(
-                r.sparsity_loss() for r in probe.get_rotor_layers()
-            )
+            sparsity = sum(r.sparsity_loss() for r in probe.get_rotor_layers())
 
-            loss = (
-                -coherence_t
-                + self.curvature_weight * curvature_t
-                + self.sparsity_weight * sparsity
-            )
+            loss = -coherence_t + self.curvature_weight * curvature_t + self.sparsity_weight * sparsity
 
             loss.backward()
             optimizer.step()
@@ -238,7 +228,7 @@ class MetricSearch:
         n_layers = 0
         for rotor in probe.get_rotor_layers():
             with torch.no_grad():
-                energy = (rotor.bivector_weights ** 2).mean(dim=0)
+                energy = (rotor.bivector_weights**2).mean(dim=0)
                 total_energy += energy
                 n_layers += 1
 
@@ -272,7 +262,9 @@ class MetricSearch:
             for b in bits:
                 if b not in base_type_energy:
                     base_type_energy[b] = {
-                        'elliptic': 0.0, 'hyperbolic': 0.0, 'null': 0.0,
+                        'elliptic': 0.0,
+                        'hyperbolic': 0.0,
+                        'null': 0.0,
                     }
                     base_active[b] = 0.0
                 base_type_energy[b][sig_type] += energy_val
@@ -354,7 +346,7 @@ class MetricSearch:
         bias_types = ['euclidean', 'minkowski', 'projective']
         while len(bias_types) < self.num_probes:
             bias_types.append('random')
-        bias_types = bias_types[:self.num_probes]
+        bias_types = bias_types[: self.num_probes]
 
         def _run_probe(bias_type):
             return self._train_probe(mv_data, algebra, bias_type)
@@ -367,14 +359,10 @@ class MetricSearch:
                 futures = [pool.submit(_run_probe, bt) for bt in bias_types]
                 probe_results = [f.result() for f in futures]
 
-        best_idx = min(
-            range(len(probe_results)), key=lambda i: probe_results[i]['loss']
-        )
+        best_idx = min(range(len(probe_results)), key=lambda i: probe_results[i]['loss'])
         best = probe_results[best_idx]
 
-        signature, energy_breakdown = self._analyze_bivector_energy(
-            best['probe'], algebra, X
-        )
+        signature, energy_breakdown = self._analyze_bivector_energy(best['probe'], algebra, X)
 
         return {
             'signature': signature,

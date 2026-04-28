@@ -76,6 +76,7 @@ class CliffordLinear(CliffordModule):
 
         elif backend == 'rotor':
             from .rotor_gadget import RotorGadget
+
             self.gadget = RotorGadget(
                 algebra=algebra,
                 in_channels=in_channels,
@@ -89,9 +90,7 @@ class CliffordLinear(CliffordModule):
             self.bias = None
 
         else:
-            raise ValueError(
-                f"Unknown backend: {backend}. Must be 'traditional' or 'rotor'."
-            )
+            raise ValueError(f"Unknown backend: {backend}. Must be 'traditional' or 'rotor'.")
 
     def reset_parameters(self):
         """Initialize weights with Xavier uniform and zero bias."""

@@ -41,6 +41,7 @@ class VariableGroup:
         group_coherence: Geodesic coherence of this group's subspace.
         group_curvature: Geodesic curvature of this group's subspace.
     """
+
     var_indices: list
     var_names: list
     signature: tuple
@@ -70,9 +71,16 @@ class VariableGrouper:
         spectral_weight: Weight for bivector energy in affinity.
     """
 
-    def __init__(self, max_groups=4, min_group_size=2, device='cpu',
-                 sample_size=500, commutator_weight=0.4,
-                 coherence_weight=0.3, spectral_weight=0.3):
+    def __init__(
+        self,
+        max_groups=4,
+        min_group_size=2,
+        device='cpu',
+        sample_size=500,
+        commutator_weight=0.4,
+        coherence_weight=0.3,
+        spectral_weight=0.3,
+    ):
         self.max_groups = max_groups
         self.min_group_size = min_group_size
         self.device = device
@@ -97,7 +105,7 @@ class VariableGrouper:
 
         n_vars = X.shape[1]
         if var_names is None:
-            var_names = [f"x{i+1}" for i in range(n_vars)]
+            var_names = [f"x{i + 1}" for i in range(n_vars)]
 
         # Build the relationship graph using GA analysis tools
         graph = self._build_relationship_graph(X, y, var_names)
@@ -129,10 +137,7 @@ class VariableGrouper:
             group = self._build_group(X, y, indices, var_names)
             # Attach graph edges for this group
             group_var_set = set(indices)
-            group.internal_edges = [
-                e for e in graph.edges
-                if e.var_i in group_var_set and e.var_j in group_var_set
-            ]
+            group.internal_edges = [e for e in graph.edges if e.var_i in group_var_set and e.var_j in group_var_set]
             groups.append(group)
 
         if not groups:
@@ -171,11 +176,17 @@ class VariableGrouper:
         10. Classify edges, assemble graph
         """
         from core.analysis import (
-            CommutatorAnalyzer, GeodesicFlow, SpectralAnalyzer,
-            SymmetryDetector, EffectiveDimensionAnalyzer, MetricSearch,
+            CommutatorAnalyzer,
+            GeodesicFlow,
+            SpectralAnalyzer,
+            SymmetryDetector,
+            EffectiveDimensionAnalyzer,
+            MetricSearch,
         )
         from models.sr.relationship_graph import (
-            RelationshipGraph, VariableEdge, VariableNode,
+            RelationshipGraph,
+            VariableEdge,
+            VariableNode,
         )
 
         n_vars = X.shape[1]
@@ -205,8 +216,11 @@ class VariableGrouper:
 
         # 4. MetricSearch for global signature
         from models.sr.utils import safe_metric_search
+
         p, q, r = safe_metric_search(
-            analysis_data, self.device, n_analysis,
+            analysis_data,
+            self.device,
+            n_analysis,
         )
 
         algebra = CliffordAlgebra(p, q, r, device=self.device)
@@ -218,7 +232,8 @@ class VariableGrouper:
             embed_data = analysis_data[:, :alg_n]
         elif analysis_data.shape[1] < alg_n:
             pad = torch.zeros(
-                analysis_data.shape[0], alg_n - analysis_data.shape[1],
+                analysis_data.shape[0],
+                alg_n - analysis_data.shape[1],
                 device=self.device,
             )
             embed_data = torch.cat([analysis_data, pad], dim=-1)
@@ -239,7 +254,8 @@ class VariableGrouper:
         spectral_result = spectral_analyzer.analyze(mv_data)
         # Build a map of bivector energy per plane index
         bv_energy_map = self._build_bivector_energy_map(
-            spectral_result, algebra,
+            spectral_result,
+            algebra,
         )
 
         # 9. Symmetry detection
@@ -257,12 +273,14 @@ class VariableGrouper:
         for i in range(n_vars):
             ns = float(null_scores[i]) if i < len(null_scores) else 0.0
             rs = refl_map.get(i, 0.0)
-            nodes.append(VariableNode(
-                var_idx=i,
-                var_name=var_names[i],
-                null_score=ns,
-                reflection_score=rs,
-            ))
+            nodes.append(
+                VariableNode(
+                    var_idx=i,
+                    var_name=var_names[i],
+                    null_score=ns,
+                    reflection_score=rs,
+                )
+            )
 
         # 11. Build edges — for each variable pair in original space
         edges = []
@@ -290,20 +308,21 @@ class VariableGrouper:
                 plane_idx = self._bivector_index(i, j)
 
                 # Combined strength
-                raw = (self.commutator_weight * c_norm
-                       + self.coherence_weight * pair_coh
-                       + self.spectral_weight * bv_e)
+                raw = self.commutator_weight * c_norm + self.coherence_weight * pair_coh + self.spectral_weight * bv_e
                 strength = min(raw, 1.0)
 
-                edges.append(VariableEdge(
-                    var_i=i, var_j=j,
-                    edge_type=edge_type,
-                    strength=strength,
-                    commutator_norm=c_norm,
-                    coherence=pair_coh,
-                    bivector_energy=bv_e,
-                    plane_index=plane_idx,
-                ))
+                edges.append(
+                    VariableEdge(
+                        var_i=i,
+                        var_j=j,
+                        edge_type=edge_type,
+                        strength=strength,
+                        commutator_norm=c_norm,
+                        coherence=pair_coh,
+                        bivector_energy=bv_e,
+                        plane_index=plane_idx,
+                    )
+                )
 
         # Sort by strength descending
         edges.sort(key=lambda e: e.strength, reverse=True)
@@ -325,8 +344,8 @@ class VariableGrouper:
             f"involution={sym_result.involution_symmetry:.3f}, "
             f"top edge: {edges[0].var_i}-{edges[0].var_j} "
             f"({edges[0].edge_type}, str={edges[0].strength:.3f})"
-            if edges else
-            f"Relationship graph: {n_vars} vars, 0 edges"
+            if edges
+            else f"Relationship graph: {n_vars} vars, 0 edges"
         )
 
         return graph
@@ -504,8 +523,7 @@ class VariableGrouper:
         n_local = group.algebra.n
 
         batch_shape = mv_local.shape[:-1]
-        result = torch.zeros(*batch_shape, mother_dim,
-                             device=mv_local.device, dtype=mv_local.dtype)
+        result = torch.zeros(*batch_shape, mother_dim, device=mv_local.device, dtype=mv_local.dtype)
 
         for local_idx in range(local_dim):
             mother_idx = 0
@@ -514,7 +532,7 @@ class VariableGrouper:
                     mother_bit = vec_map.get(bit)
                     if mother_bit is None:
                         break
-                    mother_idx |= (1 << mother_bit)
+                    mother_idx |= 1 << mother_bit
             else:
                 if mother_idx < mother_dim:
                     result[..., mother_idx] = mv_local[..., local_idx]
@@ -537,7 +555,8 @@ class VariableGrouper:
 
         data = torch.tensor(
             np.column_stack([X, y.reshape(-1, 1)]),
-            dtype=torch.float32, device=self.device,
+            dtype=torch.float32,
+            device=self.device,
         )
         data = subsample(data, 500)
         data = standardize(data)
@@ -548,6 +567,7 @@ class VariableGrouper:
             data = data_c @ V[:6].T
 
         from models.sr.utils import safe_metric_search
+
         p, q, r = safe_metric_search(data, self.device, n_vars)
 
         algebra = CliffordAlgebra(p, q, r, device=self.device)
@@ -571,7 +591,8 @@ class VariableGrouper:
 
         data = torch.tensor(
             np.column_stack([X_sub, y.reshape(-1, 1)]),
-            dtype=torch.float32, device=self.device,
+            dtype=torch.float32,
+            device=self.device,
         )
         data = subsample(data, 500)
         data = standardize(data)
@@ -582,9 +603,13 @@ class VariableGrouper:
             data = data_c @ V[:6].T
 
         from models.sr.utils import safe_metric_search
+
         p, q, r = safe_metric_search(
-            data, self.device, len(indices),
-            num_probes=2, probe_epochs=20,
+            data,
+            self.device,
+            len(indices),
+            num_probes=2,
+            probe_epochs=20,
         )
 
         algebra = CliffordAlgebra(p, q, r, device=self.device)
@@ -607,6 +632,7 @@ class VariableGrouper:
             return list(range(n))
 
         from models.sr.numerics import safe_inv_sqrt_diag
+
         D = np.diag(affinity.sum(axis=1) + 1e-10)
         D_inv_sqrt = np.diag(safe_inv_sqrt_diag(np.diag(D)))
         L = np.eye(n) - D_inv_sqrt @ affinity @ D_inv_sqrt

@@ -55,7 +55,12 @@ def test_iterative_unbender_smoke(simple_sin_data):
     )
 
     result = unbender.run(
-        X_norm, y_norm, x_mean, x_std, y_mean, y_std,
+        X_norm,
+        y_norm,
+        x_mean,
+        x_std,
+        y_mean,
+        y_std,
         var_names=["x"],
     )
 
@@ -80,7 +85,12 @@ def test_stage_result_fields(simple_sin_data):
     )
 
     result = unbender.run(
-        X_norm, y_norm, x_mean, x_std, y_mean, y_std,
+        X_norm,
+        y_norm,
+        x_mean,
+        x_std,
+        y_mean,
+        y_std,
         var_names=["x"],
     )
 
@@ -104,7 +114,8 @@ def test_orthogonal_elimination():
     algebra = CliffordAlgebra(3, 0, 0, device="cpu")
 
     unbender = IterativeUnbender(
-        in_features=2, device="cpu",
+        in_features=2,
+        device="cpu",
         soft_rejection_alpha=10.0,
         soft_rejection_threshold=0.01,
     )
@@ -154,7 +165,8 @@ def test_soft_rejection_preserves_weak():
     algebra = CliffordAlgebra(3, 0, 0, device="cpu")
 
     unbender = IterativeUnbender(
-        in_features=2, device="cpu",
+        in_features=2,
+        device="cpu",
         soft_rejection_alpha=100.0,
         soft_rejection_threshold=1.0,  # high threshold
     )
@@ -204,7 +216,12 @@ def test_coherence_backtrack():
 
     with patch.object(unbender, "_measure_coherence", side_effect=mock_measure):
         result = unbender.run(
-            X_norm, y_norm, x_mean, x_std, y_mean, y_std,
+            X_norm,
+            y_norm,
+            x_mean,
+            x_std,
+            y_mean,
+            y_std,
             var_names=["x1", "x2"],
         )
 
@@ -215,8 +232,11 @@ def test_coherence_backtrack():
 def test_reprobe_changes_signature():
     """Verify different residuals can produce different (p,q,r) signatures."""
     unbender = IterativeUnbender(
-        in_features=2, device="cpu", max_stages=1,
-        stage_epochs=2, geodesic_k=4,
+        in_features=2,
+        device="cpu",
+        max_stages=1,
+        stage_epochs=2,
+        geodesic_k=4,
     )
 
     t = np.linspace(0, 2 * np.pi, 100, dtype=np.float32)
@@ -265,7 +285,11 @@ def test_linearity_skips_stages():
     y_norm = (y_t - y_mean) / y_std
 
     unbender = IterativeUnbender(
-        in_features=1, device="cpu", max_stages=3, stage_epochs=2, geodesic_k=4,
+        in_features=1,
+        device="cpu",
+        max_stages=3,
+        stage_epochs=2,
+        geodesic_k=4,
     )
     result = unbender.run(X_norm, y_norm, x_mean, x_std, y_mean, y_std, var_names=["x"])
 
@@ -346,6 +370,7 @@ def test_kepler_power_law_recovery():
     assert r2 > 0.99, f"Power law R2 should be high, got {r2}"
     # Check that the expression contains x1^(3/2)
     import sympy
+
     expr = terms[0].expr
     assert expr is not None, "Power law term should have an expression"
     x1 = sympy.Symbol("x1")
@@ -421,8 +446,11 @@ def test_unbending_result_new_fields():
 
     # Defaults
     result2 = UnbendingResult(
-        stages=[], formula="y = 0", r2_final=0.0,
-        all_terms=[], signature_history=[],
+        stages=[],
+        formula="y = 0",
+        r2_final=0.0,
+        all_terms=[],
+        signature_history=[],
     )
     assert result2.all_ops == []
     assert result2.implicit_mode == "explicit"

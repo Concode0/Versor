@@ -58,9 +58,16 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    build_visualization_metadata, ensure_output_dir, make_experiment_parser,
-    print_banner, report_diagnostics, run_supervised_loop, save_training_curve,
-    set_seed, setup_algebra, signature_metadata,
+    build_visualization_metadata,
+    ensure_output_dir,
+    make_experiment_parser,
+    print_banner,
+    report_diagnostics,
+    run_supervised_loop,
+    save_training_curve,
+    set_seed,
+    setup_algebra,
+    signature_metadata,
 )
 from core.algebra import CliffordAlgebra
 from layers.primitives.base import CliffordModule
@@ -73,18 +80,16 @@ from optimizers.riemannian import RiemannianAdam
 # Cl(3,1) basis layout
 # ---------------------------------------------------------------------------
 
-E_BLADES = (9, 10, 12)          # e14, e24, e34
-B_BLADES = (6, 5, 3)            # e23, e13, e12
-SPACETIME_BLADES = (8, 1, 2, 4) # t->e4, x->e1, y->e2, z->e3
+E_BLADES = (9, 10, 12)  # e14, e24, e34
+B_BLADES = (6, 5, 3)  # e23, e13, e12
+SPACETIME_BLADES = (8, 1, 2, 4)  # t->e4, x->e1, y->e2, z->e3
 PSEUDOSCALAR = 15
 G2_SLOTS = list(E_BLADES) + list(B_BLADES)
 
 
 def _assert_cl31(algebra: CliffordAlgebra) -> None:
     if algebra.p != 3 or algebra.q != 1 or getattr(algebra, 'r', 0) != 0:
-        raise ValueError(
-            f"Expected Cl(3,1); got Cl({algebra.p},{algebra.q},{getattr(algebra,'r',0)})"
-        )
+        raise ValueError(f"Expected Cl(3,1); got Cl({algebra.p},{algebra.q},{getattr(algebra, 'r', 0)})")
 
 
 def _boost_bivector(algebra, axis: int) -> torch.Tensor:
@@ -96,6 +101,7 @@ def _boost_bivector(algebra, axis: int) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 # Plane-wave ground truth
 # ---------------------------------------------------------------------------
+
 
 def _random_unit_vector(rng, dim=3):
     v = rng.randn(dim)
@@ -118,7 +124,8 @@ def _sample_wave(rng, kmin: float, kmax: float) -> Dict[str, np.ndarray]:
 
 
 def compute_plane_wave_F(tr: np.ndarray, wave: Dict[str, np.ndarray]) -> np.ndarray:
-    t = tr[:, 0]; r = tr[:, 1:4]
+    t = tr[:, 0]
+    r = tr[:, 1:4]
     c = np.cos(r @ wave['k'] - wave['w'] * t + wave['phase'])
     F = np.zeros((tr.shape[0], 16), dtype=np.float64)
     for axis in range(3):
@@ -130,9 +137,9 @@ def compute_plane_wave_F(tr: np.ndarray, wave: Dict[str, np.ndarray]) -> np.ndar
 class PlaneWaveDataset(Dataset):
     """Spacetime-event / bivector-F pairs drawn from a small pool of plane waves."""
 
-    def __init__(self, num_samples: int, num_waves: int,
-                 tmax: float, rmax: float, kmin: float, kmax: float,
-                 seed: int = 42):
+    def __init__(
+        self, num_samples: int, num_waves: int, tmax: float, rmax: float, kmin: float, kmax: float, seed: int = 42
+    ):
         rng = np.random.RandomState(seed)
         self.waves = [_sample_wave(rng, kmin, kmax) for _ in range(num_waves)]
         self.wave_idx = rng.randint(0, num_waves, size=num_samples)
@@ -164,11 +171,11 @@ class PlaneWaveDataset(Dataset):
 # Network
 # ---------------------------------------------------------------------------
 
+
 class MaxwellNet(CliffordModule):
     """GBN predicting F at a spacetime event, conditioned on the wave vector k."""
 
-    def __init__(self, algebra, hidden_dim: int = 64,
-                 num_layers: int = 6, num_freqs: int = 32):
+    def __init__(self, algebra, hidden_dim: int = 64, num_layers: int = 6, num_freqs: int = 32):
         super().__init__(algebra)
         self.hidden_dim = hidden_dim
         # Log-scaled random Fourier features. Each of `num_freqs` random 7-D
@@ -177,21 +184,27 @@ class MaxwellNet(CliffordModule):
         # while extending the spectrum well beyond the dataset's k range.
         directions = torch.randn(7, num_freqs) * 0.5
         log_scales = 2.0 ** torch.linspace(
-            0.0, math.log2(max(num_freqs, 2)), num_freqs,
+            0.0,
+            math.log2(max(num_freqs, 2)),
+            num_freqs,
         )
         self.register_buffer('freq_bands', directions * log_scales.unsqueeze(0))
         input_dim = 7 + 2 * num_freqs
         self.input_lift = nn.Linear(input_dim, hidden_dim * algebra.dim)
         self.input_norm = CliffordLayerNorm(algebra, hidden_dim)
-        self.blocks = nn.ModuleList([
-            nn.ModuleDict({
-                'norm':   CliffordLayerNorm(algebra, hidden_dim),
-                'rotor':  RotorLayer(algebra, hidden_dim),
-                'act':    GeometricGELU(algebra, channels=hidden_dim),
-                'linear': CliffordLinear(algebra, hidden_dim, hidden_dim),
-            })
-            for _ in range(num_layers)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                nn.ModuleDict(
+                    {
+                        'norm': CliffordLayerNorm(algebra, hidden_dim),
+                        'rotor': RotorLayer(algebra, hidden_dim),
+                        'act': GeometricGELU(algebra, channels=hidden_dim),
+                        'linear': CliffordLinear(algebra, hidden_dim, hidden_dim),
+                    }
+                )
+                for _ in range(num_layers)
+            ]
+        )
         self.output_norm = CliffordLayerNorm(algebra, hidden_dim)
         self.blade_selector = BladeSelector(algebra, channels=hidden_dim)
         self.output_proj = CliffordLinear(algebra, hidden_dim, 1)
@@ -202,9 +215,7 @@ class MaxwellNet(CliffordModule):
         features_raw = torch.cat([tr, k_feat], dim=-1)
         proj = features_raw @ self.freq_bands
         features = torch.cat([features_raw, torch.sin(proj), torch.cos(proj)], dim=-1)
-        h = self.input_norm(
-            self.input_lift(features).reshape(B, self.hidden_dim, self.algebra.dim)
-        )
+        h = self.input_norm(self.input_lift(features).reshape(B, self.hidden_dim, self.algebra.dim))
         for block in self.blocks:
             res = h
             h = block['norm'](h)
@@ -221,6 +232,7 @@ class MaxwellNet(CliffordModule):
 # Normalization bundle
 # ---------------------------------------------------------------------------
 
+
 class _Norms:
     def __init__(self, input_mean, input_std, k_mean, k_std, target_mean, target_std):
         self.input_mean, self.input_std = input_mean, input_std
@@ -228,8 +240,7 @@ class _Norms:
         self.target_mean, self.target_std = target_mean, target_std
 
     def to(self, device):
-        for attr in ('input_mean', 'input_std', 'k_mean', 'k_std',
-                     'target_mean', 'target_std'):
+        for attr in ('input_mean', 'input_std', 'k_mean', 'k_std', 'target_mean', 'target_std'):
             setattr(self, attr, getattr(self, attr).to(device))
         return self
 
@@ -252,15 +263,13 @@ def _build_norms(train_ds: PlaneWaveDataset) -> _Norms:
 # Single natural loss
 # ---------------------------------------------------------------------------
 
-def _masked_mse(pred: torch.Tensor, target: torch.Tensor,
-                mask: torch.Tensor) -> torch.Tensor:
+
+def _masked_mse(pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     diff_sq = (pred - target) ** 2
     return (diff_sq * mask).sum() / (mask.sum() * pred.shape[0] + 1e-12)
 
 
-def _lorentz_invariant_loss(algebra: CliffordAlgebra,
-                            pred: torch.Tensor,
-                            target: torch.Tensor) -> torch.Tensor:
+def _lorentz_invariant_loss(algebra: CliffordAlgebra, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """MSE on the two Lorentz scalars of F·F: the scalar and pseudoscalar parts.
 
     Computed in the same (normalized) space as the masked MSE so the two
@@ -271,13 +280,13 @@ def _lorentz_invariant_loss(algebra: CliffordAlgebra,
     """
     FF_p = algebra.geometric_product(pred, pred)
     FF_t = algebra.geometric_product(target, target)
-    return (((FF_p[:, 0] - FF_t[:, 0]) ** 2).mean()
-            + ((FF_p[:, PSEUDOSCALAR] - FF_t[:, PSEUDOSCALAR]) ** 2).mean())
+    return ((FF_p[:, 0] - FF_t[:, 0]) ** 2).mean() + ((FF_p[:, PSEUDOSCALAR] - FF_t[:, PSEUDOSCALAR]) ** 2).mean()
 
 
 # ---------------------------------------------------------------------------
 # Post-training diagnostics
 # ---------------------------------------------------------------------------
+
 
 @torch.no_grad()
 def _predict_denorm(model, inputs, k_feat, norms) -> torch.Tensor:
@@ -291,7 +300,7 @@ def grade2_purity_fraction(model, dataset, norms, device) -> float:
     inputs = dataset.inputs.to(device)
     k_feat = dataset.k_feat.to(device)
     pred = _predict_denorm(model, inputs, k_feat, norms)
-    total_energy = (pred ** 2).sum().clamp(min=1e-12)
+    total_energy = (pred**2).sum().clamp(min=1e-12)
     g2_energy = (pred[:, G2_SLOTS] ** 2).sum()
     return (g2_energy / total_energy).item()
 
@@ -300,11 +309,14 @@ def grade2_purity_fraction(model, dataset, norms, device) -> float:
 def test_l2_g2(model, loader, norms, device) -> float:
     total_err, n = 0.0, 0
     for inputs, k_feat, targets in loader:
-        inputs = inputs.to(device); k_feat = k_feat.to(device); targets = targets.to(device)
+        inputs = inputs.to(device)
+        k_feat = k_feat.to(device)
+        targets = targets.to(device)
         pred_denorm = _predict_denorm(model, inputs, k_feat, norms)
         diff = pred_denorm[:, G2_SLOTS] - targets[:, G2_SLOTS]
-        err = (diff ** 2).sum(dim=-1).sqrt()
-        total_err += err.sum().item(); n += err.shape[0]
+        err = (diff**2).sum(dim=-1).sqrt()
+        total_err += err.sum().item()
+        n += err.shape[0]
     return total_err / max(n, 1)
 
 
@@ -322,8 +334,7 @@ def lorentz_invariants(model, algebra, dataset, norms, device, n_tests=200) -> D
         FF = algebra.geometric_product(F, F)
         return FF[..., 0], FF[..., PSEUDOSCALAR]
 
-    phi = torch.tensor(rng.uniform(-1.0, 1.0, size=(n_tests,)),
-                       dtype=torch.float32, device=device)
+    phi = torch.tensor(rng.uniform(-1.0, 1.0, size=(n_tests,)), dtype=torch.float32, device=device)
     axis = rng.randint(0, 3, size=n_tests)
     B = torch.zeros_like(pred)
     for i in range(n_tests):
@@ -334,15 +345,17 @@ def lorentz_invariants(model, algebra, dataset, norms, device, n_tests=200) -> D
     def _boost(F):
         return algebra.geometric_product(algebra.geometric_product(R, F), R_rev)
 
-    s1_t, s2_t = _scalars(targets); s1_tb, s2_tb = _scalars(_boost(targets))
-    s1_p, s2_p = _scalars(pred);    s1_pb, s2_pb = _scalars(_boost(pred))
+    s1_t, s2_t = _scalars(targets)
+    s1_tb, s2_tb = _scalars(_boost(targets))
+    s1_p, s2_p = _scalars(pred)
+    s1_pb, s2_pb = _scalars(_boost(pred))
     return {
-        'gt_inv1_residual':    (s1_tb - s1_t).abs().mean().item(),
-        'gt_inv2_residual':    (s2_tb - s2_t).abs().mean().item(),
-        'pred_inv1_residual':  (s1_pb - s1_p).abs().mean().item(),
-        'pred_inv2_residual':  (s2_pb - s2_p).abs().mean().item(),
-        'pred_vs_true_inv1':   (s1_p - s1_t).abs().mean().item(),
-        'pred_vs_true_inv2':   (s2_p - s2_t).abs().mean().item(),
+        'gt_inv1_residual': (s1_tb - s1_t).abs().mean().item(),
+        'gt_inv2_residual': (s2_tb - s2_t).abs().mean().item(),
+        'pred_inv1_residual': (s1_pb - s1_p).abs().mean().item(),
+        'pred_inv2_residual': (s2_pb - s2_p).abs().mean().item(),
+        'pred_vs_true_inv1': (s1_p - s1_t).abs().mean().item(),
+        'pred_vs_true_inv2': (s2_p - s2_t).abs().mean().item(),
     }
 
 
@@ -362,8 +375,7 @@ def dual_symmetry_residual(model, algebra, dataset, norms, device, n_tests=200) 
 
 
 @torch.no_grad()
-def maxwell_fd_residual(model, algebra, dataset, norms, device,
-                        n_tests=200, h: float = 1e-3) -> Tuple[float, float]:
+def maxwell_fd_residual(model, algebra, dataset, norms, device, n_tests=200, h: float = 1e-3) -> Tuple[float, float]:
     """Source-free ||∇F|| via central differences on the predicted field."""
     rng = np.random.RandomState(5678)
     idx = rng.randint(0, len(dataset), size=n_tests)
@@ -374,12 +386,17 @@ def maxwell_fd_residual(model, algebra, dataset, norms, device,
         return _predict_denorm(model, inputs, k_feat, norms)
 
     def _true_at(inputs):
-        tr_np = torch.stack(
-            [inputs[:, b] for b in SPACETIME_BLADES], dim=-1,
-        ).cpu().numpy()
+        tr_np = (
+            torch.stack(
+                [inputs[:, b] for b in SPACETIME_BLADES],
+                dim=-1,
+            )
+            .cpu()
+            .numpy()
+        )
         out = np.zeros((inputs.shape[0], 16), dtype=np.float64)
         for j, k in enumerate(idx):
-            out[j] = compute_plane_wave_F(tr_np[j:j+1], dataset.waves[dataset.wave_idx[k]])[0]
+            out[j] = compute_plane_wave_F(tr_np[j : j + 1], dataset.waves[dataset.wave_idx[k]])[0]
         return torch.tensor(out, dtype=torch.float32, device=device)
 
     axis_blades = (1, 2, 4, 8)
@@ -391,15 +408,16 @@ def maxwell_fd_residual(model, algebra, dataset, norms, device,
             shifted.append(inp_s)
 
     def _grad_norm(values):
-        dF = [(values[2*a+1] - values[2*a]) / (2.0 * h) for a in range(4)]
+        dF = [(values[2 * a + 1] - values[2 * a]) / (2.0 * h) for a in range(4)]
         total = torch.zeros_like(dF[0])
         for a, blade in enumerate(axis_blades):
             e_a = torch.zeros(algebra.dim, device=device)
             e_a[blade] = 1.0
             total = total + algebra.geometric_product(
-                e_a.unsqueeze(0).expand_as(dF[a]), dF[a],
+                e_a.unsqueeze(0).expand_as(dF[a]),
+                dF[a],
             )
-        return (total ** 2).sum(dim=-1).sqrt()
+        return (total**2).sum(dim=-1).sqrt()
 
     pred_norm = _grad_norm([_predict(s) for s in shifted]).mean().item()
     true_norm = _grad_norm([_true_at(s) for s in shifted]).mean().item()
@@ -409,6 +427,7 @@ def maxwell_fd_residual(model, algebra, dataset, norms, device,
 # ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------
+
 
 def train(args) -> None:
     set_seed(args.seed)
@@ -423,28 +442,38 @@ def train(args) -> None:
     )
 
     train_ds = PlaneWaveDataset(
-        num_samples=args.num_train, num_waves=args.num_waves,
-        tmax=args.tmax, rmax=args.rmax, kmin=args.kmin, kmax=args.kmax,
+        num_samples=args.num_train,
+        num_waves=args.num_waves,
+        tmax=args.tmax,
+        rmax=args.rmax,
+        kmin=args.kmin,
+        kmax=args.kmax,
         seed=args.seed,
     )
     test_ds = PlaneWaveDataset(
-        num_samples=args.num_test, num_waves=args.num_waves,
-        tmax=args.tmax, rmax=args.rmax, kmin=args.kmin, kmax=args.kmax,
+        num_samples=args.num_test,
+        num_waves=args.num_waves,
+        tmax=args.tmax,
+        rmax=args.rmax,
+        kmin=args.kmin,
+        kmax=args.kmax,
         seed=args.seed + 1,
     )
     # Ensure test set samples target the same wave pool as train.
     test_ds.waves = train_ds.waves
     test_ds.targets = torch.tensor(
-        np.concatenate([
-            compute_plane_wave_F(test_ds.tr[i:i+1], train_ds.waves[int(w)])
-            for i, w in enumerate(test_ds.wave_idx)
-        ], axis=0),
+        np.concatenate(
+            [
+                compute_plane_wave_F(test_ds.tr[i : i + 1], train_ds.waves[int(w)])
+                for i, w in enumerate(test_ds.wave_idx)
+            ],
+            axis=0,
+        ),
         dtype=torch.float32,
     )
-    test_ds.k_feat = torch.stack([
-        torch.tensor(train_ds.waves[int(w)]['k'], dtype=torch.float32)
-        for w in test_ds.wave_idx
-    ])
+    test_ds.k_feat = torch.stack(
+        [torch.tensor(train_ds.waves[int(w)]['k'], dtype=torch.float32) for w in test_ds.wave_idx]
+    )
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)
@@ -452,8 +481,9 @@ def train(args) -> None:
     norms = _build_norms(train_ds).to(device)
     g2_mask = algebra.grade_masks[2].to(dtype=torch.float32, device=device)
 
-    model = MaxwellNet(algebra, hidden_dim=args.hidden_dim,
-                       num_layers=args.num_layers, num_freqs=args.num_freqs).to(device)
+    model = MaxwellNet(algebra, hidden_dim=args.hidden_dim, num_layers=args.num_layers, num_freqs=args.num_freqs).to(
+        device
+    )
     print(f'  Parameters: {sum(p.numel() for p in model.parameters()):,}')
     optimizer = RiemannianAdam(model.parameters(), lr=args.lr, algebra=algebra)
 
@@ -470,31 +500,43 @@ def train(args) -> None:
         return {'test_l2_g2': test_l2_g2(_model, test_loader, norms, device)}
 
     history = run_supervised_loop(
-        model, optimizer, loss_fn, train_loader,
-        epochs=args.epochs, diag_interval=args.diag_interval, grad_clip=1.0,
+        model,
+        optimizer,
+        loss_fn,
+        train_loader,
+        epochs=args.epochs,
+        diag_interval=args.diag_interval,
+        grad_clip=1.0,
     )
 
     # Post-training measurements — every ex-loss-term is now a number.
     inv = lorentz_invariants(model, algebra, test_ds, norms, device)
     maxw_pred_res, maxw_true_res = maxwell_fd_residual(
-        model, algebra, test_ds, norms, device,
+        model,
+        algebra,
+        test_ds,
+        norms,
+        device,
     )
     diagnostics = {
-        'test_l2_g2':                  test_l2_g2(model, test_loader, norms, device),
-        'grade2_purity':               grade2_purity_fraction(model, test_ds, norms, device),
-        'dual_symmetry_residual':      dual_symmetry_residual(model, algebra, test_ds, norms, device),
-        'gt_inv1_residual':            inv['gt_inv1_residual'],
-        'gt_inv2_residual':            inv['gt_inv2_residual'],
-        'pred_inv1_residual':          inv['pred_inv1_residual'],
-        'pred_inv2_residual':          inv['pred_inv2_residual'],
-        'pred_vs_true_inv1':           inv['pred_vs_true_inv1'],
-        'pred_vs_true_inv2':           inv['pred_vs_true_inv2'],
-        'maxwell_pred_residual':       maxw_pred_res,
-        'maxwell_true_fd_floor':       maxw_true_res,
+        'test_l2_g2': test_l2_g2(model, test_loader, norms, device),
+        'grade2_purity': grade2_purity_fraction(model, test_ds, norms, device),
+        'dual_symmetry_residual': dual_symmetry_residual(model, algebra, test_ds, norms, device),
+        'gt_inv1_residual': inv['gt_inv1_residual'],
+        'gt_inv2_residual': inv['gt_inv2_residual'],
+        'pred_inv1_residual': inv['pred_inv1_residual'],
+        'pred_inv2_residual': inv['pred_inv2_residual'],
+        'pred_vs_true_inv1': inv['pred_vs_true_inv1'],
+        'pred_vs_true_inv2': inv['pred_vs_true_inv2'],
+        'maxwell_pred_residual': maxw_pred_res,
+        'maxwell_true_fd_floor': maxw_true_res,
     }
-    print(report_diagnostics(
-        diagnostics, title='Maxwell post-training physics diagnostics',
-    ))
+    print(
+        report_diagnostics(
+            diagnostics,
+            title='Maxwell post-training physics diagnostics',
+        )
+    )
 
     ensure_output_dir(args.output_dir)
     metadata = build_visualization_metadata(
@@ -519,13 +561,12 @@ def train(args) -> None:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
         'Maxwell equations debugger in Cl(3,1)',
-        include=('seed', 'device', 'epochs', 'lr', 'batch_size',
-                 'output_dir', 'diag_interval'),
-        defaults={'epochs': 200, 'lr': 0.001, 'batch_size': 128,
-                  'output_dir': 'maxwell_plots', 'diag_interval': 20},
+        include=('seed', 'device', 'epochs', 'lr', 'batch_size', 'output_dir', 'diag_interval'),
+        defaults={'epochs': 200, 'lr': 0.001, 'batch_size': 128, 'output_dir': 'maxwell_plots', 'diag_interval': 20},
     )
     p.add_argument('--tmax', type=float, default=5.0)
     p.add_argument('--rmax', type=float, default=5.0)

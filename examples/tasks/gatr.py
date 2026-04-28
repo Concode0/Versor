@@ -71,6 +71,7 @@ from tasks.base import BaseTask
 # Model
 # ---------------------------------------------------------------------------
 
+
 class GATrNet(nn.Module):
     """Geometric Algebra Transformer for n-body dynamics.
 
@@ -94,13 +95,18 @@ class GATrNet(nn.Module):
 
         # pos + vel = 2 input channels per particle
         self.lift = CliffordLinear(algebra, 2, channels)
-        self.blocks = nn.ModuleList([
-            GeometricTransformerBlock(
-                algebra, channels, num_heads=num_heads,
-                num_rotors=4, dropout=0.0,
-            )
-            for _ in range(num_layers)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                GeometricTransformerBlock(
+                    algebra,
+                    channels,
+                    num_heads=num_heads,
+                    num_rotors=4,
+                    dropout=0.0,
+                )
+                for _ in range(num_layers)
+            ]
+        )
         self.project = CliffordLinear(algebra, channels, 1)
 
     def forward(self, pos, vel):
@@ -123,7 +129,7 @@ class GATrNet(nn.Module):
         # Embed into PGA grade-1 multivectors (16-dim for Cl(3,0,1))
         # Points: x1*e1 + x2*e2 + x3*e3 + 1*e0  (finite, e0 coeff = 1)
         # Directions: v1*e1 + v2*e2 + v3*e3       (ideal, e0 coeff = 0)
-        p_mv = self.pga.embed(pos)            # [B, N, 16]
+        p_mv = self.pga.embed(pos)  # [B, N, 16]
         v_mv = self.pga.embed_direction(vel)  # [B, N, 16]
 
         # Stack as 2 channels: [B, N, 2, 16]
@@ -153,6 +159,7 @@ class GATrNet(nn.Module):
 # ---------------------------------------------------------------------------
 # Synthetic data: N-body spring system
 # ---------------------------------------------------------------------------
+
 
 def _generate_nbody_data(n_samples, n_particles, dt=0.01, n_steps=10):
     """Generate n-body spring system trajectories.
@@ -199,6 +206,7 @@ def _generate_nbody_data(n_samples, n_particles, dt=0.01, n_steps=10):
 # Task
 # ---------------------------------------------------------------------------
 
+
 class GATrTask(BaseTask):
     """GATr-style n-body dynamics prediction.
 
@@ -212,8 +220,10 @@ class GATrTask(BaseTask):
         # dim = 2^4 = 16 multivector components
         r = self.cfg.algebra.get('r', 1)
         return CliffordAlgebra(
-            p=self.cfg.algebra.p, q=self.cfg.algebra.q,
-            r=r, device=self.device,
+            p=self.cfg.algebra.p,
+            q=self.cfg.algebra.q,
+            r=r,
+            device=self.device,
         )
 
     def setup_model(self):
@@ -231,7 +241,9 @@ class GATrTask(BaseTask):
         dataset = TensorDataset(pos, vel, tgt)
         torch.manual_seed(torch.seed())  # re-randomize
         return DataLoader(
-            dataset, batch_size=self.cfg.training.batch_size, shuffle=True,
+            dataset,
+            batch_size=self.cfg.training.batch_size,
+            shuffle=True,
         )
 
     def train_step(self, data):

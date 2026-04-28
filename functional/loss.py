@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from core.metric import hermitian_grade_spectrum
 from layers.primitives.base import CliffordModule
 
+
 class GeometricMSELoss(CliffordModule):
     """Geometric MSE. Euclidean distance in embedding space.
 
@@ -25,6 +26,7 @@ class GeometricMSELoss(CliffordModule):
         """MSE."""
         return F.mse_loss(pred, target, reduction='mean')
 
+
 class SubspaceLoss(CliffordModule):
     """Subspace Loss. Enforces grade constraints.
 
@@ -34,7 +36,7 @@ class SubspaceLoss(CliffordModule):
     def __init__(self, algebra, target_indices: list = None, exclude_indices: list = None):
         """Initialize grade constraint penalties."""
         super().__init__(algebra)
-        
+
         if target_indices is not None:
             mask = torch.ones(self.algebra.dim, dtype=torch.bool)
             mask[target_indices] = False
@@ -43,14 +45,15 @@ class SubspaceLoss(CliffordModule):
             mask[exclude_indices] = True
         else:
             raise ValueError("Must provide target_indices or exclude_indices")
-            
+
         self.register_buffer('penalty_mask', mask)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Penalizes deviations."""
         penalty_components = x[..., self.penalty_mask]
-        loss = (penalty_components ** 2).sum(dim=-1).mean()
+        loss = (penalty_components**2).sum(dim=-1).mean()
         return loss
+
 
 class IsometryLoss(CliffordModule):
     """Isometry loss enforcing metric norm preservation.
@@ -73,13 +76,14 @@ class IsometryLoss(CliffordModule):
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compares norms."""
         metric_diag = self.metric_diag
-        pred_sq = (pred ** 2) * metric_diag
-        target_sq = (target ** 2) * metric_diag
-        
+        pred_sq = (pred**2) * metric_diag
+        target_sq = (target**2) * metric_diag
+
         pred_norm = pred_sq.sum(dim=-1)
         target_norm = target_sq.sum(dim=-1)
-        
+
         return F.mse_loss(pred_norm, target_norm)
+
 
 class BivectorRegularization(CliffordModule):
     """Bivector regularization enforcing grade-2 purity.
@@ -96,7 +100,7 @@ class BivectorRegularization(CliffordModule):
         """Penalizes non-bivector parts."""
         target_part = self.algebra.grade_projection(x, self.grade)
         residual = x - target_part
-        return (residual ** 2).sum(dim=-1).mean()
+        return (residual**2).sum(dim=-1).mean()
 
 
 class HermitianGradeRegularization(CliffordModule):
@@ -168,7 +172,7 @@ class ChamferDistance(nn.Module):
             Chamfer distance (scalar).
         """
         diff = pred.unsqueeze(2) - target.unsqueeze(1)
-        dist_sq = (diff ** 2).sum(dim=-1)
+        dist_sq = (diff**2).sum(dim=-1)
         min_dist_pred = dist_sq.min(dim=2)[0].mean(dim=1)
         min_dist_target = dist_sq.min(dim=1)[0].mean(dim=1)
         return (min_dist_pred + min_dist_target).mean()
@@ -181,8 +185,7 @@ class ConservativeLoss(nn.Module):
     with respect to atomic positions. Used in molecular dynamics tasks.
     """
 
-    def forward(self, energy: torch.Tensor, force_pred: torch.Tensor,
-                pos: torch.Tensor) -> torch.Tensor:
+    def forward(self, energy: torch.Tensor, force_pred: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
         """Compute conservative force loss.
 
         Args:
@@ -193,10 +196,7 @@ class ConservativeLoss(nn.Module):
         Returns:
             MSE between predicted forces and -grad(E).
         """
-        force_from_energy = -torch.autograd.grad(
-            energy.sum(), pos,
-            create_graph=True, retain_graph=True
-        )[0]
+        force_from_energy = -torch.autograd.grad(energy.sum(), pos, create_graph=True, retain_graph=True)[0]
         return F.mse_loss(force_pred, force_from_energy)
 
 
@@ -211,8 +211,7 @@ class PhysicsInformedLoss(nn.Module):
         super().__init__()
         self.physics_weight = physics_weight
 
-    def forward(self, forecast: torch.Tensor, target: torch.Tensor,
-                lat_weights: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, forecast: torch.Tensor, target: torch.Tensor, lat_weights: torch.Tensor = None) -> torch.Tensor:
         """Compute physics-informed loss.
 
         Args:
@@ -267,9 +266,7 @@ class AsymmetryLoss(nn.Module):
         r = logits_rev.flatten()
         f_centered = f - f.mean()
         r_centered = r - r.mean()
-        corr = (f_centered * r_centered).sum() / (
-            f_centered.norm() * r_centered.norm() + 1e-8
-        )
+        corr = (f_centered * r_centered).sum() / (f_centered.norm() * r_centered.norm() + 1e-8)
         return F.relu(corr - self.margin)
 
 
@@ -283,8 +280,7 @@ class InvolutionConsistencyLoss(nn.Module):
     to represent negation, rather than learning ad-hoc heuristics.
     """
 
-    def forward(self, features: torch.Tensor, features_neg: torch.Tensor,
-                algebra) -> torch.Tensor:
+    def forward(self, features: torch.Tensor, features_neg: torch.Tensor, algebra) -> torch.Tensor:
         """Compute involution consistency loss.
 
         Args:

@@ -17,16 +17,18 @@ def rng():
 
 
 def rand_mv(alg, rng, batch=4):
-    dim = 2 ** alg.n
+    dim = 2**alg.n
     return Multivector(alg, torch.randn(batch, dim, generator=rng))
 
 
 # ---- constructors ----
 
+
 def test_from_vectors(alg):
     v = torch.randn(4, 3)
     mv = Multivector.from_vectors(alg, v)
-    assert mv.shape[-1] == 2 ** alg.n
+    assert mv.shape[-1] == 2**alg.n
+
 
 def test_scalar(alg):
     mv = Multivector.scalar(alg, 3.0, batch_shape=(2,))
@@ -36,45 +38,54 @@ def test_scalar(alg):
 
 # ---- arithmetic operators ----
 
+
 def test_add_multivector(alg, rng):
     a, b = rand_mv(alg, rng), rand_mv(alg, rng)
     c = a + b
     assert torch.allclose(c.tensor, a.tensor + b.tensor)
+
 
 def test_add_scalar(alg, rng):
     a = rand_mv(alg, rng)
     c = a + 1.0
     assert torch.allclose(c.tensor, a.tensor + 1.0)
 
+
 def test_radd(alg, rng):
     a = rand_mv(alg, rng)
     c = 2.0 + a
     assert torch.allclose(c.tensor, a.tensor + 2.0)
+
 
 def test_sub_multivector(alg, rng):
     a, b = rand_mv(alg, rng), rand_mv(alg, rng)
     c = a - b
     assert torch.allclose(c.tensor, a.tensor - b.tensor)
 
+
 def test_rsub(alg, rng):
     a = rand_mv(alg, rng)
     c = 1.0 - a
     assert torch.allclose(c.tensor, 1.0 - a.tensor)
+
 
 def test_neg(alg, rng):
     a = rand_mv(alg, rng)
     c = -a
     assert torch.allclose(c.tensor, -a.tensor)
 
+
 def test_mul_scalar(alg, rng):
     a = rand_mv(alg, rng)
     c = a * 3.0
     assert torch.allclose(c.tensor, a.tensor * 3.0)
 
+
 def test_rmul_scalar(alg, rng):
     a = rand_mv(alg, rng)
     c = 3.0 * a
     assert torch.allclose(c.tensor, a.tensor * 3.0)
+
 
 def test_truediv(alg, rng):
     a = rand_mv(alg, rng)
@@ -84,11 +95,13 @@ def test_truediv(alg, rng):
 
 # ---- geometric product ----
 
+
 def test_mul_geometric(alg, rng):
     a, b = rand_mv(alg, rng), rand_mv(alg, rng)
     c = a * b
     expected = alg.geometric_product(a.tensor, b.tensor)
     assert torch.allclose(c.tensor, expected)
+
 
 def test_geometric_product_method(alg, rng):
     a, b = rand_mv(alg, rng), rand_mv(alg, rng)
@@ -97,21 +110,25 @@ def test_geometric_product_method(alg, rng):
 
 # ---- wedge / inner ----
 
+
 def test_xor_wedge(alg, rng):
     a, b = rand_mv(alg, rng), rand_mv(alg, rng)
     c = a ^ b
     expected = alg.wedge(a.tensor, b.tensor)
     assert torch.allclose(c.tensor, expected)
 
+
 def test_wedge_method(alg, rng):
     a, b = rand_mv(alg, rng), rand_mv(alg, rng)
     assert torch.allclose((a ^ b).tensor, a.wedge(b).tensor)
+
 
 def test_or_inner(alg, rng):
     a, b = rand_mv(alg, rng), rand_mv(alg, rng)
     c = a | b
     expected = alg.inner_product(a.tensor, b.tensor)
     assert torch.allclose(c.tensor, expected)
+
 
 def test_inner_method(alg, rng):
     a, b = rand_mv(alg, rng), rand_mv(alg, rng)
@@ -120,11 +137,13 @@ def test_inner_method(alg, rng):
 
 # ---- reversion ----
 
+
 def test_invert_reversion(alg, rng):
     a = rand_mv(alg, rng)
     c = ~a
     expected = alg.reverse(a.tensor)
     assert torch.allclose(c.tensor, expected)
+
 
 def test_reverse_method(alg, rng):
     a = rand_mv(alg, rng)
@@ -132,6 +151,7 @@ def test_reverse_method(alg, rng):
 
 
 # ---- grade projection ----
+
 
 def test_grade(alg, rng):
     a = rand_mv(alg, rng)
@@ -142,11 +162,13 @@ def test_grade(alg, rng):
 
 # ---- involutions ----
 
+
 def test_grade_involution(alg, rng):
     a = rand_mv(alg, rng)
     c = a.grade_involution()
     expected = alg.grade_involution(a.tensor)
     assert torch.allclose(c.tensor, expected)
+
 
 def test_clifford_conjugation(alg, rng):
     a = rand_mv(alg, rng)
@@ -157,6 +179,7 @@ def test_clifford_conjugation(alg, rng):
 
 # ---- dual ----
 
+
 def test_dual(alg, rng):
     a = rand_mv(alg, rng)
     c = a.dual()
@@ -166,16 +189,19 @@ def test_dual(alg, rng):
 
 # ---- norms ----
 
+
 def test_norm_sq(alg, rng):
     a = rand_mv(alg, rng)
     ns = a.norm_sq()
     expected = alg.norm_sq(a.tensor)
     assert torch.allclose(ns, expected)
 
+
 def test_norm(alg, rng):
     a = rand_mv(alg, rng)
     n = a.norm()
     assert n.shape[0] == a.shape[0]
+
 
 def test_get_grade_norms(alg, rng):
     a = rand_mv(alg, rng)
@@ -186,11 +212,13 @@ def test_get_grade_norms(alg, rng):
 
 # ---- contractions ----
 
+
 def test_left_contraction(alg, rng):
     a, b = rand_mv(alg, rng), rand_mv(alg, rng)
     c = a.left_contraction(b)
     expected = alg.left_contraction(a.tensor, b.tensor)
     assert torch.allclose(c.tensor, expected)
+
 
 def test_right_contraction(alg, rng):
     # right_contraction expects bivector _| vector shapes
@@ -205,11 +233,13 @@ def test_right_contraction(alg, rng):
 
 # ---- commutators ----
 
+
 def test_commutator(alg, rng):
     a, b = rand_mv(alg, rng), rand_mv(alg, rng)
     c = a.commutator(b)
     expected = alg.commutator(a.tensor, b.tensor)
     assert torch.allclose(c.tensor, expected)
+
 
 def test_anti_commutator(alg, rng):
     a, b = rand_mv(alg, rng), rand_mv(alg, rng)
@@ -219,6 +249,7 @@ def test_anti_commutator(alg, rng):
 
 
 # ---- inverse ----
+
 
 def test_inverse(alg):
     # A unit vector should have a well-defined inverse
@@ -233,6 +264,7 @@ def test_inverse(alg):
 
 # ---- exp ----
 
+
 def test_exp(alg):
     # exp of zero bivector = 1
     bv = torch.zeros(8)
@@ -243,6 +275,7 @@ def test_exp(alg):
 
 # ---- sandwich / versor / reflect ----
 
+
 def test_sandwich(alg):
     # Identity rotor (scalar=1) should leave x unchanged
     rotor = Multivector.scalar(alg, 1.0)
@@ -250,12 +283,14 @@ def test_sandwich(alg):
     result = rotor.sandwich(x)
     assert torch.allclose(result.tensor, x.tensor, atol=1e-5)
 
+
 def test_versor_product(alg):
     # Identity versor should leave x unchanged
     V = Multivector.scalar(alg, 1.0)
     x = Multivector(alg, alg.embed_vector(torch.randn(3)))
     result = V.versor_product(x)
     assert torch.allclose(result.tensor, x.tensor, atol=1e-5)
+
 
 def test_reflect(alg):
     # Reflect e1 through plane ⊥ to e1 → should flip sign of e1 component
@@ -267,6 +302,7 @@ def test_reflect(alg):
 
 
 # ---- projections ----
+
 
 def test_blade_project_reject(alg):
     x = Multivector(alg, alg.embed_vector(torch.tensor([1.0, 2.0, 3.0])))
@@ -280,15 +316,18 @@ def test_blade_project_reject(alg):
 
 # ---- torch interop ----
 
+
 def test_to(alg, rng):
     a = rand_mv(alg, rng)
     b = a.to(dtype=torch.float64)
     assert b.dtype == torch.float64
 
+
 def test_detach(alg, rng):
     a = rand_mv(alg, rng).requires_grad_()
     b = a.detach()
     assert not b.tensor.requires_grad
+
 
 def test_clone(alg, rng):
     a = rand_mv(alg, rng)
@@ -297,10 +336,12 @@ def test_clone(alg, rng):
     b.tensor[0, 0] = 999.0
     assert a.tensor[0, 0] != 999.0
 
+
 def test_requires_grad(alg, rng):
     a = rand_mv(alg, rng)
     a.requires_grad_()
     assert a.tensor.requires_grad
+
 
 def test_shape_device_dtype(alg, rng):
     a = rand_mv(alg, rng)
@@ -310,6 +351,7 @@ def test_shape_device_dtype(alg, rng):
 
 
 # ---- algebra mismatch ----
+
 
 def test_algebra_mismatch_raises():
     a1 = CliffordAlgebra(3, 0, device='cpu')
@@ -321,6 +363,7 @@ def test_algebra_mismatch_raises():
 
 
 # ---- NotImplemented for bad types ----
+
 
 def test_notimplemented():
     alg = CliffordAlgebra(2, 0, device='cpu')
@@ -336,6 +379,7 @@ def test_notimplemented():
 
 
 # ---- repr ----
+
 
 def test_repr(alg, rng):
     a = rand_mv(alg, rng)

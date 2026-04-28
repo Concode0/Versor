@@ -54,7 +54,12 @@ from experiments._gdo.experiments import run_all_experiments, run_category
 def parse_args():
     registered = list(EXPERIMENT_REGISTRY.keys())
     all_choices = registered + [
-        "all", "analytic", "geometric", "ga_neural", "manifold", "compare_all",
+        "all",
+        "analytic",
+        "geometric",
+        "ga_neural",
+        "manifold",
+        "compare_all",
     ]
     p = make_experiment_parser(
         "Geometric Deterministic Optimizer (GDO) Experiment Suite",
@@ -62,9 +67,7 @@ def parse_args():
         defaults={'output_dir': 'gdo_plots'},
     )
     p.add_argument("--task", choices=all_choices, default="rosenbrock")
-    p.add_argument("--optimizers", nargs="+",
-                   default=["gdo", "riemannian_adam", "adam"],
-                   help="Optimizers to compare")
+    p.add_argument("--optimizers", nargs="+", default=["gdo", "riemannian_adam", "adam"], help="Optimizers to compare")
     p.add_argument("--steps", type=int, default=2000)
     p.add_argument("--n-dims", type=int, default=10)
     p.add_argument("--noise-std", type=float, default=0.05)

@@ -55,9 +55,12 @@ class GDOController:
             max_navigate_steps = config.max_navigate_steps
             lift_patience = config.lift_patience
         self.config = config or GDOConfig(
-            lr=lr, probe_interval=probe_interval,
-            topology_interval=topology_interval, sprint_after=sprint_after,
-            max_navigate_steps=max_navigate_steps, lift_patience=lift_patience,
+            lr=lr,
+            probe_interval=probe_interval,
+            topology_interval=topology_interval,
+            sprint_after=sprint_after,
+            max_navigate_steps=max_navigate_steps,
+            lift_patience=lift_patience,
         )
 
         self.model = model
@@ -74,9 +77,7 @@ class GDOController:
             else:
                 self.optimizer = GDOOptimizer(model.parameters(), lr=lr)
 
-        self.topology = LandscapeTopologySearch(
-            loss_fn=loss_fn, detect_every=topology_interval
-        )
+        self.topology = LandscapeTopologySearch(loss_fn=loss_fn, detect_every=topology_interval)
         self.probe = CurvatureProbe()
         self.geodesic = GeodesicIntegrator()
         self.warp = LorentzWarpOptimizer()
@@ -144,8 +145,7 @@ class GDOController:
             if params:
                 groups.append(params)
         self._param_group_meta = [
-            {"manifold": "euclidean", "role": "mixed", "depth_range": (0, 0),
-             "total_numel": sum(p.numel() for p in g)}
+            {"manifold": "euclidean", "role": "mixed", "depth_range": (0, 0), "total_numel": sum(p.numel() for p in g)}
             for g in groups
         ]
         return groups
@@ -160,8 +160,7 @@ class GDOController:
             role = "bivector"
         elif 'bias' in lower:
             role = "bias"
-        elif ('weight' in lower and 'grade' not in lower
-              and 'bivector' not in lower):
+        elif 'weight' in lower and 'grade' not in lower and 'bivector' not in lower:
             role = "linear"
         else:
             role = "other"
@@ -186,9 +185,14 @@ class GDOController:
         if not classified:
             all_p = [p for p in self.model.parameters() if p.requires_grad]
             if all_p:
-                return [all_p], [{"manifold": "euclidean", "role": "mixed",
-                                  "depth_range": (0, 0),
-                                  "total_numel": sum(p.numel() for p in all_p)}]
+                return [all_p], [
+                    {
+                        "manifold": "euclidean",
+                        "role": "mixed",
+                        "depth_range": (0, 0),
+                        "total_numel": sum(p.numel() for p in all_p),
+                    }
+                ]
             return [], []
 
         raw_groups: List[Tuple[Dict, List[nn.Parameter]]] = []
@@ -198,18 +202,24 @@ class GDOController:
             current_depths = [items[0][0]]
             for depth, param in items[1:]:
                 if depth - current_depths[-1] > 1:
-                    meta = {"manifold": manifold, "role": role,
-                            "depth_range": (current_depths[0], current_depths[-1]),
-                            "total_numel": sum(p.numel() for p in current)}
+                    meta = {
+                        "manifold": manifold,
+                        "role": role,
+                        "depth_range": (current_depths[0], current_depths[-1]),
+                        "total_numel": sum(p.numel() for p in current),
+                    }
                     raw_groups.append((meta, current))
                     current = [param]
                     current_depths = [depth]
                 else:
                     current.append(param)
                     current_depths.append(depth)
-            meta = {"manifold": manifold, "role": role,
-                    "depth_range": (current_depths[0], current_depths[-1]),
-                    "total_numel": sum(p.numel() for p in current)}
+            meta = {
+                "manifold": manifold,
+                "role": role,
+                "depth_range": (current_depths[0], current_depths[-1]),
+                "total_numel": sum(p.numel() for p in current),
+            }
             raw_groups.append((meta, current))
 
         min_size = self.config.min_group_size
@@ -278,27 +288,25 @@ class GDOController:
         for p in self.model.parameters():
             offsets[id(p)] = (ptr, ptr + p.numel())
             ptr += p.numel()
-        return [
-            [offsets[id(p)] for p in grp if id(p) in offsets]
-            for grp in self._param_groups
-        ]
+        return [[offsets[id(p)] for p in grp if id(p) in offsets] for grp in self._param_groups]
 
     def _get_flat_params(self) -> torch.Tensor:
         return torch.cat([p.detach().reshape(-1) for p in self.model.parameters()])
 
     def _get_flat_grad(self) -> torch.Tensor:
         device = next(self.model.parameters()).device
-        return torch.cat([
-            p.grad.detach().reshape(-1) if p.grad is not None
-            else torch.zeros(p.numel(), device=device)
-            for p in self.model.parameters()
-        ])
+        return torch.cat(
+            [
+                p.grad.detach().reshape(-1) if p.grad is not None else torch.zeros(p.numel(), device=device)
+                for p in self.model.parameters()
+            ]
+        )
 
     def _set_flat_params(self, flat: torch.Tensor):
         idx = 0
         for p in self.model.parameters():
             sz = p.numel()
-            p.data.copy_(flat[idx:idx + sz].reshape(p.shape))
+            p.data.copy_(flat[idx : idx + sz].reshape(p.shape))
             idx += sz
 
     def _adam_warp_step(self, flat_grad: torch.Tensor):
@@ -315,8 +323,8 @@ class GDOController:
         self._adam_m = beta1 * self._adam_m + (1 - beta1) * flat_grad
         self._adam_v = beta2 * self._adam_v + (1 - beta2) * flat_grad * flat_grad
 
-        m_hat = self._adam_m / (1 - beta1 ** t)
-        v_hat = self._adam_v / (1 - beta2 ** t)
+        m_hat = self._adam_m / (1 - beta1**t)
+        v_hat = self._adam_v / (1 - beta2**t)
         adam_dir = m_hat / (v_hat.sqrt() + eps)
 
         lr_vec = self.warp.warped_lr(self.lr, flat_grad.shape[0], device)
@@ -339,8 +347,8 @@ class GDOController:
         self._grp_m[group_idx] = m
         self._grp_v[group_idx] = v
 
-        m_hat = m / (1 - beta1 ** t)
-        v_hat = v / (1 - beta2 ** t)
+        m_hat = m / (1 - beta1**t)
+        v_hat = v / (1 - beta2**t)
         adam_dir = m_hat / (v_hat.sqrt() + eps)
 
         lr_vec = self.warp.warped_lr(self.lr, group_grad.shape[0], device)
@@ -351,7 +359,7 @@ class GDOController:
         ptr = 0
         for start, end in self._group_ranges[group_idx]:
             sz = end - start
-            flat_p[start:end] -= lr_vec[ptr:ptr + sz] * adam_dir[ptr:ptr + sz]
+            flat_p[start:end] -= lr_vec[ptr : ptr + sz] * adam_dir[ptr : ptr + sz]
             ptr += sz
         self._set_flat_params(flat_p)
 
@@ -359,22 +367,18 @@ class GDOController:
         """Compute (or recompute) the commutator-based update schedule."""
         if len(self._param_groups) > 1:
             print(f"  [GPC] Analyzing parameter geometry...")
-            schedule, scales, diagnostics = (
-                self.controller.analyze_and_schedule(
-                    self.model, self.loss_fn, self._param_groups,
-                    group_meta=self._param_group_meta,
-                )
+            schedule, scales, diagnostics = self.controller.analyze_and_schedule(
+                self.model,
+                self.loss_fn,
+                self._param_groups,
+                group_meta=self._param_group_meta,
             )
             self._commutator_schedule = schedule
             self._group_scales = scales
             self._controller_diagnostics = diagnostics
-            self.landscape.commutator_scores = {
-                f"({i},{j})": v
-                for (i, j), v in diagnostics["hybrid_scores"].items()
-            }
+            self.landscape.commutator_scores = {f"({i},{j})": v for (i, j), v in diagnostics["hybrid_scores"].items()}
             print(f"  [GPC] Schedule: {schedule}")
-            print(f"  [GPC] Group scales: "
-                  f"{[f'{s:.2f}' for s in scales]}")
+            print(f"  [GPC] Group scales: {[f'{s:.2f}' for s in scales]}")
             gs = diagnostics.get("geometric_scores", {})
             if gs:
                 ce = gs.get("closure_error", None)
@@ -390,9 +394,7 @@ class GDOController:
                 if parts:
                     print(f"  [GPC] {' | '.join(parts)}")
         else:
-            self._commutator_schedule = (
-                [[0]] if self._param_groups else [[]]
-            )
+            self._commutator_schedule = [[0]] if self._param_groups else [[]]
             self._group_scales = [1.0]
 
         self._last_schedule_loss = float('inf')
@@ -400,17 +402,11 @@ class GDOController:
 
     def _maybe_reschedule(self, current_loss: float) -> bool:
         """Check if rescheduling is needed and perform it."""
-        interval_trigger = (
-            self._sprint_step > 0
-            and self._sprint_step % self.config.reschedule_interval == 0
-        )
+        interval_trigger = self._sprint_step > 0 and self._sprint_step % self.config.reschedule_interval == 0
 
         loss_trigger = False
         if self._last_schedule_loss < float('inf'):
-            rel_improve = (
-                (self._last_schedule_loss - current_loss)
-                / (abs(self._last_schedule_loss) + 1e-8)
-            )
+            rel_improve = (self._last_schedule_loss - current_loss) / (abs(self._last_schedule_loss) + 1e-8)
             loss_trigger = rel_improve > self.config.reschedule_loss_delta
 
         grad_trigger = False
@@ -419,13 +415,10 @@ class GDOController:
             loss_val = self.loss_fn()
             loss_val.backward()
             full_grad = self._get_flat_grad()
-            current_norms = torch.tensor([
-                torch.cat([full_grad[s:e] for s, e in ranges]).norm().item()
-                for ranges in self._group_ranges
-            ])
-            old_p = self._last_schedule_grad_norms / (
-                self._last_schedule_grad_norms.sum() + 1e-8
+            current_norms = torch.tensor(
+                [torch.cat([full_grad[s:e] for s, e in ranges]).norm().item() for ranges in self._group_ranges]
             )
+            old_p = self._last_schedule_grad_norms / (self._last_schedule_grad_norms.sum() + 1e-8)
             new_p = current_norms / (current_norms.sum() + 1e-8)
             eps = 1e-6
             old_p = old_p.clamp(min=eps)
@@ -441,20 +434,17 @@ class GDOController:
         loss_val = self.loss_fn()
         loss_val.backward()
         full_grad = self._get_flat_grad()
-        self._last_schedule_grad_norms = torch.tensor([
-            torch.cat([full_grad[s:e] for s, e in ranges]).norm().item()
-            for ranges in self._group_ranges
-        ])
+        self._last_schedule_grad_norms = torch.tensor(
+            [torch.cat([full_grad[s:e] for s, e in ranges]).norm().item() for ranges in self._group_ranges]
+        )
         self.model.zero_grad()
 
-        old_n_colors = (len(self._commutator_schedule)
-                        if self._commutator_schedule else 0)
+        old_n_colors = len(self._commutator_schedule) if self._commutator_schedule else 0
 
         self._run_scheduling()
         self._last_schedule_loss = current_loss
 
-        new_n_colors = (len(self._commutator_schedule)
-                        if self._commutator_schedule else 0)
+        new_n_colors = len(self._commutator_schedule) if self._commutator_schedule else 0
 
         if new_n_colors != old_n_colors:
             n_groups = len(self._param_groups)
@@ -462,14 +452,14 @@ class GDOController:
             self._grp_v = [None] * n_groups
             self._grp_t = [0] * n_groups
 
-        reason = ("interval" if interval_trigger
-                  else "loss_delta" if loss_trigger else "grad_shift")
-        print(f"  [GPC] Rescheduled ({reason}): "
-              f"{old_n_colors} -> {new_n_colors} colors")
+        reason = "interval" if interval_trigger else "loss_delta" if loss_trigger else "grad_shift"
+        print(f"  [GPC] Rescheduled ({reason}): {old_n_colors} -> {new_n_colors} colors")
         return True
 
     def _apply_color_updates(
-        self, color: List[int], full_grad: torch.Tensor,
+        self,
+        color: List[int],
+        full_grad: torch.Tensor,
     ):
         """Batched per-color update: one flat-param read/write per color."""
         beta1, beta2, eps = 0.9, 0.999, 1e-8
@@ -489,24 +479,22 @@ class GDOController:
             t = self._grp_t[group_idx]
 
             m = beta1 * self._grp_m[group_idx] + (1 - beta1) * group_grad
-            v = (beta2 * self._grp_v[group_idx]
-                 + (1 - beta2) * group_grad * group_grad)
+            v = beta2 * self._grp_v[group_idx] + (1 - beta2) * group_grad * group_grad
             self._grp_m[group_idx] = m
             self._grp_v[group_idx] = v
 
-            m_hat = m / (1 - beta1 ** t)
-            v_hat = v / (1 - beta2 ** t)
+            m_hat = m / (1 - beta1**t)
+            v_hat = v / (1 - beta2**t)
             adam_dir = m_hat / (v_hat.sqrt() + eps)
 
             lr_vec = self.warp.warped_lr(self.lr, group_grad.shape[0], device)
-            if (self._group_scales is not None
-                    and group_idx < len(self._group_scales)):
+            if self._group_scales is not None and group_idx < len(self._group_scales):
                 lr_vec = lr_vec * self._group_scales[group_idx]
 
             ptr = 0
             for start, end in ranges:
                 sz = end - start
-                flat_p[start:end] -= lr_vec[ptr:ptr + sz] * adam_dir[ptr:ptr + sz]
+                flat_p[start:end] -= lr_vec[ptr : ptr + sz] * adam_dir[ptr : ptr + sz]
                 ptr += sz
 
         self._set_flat_params(flat_p)
@@ -537,7 +525,9 @@ class GDOController:
 
             if self.lift_oracle.should_lift(current_loss, self.step):
                 new_flat, new_loss = self.lift_oracle.lift_and_search(
-                    self.model, self.loss_fn, current_loss,
+                    self.model,
+                    self.loss_fn,
+                    current_loss,
                     probe_result=self._probe_result,
                     hessian_vecs=self._hessian_vecs,
                     hessian_vals=self._hessian_vals,
@@ -601,9 +591,7 @@ class GDOController:
             timed_out = self._navigate_steps >= self.max_navigate_steps
             if stuck or timed_out or self.step >= self.sprint_after:
                 reason = "stuck" if stuck else ("timeout" if timed_out else "sprint")
-                next_mode = (GDOController.Mode.SPRINT
-                             if self.step >= self.sprint_after
-                             else GDOController.Mode.EXPLORE)
+                next_mode = GDOController.Mode.SPRINT if self.step >= self.sprint_after else GDOController.Mode.EXPLORE
                 print(f"  [Morse] NAVIGATE exit ({reason}) -> {next_mode.value}")
                 self.mode = next_mode
                 self.geodesic._target = None
@@ -612,8 +600,7 @@ class GDOController:
             if self._commutator_schedule is None:
                 self._run_scheduling()
 
-            if (self.config.adaptive_reschedule
-                    and self._commutator_schedule is not None):
+            if self.config.adaptive_reschedule and self._commutator_schedule is not None:
                 if self._maybe_reschedule(current_loss):
                     info["rescheduled"] = True
 

@@ -13,6 +13,7 @@ from layers import CliffordLinear
 from layers import MultiRotorLayer
 from functional.activation import GeometricGELU
 
+
 class MultiRotorModel(CliffordModule):
     """Multi-rotor model for geometric representation learning.
 
@@ -24,7 +25,15 @@ class MultiRotorModel(CliffordModule):
         readout (nn.Sequential): Invariant MLP.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 2, num_rotors: int = 8):
+    def __init__(
+        self,
+        algebra: CliffordAlgebra,
+        in_channels: int,
+        hidden_channels: int,
+        out_channels: int,
+        num_layers: int = 2,
+        num_rotors: int = 8,
+    ):
         """Initialize the multi-rotor model.
 
         Args:
@@ -37,9 +46,9 @@ class MultiRotorModel(CliffordModule):
         """
         super().__init__(algebra)
         self.channels = hidden_channels
-        
+
         self.input_linear = CliffordLinear(algebra, in_channels, hidden_channels)
-        
+
         self.layers = nn.ModuleList()
         for _ in range(num_layers):
             self.layers.append(MultiRotorLayer(algebra, hidden_channels, num_rotors))
@@ -47,12 +56,12 @@ class MultiRotorModel(CliffordModule):
 
         # Final Multi-Rotor layer to extract Pure Invariants
         self.invariant_head = MultiRotorLayer(algebra, hidden_channels, num_rotors)
-        
+
         # Reading out from Invariants (Dimensionless Structure)
         self.readout = nn.Sequential(
             nn.Linear(hidden_channels * self.algebra.n_grades, hidden_channels),
             nn.SiLU(),
-            nn.Linear(hidden_channels, out_channels)
+            nn.Linear(hidden_channels, out_channels),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -66,17 +75,15 @@ class MultiRotorModel(CliffordModule):
         """
         # 1. Project
         h = self.input_linear(x)
-        
+
         # 2. Geometric FFT
         for layer in self.layers:
             h = layer(h)
-            
+
         # 3. Extract Pure Invariants
-        invariants = self.invariant_head(h, return_invariants=True) # [B, C, Num_Grades]
-        
+        invariants = self.invariant_head(h, return_invariants=True)  # [B, C, Num_Grades]
+
         # 4. Dimensionless Readout
         inv_flat = invariants.view(invariants.size(0), -1)
-        
+
         return self.readout(inv_flat)
-
-

@@ -11,6 +11,7 @@ from core.algebra import CliffordAlgebra
 from ..primitives.base import CliffordModule
 from ..primitives.linear import CliffordLinear
 
+
 class CliffordGraphConv(CliffordModule):
     """Geometric Graph Conv. Performs message passing using multivector features.
 
@@ -31,7 +32,7 @@ class CliffordGraphConv(CliffordModule):
         """
         super().__init__(algebra)
         self.linear = CliffordLinear(algebra, in_channels, out_channels)
-        
+
     def forward(self, x: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
         """Aggregates and transforms node features using geometric operations.
 
@@ -45,12 +46,12 @@ class CliffordGraphConv(CliffordModule):
         # 1. Aggregate
         N, C, D = x.shape
         x_flat = x.view(N, -1)
-        
+
         # Sparse aggregation
         x_agg_flat = torch.mm(adj, x_flat)
         x_agg = x_agg_flat.view(N, C, D)
-        
+
         # 2. Transform
         out = self.linear(x_agg)
-        
+
         return out

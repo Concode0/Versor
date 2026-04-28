@@ -40,6 +40,7 @@ DEVICE = "cpu"
 # Fixtures
 # =====================================================================
 
+
 @pytest.fixture(scope="module")
 def alg3():
     return CliffordAlgebra(3, 0, device=DEVICE)
@@ -84,6 +85,7 @@ def raw_3d_data():
 # =====================================================================
 # EffectiveDimensionAnalyzer
 # =====================================================================
+
 
 class TestEffectiveDimensionAnalyzer:
     def test_analyze_returns_dimension_result(self, raw_3d_data):
@@ -166,6 +168,7 @@ class TestEffectiveDimensionAnalyzer:
 # StatisticalSampler
 # =====================================================================
 
+
 class TestStatisticalSampler:
     def test_passthrough(self, raw_3d_data):
         cfg = SamplingConfig(strategy="passthrough")
@@ -227,6 +230,7 @@ class TestStatisticalSampler:
 # =====================================================================
 # SpectralAnalyzer
 # =====================================================================
+
 
 class TestSpectralAnalyzer:
     def test_analyze_returns_spectral_result(self, alg3, circle_data_3d):
@@ -297,6 +301,7 @@ class TestSpectralAnalyzer:
 # =====================================================================
 # SymmetryDetector
 # =====================================================================
+
 
 class TestSymmetryDetector:
     def test_analyze_returns_symmetry_result(self, alg3, circle_data_3d):
@@ -377,6 +382,7 @@ class TestSymmetryDetector:
 # =====================================================================
 # CommutatorAnalyzer
 # =====================================================================
+
 
 class TestCommutatorAnalyzer:
     def test_analyze_returns_commutator_result(self, alg3, circle_data_3d):
@@ -477,6 +483,7 @@ class TestCommutatorAnalyzer:
 # compute_uncertainty_and_alignment
 # =====================================================================
 
+
 class TestComputeUncertaintyAndAlignment:
     def test_returns_tuple(self, alg3):
         data = torch.randn(50, 3)
@@ -505,6 +512,7 @@ class TestComputeUncertaintyAndAlignment:
 # =====================================================================
 # GeometricAnalyzer (pipeline)
 # =====================================================================
+
 
 class TestGeometricAnalyzerPipeline:
     def test_raw_mode_returns_report(self, raw_3d_data):
@@ -640,6 +648,7 @@ class TestGeometricAnalyzerPipeline:
 # =====================================================================
 # Cross-component integration
 # =====================================================================
+
 
 class TestCrossComponentIntegration:
     def test_symmetry_uses_commutator_for_continuous(self, alg3, circle_data_3d):

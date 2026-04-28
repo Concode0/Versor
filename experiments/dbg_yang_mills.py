@@ -55,9 +55,16 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    build_visualization_metadata, count_parameters, ensure_output_dir,
-    make_experiment_parser, print_banner, report_diagnostics,
-    run_supervised_loop, save_training_curve, set_seed, setup_algebra,
+    build_visualization_metadata,
+    count_parameters,
+    ensure_output_dir,
+    make_experiment_parser,
+    print_banner,
+    report_diagnostics,
+    run_supervised_loop,
+    save_training_curve,
+    set_seed,
+    setup_algebra,
     signature_metadata,
 )
 from core.algebra import CliffordAlgebra
@@ -96,8 +103,10 @@ class SU2BladeSelector(CliffordModule):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         gates = torch.sigmoid(self.su2_gates)
         full = torch.zeros(
-            self.channels, self.algebra.dim,
-            device=x.device, dtype=x.dtype,
+            self.channels,
+            self.algebra.dim,
+            device=x.device,
+            dtype=x.dtype,
         )
         for i, bv_idx in enumerate(_BV_INDICES):
             full[:, bv_idx] = gates[:, i]
@@ -108,11 +117,15 @@ class SU2BladeSelector(CliffordModule):
 # 't Hooft symbol + analytic BPST fields.
 # ---------------------------------------------------------------------------
 
+
 def _build_thooft_eta() -> torch.Tensor:
     eta = torch.zeros(3, 4, 4)
-    eta[0, 1, 2] = 1.0;  eta[0, 2, 1] = -1.0
-    eta[1, 2, 0] = 1.0;  eta[1, 0, 2] = -1.0
-    eta[2, 0, 1] = 1.0;  eta[2, 1, 0] = -1.0
+    eta[0, 1, 2] = 1.0
+    eta[0, 2, 1] = -1.0
+    eta[1, 2, 0] = 1.0
+    eta[1, 0, 2] = -1.0
+    eta[2, 0, 1] = 1.0
+    eta[2, 1, 0] = -1.0
     for a in range(3):
         eta[a, a, 3] = 1.0
         eta[a, 3, a] = -1.0
@@ -122,16 +135,19 @@ def _build_thooft_eta() -> torch.Tensor:
 _ETA_THOOFT = _build_thooft_eta()
 
 
-def bpst_gauge_potential(x: torch.Tensor, rho: float, algebra_dim: int,
-                         ) -> torch.Tensor:
+def bpst_gauge_potential(
+    x: torch.Tensor,
+    rho: float,
+    algebra_dim: int,
+) -> torch.Tensor:
     """A_μ^a(x) = η^a_μν x_ν / (|x|² + ρ²), embedded as bivectors.
 
     Returns [B, 4, algebra_dim] — 4 spacetime directions, each a su(2)
     bivector (grade-2) in the algebra.
     """
     B = x.shape[0]
-    r2 = (x ** 2).sum(dim=-1, keepdim=True)
-    denom = r2 + rho ** 2
+    r2 = (x**2).sum(dim=-1, keepdim=True)
+    denom = r2 + rho**2
 
     eta = _ETA_THOOFT.to(x.device, x.dtype)
     bv_idx = _BV_MAP_INDICES.to(x.device)
@@ -147,12 +163,15 @@ def bpst_gauge_potential(x: torch.Tensor, rho: float, algebra_dim: int,
     return A
 
 
-def bpst_field_strength(x: torch.Tensor, rho: float, algebra_dim: int,
-                        ) -> Dict[Tuple[int, int], torch.Tensor]:
+def bpst_field_strength(
+    x: torch.Tensor,
+    rho: float,
+    algebra_dim: int,
+) -> Dict[Tuple[int, int], torch.Tensor]:
     """F_μν^a(x) = -2ρ² η^a_μν / (|x|² + ρ²)² — exact BPST field strength."""
     B = x.shape[0]
-    r2 = (x ** 2).sum(dim=-1, keepdim=True)
-    prefactor = -2.0 * rho ** 2 / (r2 + rho ** 2) ** 2
+    r2 = (x**2).sum(dim=-1, keepdim=True)
+    prefactor = -2.0 * rho**2 / (r2 + rho**2) ** 2
 
     eta = _ETA_THOOFT.to(x.device, x.dtype)
     bv_idx = _BV_MAP_INDICES.to(x.device)
@@ -171,8 +190,8 @@ def bpst_field_strength(x: torch.Tensor, rho: float, algebra_dim: int,
 
 
 def bpst_action_density(x: torch.Tensor, rho: float) -> torch.Tensor:
-    r2 = (x ** 2).sum(dim=-1)
-    return 48.0 * rho ** 4 / (r2 + rho ** 2) ** 4
+    r2 = (x**2).sum(dim=-1)
+    return 48.0 * rho**4 / (r2 + rho**2) ** 4
 
 
 # ---------------------------------------------------------------------------
@@ -180,30 +199,30 @@ def bpst_action_density(x: torch.Tensor, rho: float) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 
 _HODGE_DUAL_MAP: Dict[Tuple[int, int], Tuple[Tuple[int, int], float]] = {
-    (0, 1): ((2, 3),  1.0),
+    (0, 1): ((2, 3), 1.0),
     (0, 2): ((1, 3), -1.0),
-    (0, 3): ((1, 2),  1.0),
-    (1, 2): ((0, 3),  1.0),
+    (0, 3): ((1, 2), 1.0),
+    (1, 2): ((0, 3), 1.0),
     (1, 3): ((0, 2), -1.0),
-    (2, 3): ((0, 1),  1.0),
+    (2, 3): ((0, 1), 1.0),
 }
 
 
-def hodge_dual_4d(F_dict: Dict[Tuple[int, int], torch.Tensor],
-                  ) -> Dict[Tuple[int, int], torch.Tensor]:
-    return {key: sign * F_dict[src]
-            for key, (src, sign) in _HODGE_DUAL_MAP.items() if src in F_dict}
+def hodge_dual_4d(
+    F_dict: Dict[Tuple[int, int], torch.Tensor],
+) -> Dict[Tuple[int, int], torch.Tensor]:
+    return {key: sign * F_dict[src] for key, (src, sign) in _HODGE_DUAL_MAP.items() if src in F_dict}
 
 
 # ---------------------------------------------------------------------------
 # Dataset
 # ---------------------------------------------------------------------------
 
+
 class BPSTInstantonDataset(Dataset):
     """4D spacetime samples with analytic BPST (A_μ, action density) targets."""
 
-    def __init__(self, num_samples: int, rho: float, algebra_dim: int,
-                 sampling_radius: float = 5.0, seed: int = 42):
+    def __init__(self, num_samples: int, rho: float, algebra_dim: int, sampling_radius: float = 5.0, seed: int = 42):
         rng = np.random.RandomState(seed)
         directions = rng.randn(num_samples, 4).astype(np.float32)
         directions = directions / (np.linalg.norm(directions, axis=-1, keepdims=True) + 1e-8)
@@ -214,8 +233,7 @@ class BPSTInstantonDataset(Dataset):
         self.action_density = bpst_action_density(self.coords, rho)
         self.rho = rho
         r = self.coords.norm(dim=-1)
-        print(f"  BPST set: {num_samples} points, rho={rho:.2f}, "
-              f"r=[{r.min().item():.3f}, {r.max().item():.3f}]")
+        print(f"  BPST set: {num_samples} points, rho={rho:.2f}, r=[{r.min().item():.3f}, {r.max().item():.3f}]")
 
     def __len__(self) -> int:
         return self.coords.shape[0]
@@ -228,6 +246,7 @@ class BPSTInstantonDataset(Dataset):
 # Network
 # ---------------------------------------------------------------------------
 
+
 class YangMillsNet(CliffordModule):
     """CGA GBN for SU(2) instantons in Cl(4,1).
 
@@ -235,8 +254,7 @@ class YangMillsNet(CliffordModule):
     → SU2BladeSelector → A_μ [B, 4, 32].
     """
 
-    def __init__(self, algebra, hidden_dim: int = 32, num_layers: int = 4,
-                 num_freqs: int = 16):
+    def __init__(self, algebra, hidden_dim: int = 32, num_layers: int = 4, num_freqs: int = 16):
         super().__init__(algebra)
         self.hidden_dim = hidden_dim
 
@@ -249,12 +267,16 @@ class YangMillsNet(CliffordModule):
 
         self.blocks = nn.ModuleList()
         for _ in range(num_layers):
-            self.blocks.append(nn.ModuleDict({
-                'norm':   CliffordLayerNorm(algebra, hidden_dim),
-                'rotor':  RotorLayer(algebra, hidden_dim),
-                'act':    GeometricGELU(algebra, channels=hidden_dim),
-                'linear': CliffordLinear(algebra, hidden_dim, hidden_dim),
-            }))
+            self.blocks.append(
+                nn.ModuleDict(
+                    {
+                        'norm': CliffordLayerNorm(algebra, hidden_dim),
+                        'rotor': RotorLayer(algebra, hidden_dim),
+                        'act': GeometricGELU(algebra, channels=hidden_dim),
+                        'linear': CliffordLinear(algebra, hidden_dim, hidden_dim),
+                    }
+                )
+            )
 
         self.output_norm = CliffordLayerNorm(algebra, hidden_dim)
         self.blade_selector = BladeSelector(algebra, channels=hidden_dim)
@@ -267,10 +289,17 @@ class YangMillsNet(CliffordModule):
         t = coords[:, 3:4]
         P = self.conformal_embed.embed(x_spatial)
         proj = coords @ self.freq_bands
-        features = torch.cat([
-            coords, torch.sin(proj), torch.cos(proj),
-            P, t, t ** 2,
-        ], dim=-1)
+        features = torch.cat(
+            [
+                coords,
+                torch.sin(proj),
+                torch.cos(proj),
+                P,
+                t,
+                t**2,
+            ],
+            dim=-1,
+        )
 
         h = self.input_lift(features)
         h = h.reshape(B, self.hidden_dim, self.algebra.dim)
@@ -292,8 +321,12 @@ class YangMillsNet(CliffordModule):
 # Post-training field strength (no gradient path).
 # ---------------------------------------------------------------------------
 
-def _field_strength_nograph(algebra, A_mu: torch.Tensor, coords: torch.Tensor,
-                            ) -> Dict[Tuple[int, int], torch.Tensor]:
+
+def _field_strength_nograph(
+    algebra,
+    A_mu: torch.Tensor,
+    coords: torch.Tensor,
+) -> Dict[Tuple[int, int], torch.Tensor]:
     """Build F_μν from a predicted A_μ via cached Jacobian — eval-time only.
 
     12 autograd calls (4 directions × 3 su(2) components); no create_graph,
@@ -304,8 +337,10 @@ def _field_strength_nograph(algebra, A_mu: torch.Tensor, coords: torch.Tensor,
     for nu in range(4):
         for c_idx, bv_comp in enumerate(_BV_INDICES):
             grad = torch.autograd.grad(
-                A_mu[:, nu, bv_comp].sum(), coords,
-                create_graph=False, retain_graph=True,
+                A_mu[:, nu, bv_comp].sum(),
+                coords,
+                create_graph=False,
+                retain_graph=True,
             )[0]
             J[:, nu, c_idx, :] = grad
 
@@ -324,11 +359,13 @@ def _field_strength_nograph(algebra, A_mu: torch.Tensor, coords: torch.Tensor,
 # Diagnostics
 # ---------------------------------------------------------------------------
 
+
 @torch.no_grad()
 def supervised_mse(model, loader, device) -> float:
     sse, n = 0.0, 0
     for coords, A_exact, _ in loader:
-        coords = coords.to(device); A_exact = A_exact.to(device)
+        coords = coords.to(device)
+        A_exact = A_exact.to(device)
         pred = model(coords)
         sse += ((pred - A_exact) ** 2).mean().item() * coords.shape[0]
         n += coords.shape[0]
@@ -342,35 +379,43 @@ def self_duality_and_action(algebra, model, coords, action_exact, rho):
     F_dict = _field_strength_nograph(algebra, A_pred, coords)
 
     F_dual = hodge_dual_4d(F_dict)
-    sd = 0.0; n = 0
+    sd = 0.0
+    n = 0
     for key, F in F_dict.items():
         if key in F_dual:
-            sd += ((F - F_dual[key]) ** 2).mean().item(); n += 1
+            sd += ((F - F_dual[key]) ** 2).mean().item()
+            n += 1
     sd = sd / max(n, 1)
 
     action_pred = torch.zeros(coords.shape[0], device=coords.device)
     for F in F_dict.values():
         action_pred = action_pred + hermitian_inner_product(
-            algebra, F, F,
+            algebra,
+            F,
+            F,
         ).squeeze(-1)
     action_mse = ((action_pred - action_exact) ** 2).mean().item()
 
     F_exact = bpst_field_strength(coords.detach(), rho, algebra.dim)
-    sobolev = 0.0; m = 0
+    sobolev = 0.0
+    m = 0
     for key, F in F_dict.items():
         if key in F_exact:
-            sobolev += ((F - F_exact[key]) ** 2).mean().item(); m += 1
+            sobolev += ((F - F_exact[key]) ** 2).mean().item()
+            m += 1
     sobolev = sobolev / max(m, 1)
 
     q_density = torch.zeros(coords.shape[0], device=coords.device)
     for key in F_dict:
         if key in F_dual:
             q_density = q_density + hermitian_inner_product(
-                algebra, F_dict[key], F_dual[key],
+                algebra,
+                F_dict[key],
+                F_dual[key],
             ).squeeze(-1)
 
     r = coords.detach().norm(dim=-1).clamp(min=0.1)
-    w = r ** 3
+    w = r**3
     w = w / w.sum()
     q_pred = (q_density * w).sum().item()
     q_exact = (action_exact * w).sum().item()
@@ -378,9 +423,9 @@ def self_duality_and_action(algebra, model, coords, action_exact, rho):
 
     return {
         'self_duality_residual': sd,
-        'action_mse':            action_mse,
-        'sobolev_F_mse':         sobolev,
-        'topological_Q_ratio':   q_ratio,
+        'action_mse': action_mse,
+        'sobolev_F_mse': sobolev,
+        'topological_Q_ratio': q_ratio,
     }
 
 
@@ -400,7 +445,8 @@ def gauge_covariance_residual(algebra, F_dict) -> float:
         F_tr = algebra.geometric_product(tmp, R_rev.expand(B, -1))
         n0 = hermitian_inner_product(algebra, F, F)
         n1 = hermitian_inner_product(algebra, F_tr, F_tr)
-        total += (n0 - n1).abs().mean().item(); n += 1
+        total += (n0 - n1).abs().mean().item()
+        n += 1
     return total / max(n, 1)
 
 
@@ -410,13 +456,14 @@ def grade_purity_A(algebra, A_mu) -> float:
     for mu in range(A_mu.shape[1]):
         A = A_mu[:, mu]
         g2 += (algebra.grade_projection(A, 2) ** 2).sum().item()
-        tot += (A ** 2).sum().item()
+        tot += (A**2).sum().item()
     return g2 / max(tot, 1e-12)
 
 
 @torch.no_grad()
 def F_grade_spectrum(algebra, F_dict) -> Dict[str, float]:
-    spec = None; n = 0
+    spec = None
+    n = 0
     for F in F_dict.values():
         s = hermitian_grade_spectrum(algebra, F).mean(dim=0)
         spec = s if spec is None else spec + s
@@ -431,9 +478,15 @@ def post_training_diagnostics(model, algebra, test_ds, device, rho):
     diag_coords = test_ds.coords[: min(256, len(test_ds))].to(device)
     action_exact = test_ds.action_density[: min(256, len(test_ds))].to(device)
 
-    diag.update(self_duality_and_action(
-        algebra, model, diag_coords, action_exact, rho,
-    ))
+    diag.update(
+        self_duality_and_action(
+            algebra,
+            model,
+            diag_coords,
+            action_exact,
+            rho,
+        )
+    )
 
     # Gather F_dict once more for no-grad diagnostics.
     coords_leaf = diag_coords.clone().requires_grad_(True)
@@ -449,6 +502,7 @@ def post_training_diagnostics(model, algebra, test_ds, device, rho):
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
@@ -473,18 +527,26 @@ def main() -> None:
     algebra = setup_algebra(p=4, q=1, device=device)
 
     train_ds = BPSTInstantonDataset(
-        args.num_train, rho=args.rho, algebra_dim=algebra.dim,
-        sampling_radius=args.sampling_radius, seed=args.seed,
+        args.num_train,
+        rho=args.rho,
+        algebra_dim=algebra.dim,
+        sampling_radius=args.sampling_radius,
+        seed=args.seed,
     )
     test_ds = BPSTInstantonDataset(
-        args.num_test, rho=args.rho, algebra_dim=algebra.dim,
-        sampling_radius=args.sampling_radius, seed=args.seed + 1,
+        args.num_test,
+        rho=args.rho,
+        algebra_dim=algebra.dim,
+        sampling_radius=args.sampling_radius,
+        seed=args.seed + 1,
     )
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)
 
     model = YangMillsNet(
-        algebra, hidden_dim=args.hidden_dim, num_layers=args.num_layers,
+        algebra,
+        hidden_dim=args.hidden_dim,
+        num_layers=args.num_layers,
         num_freqs=args.num_freqs,
     ).to(device)
 
@@ -506,20 +568,35 @@ def main() -> None:
         return {'test_A_mse': supervised_mse(_model, test_loader, device)}
 
     history = run_supervised_loop(
-        model, optimizer, loss_fn, train_loader,
-        epochs=args.epochs, diag_interval=args.diag_interval, grad_clip=1.0,
-        diag_fn=diag_fn, history_extra_keys=('test_A_mse',),
+        model,
+        optimizer,
+        loss_fn,
+        train_loader,
+        epochs=args.epochs,
+        diag_interval=args.diag_interval,
+        grad_clip=1.0,
+        diag_fn=diag_fn,
+        history_extra_keys=('test_A_mse',),
     )
 
     diagnostics = {
         'test_A_mse': supervised_mse(model, test_loader, device),
     }
-    diagnostics.update(post_training_diagnostics(
-        model, algebra, test_ds, device, rho=args.rho,
-    ))
-    print(report_diagnostics(
-        diagnostics, title='Yang-Mills post-training physics diagnostics',
-    ))
+    diagnostics.update(
+        post_training_diagnostics(
+            model,
+            algebra,
+            test_ds,
+            device,
+            rho=args.rho,
+        )
+    )
+    print(
+        report_diagnostics(
+            diagnostics,
+            title='Yang-Mills post-training physics diagnostics',
+        )
+    )
 
     ensure_output_dir(args.output_dir)
     metadata = build_visualization_metadata(

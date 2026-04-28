@@ -79,6 +79,7 @@ def safe_simplify(expr, timeout_sec=5):
     Falls back to the original expression if simplification times out
     or raises an error.
     """
+
     def _handler(signum, frame):
         raise TimeoutError("sympy.simplify timed out")
 

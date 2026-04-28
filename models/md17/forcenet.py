@@ -15,6 +15,7 @@ from layers import MultiRotorLayer
 from layers import CliffordLayerNorm
 from layers import BladeSelector
 from functional.activation import GeometricGELU, GeometricSquare
+
 try:
     from torch_geometric.nn import global_add_pool
 except ImportError:
@@ -37,7 +38,7 @@ class GaussianRBF(nn.Module):
 
     def forward(self, distances: torch.Tensor) -> torch.Tensor:
         d = distances.unsqueeze(-1)  # [E, 1]
-        return torch.exp(-((d - self.centers) ** 2) / (2 * self.sigma ** 2))
+        return torch.exp(-((d - self.centers) ** 2) / (2 * self.sigma**2))
 
 
 class DynamicRotorGenerator(CliffordModule):
@@ -105,10 +106,17 @@ class MD17InteractionBlock(CliffordModule):
     optionally uses GeometricSquare activation for algebraic cross-terms.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, hidden_dim: int,
-                 num_static_rotors: int = 8, num_dynamic_rotors: int = 4,
-                 num_rbf: int = 20, rbf_cutoff: float = 5.0,
-                 use_rotor_backend: bool = False, use_geo_square: bool = True):
+    def __init__(
+        self,
+        algebra: CliffordAlgebra,
+        hidden_dim: int,
+        num_static_rotors: int = 8,
+        num_dynamic_rotors: int = 4,
+        num_rbf: int = 20,
+        rbf_cutoff: float = 5.0,
+        use_rotor_backend: bool = False,
+        use_geo_square: bool = True,
+    ):
         super().__init__(algebra)
         self.hidden_dim = hidden_dim
         self.num_static_rotors = num_static_rotors
@@ -128,7 +136,9 @@ class MD17InteractionBlock(CliffordModule):
         self.rbf_proj = nn.Linear(num_rbf, hidden_dim)
 
         self.multi_rotor = MultiRotorLayer(
-            algebra, hidden_dim, num_static_rotors,
+            algebra,
+            hidden_dim,
+            num_static_rotors,
         )
 
         # inv_dim: grade norms (hidden_dim * num_grades) + rbf projection (hidden_dim)
@@ -138,9 +148,7 @@ class MD17InteractionBlock(CliffordModule):
         )
 
         self.edge_weight_net = nn.Sequential(
-            nn.Linear(inv_dim, hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, self.num_total_rotors)
+            nn.Linear(inv_dim, hidden_dim), nn.SiLU(), nn.Linear(hidden_dim, self.num_total_rotors)
         )
 
         self.msg_gate = nn.Sequential(
@@ -153,11 +161,11 @@ class MD17InteractionBlock(CliffordModule):
     def forward(self, h, pos, edge_index):
         row, col = edge_index
 
-        r_ij = pos[row] - pos[col]          # [E, 3]
-        d_ij = r_ij.norm(dim=-1)            # [E]
+        r_ij = pos[row] - pos[col]  # [E, 3]
+        d_ij = r_ij.norm(dim=-1)  # [E]
         r_ij_mv = _embed_pga_vector(self.algebra, r_ij)  # [E, Dim]
 
-        rbf_feat = self.rbf(d_ij)           # [E, num_rbf]
+        rbf_feat = self.rbf(d_ij)  # [E, num_rbf]
         rbf_proj = self.rbf_proj(rbf_feat)  # [E, hidden_dim]
 
         h_t = self.act(self.norm(self.lin_h(h)))
@@ -181,10 +189,9 @@ class MD17InteractionBlock(CliffordModule):
         # Vectorized sandwich product via precomputed action matrices [K, D, D]
         R_static, R_static_rev = self.multi_rotor._compute_versors(device, dtype)
         if self.num_static_rotors > 0:
-            Rb_s = gp(R_static.unsqueeze(1), basis.unsqueeze(0))   # [K, D, D]
-            M_s = gp(Rb_s, R_static_rev.unsqueeze(1))              # [K, D, D]
-            phi = torch.einsum('ek, kdl, ehd -> ehl',
-                               edge_weights[:, :self.num_static_rotors], M_s, psi)
+            Rb_s = gp(R_static.unsqueeze(1), basis.unsqueeze(0))  # [K, D, D]
+            M_s = gp(Rb_s, R_static_rev.unsqueeze(1))  # [K, D, D]
+            phi = torch.einsum('ek, kdl, ehd -> ehl', edge_weights[:, : self.num_static_rotors], M_s, psi)
         else:
             phi = torch.zeros_like(psi)
 
@@ -193,11 +200,10 @@ class MD17InteractionBlock(CliffordModule):
             E_size, K_d = R_dynamic.shape[:2]
             R_flat = R_dynamic.reshape(E_size * K_d, D)
             R_rev_flat = R_dynamic_rev.reshape(E_size * K_d, D)
-            Rb_d = gp(R_flat.unsqueeze(1), basis.unsqueeze(0))     # [E*K_d, D, D]
-            M_d = gp(Rb_d, R_rev_flat.unsqueeze(1))                # [E*K_d, D, D]
+            Rb_d = gp(R_flat.unsqueeze(1), basis.unsqueeze(0))  # [E*K_d, D, D]
+            M_d = gp(Rb_d, R_rev_flat.unsqueeze(1))  # [E*K_d, D, D]
             M_d = M_d.reshape(E_size, K_d, D, D)
-            phi = phi + torch.einsum('ek, ekdl, ehd -> ehl',
-                                     edge_weights[:, self.num_static_rotors:], M_d, psi)
+            phi = phi + torch.einsum('ek, ekdl, ehd -> ehl', edge_weights[:, self.num_static_rotors :], M_d, psi)
 
         gate = self.msg_gate(inv_feat)  # [E, Hidden]
         phi_gated = phi * gate.unsqueeze(-1)
@@ -240,26 +246,27 @@ class MD17ForceNet(CliffordModule):
 
         self.atom_embedding = nn.Embedding(max_z, hidden_dim)
 
-        self.layers = nn.ModuleList([
-            MD17InteractionBlock(
-                algebra, hidden_dim,
-                num_static_rotors=num_static_rotors,
-                num_dynamic_rotors=num_dynamic_rotors,
-                num_rbf=num_rbf,
-                rbf_cutoff=rbf_cutoff,
-                use_rotor_backend=use_rotor_backend,
-                use_geo_square=use_geo_square,
-            )
-            for _ in range(num_layers)
-        ])
+        self.layers = nn.ModuleList(
+            [
+                MD17InteractionBlock(
+                    algebra,
+                    hidden_dim,
+                    num_static_rotors=num_static_rotors,
+                    num_dynamic_rotors=num_dynamic_rotors,
+                    num_rbf=num_rbf,
+                    rbf_cutoff=rbf_cutoff,
+                    use_rotor_backend=use_rotor_backend,
+                    use_geo_square=use_geo_square,
+                )
+                for _ in range(num_layers)
+            ]
+        )
 
         self.blade_selector = BladeSelector(algebra, channels=hidden_dim)
         self.output_norm = CliffordLayerNorm(algebra, hidden_dim)
 
         self.energy_head = nn.Sequential(
-            nn.Linear(hidden_dim * algebra.dim, hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, 1)
+            nn.Linear(hidden_dim * algebra.dim, hidden_dim), nn.SiLU(), nn.Linear(hidden_dim, 1)
         )
 
     def _run_layers(self, h, pos, edge_index, force_checkpoint=True):
@@ -270,6 +277,7 @@ class MD17ForceNet(CliffordModule):
                 Must be False when called inside create_graph=True autograd.grad (they are incompatible).
         """
         import torch.utils.checkpoint as cp
+
         for layer in self.layers:
             if self.use_checkpoint and self.training and force_checkpoint:
                 h = cp.checkpoint(layer, h, pos, edge_index, use_reentrant=False)
@@ -320,7 +328,7 @@ class MD17ForceNet(CliffordModule):
                 inputs=pos,
                 grad_outputs=torch.ones_like(energy),
                 create_graph=self.training,
-                retain_graph=True
+                retain_graph=True,
             )[0]
 
         return energy, force

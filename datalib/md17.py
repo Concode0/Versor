@@ -53,9 +53,10 @@ try:
     from torch_geometric.datasets import MD17 as _PyGMD17
     from torch_geometric.loader import DataLoader as _PyGDataLoader
     from torch_geometric.transforms import BaseTransform as _BaseTransform
+
     _HAS_PYG = True
 except ImportError:
-    _BaseTransform = object   # sentinel for class inheritance
+    _BaseTransform = object  # sentinel for class inheritance
 
 
 class PureRadiusGraph(_BaseTransform if _HAS_PYG else object):
@@ -79,7 +80,7 @@ class PureRadiusGraph(_BaseTransform if _HAS_PYG else object):
             torch_geometric.data.Data: Data with edge_index.
         """
         pos = data.pos
-        dist = torch.cdist(pos, pos)          # [N, N]
+        dist = torch.cdist(pos, pos)  # [N, N]
         mask = (dist < self.r) & (dist > 0)
         data.edge_index = mask.nonzero(as_tuple=False).t().contiguous()
         return data
@@ -98,6 +99,7 @@ class PureRadiusGraph(_BaseTransform if _HAS_PYG else object):
 
 
 if _HAS_PYG:
+
     class VersorMD17(_PyGMD17):
         """MD17 / rMD17 Wrapper for Versor using PyTorch Geometric.
 
@@ -111,12 +113,17 @@ if _HAS_PYG:
 
         # Override PyG's broken URL (record_id=466 → 404).
         # Materials Cloud migrated to alphanumeric record IDs.
-        revised_url = ('https://archive.materialscloud.org/api/records/'
-                       'pfffs-fff86/files/rmd17.tar.bz2/content')
+        revised_url = 'https://archive.materialscloud.org/api/records/pfffs-fff86/files/rmd17.tar.bz2/content'
 
-        def __init__(self, root: str, molecule: str = 'aspirin',
-                     radius: float = 5.0, revised: bool = True,
-                     transform=None, pre_transform=None):
+        def __init__(
+            self,
+            root: str,
+            molecule: str = 'aspirin',
+            radius: float = 5.0,
+            revised: bool = True,
+            transform=None,
+            pre_transform=None,
+        ):
             """Initialize MD17/rMD17 dataset.
 
             Args:
@@ -131,8 +138,7 @@ if _HAS_PYG:
             if transform is None:
                 transform = radius_graph
             name = f"revised {molecule}" if revised else molecule
-            super().__init__(root, name=name, transform=transform,
-                             pre_transform=pre_transform)
+            super().__init__(root, name=name, transform=transform, pre_transform=pre_transform)
             self.molecule = molecule
             self.radius = radius
             self.revised = revised
@@ -192,9 +198,9 @@ class _GraphData:
 
     __slots__ = ('pos', 'z', 'energy', 'force', 'edge_index', 'num_nodes', 'batch')
 
-    def __init__(self, pos: torch.Tensor, z: torch.Tensor,
-                 energy: torch.Tensor, force: torch.Tensor,
-                 edge_index: torch.Tensor):
+    def __init__(
+        self, pos: torch.Tensor, z: torch.Tensor, energy: torch.Tensor, force: torch.Tensor, edge_index: torch.Tensor
+    ):
         """Initialize Graph Data object."""
         self.pos = pos
         self.z = z
@@ -202,7 +208,7 @@ class _GraphData:
         self.force = force
         self.edge_index = edge_index
         self.num_nodes = pos.shape[0]
-        self.batch = None   # filled by collate
+        self.batch = None  # filled by collate
 
     def to(self, device):
         """Move all tensors to device (mirrors PyG Data.to())."""
@@ -252,28 +258,28 @@ def _collate_graphs(batch):
 
 # Canonical NPZ filenames for original MD17
 _NPZ_PATTERNS = {
-    'aspirin':         ['aspirin_dft.npz', 'md17_aspirin.npz'],
-    'benzene':         ['benzene_dft.npz', 'md17_benzene2017.npz', 'md17_benzene.npz'],
-    'ethanol':         ['ethanol_dft.npz', 'md17_ethanol.npz'],
-    'malonaldehyde':   ['malonaldehyde_dft.npz', 'md17_malonaldehyde.npz'],
-    'naphthalene':     ['naphthalene_dft.npz', 'md17_naphthalene.npz'],
-    'salicylic_acid':  ['salicylic_acid_dft.npz', 'md17_salicylicacid.npz'],
-    'toluene':         ['toluene_dft.npz', 'md17_toluene.npz'],
-    'uracil':          ['uracil_dft.npz', 'md17_uracil.npz'],
+    'aspirin': ['aspirin_dft.npz', 'md17_aspirin.npz'],
+    'benzene': ['benzene_dft.npz', 'md17_benzene2017.npz', 'md17_benzene.npz'],
+    'ethanol': ['ethanol_dft.npz', 'md17_ethanol.npz'],
+    'malonaldehyde': ['malonaldehyde_dft.npz', 'md17_malonaldehyde.npz'],
+    'naphthalene': ['naphthalene_dft.npz', 'md17_naphthalene.npz'],
+    'salicylic_acid': ['salicylic_acid_dft.npz', 'md17_salicylicacid.npz'],
+    'toluene': ['toluene_dft.npz', 'md17_toluene.npz'],
+    'uracil': ['uracil_dft.npz', 'md17_uracil.npz'],
 }
 
 # Canonical NPZ filenames for revised MD17 (rMD17)
 _RMD17_NPZ_PATTERNS = {
-    'aspirin':         ['rmd17_aspirin.npz'],
-    'azobenzene':      ['rmd17_azobenzene.npz'],
-    'benzene':         ['rmd17_benzene.npz'],
-    'ethanol':         ['rmd17_ethanol.npz'],
-    'malonaldehyde':   ['rmd17_malonaldehyde.npz'],
-    'naphthalene':     ['rmd17_naphthalene.npz'],
-    'paracetamol':     ['rmd17_paracetamol.npz'],
-    'salicylic_acid':  ['rmd17_salicylic_acid.npz'],
-    'toluene':         ['rmd17_toluene.npz'],
-    'uracil':          ['rmd17_uracil.npz'],
+    'aspirin': ['rmd17_aspirin.npz'],
+    'azobenzene': ['rmd17_azobenzene.npz'],
+    'benzene': ['rmd17_benzene.npz'],
+    'ethanol': ['rmd17_ethanol.npz'],
+    'malonaldehyde': ['rmd17_malonaldehyde.npz'],
+    'naphthalene': ['rmd17_naphthalene.npz'],
+    'paracetamol': ['rmd17_paracetamol.npz'],
+    'salicylic_acid': ['rmd17_salicylic_acid.npz'],
+    'toluene': ['rmd17_toluene.npz'],
+    'uracil': ['rmd17_uracil.npz'],
 }
 
 
@@ -286,8 +292,7 @@ class VersorMD17NPZ(Dataset):
     Produces _GraphData objects compatible with PyG-based task code.
     """
 
-    def __init__(self, root: str, molecule: str = 'aspirin',
-                 radius: float = 5.0, revised: bool = True):
+    def __init__(self, root: str, molecule: str = 'aspirin', radius: float = 5.0, revised: bool = True):
         """Initialize NPZ-based MD17/rMD17 dataset.
 
         Args:
@@ -306,10 +311,12 @@ class VersorMD17NPZ(Dataset):
         variant = "rMD17" if revised else "MD17"
         if npz_path is None:
             hint = (
-                f"  2. Download NPZ from https://sgdml.org\n"
-                f"     Direct: https://sgdml.org/secure_proxy.php?file=data/npz/md17_{molecule}.npz"
-            ) if not revised else (
-                f"  2. rMD17 is best obtained via PyG (option 1)"
+                (
+                    f"  2. Download NPZ from https://sgdml.org\n"
+                    f"     Direct: https://sgdml.org/secure_proxy.php?file=data/npz/md17_{molecule}.npz"
+                )
+                if not revised
+                else (f"  2. rMD17 is best obtained via PyG (option 1)")
             )
             raise FileNotFoundError(
                 f"{variant} NPZ file for '{molecule}' not found in {root}.\n"
@@ -345,8 +352,7 @@ class VersorMD17NPZ(Dataset):
         self._F = F
         self._z = z
         self._edge_index_cache: Optional[torch.Tensor] = None
-        print(f">>> {variant} NPZ ({molecule}): {len(R)} conformations, "
-              f"{z.shape[0]} atoms")
+        print(f">>> {variant} NPZ ({molecule}): {len(R)} conformations, {z.shape[0]} atoms")
 
     def _find_npz(self) -> Optional[str]:
         """Locate NPZ file for the molecule.
@@ -410,7 +416,7 @@ class VersorMD17NPZ(Dataset):
         Returns:
             _GraphData: Atom centered graph data.
         """
-        pos = self._R[idx]                         # [natoms, 3]
+        pos = self._R[idx]  # [natoms, 3]
         pos = pos - pos.mean(dim=0, keepdim=True)  # center
         edge_index = self._get_edge_index(pos)
 
@@ -446,15 +452,18 @@ def _compute_split(N: int, n_train: Optional[int], n_val: Optional[int]):
     return train_size, val_size
 
 
-def get_md17_loaders(root: str, molecule: str = 'aspirin',
-                     batch_size: int = 32,
-                     max_samples: Optional[int] = None,
-                     revised: bool = True,
-                     n_train: Optional[int] = None,
-                     n_val: Optional[int] = None,
-                     radius: float = 5.0,
-                     num_workers: int = 2,
-                     pin_memory: bool = False):
+def get_md17_loaders(
+    root: str,
+    molecule: str = 'aspirin',
+    batch_size: int = 32,
+    max_samples: Optional[int] = None,
+    revised: bool = True,
+    n_train: Optional[int] = None,
+    n_val: Optional[int] = None,
+    radius: float = 5.0,
+    num_workers: int = 2,
+    pin_memory: bool = False,
+):
     """Load MD17/rMD17 dataset with configurable train/val/test split.
 
     Standard rMD17 protocol: 1000 train / 1000 val / rest test.
@@ -485,8 +494,7 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
 
     # Strategy 1: PyTorch Geometric
     if _HAS_PYG:
-        dataset = VersorMD17(root=root, molecule=molecule, radius=radius,
-                             revised=revised)
+        dataset = VersorMD17(root=root, molecule=molecule, radius=radius, revised=revised)
         N = len(dataset)
 
         g = torch.Generator()
@@ -499,38 +507,37 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
 
         train_size, val_size = _compute_split(N, n_train, n_val)
         train_idx = indices[:train_size]
-        val_idx = indices[train_size:train_size + val_size]
-        test_idx = indices[train_size + val_size:]
+        val_idx = indices[train_size : train_size + val_size]
+        test_idx = indices[train_size + val_size :]
 
-        energy_mean, energy_std, force_mean, force_std = \
-            _get_pyg_normalization_stats(dataset, train_idx)
+        energy_mean, energy_std, force_mean, force_std = _get_pyg_normalization_stats(dataset, train_idx)
 
-        train_loader = _PyGDataLoader(dataset[train_idx], batch_size=batch_size,
-                                       shuffle=True, num_workers=num_workers,
-                                       pin_memory=pin_memory)
-        val_loader   = _PyGDataLoader(dataset[val_idx],   batch_size=batch_size,
-                                       shuffle=False, num_workers=num_workers,
-                                       pin_memory=pin_memory)
-        test_loader  = _PyGDataLoader(dataset[test_idx],  batch_size=batch_size,
-                                       shuffle=False, num_workers=num_workers,
-                                       pin_memory=pin_memory)
+        train_loader = _PyGDataLoader(
+            dataset[train_idx], batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory
+        )
+        val_loader = _PyGDataLoader(
+            dataset[val_idx], batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory
+        )
+        test_loader = _PyGDataLoader(
+            dataset[test_idx], batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory
+        )
 
-        print(f">>> {variant} ({molecule}) via PyG: "
-              f"{train_size}/{val_size}/{len(test_idx)} train/val/test")
-        print(f">>> Energy: mean={energy_mean:.2f}, std={energy_std:.2f} | "
-              f"Force: mean={force_mean:.4f}, std={force_std:.4f}")
-        return (train_loader, val_loader, test_loader,
-                energy_mean, energy_std, force_mean, force_std)
+        print(f">>> {variant} ({molecule}) via PyG: {train_size}/{val_size}/{len(test_idx)} train/val/test")
+        print(
+            f">>> Energy: mean={energy_mean:.2f}, std={energy_std:.2f} | "
+            f"Force: mean={force_mean:.4f}, std={force_std:.4f}"
+        )
+        return (train_loader, val_loader, test_loader, energy_mean, energy_std, force_mean, force_std)
 
     # Strategy 2: Raw NPZ files
     warnings.warn(
         f"PyTorch Geometric not installed. Attempting to load {variant} from raw .npz files.\n"
         "For full functionality: uv sync --extra md17",
-        ImportWarning, stacklevel=2
+        ImportWarning,
+        stacklevel=2,
     )
 
-    dataset = VersorMD17NPZ(root=root, molecule=molecule, radius=radius,
-                            revised=revised)
+    dataset = VersorMD17NPZ(root=root, molecule=molecule, radius=radius, revised=revised)
     # ^ raises FileNotFoundError if .npz also missing
 
     N = len(dataset)
@@ -543,8 +550,8 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
 
     train_size, val_size = _compute_split(N, n_train, n_val)
     train_idx = indices[:train_size]
-    val_idx = indices[train_size:train_size + val_size]
-    test_idx = indices[train_size + val_size:]
+    val_idx = indices[train_size : train_size + val_size]
+    test_idx = indices[train_size + val_size :]
 
     # Normalization stats from training set
     train_energy = dataset.energy[train_idx]
@@ -556,22 +563,34 @@ def get_md17_loaders(root: str, molecule: str = 'aspirin',
     force_std = max(train_force.std().item(), 1e-6)
 
     from torch.utils.data import Subset
-    train_loader = _TorchDataLoader(
-        Subset(dataset, train_idx.tolist()), batch_size=batch_size,
-        shuffle=True, collate_fn=_collate_graphs,
-        num_workers=num_workers, pin_memory=pin_memory)
-    val_loader = _TorchDataLoader(
-        Subset(dataset, val_idx.tolist()), batch_size=batch_size,
-        shuffle=False, collate_fn=_collate_graphs,
-        num_workers=num_workers, pin_memory=pin_memory)
-    test_loader = _TorchDataLoader(
-        Subset(dataset, test_idx.tolist()), batch_size=batch_size,
-        shuffle=False, collate_fn=_collate_graphs,
-        num_workers=num_workers, pin_memory=pin_memory)
 
-    print(f">>> {variant} ({molecule}) via NPZ: "
-          f"{train_size}/{val_size}/{len(test_idx)} train/val/test")
-    print(f">>> Energy: mean={energy_mean:.2f}, std={energy_std:.2f} | "
-          f"Force: mean={force_mean:.4f}, std={force_std:.4f}")
-    return (train_loader, val_loader, test_loader,
-            energy_mean, energy_std, force_mean, force_std)
+    train_loader = _TorchDataLoader(
+        Subset(dataset, train_idx.tolist()),
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=_collate_graphs,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+    val_loader = _TorchDataLoader(
+        Subset(dataset, val_idx.tolist()),
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=_collate_graphs,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+    test_loader = _TorchDataLoader(
+        Subset(dataset, test_idx.tolist()),
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=_collate_graphs,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+
+    print(f">>> {variant} ({molecule}) via NPZ: {train_size}/{val_size}/{len(test_idx)} train/val/test")
+    print(
+        f">>> Energy: mean={energy_mean:.2f}, std={energy_std:.2f} | Force: mean={force_mean:.4f}, std={force_std:.4f}"
+    )
+    return (train_loader, val_loader, test_loader, energy_mean, energy_std, force_mean, force_std)

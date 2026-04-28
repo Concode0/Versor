@@ -64,6 +64,7 @@ demo = [
 dev = [
     "pytest>=7.0.0",
     "pytest-xdist>=3.8.0",
+    "ruff>=0.8.0",
 ]
 all_tasks = [
     "versor[sr,md17,lqa]",
@@ -74,6 +75,47 @@ all = [
 
 [tool.setuptools.packages.find]
 include = ["core*", "layers*", "models*", "datalib*", "optimizers*", "functional*", "tasks*", "examples*", "experiments*"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+indent-width = 4
+extend-exclude = [
+    "assets",
+    "benchmarks",
+    "data",
+    "dist",
+    "embed_compress",
+    "gdo_plots",
+    "lattice_morph_plots",
+    "linear_basis_mixing_plots",
+    "lorentz_plots",
+    "maxwell_plots",
+    "ns_plots",
+    "outputs",
+    "pendulum_plots",
+    "site",
+    "sta_plots",
+    "ym_plots",
+]
+
+[tool.ruff.format]
+quote-style = "preserve"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = [
+    "E401",  # Multiple imports on one line appear in compact research/test code.
+    "E402",  # Some tests set pytest marks before local imports.
+    "E702",  # Existing experiments use compact semicolon-separated statements.
+    "E741",  # Single-letter algebra notation is common in math-heavy code.
+    "F401",  # Re-export modules and optional imports need a separate cleanup pass.
+    "F541",  # Existing display strings sometimes keep f-prefixes for symmetry.
+    "F811",  # Local imports intentionally shadow top-level test imports.
+    "F841",  # Scratch variables appear in experiments and exploratory tests.
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

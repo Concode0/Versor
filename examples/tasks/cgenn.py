@@ -60,8 +60,10 @@ import math
 from torch.utils.data import DataLoader, TensorDataset
 from core.algebra import CliffordAlgebra
 from layers import (
-    CliffordLinear, CliffordLayerNorm,
-    RotorLayer, BladeSelector,
+    CliffordLinear,
+    CliffordLayerNorm,
+    RotorLayer,
+    BladeSelector,
 )
 from layers.primitives.base import CliffordModule
 from functional.activation import GeometricSquare
@@ -71,6 +73,7 @@ from tasks.base import BaseTask
 # ---------------------------------------------------------------------------
 # Model
 # ---------------------------------------------------------------------------
+
 
 class CGENNBlock(CliffordModule):
     """Single CGENN equivariant block.
@@ -90,9 +93,9 @@ class CGENNBlock(CliffordModule):
     def forward(self, x):
         res = x
         x = self.norm(x)
-        x = self.square(x)    # x + gate * GP(x,x): quadratic polynomial features
-        x = self.linear(x)    # equivariant channel mixing via Cayley table
-        x = self.rotor(x)     # sandwich product: even Clifford group action
+        x = self.square(x)  # x + gate * GP(x,x): quadratic polynomial features
+        x = self.linear(x)  # equivariant channel mixing via Cayley table
+        x = self.rotor(x)  # sandwich product: even Clifford group action
         x = self.selector(x)  # learned grade filtering (soft grade projection)
         return x + res
 
@@ -114,9 +117,7 @@ class CGENNNet(CliffordModule):
     def __init__(self, algebra, channels=16, num_blocks=3):
         super().__init__(algebra)
         self.lift = CliffordLinear(algebra, 1, channels)
-        self.blocks = nn.ModuleList([
-            CGENNBlock(algebra, channels) for _ in range(num_blocks)
-        ])
+        self.blocks = nn.ModuleList([CGENNBlock(algebra, channels) for _ in range(num_blocks)])
         # Invariant readout: grade norms (O(n)-invariant) -> scalar
         n_grades = self.algebra.n + 1
         self.readout = nn.Sequential(
@@ -138,7 +139,7 @@ class CGENNNet(CliffordModule):
 
         # Embed into grade-1 multivectors of Cl(3,0)
         mv = self.algebra.embed_vector(points)  # [B, N, 8]
-        x = mv.reshape(B * N, 1, -1)           # [B*N, 1, 8]
+        x = mv.reshape(B * N, 1, -1)  # [B*N, 1, 8]
 
         # Lift to channels
         x = self.lift(x)  # [B*N, C, 8]
@@ -163,6 +164,7 @@ class CGENNNet(CliffordModule):
 # ---------------------------------------------------------------------------
 # Synthetic data: O(3)-invariant point cloud regression
 # ---------------------------------------------------------------------------
+
 
 def _generate_invariant_data(n_samples, n_points):
     """Generate point clouds with O(3)-invariant scalar targets.
@@ -192,6 +194,7 @@ def _generate_invariant_data(n_samples, n_points):
 # Task
 # ---------------------------------------------------------------------------
 
+
 class CGENNTask(BaseTask):
     """CGENN-style O(3)-invariant point cloud regression.
 
@@ -202,7 +205,8 @@ class CGENNTask(BaseTask):
 
     def setup_algebra(self):
         return CliffordAlgebra(
-            p=self.cfg.algebra.p, q=self.cfg.algebra.q,
+            p=self.cfg.algebra.p,
+            q=self.cfg.algebra.q,
             device=self.device,
         )
 
@@ -219,7 +223,9 @@ class CGENNTask(BaseTask):
         points, targets = _generate_invariant_data(n_samples, n_points)
         dataset = TensorDataset(points, targets)
         return DataLoader(
-            dataset, batch_size=self.cfg.training.batch_size, shuffle=True,
+            dataset,
+            batch_size=self.cfg.training.batch_size,
+            shuffle=True,
         )
 
     def train_step(self, data):

@@ -140,9 +140,7 @@ class CommutatorAnalyzer:
         basis = torch.eye(dim, device=device, dtype=dtype)
 
         # Batched commutator: [dim, dim] x [dim, dim] -> [dim, dim], transpose
-        ad_mu = self.algebra.commutator(
-            mu.unsqueeze(0).expand(dim, -1), basis
-        ).T
+        ad_mu = self.algebra.commutator(mu.unsqueeze(0).expand(dim, -1), basis).T
 
         eigvals = torch.linalg.eigvals(ad_mu)  # complex
         magnitudes = eigvals.abs()
@@ -251,9 +249,8 @@ class CommutatorAnalyzer:
             "basis_indices": selected_indices,
         }
 
-def compute_uncertainty_and_alignment(
-    algebra: CliffordAlgebra, data_tensor: torch.Tensor
-):
+
+def compute_uncertainty_and_alignment(algebra: CliffordAlgebra, data_tensor: torch.Tensor):
     """Compute Geometric Uncertainty Index (U) and Procrustes Alignment (V).
 
     Used by :class:`~layers.adapters.mother.MotherEmbedding` to initialise

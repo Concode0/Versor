@@ -14,29 +14,35 @@ so failures can be diagnosed and handled at appropriate granularity.
 
 class SRPipelineError(Exception):
     """Base exception for all SR pipeline errors."""
+
     pass
 
 
 class MetricSearchError(SRPipelineError):
     """MetricSearch failed to find a valid signature."""
+
     pass
 
 
 class SymPyTimeoutError(SRPipelineError):
     """A SymPy operation (solve, simplify) exceeded its timeout."""
+
     pass
 
 
 class NumericalInstabilityError(SRPipelineError):
     """A numerical operation produced non-finite values."""
+
     pass
 
 
 class ExtractionError(SRPipelineError):
     """Formula extraction failed (no terms found, or translation error)."""
+
     pass
 
 
 class AlgebraConstructionError(SRPipelineError):
     """CliffordAlgebra construction or mother-algebra build failed."""
+
     pass

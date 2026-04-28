@@ -11,12 +11,12 @@ from core.algebra import CliffordAlgebra
 
 pytestmark = pytest.mark.unit
 from models.sr.translator import (
-    RotorTranslator, SimplePlane, RotorTerm,
+    RotorTranslator,
+    SimplePlane,
+    RotorTerm,
     _correlation,
 )
 from models.sr.net import SRGBN
-
-
 
 
 def test_import_and_instantiate(algebra_3d):
@@ -86,6 +86,7 @@ def test_translate_zero_bivectors(algebra_3d):
 def test_plane_to_action_elliptic(algebra_3d):
     """Elliptic plane produces rotation mixing two variables."""
     import sympy
+
     translator = RotorTranslator(algebra_3d)
     plane = SimplePlane(var_i=0, var_j=1, sig_type="elliptic", angle=0.3)
     expr = translator._plane_to_action(plane)
@@ -101,6 +102,7 @@ def test_plane_to_action_elliptic(algebra_3d):
 def test_plane_to_action_hyperbolic():
     """Hyperbolic plane produces boost mixing two variables."""
     import sympy
+
     algebra_3d = CliffordAlgebra(2, 1, 0, device="cpu")
     translator = RotorTranslator(algebra_3d)
     plane = SimplePlane(var_i=0, var_j=2, sig_type="hyperbolic", angle=0.4)
@@ -133,6 +135,7 @@ def test_to_formula_empty(algebra_3d):
 def test_to_formula_nonempty(algebra_3d):
     """to_formula returns 'y = ...' for non-empty terms."""
     import sympy
+
     translator = RotorTranslator(algebra_3d)
     x1 = sympy.Symbol("x1")
     term = RotorTerm(planes=[], weight=2.0, expr=x1**2)
@@ -155,6 +158,7 @@ def test_translate_implicit(algebra_3d):
     # Check that terms contain 'y' in their expression
     if terms:
         import sympy
+
         y = sympy.Symbol("y")
         # The third variable should be 'y' in the expression
         expr_str = str(terms[0].expr)
@@ -165,6 +169,7 @@ def test_translate_implicit(algebra_3d):
 def test_evaluate_terms(algebra_3d):
     """evaluate_terms produces finite predictions."""
     import sympy
+
     translator = RotorTranslator(algebra_3d)
 
     x1, x2, x3 = translator.symbols
@@ -189,5 +194,3 @@ def test_correlation():
     c = np.array([1.0, -1.0, 1.0, -1.0])
     d = np.array([1.0, 1.0, -1.0, -1.0])
     assert _correlation(c, d) < 0.1
-
-

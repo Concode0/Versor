@@ -29,6 +29,7 @@ def _hermitian_signs(algebra: CliffordAlgebra) -> torch.Tensor:
     """
     return algebra._hermitian_signs
 
+
 def inner_product(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     """Compute the scalar product via projection onto grade 0.
 
@@ -44,8 +45,9 @@ def inner_product(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) ->
     """
     # Optimized: A * B then extract grade 0
     prod = algebra.geometric_product(A, B)
-    scalar_part = prod[..., 0:1] # Grade 0
+    scalar_part = prod[..., 0:1]  # Grade 0
     return scalar_part
+
 
 def induced_norm(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor:
     """Compute the induced norm respecting the metric signature.
@@ -62,10 +64,11 @@ def induced_norm(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor:
     A_rev = algebra.reverse(A)
     # Scalar product <A A~>_0
     sq_norm = inner_product(algebra, A, A_rev)
-    
+
     # In mixed signatures, sq_norm can be negative.
     # We return sqrt(|sq_norm|)
     return torch.sqrt(torch.abs(sq_norm))
+
 
 def geometric_distance(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     """Computes geometric distance.
@@ -83,6 +86,7 @@ def geometric_distance(algebra: CliffordAlgebra, A: torch.Tensor, B: torch.Tenso
     diff = A - B
     return induced_norm(algebra, diff)
 
+
 def grade_purity(algebra: CliffordAlgebra, A: torch.Tensor, grade: int) -> torch.Tensor:
     """Checks the purity of the grade by examining coefficient energy.
 
@@ -98,12 +102,13 @@ def grade_purity(algebra: CliffordAlgebra, A: torch.Tensor, grade: int) -> torch
     """
     # Project to grade
     A_k = algebra.grade_projection(A, grade)
-    
+
     # Compute energies (using standard squared norm of coefficients for stability)
-    energy_k = (A_k ** 2).sum(dim=-1)
-    energy_total = (A ** 2).sum(dim=-1).clamp(min=algebra.eps)
+    energy_k = (A_k**2).sum(dim=-1)
+    energy_total = (A**2).sum(dim=-1).clamp(min=algebra.eps)
 
     return energy_k / energy_total
+
 
 def mean_active_grade(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor:
     """Average grade. Identifies the grade where the majority of the energy resides.
@@ -117,14 +122,14 @@ def mean_active_grade(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor
     Returns:
         torch.Tensor: Average grade index.
     """
-    energy_total = (A ** 2).sum(dim=-1).clamp(min=algebra.eps)
+    energy_total = (A**2).sum(dim=-1).clamp(min=algebra.eps)
     weighted_sum = torch.zeros_like(energy_total)
-    
+
     for k in range(algebra.n + 1):
         A_k = algebra.grade_projection(A, k)
-        energy_k = (A_k ** 2).sum(dim=-1)
+        energy_k = (A_k**2).sum(dim=-1)
         weighted_sum += k * energy_k
-        
+
     return weighted_sum / energy_total
 
 
@@ -145,6 +150,7 @@ def mean_active_grade(algebra: CliffordAlgebra, A: torch.Tensor) -> torch.Tensor
 #
 # Additionally, we provide the Clifford conjugate (bar involution)
 # and the signature-aware trace form for algebraic computations.
+
 
 def clifford_conjugate(algebra: CliffordAlgebra, mv: torch.Tensor) -> torch.Tensor:
     """Clifford conjugation (bar involution).

@@ -47,6 +47,7 @@ class ImplicitFormulation:
         codimension: ambient_dim - intrinsic_dim.
         geometric_implicit_score: Combined geometric score for implicit mode.
     """
+
     target_var_idx: int
     mode: str
     probe_loss_explicit: float = float('inf')
@@ -128,26 +129,24 @@ class ImplicitSolver:
         # The geometric score alone is not sufficient because curvature and
         # codimension are common in normal data.  The score must be very high
         # (> 0.7) to override, or it relaxes the loss-based threshold.
-        if (geo_score > 0.7
-                and np.isfinite(implicit_loss)
-                and implicit_loss < explicit_loss):
+        if geo_score > 0.7 and np.isfinite(implicit_loss) and implicit_loss < explicit_loss:
             mode = "implicit"
             logger.info(
                 f"Implicit mode selected (strong geometric: {geo_score:.3f}): "
                 f"loss {implicit_loss:.4f} vs explicit {explicit_loss:.4f}"
             )
-        elif (geo_score > 0.3
-              and np.isfinite(implicit_loss)
-              and explicit_loss > 0.3
-              and implicit_loss < explicit_loss * 0.7):
+        elif (
+            geo_score > 0.3
+            and np.isfinite(implicit_loss)
+            and explicit_loss > 0.3
+            and implicit_loss < explicit_loss * 0.7
+        ):
             mode = "implicit"
             logger.info(
                 f"Implicit mode selected (geometric+loss: geo={geo_score:.3f}): "
                 f"loss {implicit_loss:.4f} vs explicit {explicit_loss:.4f}"
             )
-        elif (np.isfinite(implicit_loss)
-              and explicit_loss > 0.5
-              and implicit_loss < explicit_loss * 0.5):
+        elif np.isfinite(implicit_loss) and explicit_loss > 0.5 and implicit_loss < explicit_loss * 0.5:
             mode = "implicit"
             logger.info(
                 f"Implicit mode selected (loss-based fallback): "
@@ -204,10 +203,12 @@ class ImplicitSolver:
         # - Mixed involution → bilinear/implicit structure
         # - Positive codimension → proper submanifold (constraint exists)
         # - Null directions → degenerate constraint surfaces
-        score = (0.35 * min(curvature / 0.5, 1.0)
-                 + 0.20 * invol_signal
-                 + 0.25 * float(codimension > 0)
-                 + 0.20 * float(null_count > 0))
+        score = (
+            0.35 * min(curvature / 0.5, 1.0)
+            + 0.20 * invol_signal
+            + 0.25 * float(codimension > 0)
+            + 0.20 * float(null_count > 0)
+        )
 
         details = {
             "curvature": curvature,
@@ -224,8 +225,7 @@ class ImplicitSolver:
 
         return score, details
 
-    def train_implicit(self, model, Z_data, algebra, epochs, lr,
-                       geometric_report=None):
+    def train_implicit(self, model, Z_data, algebra, epochs, lr, geometric_report=None):
         """Train F(Z)=0 where Z=[X,y] with warmup + Eikonal loss.
 
         Phase 1 (warmup): maximize gradient norm to escape trivial F==0.
@@ -255,10 +255,7 @@ class ImplicitSolver:
             curvature = geometric_report.get("curvature", 0.0)
             if curvature > 0.5:
                 warmup_epochs = max(epochs // 3, 10)
-                logger.info(
-                    f"High curvature ({curvature:.3f}): "
-                    f"extended implicit warmup to {warmup_epochs} epochs"
-                )
+                logger.info(f"High curvature ({curvature:.3f}): extended implicit warmup to {warmup_epochs} epochs")
 
         model.train()
         for epoch in range(epochs):
@@ -271,11 +268,12 @@ class ImplicitSolver:
             # Warmup only needs grad magnitudes, not gradients-of-gradients.
             need_higher_order = epoch >= warmup_epochs
             grad_F = torch.autograd.grad(
-                pred.sum(), Z_grad,
+                pred.sum(),
+                Z_grad,
                 create_graph=need_higher_order,
                 retain_graph=True,
             )[0]  # [N, k+1]
-            jac_norm_sq = (grad_F ** 2).sum(dim=-1).mean()
+            jac_norm_sq = (grad_F**2).sum(dim=-1).mean()
 
             sparsity = model.total_sparsity_loss()
 
@@ -283,14 +281,14 @@ class ImplicitSolver:
                 # Warmup: escape trivial F==0
                 output_mag = pred.pow(2).mean()
                 log_eps = max(1e-8, 1e-4 * jac_norm_sq.detach().item())
-                loss = (-self.jacobian_weight * torch.log(jac_norm_sq + log_eps)
-                        - 0.01 * torch.log(output_mag + log_eps)
-                        + 0.01 * sparsity)
+                loss = (
+                    -self.jacobian_weight * torch.log(jac_norm_sq + log_eps)
+                    - 0.01 * torch.log(output_mag + log_eps)
+                    + 0.01 * sparsity
+                )
             else:
                 # Eikonal-normalized loss
-                per_sample_grad_norm = torch.sqrt(
-                    (grad_F ** 2).sum(dim=-1, keepdim=True) + 1e-8
-                )
+                per_sample_grad_norm = torch.sqrt((grad_F**2).sum(dim=-1, keepdim=True) + 1e-8)
                 log_eps = max(1e-8, 1e-4 * jac_norm_sq.detach().item())
                 normalized_pred = pred / (per_sample_grad_norm + 1e-8)
                 eikonal_loss = F.mse_loss(normalized_pred, target)
@@ -363,23 +361,21 @@ class ImplicitSolver:
 
             need_higher_order = epoch >= warmup_epochs
             grad_F = torch.autograd.grad(
-                pred.sum(), Z_grad,
+                pred.sum(),
+                Z_grad,
                 create_graph=need_higher_order,
                 retain_graph=True,
             )[0]
-            jac_norm_sq = (grad_F ** 2).sum(dim=-1).mean()
+            jac_norm_sq = (grad_F**2).sum(dim=-1).mean()
 
             if epoch < warmup_epochs:
                 # Phase 1: maximize gradient norm to escape F==0
                 output_mag = pred.pow(2).mean()
                 log_eps = max(1e-8, 1e-4 * jac_norm_sq.detach().item())
-                loss = (-self.jacobian_weight * torch.log(jac_norm_sq + log_eps)
-                        - 0.01 * torch.log(output_mag + log_eps))
+                loss = -self.jacobian_weight * torch.log(jac_norm_sq + log_eps) - 0.01 * torch.log(output_mag + log_eps)
             else:
                 # Phase 2: Eikonal-normalized loss
-                per_sample_grad_norm = torch.sqrt(
-                    (grad_F ** 2).sum(dim=-1, keepdim=True) + 1e-8
-                )
+                per_sample_grad_norm = torch.sqrt((grad_F**2).sum(dim=-1, keepdim=True) + 1e-8)
                 log_eps = max(1e-8, 1e-4 * jac_norm_sq.detach().item())
                 normalized_pred = pred / (per_sample_grad_norm + 1e-8)
                 eikonal_loss = F.mse_loss(normalized_pred, target)
@@ -398,17 +394,15 @@ class ImplicitSolver:
         f_loss = F.mse_loss(pred, target)
 
         grad_F = torch.autograd.grad(pred.sum(), Z_grad, retain_graph=False)[0]
-        jac_norm_sq = (grad_F ** 2).sum(dim=-1).mean()
+        jac_norm_sq = (grad_F**2).sum(dim=-1).mean()
 
         # If gradient is near-zero, the model learned the trivial solution
         if jac_norm_sq.item() < 0.001:
-            logger.info(f"Implicit probe: trivial (jac_norm_sq={jac_norm_sq.item():.6f}, "
-                        f"f_loss={f_loss.item():.6f})")
+            logger.info(f"Implicit probe: trivial (jac_norm_sq={jac_norm_sq.item():.6f}, f_loss={f_loss.item():.6f})")
             return float('inf')
 
         # Report raw f_loss (comparable to explicit MSE)
-        logger.info(f"Implicit probe: f_loss={f_loss.item():.4f}, "
-                    f"jac_norm_sq={jac_norm_sq.item():.4f}")
+        logger.info(f"Implicit probe: f_loss={f_loss.item():.4f}, jac_norm_sq={jac_norm_sq.item():.4f}")
         return f_loss.item()
 
     def extract_implicit_formula(self, model, algebra, var_names, target_var_idx):

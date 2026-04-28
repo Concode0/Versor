@@ -58,16 +58,24 @@ from torch.utils.data import DataLoader, TensorDataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from experiments._lib import (
-    build_visualization_metadata, ensure_output_dir, make_experiment_parser,
-    save_experiment_figure, set_seed, setup_algebra, signature_metadata,
+    build_visualization_metadata,
+    ensure_output_dir,
+    make_experiment_parser,
+    save_experiment_figure,
+    set_seed,
+    setup_algebra,
+    signature_metadata,
 )
 from core.algebra import CliffordAlgebra
 from core.analysis.dimension import EffectiveDimensionAnalyzer, DimensionLifter
 from core.analysis._types import DimensionResult
 from core.analysis.spectral import SpectralAnalyzer
 from layers import (
-    CliffordModule, RotorLayer, CliffordLinear,
-    CliffordLayerNorm, BladeSelector,
+    CliffordModule,
+    RotorLayer,
+    CliffordLinear,
+    CliffordLayerNorm,
+    BladeSelector,
 )
 from functional.activation import GeometricGELU
 from optimizers.riemannian import RiemannianAdam
@@ -75,6 +83,7 @@ from optimizers.riemannian import RiemannianAdam
 from sentence_transformers import SentenceTransformer
 from datasets import load_dataset
 import matplotlib
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
@@ -85,54 +94,80 @@ from sklearn.preprocessing import StandardScaler
 # CLI
 # ============================================================================
 
+
 def build_parser() -> argparse.ArgumentParser:
     p = make_experiment_parser(
         'GBN Embedding Compression — Incubator Experiment',
         include=('seed', 'epochs', 'lr', 'batch_size', 'output_dir'),
-        defaults={'epochs': 30, 'batch_size': 256, 'lr': 5e-4,
-                  'output_dir': 'embed_compress'},
+        defaults={'epochs': 30, 'batch_size': 256, 'lr': 5e-4, 'output_dir': 'embed_compress'},
     )
-    p.add_argument('--model', default='BAAI/bge-large-en-v1.5',
-                   help='SentenceTransformer model (text datasets only; ignored otherwise)')
-    p.add_argument('--datasets', nargs='+', default=['sst2'],
-                   choices=['sst2', 'snli', 'trec', 'agnews',
-                            'mnist', 'cifar10',
-                            'flat_plane', 'swiss_roll', 'torus',
-                            'klein_bottle', 'mixed_curvature',
-                            'manifold_ladder'],
-                   help='Data sources to run (default: sst2). '
-                        'Text: sst2, snli, trec, agnews. Image: mnist, cifar10. '
-                        'Synthetic: flat_plane, swiss_roll, torus, klein_bottle, '
-                        'mixed_curvature. Umbrella: manifold_ladder (runs all 5).')
-    p.add_argument('--max-train', type=int, default=8000,
-                   help='Max training samples per dataset (default: 8000)')
-    p.add_argument('--max-val', type=int, default=2000,
-                   help='Max validation samples per dataset (default: 2000)')
-    p.add_argument('--cache-dir', default='data/embed_compress',
-                   help='Directory to cache features (default: data/embed_compress)')
+    p.add_argument(
+        '--model',
+        default='BAAI/bge-large-en-v1.5',
+        help='SentenceTransformer model (text datasets only; ignored otherwise)',
+    )
+    p.add_argument(
+        '--datasets',
+        nargs='+',
+        default=['sst2'],
+        choices=[
+            'sst2',
+            'snli',
+            'trec',
+            'agnews',
+            'mnist',
+            'cifar10',
+            'flat_plane',
+            'swiss_roll',
+            'torus',
+            'klein_bottle',
+            'mixed_curvature',
+            'manifold_ladder',
+        ],
+        help='Data sources to run (default: sst2). '
+        'Text: sst2, snli, trec, agnews. Image: mnist, cifar10. '
+        'Synthetic: flat_plane, swiss_roll, torus, klein_bottle, '
+        'mixed_curvature. Umbrella: manifold_ladder (runs all 5).',
+    )
+    p.add_argument('--max-train', type=int, default=8000, help='Max training samples per dataset (default: 8000)')
+    p.add_argument('--max-val', type=int, default=2000, help='Max validation samples per dataset (default: 2000)')
+    p.add_argument(
+        '--cache-dir', default='data/embed_compress', help='Directory to cache features (default: data/embed_compress)'
+    )
     # Swiss roll synthetic data
-    p.add_argument('--swiss-roll-dim', type=int, default=1024,
-                   help='High-D lift dimension for synthetic Swiss roll (default: 1024)')
-    p.add_argument('--swiss-roll-n', type=int, default=10000,
-                   help='Total samples for synthetic Swiss roll, 80/20 split (default: 10000)')
+    p.add_argument(
+        '--swiss-roll-dim',
+        type=int,
+        default=1024,
+        help='High-D lift dimension for synthetic Swiss roll (default: 1024)',
+    )
+    p.add_argument(
+        '--swiss-roll-n',
+        type=int,
+        default=10000,
+        help='Total samples for synthetic Swiss roll, 80/20 split (default: 10000)',
+    )
     # GBN architecture
-    p.add_argument('--algebra-p', type=int, default=5,
-                   help='Positive signature of internal Clifford algebra (default: 5)')
-    p.add_argument('--algebra-q', type=int, default=0,
-                   help='Negative signature of internal Clifford algebra (default: 0)')
-    p.add_argument('--channels', type=int, default=8,
-                   help='Number of multivector channels in GBN (default: 8)')
+    p.add_argument(
+        '--algebra-p', type=int, default=5, help='Positive signature of internal Clifford algebra (default: 5)'
+    )
+    p.add_argument(
+        '--algebra-q', type=int, default=0, help='Negative signature of internal Clifford algebra (default: 0)'
+    )
+    p.add_argument('--channels', type=int, default=8, help='Number of multivector channels in GBN (default: 8)')
     # Training
-    p.add_argument('--alpha', type=float, default=1.0,
-                   help='Reconstruction loss weight (default: 1.0)')
-    p.add_argument('--beta', type=float, default=0.5,
-                   help='Classification loss weight (default: 0.5)')
-    p.add_argument('--complexity-plot', dest='complexity_plot',
-                   action='store_true', default=True,
-                   help='Produce gain-vs-complexity scatter (default: on).')
-    p.add_argument('--no-complexity-plot', dest='complexity_plot',
-                   action='store_false',
-                   help='Disable gain-vs-complexity scatter.')
+    p.add_argument('--alpha', type=float, default=1.0, help='Reconstruction loss weight (default: 1.0)')
+    p.add_argument('--beta', type=float, default=0.5, help='Classification loss weight (default: 0.5)')
+    p.add_argument(
+        '--complexity-plot',
+        dest='complexity_plot',
+        action='store_true',
+        default=True,
+        help='Produce gain-vs-complexity scatter (default: on).',
+    )
+    p.add_argument(
+        '--no-complexity-plot', dest='complexity_plot', action='store_false', help='Disable gain-vs-complexity scatter.'
+    )
     return p
 
 
@@ -142,21 +177,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 # Text datasets: raw-text loaders that feed the SentenceTransformer encoder.
 
+
 def _load_sst2_raw(max_train: int, max_val: int):
     ds = load_dataset('sst2', trust_remote_code=False)
     train = ds['train'].shuffle(seed=42).select(range(min(max_train, len(ds['train']))))
     val = ds['validation'].shuffle(seed=42).select(range(min(max_val, len(ds['validation']))))
-    return (list(train['sentence']), list(train['label'])), \
-           (list(val['sentence']), list(val['label']))
+    return (list(train['sentence']), list(train['label'])), (list(val['sentence']), list(val['label']))
 
 
 def _load_snli_raw(max_train: int, max_val: int):
     ds = load_dataset('snli', trust_remote_code=False)
 
     def _pick(split, max_n):
-        rows = [(p, h, l) for p, h, l in
-                zip(split['premise'], split['hypothesis'], split['label'])
-                if l != -1]
+        rows = [(p, h, l) for p, h, l in zip(split['premise'], split['hypothesis'], split['label']) if l != -1]
         rows = rows[:max_n]
         return [f"{p} [SEP] {h}" for p, h, _ in rows], [l for _, _, l in rows]
 
@@ -170,16 +203,14 @@ def _load_trec_raw(max_train: int, max_val: int):
     train = ds['train'].shuffle(seed=42).select(range(min(max_train, len(ds['train']))))
     val = ds['test'].shuffle(seed=42).select(range(min(max_val, len(ds['test']))))
     label_key = 'coarse_label' if 'coarse_label' in train.column_names else 'label-coarse'
-    return (list(train['text']), list(train[label_key])), \
-           (list(val['text']), list(val[label_key]))
+    return (list(train['text']), list(train[label_key])), (list(val['text']), list(val[label_key]))
 
 
 def _load_agnews_raw(max_train: int, max_val: int):
     ds = load_dataset('ag_news', trust_remote_code=False)
     train = ds['train'].shuffle(seed=42).select(range(min(max_train, len(ds['train']))))
     val = ds['test'].shuffle(seed=42).select(range(min(max_val, len(ds['test']))))
-    return (list(train['text']), list(train['label'])), \
-           (list(val['text']), list(val['label']))
+    return (list(train['text']), list(train['label'])), (list(val['text']), list(val['label']))
 
 
 TEXT_LOADERS = {
@@ -189,10 +220,17 @@ TEXT_LOADERS = {
     'agnews': _load_agnews_raw,
 }
 N_CLASSES = {
-    'sst2': 2, 'snli': 3, 'trec': 6, 'agnews': 4,
-    'mnist': 10, 'cifar10': 10,
-    'flat_plane': 4, 'swiss_roll': 4, 'torus': 4,
-    'klein_bottle': 4, 'mixed_curvature': 4,
+    'sst2': 2,
+    'snli': 3,
+    'trec': 6,
+    'agnews': 4,
+    'mnist': 10,
+    'cifar10': 10,
+    'flat_plane': 4,
+    'swiss_roll': 4,
+    'torus': 4,
+    'klein_bottle': 4,
+    'mixed_curvature': 4,
 }
 
 # Ordered ladder of synthetic manifolds with increasing intrinsic complexity.
@@ -208,6 +246,7 @@ MANIFOLD_LADDER = (
 # ============================================================================
 # Feature preparation (unified cache across text / image / synthetic)
 # ============================================================================
+
 
 def _model_slug(model_name: str) -> str:
     return model_name.replace('/', '_').replace('-', '_')
@@ -227,7 +266,9 @@ def _save_cache(path: Path, features: torch.Tensor, labels: torch.Tensor):
 
 
 def _prepare_text(
-    ds_name: str, args: argparse.Namespace, cache_dir: Path,
+    ds_name: str,
+    args: argparse.Namespace,
+    cache_dir: Path,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     slug = _model_slug(args.model)
     train_cache = cache_dir / f"{ds_name}_train_{slug}.pt"
@@ -242,10 +283,12 @@ def _prepare_text(
 
     print(f"  Encoding {len(tr_txt)}+{len(va_txt)} texts with {args.model} …")
     model = SentenceTransformer(args.model)
-    tr_embs = model.encode(tr_txt, batch_size=64, show_progress_bar=True,
-                           convert_to_numpy=True, normalize_embeddings=False)
-    va_embs = model.encode(va_txt, batch_size=64, show_progress_bar=True,
-                           convert_to_numpy=True, normalize_embeddings=False)
+    tr_embs = model.encode(
+        tr_txt, batch_size=64, show_progress_bar=True, convert_to_numpy=True, normalize_embeddings=False
+    )
+    va_embs = model.encode(
+        va_txt, batch_size=64, show_progress_bar=True, convert_to_numpy=True, normalize_embeddings=False
+    )
 
     tr_x = torch.from_numpy(tr_embs).float()
     tr_y = torch.tensor(tr_lab, dtype=torch.long)
@@ -258,7 +301,8 @@ def _prepare_text(
 
 
 def _prepare_mnist(
-    args: argparse.Namespace, cache_dir: Path,
+    args: argparse.Namespace,
+    cache_dir: Path,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     train_cache = cache_dir / f"mnist_train_{args.max_train}.pt"
     val_cache = cache_dir / f"mnist_val_{args.max_val}.pt"
@@ -276,8 +320,7 @@ def _prepare_mnist(
     def _flatten(split):
         imgs = np.stack([np.asarray(img, dtype=np.float32) for img in split['image']])
         imgs = imgs.reshape(imgs.shape[0], -1) / 255.0
-        return (torch.from_numpy(imgs).float(),
-                torch.tensor(split['label'], dtype=torch.long))
+        return (torch.from_numpy(imgs).float(), torch.tensor(split['label'], dtype=torch.long))
 
     tr_x, tr_y = _flatten(train)
     va_x, va_y = _flatten(val)
@@ -291,7 +334,8 @@ _CIFAR10_PRETRIM_DIM = 1024  # PCA-pretrim to match text embedding dim
 
 
 def _prepare_cifar10(
-    args: argparse.Namespace, cache_dir: Path,
+    args: argparse.Namespace,
+    cache_dir: Path,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     train_cache = cache_dir / f"cifar10_train_{args.max_train}_d{_CIFAR10_PRETRIM_DIM}.pt"
     val_cache = cache_dir / f"cifar10_val_{args.max_val}_d{_CIFAR10_PRETRIM_DIM}.pt"
@@ -334,7 +378,8 @@ _SWISS_SEED_OFFSET = 2026
 
 
 def _prepare_swiss_roll(
-    args: argparse.Namespace, cache_dir: Path,
+    args: argparse.Namespace,
+    cache_dir: Path,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     n_total = args.swiss_roll_n
     dim = args.swiss_roll_dim
@@ -370,8 +415,7 @@ def _prepare_swiss_roll(
     _save_cache(cache_path, features, labels_t)
 
     n_train = int(n_total * 0.8)
-    return (features[:n_train], labels_t[:n_train],
-            features[n_train:], labels_t[n_train:])
+    return (features[:n_train], labels_t[:n_train], features[n_train:], labels_t[n_train:])
 
 
 def _finalize_manifold(
@@ -405,12 +449,12 @@ def _finalize_manifold(
     _save_cache(cache_path, features, labels_t)
 
     n_train = int(n_total * 0.8)
-    return (features[:n_train], labels_t[:n_train],
-            features[n_train:], labels_t[n_train:])
+    return (features[:n_train], labels_t[:n_train], features[n_train:], labels_t[n_train:])
 
 
 def _prepare_flat_plane(
-    args: argparse.Namespace, cache_dir: Path,
+    args: argparse.Namespace,
+    cache_dir: Path,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     n, dim = args.swiss_roll_n, args.swiss_roll_dim
     seed = args.seed + _SWISS_SEED_OFFSET + 1
@@ -428,7 +472,8 @@ def _prepare_flat_plane(
 
 
 def _prepare_torus(
-    args: argparse.Namespace, cache_dir: Path,
+    args: argparse.Namespace,
+    cache_dir: Path,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     n, dim = args.swiss_roll_n, args.swiss_roll_dim
     seed = args.seed + _SWISS_SEED_OFFSET + 2
@@ -443,16 +488,20 @@ def _prepare_torus(
     theta = rng.uniform(0.0, 2 * np.pi, size=n)
     phi = rng.uniform(0.0, 2 * np.pi, size=n)
     R, r = 3.0, 1.0
-    x_raw = np.stack([
-        (R + r * np.cos(theta)) * np.cos(phi),
-        (R + r * np.cos(theta)) * np.sin(phi),
-        r * np.sin(theta),
-    ], axis=1)
+    x_raw = np.stack(
+        [
+            (R + r * np.cos(theta)) * np.cos(phi),
+            (R + r * np.cos(theta)) * np.sin(phi),
+            r * np.sin(theta),
+        ],
+        axis=1,
+    )
     return _finalize_manifold(x_raw, theta, dim, rng, cache_path, n)
 
 
 def _prepare_klein_bottle(
-    args: argparse.Namespace, cache_dir: Path,
+    args: argparse.Namespace,
+    cache_dir: Path,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     n, dim = args.swiss_roll_n, args.swiss_roll_dim
     seed = args.seed + _SWISS_SEED_OFFSET + 3
@@ -468,17 +517,21 @@ def _prepare_klein_bottle(
     v = rng.uniform(0.0, 2 * np.pi, size=n)
     R = 2.0
     common = R + np.cos(u / 2) * np.sin(v) - np.sin(u / 2) * np.sin(2 * v)
-    x_raw = np.stack([
-        common * np.cos(u),
-        common * np.sin(u),
-        np.sin(u / 2) * np.sin(v) + np.cos(u / 2) * np.sin(2 * v),
-        np.cos(v),
-    ], axis=1)
+    x_raw = np.stack(
+        [
+            common * np.cos(u),
+            common * np.sin(u),
+            np.sin(u / 2) * np.sin(v) + np.cos(u / 2) * np.sin(2 * v),
+            np.cos(v),
+        ],
+        axis=1,
+    )
     return _finalize_manifold(x_raw, u, dim, rng, cache_path, n)
 
 
 def _prepare_mixed_curvature(
-    args: argparse.Namespace, cache_dir: Path,
+    args: argparse.Namespace,
+    cache_dir: Path,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     n, dim = args.swiss_roll_n, args.swiss_roll_dim
     seed = args.seed + _SWISS_SEED_OFFSET + 4
@@ -488,8 +541,7 @@ def _prepare_mixed_curvature(
         n_tr = int(n * 0.8)
         return tr_x[:n_tr], tr_y[:n_tr], tr_x[n_tr:], tr_y[n_tr:]
 
-    print(f"  Generating mixed curvature (sphere + hyperboloid): n={n}, "
-          f"lift_dim={dim}, seed={seed}")
+    print(f"  Generating mixed curvature (sphere + hyperboloid): n={n}, lift_dim={dim}, seed={seed}")
     rng = np.random.default_rng(seed)
     n_sph = n // 2
     n_hyp = n - n_sph
@@ -521,7 +573,8 @@ _MANIFOLD_GENERATORS = {
 
 
 def prepare_features(
-    ds_name: str, args: argparse.Namespace,
+    ds_name: str,
+    args: argparse.Namespace,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, int]:
     """Unified feature loader. Returns (train_x, train_y, val_x, val_y, n_classes)."""
     cache_dir = Path(args.cache_dir)
@@ -544,6 +597,7 @@ def prepare_features(
 # ============================================================================
 # Effective dimension analysis
 # ============================================================================
+
 
 def analyze_effective_dimension(
     train_embs: torch.Tensor,
@@ -582,6 +636,7 @@ def build_target_dims(intrinsic_dim: int) -> List[int]:
 # ============================================================================
 # GBN Embedding Compressor
 # ============================================================================
+
 
 class GBNEmbedCompressor(CliffordModule):
     """Geometric Blade Network autoencoder for embedding compression.
@@ -663,18 +718,16 @@ class GBNEmbedCompressor(CliffordModule):
             mv: [B, channels, alg.dim]  — gated multivector (for grade analysis)
         """
         B = x.shape[0]
-        mv = self.lift(x).view(B, self.channels, -1)   # [B, C, D]
+        mv = self.lift(x).view(B, self.channels, -1)  # [B, C, D]
         mv = self.norm(mv)
         mv = self.act(mv)
         mv = self.rotor(mv)
         mv = self.linear(mv)
         mv = self.gate(mv)
-        z = self.readout_enc(mv.reshape(B, -1))         # [B, bottleneck_dim]
+        z = self.readout_enc(mv.reshape(B, -1))  # [B, bottleneck_dim]
         return z, mv
 
-    def forward(
-        self, x: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Full forward pass.
 
         Args:
@@ -694,6 +747,7 @@ class GBNEmbedCompressor(CliffordModule):
 # ============================================================================
 # PCA compression
 # ============================================================================
+
 
 def precompute_pca(
     train_embs: torch.Tensor,
@@ -729,17 +783,18 @@ def pca_compress(
         val_z:      [N_val, target_dim]
         val_recon:  [N_val, D] back-projected reconstruction of val
     """
-    Vk = pca_Vh[:target_dim]                          # [target_dim, D]
-    train_z = (train_embs - pca_mean) @ Vk.T          # [N_train, target_dim]
+    Vk = pca_Vh[:target_dim]  # [target_dim, D]
+    train_z = (train_embs - pca_mean) @ Vk.T  # [N_train, target_dim]
     val_centered = val_embs - pca_mean
-    val_z = val_centered @ Vk.T                       # [N_val, target_dim]
-    val_recon = val_z @ Vk + pca_mean                 # [N_val, D]
+    val_z = val_centered @ Vk.T  # [N_val, target_dim]
+    val_recon = val_z @ Vk + pca_mean  # [N_val, D]
     return train_z, val_z, val_recon
 
 
 # ============================================================================
 # Training
 # ============================================================================
+
 
 def train_gbn(
     model: GBNEmbedCompressor,
@@ -754,12 +809,9 @@ def train_gbn(
     Returns a history dict with keys:
         'loss', 'loss_recon', 'loss_clf', 'val_acc'
     """
-    optimizer = RiemannianAdam.from_model(
-        model, lr=args.lr, algebra=model.algebra
-    )
+    optimizer = RiemannianAdam.from_model(model, lr=args.lr, algebra=model.algebra)
     dataset = TensorDataset(train_embs, train_labels)
-    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True,
-                        drop_last=False)
+    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=False)
 
     history = {'loss': [], 'loss_recon': [], 'loss_clf': [], 'val_acc': []}
 
@@ -797,11 +849,13 @@ def train_gbn(
                 acc = (preds == val_labels).float().mean().item()
             history['val_acc'].append(acc)
             model.train()
-            print(f"      epoch {epoch+1:3d}/{args.epochs}  "
-                  f"loss={epoch_loss/n_batches:.4f}  "
-                  f"recon={epoch_recon/n_batches:.4f}  "
-                  f"clf={epoch_clf/n_batches:.4f}  "
-                  f"val_acc={acc:.3f}")
+            print(
+                f"      epoch {epoch + 1:3d}/{args.epochs}  "
+                f"loss={epoch_loss / n_batches:.4f}  "
+                f"recon={epoch_recon / n_batches:.4f}  "
+                f"clf={epoch_clf / n_batches:.4f}  "
+                f"val_acc={acc:.3f}"
+            )
 
     return history
 
@@ -809,6 +863,7 @@ def train_gbn(
 # ============================================================================
 # Evaluation
 # ============================================================================
+
 
 def evaluate_linear_probe(
     train_z: torch.Tensor,
@@ -851,12 +906,12 @@ def get_grade_spectrum(
     model.eval()
     with torch.no_grad():
         for i in range(0, len(embs), batch_size):
-            xb = embs[i:i + batch_size]
+            xb = embs[i : i + batch_size]
             _, mv = model.encode(xb)
             all_mv.append(mv.detach())
 
-    mv_cat = torch.cat(all_mv, dim=0)   # [N, C, dim]
-    grade_energy = spectral.grade_energy_spectrum(mv_cat)   # [n+1]
+    mv_cat = torch.cat(all_mv, dim=0)  # [N, C, dim]
+    grade_energy = spectral.grade_energy_spectrum(mv_cat)  # [n+1]
     return grade_energy
 
 
@@ -887,10 +942,10 @@ def run_lifting_test(
     print(f"\n  [DimensionLifter] Reducing to {test_dim}D (Cl({test_dim},0)) for lift test …")
 
     analyzer = EffectiveDimensionAnalyzer(device=device)
-    reduced = analyzer.reduce(train_embs, test_dim)   # [N, test_dim]
+    reduced = analyzer.reduce(train_embs, test_dim)  # [N, test_dim]
 
     # Cap sample size for GeodesicFlow k-NN computation
-    sample = reduced[:min(500, len(reduced))]
+    sample = reduced[: min(500, len(reduced))]
 
     lifter = DimensionLifter(device=device)
     results = lifter.test(sample, p=test_dim, q=0, k=8)
@@ -901,6 +956,7 @@ def run_lifting_test(
 # ============================================================================
 # Manifold complexity scorer
 # ============================================================================
+
 
 def _manifold_complexity(dim_result, lifting_result: Dict, in_dim: int) -> float:
     """Scalar summarising manifold complexity.
@@ -927,6 +983,7 @@ def _manifold_complexity(dim_result, lifting_result: Dict, in_dim: int) -> float
 # Plotting
 # ============================================================================
 
+
 def plot_dimension_analysis(
     dim_result,
     out_dir: Path,
@@ -942,8 +999,7 @@ def plot_dimension_analysis(
     eigs = dim_result.eigenvalues.numpy()
     top_n = min(100, len(eigs))
     ax.plot(range(1, top_n + 1), eigs[:top_n], 'b-', lw=1.5)
-    ax.axvline(dim_result.intrinsic_dim, color='r', ls='--', lw=1.5,
-               label=f'intrinsic dim={dim_result.intrinsic_dim}')
+    ax.axvline(dim_result.intrinsic_dim, color='r', ls='--', lw=1.5, label=f'intrinsic dim={dim_result.intrinsic_dim}')
     ax.set_xlabel('Component index')
     ax.set_ylabel('Eigenvalue')
     ax.set_title('Covariance eigenspectrum')
@@ -954,8 +1010,7 @@ def plot_dimension_analysis(
     ax = axes[1]
     evr_cumsum = dim_result.explained_variance_ratio.cumsum(0).numpy()
     ax.plot(range(1, len(evr_cumsum) + 1), evr_cumsum, 'g-', lw=1.5)
-    ax.axvline(dim_result.intrinsic_dim, color='r', ls='--', lw=1.5,
-               label=f'intrinsic dim={dim_result.intrinsic_dim}')
+    ax.axvline(dim_result.intrinsic_dim, color='r', ls='--', lw=1.5, label=f'intrinsic dim={dim_result.intrinsic_dim}')
     ax.axhline(0.90, color='gray', ls=':', lw=1, label='90% var')
     ax.set_xlabel('Number of components')
     ax.set_ylabel('Cumulative EVR')
@@ -971,11 +1026,18 @@ def plot_dimension_analysis(
         f"Embedding dim:  {len(eigs)}\n"
         f"Intrinsic dim (broken-stick): {dim_result.intrinsic_dim}\n"
         f"Participation ratio: {dim_result.participation_ratio:.1f}\n"
-        f"Compression ratio at intrinsic dim: {len(eigs)/dim_result.intrinsic_dim:.1f}×\n"
+        f"Compression ratio at intrinsic dim: {len(eigs) / dim_result.intrinsic_dim:.1f}×\n"
     )
-    ax.text(0.05, 0.6, summary, transform=ax.transAxes, fontsize=10,
-            verticalalignment='center', fontfamily='monospace',
-            bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
+    ax.text(
+        0.05,
+        0.6,
+        summary,
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment='center',
+        fontfamily='monospace',
+        bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8),
+    )
 
     plt.tight_layout()
     path = save_experiment_figure(
@@ -1010,8 +1072,7 @@ def plot_accuracy_vs_compression(
 
         ax.plot(target_dims, pca_accs, 'b-o', label='PCA', markersize=5)
         ax.plot(target_dims, gbn_accs, 'r-s', label='GBN', markersize=5)
-        ax.axvline(res['intrinsic_dim'], color='gray', ls='--', lw=1,
-                   label=f"intrinsic ({res['intrinsic_dim']})")
+        ax.axvline(res['intrinsic_dim'], color='gray', ls='--', lw=1, label=f"intrinsic ({res['intrinsic_dim']})")
         ax.set_xlabel('Target dimension')
         ax.set_ylabel('Val accuracy')
         ax.set_title(ds_name.upper())
@@ -1020,7 +1081,7 @@ def plot_accuracy_vs_compression(
         ax2 = ax.twiny()
         ax2.set_xlim(ax.get_xlim())
         ax2.set_xticks(target_dims)
-        ax2.set_xticklabels([f'{in_dim/d:.0f}×' for d in target_dims], fontsize=7)
+        ax2.set_xticklabels([f'{in_dim / d:.0f}×' for d in target_dims], fontsize=7)
         ax2.set_xlabel('Compression ratio', fontsize=9)
 
     plt.tight_layout()
@@ -1202,8 +1263,7 @@ def plot_lifting_test(
         for i, k in enumerate(keys):
             causal = res[k]['causal']
             sign = 'O' if causal else 'X'
-            ax.text(i, cohs[i] + 0.01, sign, ha='center', va='bottom', fontsize=12,
-                    color='green' if causal else 'red')
+            ax.text(i, cohs[i] + 0.01, sign, ha='center', va='bottom', fontsize=12, color='green' if causal else 'red')
 
     plt.tight_layout()
     path = save_experiment_figure(
@@ -1223,6 +1283,7 @@ def plot_lifting_test(
 # Main experiment
 # ============================================================================
 
+
 def run_dataset(
     ds_name: str,
     args: argparse.Namespace,
@@ -1236,16 +1297,14 @@ def run_dataset(
         grade_spectra: grade energy per target_dim
         lifting_result: DimensionLifter output
     """
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  Dataset: {ds_name.upper()}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     print("\n[1] Preparing features …")
-    train_embs, train_labels, val_embs, val_labels, n_classes = \
-        prepare_features(ds_name, args)
+    train_embs, train_labels, val_embs, val_labels, n_classes = prepare_features(ds_name, args)
     in_dim = train_embs.shape[1]
-    print(f"  Train: {tuple(train_embs.shape)}  Val: {tuple(val_embs.shape)}  "
-          f"n_classes={n_classes}")
+    print(f"  Train: {tuple(train_embs.shape)}  Val: {tuple(val_embs.shape)}  n_classes={n_classes}")
 
     # Dimension analysis
     print("\n[3] Effective dimension analysis …")
@@ -1266,8 +1325,7 @@ def run_dataset(
 
     # Internal algebra
     algebra = setup_algebra(p=args.algebra_p, q=args.algebra_q, device='cpu')
-    print(f"\n  Internal algebra: Cl({args.algebra_p},{args.algebra_q})  "
-          f"dim={algebra.dim}")
+    print(f"\n  Internal algebra: Cl({args.algebra_p},{args.algebra_q})  dim={algebra.dim}")
 
     # Precompute PCA axes once
     print("\n[5] Precomputing PCA axes …")
@@ -1289,13 +1347,11 @@ def run_dataset(
     grade_spectra: Dict[int, torch.Tensor] = {}
 
     for td in target_dims:
-        print(f"\n  ── target_dim={td} (ratio={in_dim/td:.1f}×) ──")
+        print(f"\n  ── target_dim={td} (ratio={in_dim / td:.1f}×) ──")
 
         # PCA baseline
         print(f"    [PCA] compressing …")
-        train_pca, val_pca, val_recon_pca = pca_compress(
-            train_embs, val_embs, td, pca_mean, pca_Vh
-        )
+        train_pca, val_pca, val_recon_pca = pca_compress(train_embs, val_embs, td, pca_mean, pca_Vh)
         pca_acc = evaluate_linear_probe(train_pca, train_labels, val_pca, val_labels)
         pca_cos = cosine_similarity_mean(val_embs, val_recon_pca)
 
@@ -1312,8 +1368,7 @@ def run_dataset(
             bottleneck_dim=td,
             n_classes=n_classes,
         )
-        history = train_gbn(model, train_embs, train_labels,
-                            val_embs, val_labels, args)
+        history = train_gbn(model, train_embs, train_labels, val_embs, val_labels, args)
         histories[td] = history
 
         # GBN reconstruction cosine similarity
@@ -1327,10 +1382,7 @@ def run_dataset(
         model.eval()
         with torch.no_grad():
             gbn_train_z, _, _ = model(train_embs)
-        gbn_probe_acc = evaluate_linear_probe(
-            gbn_train_z.detach(), train_labels,
-            gbn_val_z.detach(), val_labels
-        )
+        gbn_probe_acc = evaluate_linear_probe(gbn_train_z.detach(), train_labels, gbn_val_z.detach(), val_labels)
         # Report the best of probe vs direct classifier
         gbn_acc = max(gbn_acc_direct, gbn_probe_acc)
 
@@ -1377,24 +1429,27 @@ def main():
     plot_training_curves(histories_by_dataset, out_dir, plot_metadata, args)
     plot_lifting_test(lifting_results, out_dir, plot_metadata, args)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("SUMMARY")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     for ds_name, res in results_by_dataset.items():
         deltas = [g - p for g, p in zip(res['gbn_acc'], res['pca_acc'])]
         best_idx = max(range(len(deltas)), key=deltas.__getitem__)
         best_td = res['target_dims'][best_idx]
         best_d = deltas[best_idx]
-        headline = (f"best GBN−PCA Δ = {best_d:+.3f} at target={best_td} "
-                    f"(ratio {res['in_dim']/best_td:.1f}×)")
+        headline = f"best GBN−PCA Δ = {best_d:+.3f} at target={best_td} (ratio {res['in_dim'] / best_td:.1f}×)"
         print(f"\n{ds_name.upper()} (intrinsic_dim={res['intrinsic_dim']}) — {headline}")
-        print(f"  {'target':>8}  {'ratio':>6}  {'PCA acc':>8}  {'GBN acc':>8}  "
-              f"{'Δ acc':>8}  {'PCA cos':>8}  {'GBN cos':>8}")
+        print(
+            f"  {'target':>8}  {'ratio':>6}  {'PCA acc':>8}  {'GBN acc':>8}  "
+            f"{'Δ acc':>8}  {'PCA cos':>8}  {'GBN cos':>8}"
+        )
         for i, td in enumerate(res['target_dims']):
-            print(f"  {td:>8}  {res['in_dim']/td:>5.1f}×  "
-                  f"{res['pca_acc'][i]:>8.3f}  {res['gbn_acc'][i]:>8.3f}  "
-                  f"{deltas[i]:>+8.3f}  "
-                  f"{res['pca_cos'][i]:>8.3f}  {res['gbn_cos'][i]:>8.3f}")
+            print(
+                f"  {td:>8}  {res['in_dim'] / td:>5.1f}×  "
+                f"{res['pca_acc'][i]:>8.3f}  {res['gbn_acc'][i]:>8.3f}  "
+                f"{deltas[i]:>+8.3f}  "
+                f"{res['pca_cos'][i]:>8.3f}  {res['gbn_cos'][i]:>8.3f}"
+            )
 
     print(f"\nDone. Plots saved in: {out_dir}")
 

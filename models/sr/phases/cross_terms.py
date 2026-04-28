@@ -43,9 +43,11 @@ class CrossTermMixin:
             return [], 0.0
 
         from models.sr.grouper import VariableGrouper
+
         gcfg = self.grouping_config
         grouper = VariableGrouper(
-            max_groups=self.max_groups, device=self.device,
+            max_groups=self.max_groups,
+            device=self.device,
             sample_size=gcfg.get("sample_size", 500),
             commutator_weight=gcfg.get("commutator_weight", 0.4),
             coherence_weight=gcfg.get("coherence_weight", 0.3),
@@ -56,16 +58,24 @@ class CrossTermMixin:
         graph = prep.relationship_graph if prep is not None else None
         if graph is not None and self.graph_guided:
             return self._mother_algebra_graph_guided(
-                groups, X_orig, y_orig, X_norm, graph, grouper,
+                groups,
+                X_orig,
+                y_orig,
+                X_norm,
+                graph,
+                grouper,
             )
 
         # Legacy fallback: brute-force GP energy check
         return self._mother_algebra_legacy(
-            groups, X_orig, y_orig, X_norm, grouper,
+            groups,
+            X_orig,
+            y_orig,
+            X_norm,
+            grouper,
         )
 
-    def _mother_algebra_graph_guided(self, groups, X_orig, y_orig, X_norm,
-                                      graph, grouper):
+    def _mother_algebra_graph_guided(self, groups, X_orig, y_orig, X_norm, graph, grouper):
         """Targeted cross-term discovery using relationship graph edges.
 
         Only explores group pairs that the graph identifies as having
@@ -78,13 +88,10 @@ class CrossTermMixin:
             return [], 0.0
 
         # Filter to significant edges
-        significant = [
-            e for e in cross_edges if e.strength > self.mother_cross_threshold
-        ]
+        significant = [e for e in cross_edges if e.strength > self.mother_cross_threshold]
         if not significant:
             logger.info(
-                f"  {len(cross_edges)} cross-edges all below threshold "
-                f"({self.mother_cross_threshold}), skipping"
+                f"  {len(cross_edges)} cross-edges all below threshold ({self.mother_cross_threshold}), skipping"
             )
             return [], 0.0
 
@@ -106,11 +113,10 @@ class CrossTermMixin:
             group_pairs.items(),
             key=lambda kv: max(e.strength for e in kv[1]),
             reverse=True,
-        )[:self.cross_edge_top_k]
+        )[: self.cross_edge_top_k]
 
         logger.info(
-            f"  Graph-guided Phase 2: {len(pair_list)} group pairs "
-            f"from {len(significant)} significant cross-edges"
+            f"  Graph-guided Phase 2: {len(pair_list)} group pairs from {len(significant)} significant cross-edges"
         )
 
         all_cross_terms = []
@@ -118,16 +124,20 @@ class CrossTermMixin:
 
         for (g_a, g_b), pair_edges in pair_list:
             terms, energy = self._train_focused_cross_rotor(
-                groups[g_a], groups[g_b], pair_edges,
-                X_orig, y_orig, X_norm, grouper,
+                groups[g_a],
+                groups[g_b],
+                pair_edges,
+                X_orig,
+                y_orig,
+                X_norm,
+                grouper,
             )
             all_cross_terms.extend(terms)
             total_cross_energy += energy
 
         return all_cross_terms, total_cross_energy
 
-    def _train_focused_cross_rotor(self, group_a, group_b, pair_edges,
-                                    X_orig, y_orig, X_norm, grouper):
+    def _train_focused_cross_rotor(self, group_a, group_b, pair_edges, X_orig, y_orig, X_norm, grouper):
         """Train a joint rotor for a specific group pair.
 
         Builds a focused 2-group sub-mother algebra and biases the rotor
@@ -137,6 +147,7 @@ class CrossTermMixin:
             (list[RotorTerm], float): Cross-terms and cross-energy.
         """
         from models.sr.errors import AlgebraConstructionError
+
         try:
             sub_mother, _ = grouper.build_mother_algebra([group_a, group_b])
         except (AlgebraConstructionError, RuntimeError, ValueError) as e:
@@ -151,15 +162,11 @@ class CrossTermMixin:
             X_g_std = standardize(X_g)
             n_g = g.algebra.n
             if X_g_std.shape[1] < n_g:
-                X_g_std = np.column_stack([
-                    X_g_std, np.zeros((N, n_g - X_g_std.shape[1]))
-                ])
+                X_g_std = np.column_stack([X_g_std, np.zeros((N, n_g - X_g_std.shape[1]))])
             elif X_g_std.shape[1] > n_g:
                 X_g_std = X_g_std[:, :n_g]
 
-            local_mv = g.algebra.embed_vector(
-                torch.tensor(X_g_std, dtype=torch.float32, device=self.device)
-            )
+            local_mv = g.algebra.embed_vector(torch.tensor(X_g_std, dtype=torch.float32, device=self.device))
             mother_mv = grouper.inject_to_mother(local_mv, g, sub_mother)
             mother_mvs.append(mother_mv)
 
@@ -183,7 +190,8 @@ class CrossTermMixin:
             n_combined = len(group_a.var_indices) + len(group_b.var_indices)
             auto = SRGBN.auto_config(N, n_combined, sub_mother.dim)
             model = SRGBN.single_rotor(
-                sub_mother, n_combined,
+                sub_mother,
+                n_combined,
                 channels=max(auto["channels"], 8),
             )
             model = model.to(self.device)
@@ -198,27 +206,36 @@ class CrossTermMixin:
                 lj = g2l.get(strongest.var_j)
                 if li is not None and lj is not None:
                     self._bias_rotor_to_plane(
-                        model, li, lj, strongest.edge_type, sub_mother,
+                        model,
+                        li,
+                        lj,
+                        strongest.edge_type,
+                        sub_mother,
                     )
 
             residual_t = torch.tensor(
-                y_orig, dtype=torch.float32, device=self.device,
+                y_orig,
+                dtype=torch.float32,
+                device=self.device,
             ).unsqueeze(-1)
             res_mean = residual_t.mean()
             res_std = residual_t.std().clamp(min=1e-8)
             residual_norm = (residual_t - res_mean) / res_std
 
             # Build input from combined group variables
-            combined_X = np.column_stack([
-                X_orig[:, group_a.var_indices],
-                X_orig[:, group_b.var_indices],
-            ])
-            X_combined_norm = standardize(
-                torch.tensor(combined_X, dtype=torch.float32, device=self.device)
+            combined_X = np.column_stack(
+                [
+                    X_orig[:, group_a.var_indices],
+                    X_orig[:, group_b.var_indices],
+                ]
             )
+            X_combined_norm = standardize(torch.tensor(combined_X, dtype=torch.float32, device=self.device))
 
             model, _, _ = self._train_stage(
-                model, X_combined_norm, residual_norm, sub_mother,
+                model,
+                X_combined_norm,
+                residual_norm,
+                sub_mother,
             )
 
             translator = RotorTranslator(sub_mother)
@@ -234,6 +251,7 @@ class CrossTermMixin:
     def _mother_algebra_legacy(self, groups, X_orig, y_orig, X_norm, grouper):
         """Legacy brute-force cross-term discovery (fallback when no graph)."""
         from models.sr.errors import AlgebraConstructionError
+
         try:
             mother_alg, offsets = grouper.build_mother_algebra(groups)
         except (AlgebraConstructionError, RuntimeError, ValueError) as e:
@@ -247,15 +265,11 @@ class CrossTermMixin:
             X_g_std = standardize(X_g)
             n_g = g.algebra.n
             if X_g_std.shape[1] < n_g:
-                X_g_std = np.column_stack([
-                    X_g_std, np.zeros((N, n_g - X_g_std.shape[1]))
-                ])
+                X_g_std = np.column_stack([X_g_std, np.zeros((N, n_g - X_g_std.shape[1]))])
             elif X_g_std.shape[1] > n_g:
                 X_g_std = X_g_std[:, :n_g]
 
-            local_mv = g.algebra.embed_vector(
-                torch.tensor(X_g_std, dtype=torch.float32, device=self.device)
-            )
+            local_mv = g.algebra.embed_vector(torch.tensor(X_g_std, dtype=torch.float32, device=self.device))
             mother_mv = grouper.inject_to_mother(local_mv, g, mother_alg)
             mother_mvs.append(mother_mv)
 
@@ -275,12 +289,13 @@ class CrossTermMixin:
         logger.info(f"  Cross-energy {cross_energy:.4f} detected, training joint rotor")
         try:
             auto = SRGBN.auto_config(X_orig.shape[0], self.in_features, mother_alg.dim)
-            model = SRGBN.single_rotor(mother_alg, self.in_features,
-                                        channels=max(auto["channels"], 8))
+            model = SRGBN.single_rotor(mother_alg, self.in_features, channels=max(auto["channels"], 8))
             model = model.to(self.device)
 
             residual_t = torch.tensor(
-                y_orig, dtype=torch.float32, device=self.device,
+                y_orig,
+                dtype=torch.float32,
+                device=self.device,
             ).unsqueeze(-1)
             res_mean = residual_t.mean()
             res_std = residual_t.std().clamp(min=1e-8)
@@ -288,7 +303,10 @@ class CrossTermMixin:
 
             X_norm_std = standardize(X_norm) if isinstance(X_norm, torch.Tensor) else X_norm
             model, _, _ = self._train_stage(
-                model, X_norm_std, residual_norm, mother_alg,
+                model,
+                X_norm_std,
+                residual_norm,
+                mother_alg,
             )
 
             translator = RotorTranslator(mother_alg)

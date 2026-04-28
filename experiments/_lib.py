@@ -50,6 +50,7 @@ from functional.activation import GeometricGELU
 # Reproducibility
 # ---------------------------------------------------------------------------
 
+
 def set_seed(seed: int, deterministic: bool = False) -> None:
     """Seed ``torch``, ``numpy``, and ``random``; optionally force determinism."""
     random.seed(seed)
@@ -66,8 +67,8 @@ def set_seed(seed: int, deterministic: bool = False) -> None:
 # Algebra factory
 # ---------------------------------------------------------------------------
 
-def setup_algebra(p: int, q: int = 0, r: int = 0,
-                  device: str = 'cpu') -> CliffordAlgebra:
+
+def setup_algebra(p: int, q: int = 0, r: int = 0, device: str = 'cpu') -> CliffordAlgebra:
     """One-line ``CliffordAlgebra(p, q, r, device=device).to(device)`` wrapper."""
     return CliffordAlgebra(p=p, q=q, r=r, device=device).to(device)
 
@@ -75,6 +76,7 @@ def setup_algebra(p: int, q: int = 0, r: int = 0,
 # ---------------------------------------------------------------------------
 # Filesystem
 # ---------------------------------------------------------------------------
+
 
 def ensure_output_dir(path: str) -> str:
     """``os.makedirs(path, exist_ok=True)`` and return ``path``."""
@@ -106,11 +108,7 @@ def build_visualization_metadata(*parts: Any, **named_parts: Any) -> str:
         if part is None or part == '':
             continue
         if isinstance(part, (list, tuple, set)):
-            joined = '_'.join(
-                sanitize_plot_token(item)
-                for item in part
-                if item is not None and item != ''
-            )
+            joined = '_'.join(sanitize_plot_token(item) for item in part if item is not None and item != '')
             if joined:
                 tokens.append(joined)
             continue
@@ -126,11 +124,7 @@ def build_visualization_metadata(*parts: Any, **named_parts: Any) -> str:
         if isinstance(value, float):
             value_token = sanitize_plot_token(f'{value:g}')
         elif isinstance(value, (list, tuple, set)):
-            value_token = '_'.join(
-                sanitize_plot_token(item)
-                for item in value
-                if item is not None and item != ''
-            )
+            value_token = '_'.join(sanitize_plot_token(item) for item in value if item is not None and item != '')
         else:
             value_token = sanitize_plot_token(value)
         if value_token:
@@ -195,6 +189,7 @@ def save_experiment_figure(
 
     if close:
         import matplotlib.pyplot as plt
+
         plt.close(fig)
     return str(path.resolve())
 
@@ -202,6 +197,7 @@ def save_experiment_figure(
 # ---------------------------------------------------------------------------
 # Model introspection
 # ---------------------------------------------------------------------------
+
 
 def count_parameters(model: nn.Module) -> int:
     """Number of trainable parameters in ``model``."""
@@ -212,13 +208,13 @@ def count_parameters(model: nn.Module) -> int:
 # Grade-1 embedding / extraction
 # ---------------------------------------------------------------------------
 
+
 def grade1_indices(algebra: CliffordAlgebra) -> List[int]:
     """Multivector indices of grade-1 basis elements ``[e1, e2, ..., e_n]``."""
     return [1 << i for i in range(algebra.n)]
 
 
-def extract_grade1(mv: torch.Tensor, algebra: CliffordAlgebra,
-                   n: Optional[int] = None) -> torch.Tensor:
+def extract_grade1(mv: torch.Tensor, algebra: CliffordAlgebra, n: Optional[int] = None) -> torch.Tensor:
     """Slice grade-1 components from a multivector ``[..., dim] → [..., n]``.
 
     ``n`` defaults to ``algebra.n`` (all grade-1 slots). Inverse of
@@ -232,6 +228,7 @@ def extract_grade1(mv: torch.Tensor, algebra: CliffordAlgebra,
 # Canonical GBN residual block
 # ---------------------------------------------------------------------------
 
+
 def gbn_residual_block(algebra: CliffordAlgebra, channels: int) -> nn.ModuleDict:
     """The four-step block every GBN experiment shares.
 
@@ -240,12 +237,14 @@ def gbn_residual_block(algebra: CliffordAlgebra, channels: int) -> nn.ModuleDict
     :func:`apply_residual_block` per block. Keeps the per-experiment
     composition local while removing the boilerplate.
     """
-    return nn.ModuleDict({
-        'norm':   CliffordLayerNorm(algebra, channels),
-        'rotor':  RotorLayer(algebra, channels),
-        'act':    GeometricGELU(algebra, channels=channels),
-        'linear': CliffordLinear(algebra, channels, channels),
-    })
+    return nn.ModuleDict(
+        {
+            'norm': CliffordLayerNorm(algebra, channels),
+            'rotor': RotorLayer(algebra, channels),
+            'act': GeometricGELU(algebra, channels=channels),
+            'linear': CliffordLinear(algebra, channels, channels),
+        }
+    )
 
 
 def apply_residual_block(block: nn.ModuleDict, h: torch.Tensor) -> torch.Tensor:
@@ -262,9 +261,9 @@ def apply_residual_block(block: nn.ModuleDict, h: torch.Tensor) -> torch.Tensor:
 # Grade-energy aggregation
 # ---------------------------------------------------------------------------
 
+
 @torch.no_grad()
-def mean_grade_spectrum(mv_iter: Iterable[torch.Tensor],
-                        algebra: CliffordAlgebra) -> np.ndarray:
+def mean_grade_spectrum(mv_iter: Iterable[torch.Tensor], algebra: CliffordAlgebra) -> np.ndarray:
     """Mean Hermitian grade spectrum across an iterable of multivectors.
 
     Each element may be any shape ending in ``algebra.dim``; it is flattened
@@ -288,36 +287,33 @@ def mean_grade_spectrum(mv_iter: Iterable[torch.Tensor],
 # ---------------------------------------------------------------------------
 
 _STANDARD_ARG_SPECS: Mapping[str, dict] = {
-    'seed':          {'flags': ('--seed',), 'type': int, 'default': 42,
-                      'help': 'Random seed.'},
-    'device':        {'flags': ('--device',), 'type': str, 'default': 'cpu',
-                      'help': 'Torch device (cpu/cuda/mps).'},
-    'epochs':        {'flags': ('--epochs',), 'type': int, 'default': 200,
-                      'help': 'Number of training epochs.'},
-    'lr':            {'flags': ('--lr',), 'type': float, 'default': 1e-3,
-                      'help': 'Learning rate.'},
-    'batch_size':    {'flags': ('--batch-size',), 'type': int, 'default': 128,
-                      'help': 'Mini-batch size.'},
-    'output_dir':    {'flags': ('--output-dir', '--out-dir'), 'type': str,
-                      'default': 'experiment_plots',
-                      'help': 'Directory for saved artefacts.'},
-    'diag_interval': {'flags': ('--diag-interval',), 'type': int, 'default': 20,
-                      'help': 'Epoch stride for diagnostic logging.'},
-    'p':             {'flags': ('--p',), 'type': int, 'default': 3,
-                      'help': 'Positive signature dimensions.'},
-    'q':             {'flags': ('--q',), 'type': int, 'default': 0,
-                      'help': 'Negative signature dimensions.'},
-    'r':             {'flags': ('--r',), 'type': int, 'default': 0,
-                      'help': 'Degenerate (null) dimensions.'},
+    'seed': {'flags': ('--seed',), 'type': int, 'default': 42, 'help': 'Random seed.'},
+    'device': {'flags': ('--device',), 'type': str, 'default': 'cpu', 'help': 'Torch device (cpu/cuda/mps).'},
+    'epochs': {'flags': ('--epochs',), 'type': int, 'default': 200, 'help': 'Number of training epochs.'},
+    'lr': {'flags': ('--lr',), 'type': float, 'default': 1e-3, 'help': 'Learning rate.'},
+    'batch_size': {'flags': ('--batch-size',), 'type': int, 'default': 128, 'help': 'Mini-batch size.'},
+    'output_dir': {
+        'flags': ('--output-dir', '--out-dir'),
+        'type': str,
+        'default': 'experiment_plots',
+        'help': 'Directory for saved artefacts.',
+    },
+    'diag_interval': {
+        'flags': ('--diag-interval',),
+        'type': int,
+        'default': 20,
+        'help': 'Epoch stride for diagnostic logging.',
+    },
+    'p': {'flags': ('--p',), 'type': int, 'default': 3, 'help': 'Positive signature dimensions.'},
+    'q': {'flags': ('--q',), 'type': int, 'default': 0, 'help': 'Negative signature dimensions.'},
+    'r': {'flags': ('--r',), 'type': int, 'default': 0, 'help': 'Degenerate (null) dimensions.'},
 }
 
 
 def add_standard_args(
     parser: argparse.ArgumentParser,
     *,
-    include: Sequence[str] = ('seed', 'device', 'epochs', 'lr',
-                              'batch_size', 'output_dir',
-                              'diag_interval'),
+    include: Sequence[str] = ('seed', 'device', 'epochs', 'lr', 'batch_size', 'output_dir', 'diag_interval'),
     defaults: Optional[Mapping[str, Any]] = None,
 ) -> argparse.ArgumentParser:
     """Additively attach common flags to ``parser``.
@@ -347,9 +343,7 @@ class RawDefaultsHelpFormatter(
 def make_experiment_parser(
     description: str,
     *,
-    include: Sequence[str] = ('seed', 'device', 'epochs', 'lr',
-                              'batch_size', 'output_dir',
-                              'diag_interval'),
+    include: Sequence[str] = ('seed', 'device', 'epochs', 'lr', 'batch_size', 'output_dir', 'diag_interval'),
     defaults: Optional[Mapping[str, Any]] = None,
     formatter_class: type[argparse.HelpFormatter] = argparse.ArgumentDefaultsHelpFormatter,
 ) -> argparse.ArgumentParser:
@@ -367,15 +361,11 @@ def parse_clifford_signature(value: str) -> tuple[int, int, int]:
     """Parse ``p,q`` or ``p,q,r`` into a Clifford signature tuple."""
     parts = [part.strip() for part in value.split(',')]
     if len(parts) not in (2, 3) or any(part == '' for part in parts):
-        raise argparse.ArgumentTypeError(
-            f"signature must be 'p,q' or 'p,q,r', got {value!r}"
-        )
+        raise argparse.ArgumentTypeError(f"signature must be 'p,q' or 'p,q,r', got {value!r}")
     try:
         ints = tuple(int(part) for part in parts)
     except ValueError as exc:
-        raise argparse.ArgumentTypeError(
-            f"signature must be 'p,q' or 'p,q,r', got {value!r}"
-        ) from exc
+        raise argparse.ArgumentTypeError(f"signature must be 'p,q' or 'p,q,r', got {value!r}") from exc
     if len(ints) == 2:
         return ints[0], ints[1], 0
     return ints  # type: ignore[return-value]
@@ -401,6 +391,7 @@ def add_signature_arg(
 # Display
 # ---------------------------------------------------------------------------
 
+
 def section_header(title: str, char: str = '=', width: int = 60) -> str:
     """Return the three-line banner: ``char*width / title / char*width``."""
     bar = char * width
@@ -417,6 +408,7 @@ def print_banner(title: str, **kv: Any) -> None:
 # ---------------------------------------------------------------------------
 # Plotting (lazy matplotlib import)
 # ---------------------------------------------------------------------------
+
 
 def save_training_curve(
     history: Mapping[str, Sequence[float]],
@@ -440,6 +432,7 @@ def save_training_curve(
     doesn't break when plots aren't requested. Returns the absolute saved path.
     """
     import matplotlib
+
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
 
@@ -465,9 +458,7 @@ def save_training_curve(
 
     if output_dir is not None or experiment_name is not None or metadata is not None:
         if output_dir is None or experiment_name is None or metadata is None:
-            raise ValueError(
-                'output_dir, experiment_name, and metadata must be provided together'
-            )
+            raise ValueError('output_dir, experiment_name, and metadata must be provided together')
         return save_experiment_figure(
             fig,
             output_dir=output_dir,
@@ -491,6 +482,7 @@ def save_training_curve(
 # ---------------------------------------------------------------------------
 # Supervised training loop (single-loss, natural-expression style)
 # ---------------------------------------------------------------------------
+
 
 def run_supervised_loop(
     model: nn.Module,
@@ -529,7 +521,8 @@ def run_supervised_loop(
             if grad_clip is not None:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
-            total += float(loss.item()); n += 1
+            total += float(loss.item())
+            n += 1
         avg = total / max(n, 1)
         if epoch == 1 or epoch == epochs or epoch % diag_interval == 0:
             history['epochs'].append(epoch)
@@ -550,6 +543,7 @@ def run_supervised_loop(
 # ---------------------------------------------------------------------------
 # Post-training diagnostic table
 # ---------------------------------------------------------------------------
+
 
 def report_diagnostics(
     diagnostics: Mapping[str, Any],

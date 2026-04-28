@@ -16,6 +16,7 @@ from core.device import DeviceConfig, resolve_device
 
 logger = get_logger(__name__)
 
+
 class BaseTask(ABC):
     """Abstract base class for all training tasks.
 
@@ -60,7 +61,8 @@ class BaseTask(ABC):
         self.epochs = cfg.training.epochs
         sched_cfg = cfg.training.get('scheduler', {})
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode='min',
+            self.optimizer,
+            mode='min',
             factor=sched_cfg.get('factor', 0.5),
             patience=sched_cfg.get('patience', 10),
         )
@@ -100,21 +102,23 @@ class BaseTask(ABC):
 
         if opt_type == 'exponential_sgd':
             from optimizers.riemannian import ExponentialSGD
+
             return ExponentialSGD.from_model(
                 self.model,
                 lr=lr,
                 momentum=self.cfg.training.get('momentum', 0.9),
                 algebra=self.algebra,
-                max_bivector_norm=self.cfg.training.get('max_bivector_norm', 10.0)
+                max_bivector_norm=self.cfg.training.get('max_bivector_norm', 10.0),
             )
         elif opt_type == 'riemannian_adam':
             from optimizers.riemannian import RiemannianAdam
+
             return RiemannianAdam.from_model(
                 self.model,
                 lr=lr,
                 betas=self.cfg.training.get('betas', (0.9, 0.999)),
                 algebra=self.algebra,
-                max_bivector_norm=self.cfg.training.get('max_bivector_norm', 10.0)
+                max_bivector_norm=self.cfg.training.get('max_bivector_norm', 10.0),
             )
         else:
             # Euclidean AdamW (for ablation experiments only)
@@ -177,7 +181,7 @@ class BaseTask(ABC):
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'scheduler_state_dict': self.scheduler.state_dict(),
-            'config': self.cfg
+            'config': self.cfg,
         }
         torch.save(checkpoint, path)
         logger.info("Checkpoint saved to %s", path)
@@ -188,7 +192,7 @@ class BaseTask(ABC):
             checkpoint = torch.load(path, map_location=self.device, weights_only=False)
         except TypeError:
             checkpoint = torch.load(path, map_location=self.device)
-            
+
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
@@ -198,13 +202,13 @@ class BaseTask(ABC):
         """Execute the full training loop."""
         logger.info("Starting Task: %s", self.cfg.name)
         dataloader = self.get_data()
-        
+
         # Training Loop
         self.model.train()
         pbar = tqdm(range(self.epochs))
-        
+
         is_loader = not isinstance(dataloader, (torch.Tensor, tuple, list))
-        
+
         for epoch in pbar:
             if is_loader:
                 total_loss = 0
@@ -215,17 +219,17 @@ class BaseTask(ABC):
                 logs['Loss'] = avg_loss
             else:
                 avg_loss, logs = self.train_step(dataloader)
-            
+
             self.scheduler.step(avg_loss)
-            
+
             current_lr = self.optimizer.param_groups[0]['lr']
             logs['LR'] = current_lr
-                
+
             desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])
             pbar.set_description(desc)
 
         logger.info("Training Complete.")
-        
+
         self.model.eval()
         with torch.no_grad():
             sample_data = next(iter(dataloader)) if is_loader else dataloader

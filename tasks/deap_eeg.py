@@ -128,7 +128,7 @@ class DEAPEEGTask(BaseTask):
                 all_preds.append(preds.cpu())
                 all_labels.append(labels)
 
-        preds_tensor = torch.cat(all_preds)   # [N, 4]
+        preds_tensor = torch.cat(all_preds)  # [N, 4]
         labels_tensor = torch.cat(all_labels)  # [N, 4]
 
         metrics = {}
@@ -141,6 +141,7 @@ class DEAPEEGTask(BaseTask):
         # Binary F1 -- fixed threshold 0.5 (Koelstra 2012: midpoint of 1-9 scale = (5-1)/8)
         try:
             from sklearn.metrics import f1_score
+
             preds_np = preds_tensor.numpy()
             labels_np = labels_tensor.numpy()
             for i, name in enumerate(VADL_NAMES):
@@ -162,11 +163,11 @@ class DEAPEEGTask(BaseTask):
         logger.info(sep)
         for name in VADL_NAMES:
             rmse = metrics.get(f'{name}_RMSE', float('nan'))
-            f1   = metrics.get(f'{name}_F1',   float('nan'))
+            f1 = metrics.get(f'{name}_F1', float('nan'))
             logger.info(f"{name:<13} {rmse:>8.4f} {f1:>8.4f}")
         logger.info(sep)
         mean_rmse = sum(metrics.get(f'{n}_RMSE', 0) for n in VADL_NAMES) / len(VADL_NAMES)
-        mean_f1   = sum(metrics.get(f'{n}_F1',   0) for n in VADL_NAMES) / len(VADL_NAMES)
+        mean_f1 = sum(metrics.get(f'{n}_F1', 0) for n in VADL_NAMES) / len(VADL_NAMES)
         logger.info(f"{'Mean':<13} {mean_rmse:>8.4f} {mean_f1:>8.4f}")
         logger.info(sep)
 
@@ -174,11 +175,11 @@ class DEAPEEGTask(BaseTask):
         pass
 
     def run(self):
-        logger.info("Starting Task: DEAP EEG (subject=%d, mode=%s)",
-                    self.subject_id, self.eval_mode)
+        logger.info("Starting Task: DEAP EEG (subject=%d, mode=%s)", self.subject_id, self.eval_mode)
         train_loader, val_loader = self.get_data()
 
         from tqdm import tqdm
+
         pbar = tqdm(range(self.epochs))
         best_val_rmse = float('inf')
 

@@ -65,8 +65,7 @@ class GDOOptimizer(Optimizer):
                 param_groups.append({'params': params, 'manifold': manifold})
         if not param_groups:
             param_groups = [{'params': list(model.parameters()), 'manifold': MANIFOLD_EUCLIDEAN}]
-        return cls(param_groups, lr=lr, betas=betas, eps=eps, algebra=algebra,
-                   max_bivector_norm=max_bivector_norm)
+        return cls(param_groups, lr=lr, betas=betas, eps=eps, algebra=algebra, max_bivector_norm=max_bivector_norm)
 
     def set_warp_state(self, warp_lr: Optional[torch.Tensor]):
         """Set per-parameter Lorentz warp LR (from LorentzWarpOptimizer)."""
@@ -117,10 +116,10 @@ class GDOOptimizer(Optimizer):
                 exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
 
-                bias_correction1 = 1 - beta1 ** t
-                bias_correction2 = 1 - beta2 ** t
+                bias_correction1 = 1 - beta1**t
+                bias_correction2 = 1 - beta2**t
                 step_size = lr / bias_correction1
-                bias_correction2_sqrt = bias_correction2 ** 0.5
+                bias_correction2_sqrt = bias_correction2**0.5
 
                 denom = (exp_avg_sq.sqrt() / bias_correction2_sqrt).add_(eps)
                 p.addcdiv_(exp_avg, denom, value=-step_size)

@@ -75,13 +75,19 @@ class GLRNet(CliffordModule):
         self.pe = RotaryBivectorPE(algebra, channels, max_seq_len)
 
         # 3. Geometric transformer backbone
-        self.blocks = nn.ModuleList([
-            GeometricTransformerBlock(
-                algebra, channels, num_heads, num_rotors,
-                dropout=dropout, use_entropy_gating=use_entropy_gating,
-            )
-            for _ in range(num_layers)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                GeometricTransformerBlock(
+                    algebra,
+                    channels,
+                    num_heads,
+                    num_rotors,
+                    dropout=dropout,
+                    use_entropy_gating=use_entropy_gating,
+                )
+                for _ in range(num_layers)
+            ]
+        )
 
         # 4. Final normalization + neutralization
         self.final_norm = CliffordLayerNorm(algebra, channels)
@@ -97,8 +103,7 @@ class GLRNet(CliffordModule):
         else:
             raise ValueError(f"Unknown probe: {probe}")
 
-    def _lift_and_attend(self, embeddings: torch.Tensor,
-                         key_padding_mask: torch.Tensor = None) -> torch.Tensor:
+    def _lift_and_attend(self, embeddings: torch.Tensor, key_padding_mask: torch.Tensor = None) -> torch.Tensor:
         """Lift a sequence of embeddings through the full backbone.
 
         Args:
@@ -147,14 +152,14 @@ class GLRNet(CliffordModule):
                 "label":               [B],
             }
         """
-        embs = batch["sentence_embeddings"]       # [B, L_max, encoder_dim]
-        chain_lengths = batch["chain_length"]      # [B]
+        embs = batch["sentence_embeddings"]  # [B, L_max, encoder_dim]
+        chain_lengths = batch["chain_length"]  # [B]
 
         B, L_max, _ = embs.shape
 
         # Build padding mask: True = padded position
         positions = torch.arange(L_max, device=embs.device).unsqueeze(0)  # [1, L_max]
-        key_padding_mask = positions >= chain_lengths.unsqueeze(1)         # [B, L_max]
+        key_padding_mask = positions >= chain_lengths.unsqueeze(1)  # [B, L_max]
 
         # Full backbone with padding mask
         mv = self._lift_and_attend(embs, key_padding_mask=key_padding_mask)  # [B, L, C, D]
@@ -164,7 +169,7 @@ class GLRNet(CliffordModule):
         # Masked mean pooling: exclude padded positions
         valid_mask = ~key_padding_mask  # [B, L], True = valid
         valid_count = valid_mask.sum(dim=1, keepdim=True).clamp(min=1)  # [B, 1]
-        valid_mask_expanded = valid_mask.unsqueeze(-1).unsqueeze(-1)     # [B, L, 1, 1]
+        valid_mask_expanded = valid_mask.unsqueeze(-1).unsqueeze(-1)  # [B, L, 1, 1]
         mv_pooled = (mv * valid_mask_expanded).sum(dim=1) / valid_count.unsqueeze(-1)  # [B, C, D]
 
         mv_pooled = self.final_norm(mv_pooled)
@@ -193,7 +198,7 @@ class GLRNet(CliffordModule):
         mv = self._lift_and_attend(seq)  # [B, 2, C, D]
 
         # Split back into premise/hypothesis multivectors
-        premise_mv = mv[:, 0, :, :]    # [B, C, D]
+        premise_mv = mv[:, 0, :, :]  # [B, C, D]
         hypothesis_mv = mv[:, 1, :, :]  # [B, C, D]
 
         # Normalize + neutralize each

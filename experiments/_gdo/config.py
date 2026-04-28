@@ -9,6 +9,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 @dataclass
 class GDOConfig:
     """Centralized configuration for the Geometric Deterministic Optimizer."""
+
     lr: float = 1e-3
     probe_interval: int = 50
     topology_interval: int = 200
@@ -45,6 +46,7 @@ class GDOConfig:
 @dataclass
 class ExperimentResult:
     """Collected results from one optimizer run."""
+
     name: str
     optimizer_name: str
     losses: List[float]
@@ -60,6 +62,7 @@ class ExperimentResult:
 @dataclass
 class ExperimentConfig:
     """Configuration for a single experiment."""
+
     name: str
     category: str
     steps: int
@@ -75,7 +78,9 @@ EXPERIMENT_REGISTRY: Dict[str, Tuple[Callable, str]] = {}
 
 def register_experiment(name: str, category: str):
     """Decorator for registering experiment functions."""
+
     def decorator(fn):
         EXPERIMENT_REGISTRY[name] = (fn, category)
         return fn
+
     return decorator
