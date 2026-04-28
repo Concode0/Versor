@@ -9,18 +9,19 @@
 
 import pytest
 import torch
+
 from core.algebra import CliffordAlgebra
 
 pytestmark = pytest.mark.slow
-from core.analysis import MetricSearch, GeodesicFlow
-from core.analysis.signature import _SignatureProbe, _apply_biased_init
+from core.analysis import GeodesicFlow, MetricSearch
+from core.analysis.signature import _apply_biased_init, _SignatureProbe
 
 
 @pytest.fixture(scope="module")
 def small_searcher():
     """Create a small MetricSearch instance for testing."""
     return MetricSearch(
-        device='cpu',
+        device="cpu",
         probe_epochs=60,
         num_probes=2,
         probe_channels=2,
@@ -31,7 +32,7 @@ def small_searcher():
 @pytest.fixture(scope="module")
 def alg_conformal():
     """Create a Cl(3,1) algebra -- conformal lift of 2D data."""
-    return CliffordAlgebra(3, 1, 0, device='cpu')
+    return CliffordAlgebra(3, 1, 0, device="cpu")
 
 
 class TestMetricSearchAPI:
@@ -68,13 +69,13 @@ class TestMetricSearchAPI:
         torch.manual_seed(2)
         data = torch.randn(16, 2)
         result = small_searcher.search_detailed(data)
-        for key in ('signature', 'coherence', 'curvature', 'energy_breakdown', 'per_probe_results'):
+        for key in ("signature", "coherence", "curvature", "energy_breakdown", "per_probe_results"):
             assert key in result, f"Missing key: {key}"
 
     def test_sequential_small_probes(self):
         """Verify sequential path works with num_probes=1."""
         searcher = MetricSearch(
-            device='cpu',
+            device="cpu",
             probe_epochs=10,
             num_probes=1,
             probe_channels=2,
@@ -108,7 +109,7 @@ class TestConformalLifting:
 
     def test_lifting_shape(self):
         """Verify data lifting to higher-dimensional multivector space."""
-        searcher = MetricSearch(device='cpu')
+        searcher = MetricSearch(device="cpu")
         data = torch.randn(10, 3)
         mv, algebra = searcher._lift_data(data)
         # 3D data -> Cl(4, 1) -> dim = 2^5 = 32
@@ -119,7 +120,7 @@ class TestConformalLifting:
 
     def test_lifting_2d(self):
         """Verify 2D data lifting to Cl(3,1)."""
-        searcher = MetricSearch(device='cpu')
+        searcher = MetricSearch(device="cpu")
         data = torch.randn(8, 2)
         mv, algebra = searcher._lift_data(data)
         # 2D data -> Cl(3, 1) -> dim = 2^4 = 16
@@ -133,7 +134,7 @@ class TestBiasedInit:
     def test_euclidean_bias(self, alg_conformal):
         """Verify Euclidean bias prioritizes elliptic bivectors."""
         probe = _SignatureProbe(alg_conformal, channels=2)
-        _apply_biased_init(probe, alg_conformal, 'euclidean')
+        _apply_biased_init(probe, alg_conformal, "euclidean")
         bv_sq = alg_conformal.bv_sq_scalar
         for rotor in probe.get_rotor_layers():
             weights = rotor.bivector_weights.detach()
@@ -148,7 +149,7 @@ class TestBiasedInit:
 
     def test_all_bias_types_run(self, alg_conformal):
         """Verify all bias types run without error."""
-        for bias_type in ('euclidean', 'minkowski', 'projective', 'random'):
+        for bias_type in ("euclidean", "minkowski", "projective", "random"):
             probe = _SignatureProbe(alg_conformal, channels=2)
             _apply_biased_init(probe, alg_conformal, bias_type)
             # Should not raise
@@ -159,7 +160,7 @@ class TestDifferentiableMethods:
 
     def test_coherence_tensor_differentiable(self):
         """Verify coherence calculation is differentiable."""
-        alg = CliffordAlgebra(3, 0, device='cpu')
+        alg = CliffordAlgebra(3, 0, device="cpu")
         data = torch.randn(16, 3, requires_grad=True)
         mv = alg.embed_vector(data)
         gf = GeodesicFlow(alg, k=4)
@@ -171,7 +172,7 @@ class TestDifferentiableMethods:
 
     def test_curvature_tensor_differentiable(self):
         """Verify curvature calculation is differentiable."""
-        alg = CliffordAlgebra(3, 0, device='cpu')
+        alg = CliffordAlgebra(3, 0, device="cpu")
         data = torch.randn(16, 3, requires_grad=True)
         mv = alg.embed_vector(data)
         gf = GeodesicFlow(alg, k=4)
@@ -182,7 +183,7 @@ class TestDifferentiableMethods:
 
     def test_coherence_tensor_matches_coherence(self):
         """Verify _coherence_tensor matches coherence float value."""
-        alg = CliffordAlgebra(3, 0, device='cpu')
+        alg = CliffordAlgebra(3, 0, device="cpu")
         torch.manual_seed(10)
         data = torch.randn(16, 3)
         mv = alg.embed_vector(data)
@@ -197,13 +198,13 @@ class TestBivectorEnergyAnalysis:
 
     def test_returns_valid_signature(self):
         """Verify energy analysis returns valid (p, q, r) and breakdown dict."""
-        alg = CliffordAlgebra(3, 1, 0, device='cpu')
+        alg = CliffordAlgebra(3, 1, 0, device="cpu")
         probe = _SignatureProbe(alg, channels=2)
-        searcher = MetricSearch(device='cpu')
+        searcher = MetricSearch(device="cpu")
         (p, q, r), breakdown = searcher._analyze_bivector_energy(probe, alg, 2)
         assert isinstance(p, int)
         assert isinstance(q, int)
         assert isinstance(r, int)
         assert p + q + r <= 2
-        assert 'per_bivector_energy' in breakdown
-        assert 'bv_sq_scalar' in breakdown
+        assert "per_bivector_energy" in breakdown
+        assert "bv_sq_scalar" in breakdown

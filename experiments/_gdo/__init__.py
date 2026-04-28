@@ -32,6 +32,7 @@ Future work (design sketch -- NOT yet wired up):
     exposing get_full_diagnostics() for downstream plotting.
 """
 
+from . import experiments as _experiments  # noqa: F401 -- populates EXPERIMENT_REGISTRY
 from .config import (
     EXPERIMENT_REGISTRY,
     ExperimentConfig,
@@ -42,8 +43,6 @@ from .config import (
 from .controller import GDOController, GeometricDeterministicOptimizer
 from .optimizer import GDOOptimizer
 from .pre_exploration import PreExplorationAnalyzer, PreExplorationResult
-
-from . import experiments as _experiments  # noqa: F401 -- populates EXPERIMENT_REGISTRY
 
 __all__ = [
     "EXPERIMENT_REGISTRY",

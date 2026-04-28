@@ -23,8 +23,8 @@ import numpy as np
 import sympy
 import torch
 
+from models.sr.phases import CrossTermMixin, ExtractionMixin, PrepMixin, RefinementMixin
 from models.sr.utils import evaluate_terms, make_lambdify_fn
-from models.sr.phases import PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMixin
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
         curvature_threshold=0.05,
         coherence_degradation_threshold=0.15,
         probe_config=None,
-        implicit_mode='auto',
+        implicit_mode="auto",
         grouping_enabled=True,
         max_groups=4,
         svd_warmstart=True,
@@ -381,7 +381,7 @@ class IterativeUnbender(PrepMixin, ExtractionMixin, CrossTermMixin, RefinementMi
         implicit_form = prep.implicit_form
         if (
             r2_final < 0.5
-            and self.implicit_mode != 'explicit'
+            and self.implicit_mode != "explicit"
             and len(prep.groups) == 1
             and (implicit_form is None or implicit_form.mode != "implicit")
         ):

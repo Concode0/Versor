@@ -11,9 +11,9 @@ Tests cover:
 
 import pytest
 import torch
+
 from core.algebra import CliffordAlgebra
-from layers import RotorGadget
-from layers import CliffordLinear
+from layers import CliffordLinear, RotorGadget
 
 pytestmark = pytest.mark.unit
 
@@ -240,7 +240,7 @@ class TestAggregationMethods:
             in_channels=8,
             out_channels=4,
             num_rotor_pairs=2,
-            aggregation='mean',
+            aggregation="mean",
         )
 
         x = torch.randn(2, 8, algebra_3d.dim)
@@ -255,7 +255,7 @@ class TestAggregationMethods:
             in_channels=8,
             out_channels=4,
             num_rotor_pairs=2,
-            aggregation='sum',
+            aggregation="sum",
         )
 
         x = torch.randn(2, 8, algebra_3d.dim)
@@ -270,7 +270,7 @@ class TestAggregationMethods:
             in_channels=8,
             out_channels=4,
             num_rotor_pairs=2,
-            aggregation='learned',
+            aggregation="learned",
         )
 
         x = torch.randn(2, 8, algebra_3d.dim)
@@ -348,7 +348,7 @@ class TestParameterEfficiency:
             algebra=algebra_3d,
             in_channels=in_ch,
             out_channels=out_ch,
-            backend='traditional',
+            backend="traditional",
         )
 
         # Rotor gadget layer
@@ -356,7 +356,7 @@ class TestParameterEfficiency:
             algebra=algebra_3d,
             in_channels=in_ch,
             out_channels=out_ch,
-            backend='rotor',
+            backend="rotor",
             num_rotor_pairs=4,
         )
 
@@ -384,7 +384,7 @@ class TestParameterEfficiency:
                 algebra=algebra_3d,
                 in_channels=ch,
                 out_channels=ch,
-                backend='traditional',
+                backend="traditional",
             )
             traditional_params.append(sum(p.numel() for p in trad.parameters()))
 
@@ -392,7 +392,7 @@ class TestParameterEfficiency:
                 algebra=algebra_3d,
                 in_channels=ch,
                 out_channels=ch,
-                backend='rotor',
+                backend="rotor",
                 num_rotor_pairs=4,
             )
             rotor_params.append(sum(p.numel() for p in rot.parameters()))
@@ -420,14 +420,14 @@ class TestIntegration:
             algebra=algebra_3d,
             in_channels=in_ch,
             out_channels=out_ch,
-            backend='traditional',
+            backend="traditional",
         )
 
         rotor = CliffordLinear(
             algebra=algebra_3d,
             in_channels=in_ch,
             out_channels=out_ch,
-            backend='rotor',
+            backend="rotor",
             num_rotor_pairs=4,
         )
 
@@ -517,7 +517,7 @@ class TestEdgeCases:
     def test_algebra_with_no_bivectors_raises(self):
         """Test that algebra with no bivectors raises an error."""
         # Cl(1,0) has 1 basis vector, so it has 0 bivectors
-        algebra_1d = CliffordAlgebra(p=1, q=0, device='cpu')
+        algebra_1d = CliffordAlgebra(p=1, q=0, device="cpu")
 
         with pytest.raises(ValueError, match="no bivectors"):
             RotorGadget(
@@ -534,13 +534,13 @@ class TestEdgeCases:
             in_channels=4,
             out_channels=8,
             num_rotor_pairs=2,
-            aggregation='mean',
+            aggregation="mean",
         )
 
         repr_str = repr(layer)
-        assert 'RotorGadget' in repr_str
-        assert 'in_channels=4' in repr_str
-        assert 'out_channels=8' in repr_str
+        assert "RotorGadget" in repr_str
+        assert "in_channels=4" in repr_str
+        assert "out_channels=8" in repr_str
 
 
 class TestShuffleOptions:
@@ -548,18 +548,18 @@ class TestShuffleOptions:
 
     def test_no_shuffle_default(self, algebra_3d):
         """Test that shuffle='none' is the default and works correctly."""
-        layer = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle='none')
+        layer = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle="none")
 
         x = torch.randn(2, 8, algebra_3d.dim)
         out = layer(x)
 
         assert out.shape == (2, 8, algebra_3d.dim)
-        assert layer.shuffle == 'none'
+        assert layer.shuffle == "none"
         assert layer.channel_permutation is None
 
     def test_fixed_shuffle(self, algebra_3d):
         """Test fixed shuffle creates consistent permutation."""
-        layer = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle='fixed')
+        layer = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle="fixed")
 
         # Check that permutation exists and is valid
         assert layer.channel_permutation is not None
@@ -578,9 +578,9 @@ class TestShuffleOptions:
     def test_random_shuffle(self, algebra_3d):
         """Test random shuffle generates different permutations each forward pass."""
         torch.manual_seed(42)  # For reproducibility of test
-        layer = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle='random')
+        layer = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle="random")
 
-        assert layer.shuffle == 'random'
+        assert layer.shuffle == "random"
         assert layer.channel_permutation is None
 
         # Same input should potentially give different outputs
@@ -601,7 +601,7 @@ class TestShuffleOptions:
         # But to avoid flaky test, we just check the functionality works
         assert all(out.shape == (2, 8, algebra_3d.dim) for out in outputs)
 
-    @pytest.mark.parametrize("shuffle_mode", ['none', 'fixed', 'random'])
+    @pytest.mark.parametrize("shuffle_mode", ["none", "fixed", "random"])
     def test_shuffle_preserves_output_shape(self, algebra_3d, shuffle_mode):
         """Test that shuffle doesn't affect output shape."""
         x = torch.randn(2, 8, algebra_3d.dim)
@@ -611,7 +611,7 @@ class TestShuffleOptions:
         out = layer(x)
         assert out.shape == (2, 16, algebra_3d.dim)
 
-    @pytest.mark.parametrize("shuffle_mode", ['none', 'fixed', 'random'])
+    @pytest.mark.parametrize("shuffle_mode", ["none", "fixed", "random"])
     def test_shuffle_gradient_flow(self, algebra_3d, shuffle_mode):
         """Test that gradients flow correctly with shuffle."""
         layer = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle=shuffle_mode)
@@ -628,9 +628,9 @@ class TestShuffleOptions:
 
     def test_fixed_shuffle_different_per_layer(self, algebra_3d):
         """Test that different layer instances get different fixed permutations."""
-        layer1 = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle='fixed')
+        layer1 = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle="fixed")
 
-        layer2 = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle='fixed')
+        layer2 = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle="fixed")
 
         # Different instances should have different permutations
         # (with very high probability)
@@ -639,23 +639,23 @@ class TestShuffleOptions:
     def test_shuffle_in_clifford_linear_backend(self, algebra_3d):
         """Test shuffle parameter works via CliffordLinear backend."""
         layer = CliffordLinear(
-            algebra=algebra_3d, in_channels=8, out_channels=8, backend='rotor', num_rotor_pairs=2, shuffle='fixed'
+            algebra=algebra_3d, in_channels=8, out_channels=8, backend="rotor", num_rotor_pairs=2, shuffle="fixed"
         )
 
         x = torch.randn(2, 8, algebra_3d.dim)
         out = layer(x)
 
         assert out.shape == (2, 8, algebra_3d.dim)
-        assert layer.gadget.shuffle == 'fixed'
+        assert layer.gadget.shuffle == "fixed"
         assert layer.gadget.channel_permutation is not None
 
-    @pytest.mark.parametrize("shuffle_mode", ['none', 'fixed', 'random'])
+    @pytest.mark.parametrize("shuffle_mode", ["none", "fixed", "random"])
     def test_shuffle_repr(self, algebra_3d, shuffle_mode):
         """Test that shuffle appears in string representation."""
         layer = RotorGadget(algebra=algebra_3d, in_channels=8, out_channels=8, num_rotor_pairs=2, shuffle=shuffle_mode)
 
         repr_str = repr(layer)
-        assert f'shuffle={shuffle_mode}' in repr_str
+        assert f"shuffle={shuffle_mode}" in repr_str
 
 
 class TestCliffordLinearBackend:
@@ -667,7 +667,7 @@ class TestCliffordLinearBackend:
             algebra=algebra_3d,
             in_channels=4,
             out_channels=8,
-            backend='traditional',
+            backend="traditional",
         )
 
         x = torch.randn(2, 4, algebra_3d.dim)
@@ -684,7 +684,7 @@ class TestCliffordLinearBackend:
             algebra=algebra_3d,
             in_channels=4,
             out_channels=8,
-            backend='rotor',
+            backend="rotor",
             num_rotor_pairs=2,
         )
 
@@ -703,7 +703,7 @@ class TestCliffordLinearBackend:
                 algebra=algebra_3d,
                 in_channels=4,
                 out_channels=8,
-                backend='invalid',
+                backend="invalid",
             )
 
     def test_backward_compatibility(self, algebra_3d):
@@ -715,10 +715,10 @@ class TestCliffordLinearBackend:
         )
 
         # Should default to traditional
-        assert layer.backend == 'traditional'
+        assert layer.backend == "traditional"
         assert layer.weight is not None
         assert layer.gadget is None
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

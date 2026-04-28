@@ -12,6 +12,8 @@ import torch.nn.functional as F
 from core.algebra import CliffordAlgebra
 from core.analysis import (
     CommutatorAnalyzer as CoreCommutatorAnalyzer,
+)
+from core.analysis import (
     DimensionLifter,
     EffectiveDimensionAnalyzer,
     GeodesicFlow,
@@ -61,7 +63,7 @@ class PreExplorationAnalyzer:
         algebra: Optional[CliffordAlgebra] = None,
         n_samples: int = 200,
         sample_radius: float = 0.5,
-        device: str = 'cpu',
+        device: str = "cpu",
     ):
         self.algebra = algebra
         self.n_samples = n_samples
@@ -175,13 +177,13 @@ class PreExplorationAnalyzer:
                 result.landscape_coherence = gf.coherence(mv_land)
                 result.landscape_curvature = gf.curvature(mv_land)
                 result.causal_report = {
-                    'coherence': result.landscape_coherence,
-                    'curvature': result.landscape_curvature,
-                    'causal': (result.landscape_coherence > 0.5 and result.landscape_curvature < 0.5),
-                    'label': (
-                        'Causal - smooth, aligned flow'
+                    "coherence": result.landscape_coherence,
+                    "curvature": result.landscape_curvature,
+                    "causal": (result.landscape_coherence > 0.5 and result.landscape_curvature < 0.5),
+                    "label": (
+                        "Causal - smooth, aligned flow"
                         if (result.landscape_coherence > 0.5 and result.landscape_curvature < 0.5)
-                        else 'Noisy - fragmented flow'
+                        else "Noisy - fragmented flow"
                     ),
                 }
             except Exception:

@@ -60,20 +60,21 @@ What's verified (synthetic data):
   These test the field coupling property, not real-world PDE benchmark accuracy.
 """
 
+import math
+
 import torch
 import torch.nn as nn
-import math
 from torch.utils.data import DataLoader, TensorDataset
-from core.algebra import CliffordAlgebra
-from layers import (
-    CliffordLinear,
-    CliffordLayerNorm,
-    RotorLayer,
-    CliffordModule,
-)
-from functional.activation import GeometricGELU
-from tasks.base import BaseTask
 
+from core.algebra import CliffordAlgebra
+from functional.activation import GeometricGELU
+from layers import (
+    CliffordLayerNorm,
+    CliffordLinear,
+    CliffordModule,
+    RotorLayer,
+)
+from tasks.base import BaseTask
 
 # ---------------------------------------------------------------------------
 # Model
@@ -228,7 +229,7 @@ def _generate_taylor_green(n_samples, grid_size, nu=0.01, dt=0.1):
     H = W = grid_size
     xs = torch.linspace(0, 2 * math.pi, H + 1)[:-1]
     ys = torch.linspace(0, 2 * math.pi, W + 1)[:-1]
-    X, Y = torch.meshgrid(xs, ys, indexing='ij')
+    X, Y = torch.meshgrid(xs, ys, indexing="ij")
 
     t0 = torch.rand(n_samples) * 5.0
 
@@ -288,10 +289,10 @@ class CliffordPDETask(BaseTask):
         return nn.MSELoss()
 
     def get_data(self):
-        grid_size = self.cfg.dataset.get('grid_size', 32)
-        n_samples = self.cfg.dataset.get('n_samples', 128)
-        nu = self.cfg.dataset.get('nu', 0.01)
-        dt = self.cfg.dataset.get('dt', 0.1)
+        grid_size = self.cfg.dataset.get("grid_size", 32)
+        n_samples = self.cfg.dataset.get("n_samples", 128)
+        nu = self.cfg.dataset.get("nu", 0.01)
+        dt = self.cfg.dataset.get("dt", 0.1)
 
         vel_in, p_in, vel_tgt, p_tgt = _generate_taylor_green(
             n_samples,

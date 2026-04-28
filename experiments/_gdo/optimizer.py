@@ -62,9 +62,9 @@ class GDOOptimizer(Optimizer):
         for manifold in (MANIFOLD_SPIN, MANIFOLD_SPHERE, MANIFOLD_EUCLIDEAN):
             params = grouped[manifold]
             if params:
-                param_groups.append({'params': params, 'manifold': manifold})
+                param_groups.append({"params": params, "manifold": manifold})
         if not param_groups:
-            param_groups = [{'params': list(model.parameters()), 'manifold': MANIFOLD_EUCLIDEAN}]
+            param_groups = [{"params": list(model.parameters()), "manifold": MANIFOLD_EUCLIDEAN}]
         return cls(param_groups, lr=lr, betas=betas, eps=eps, algebra=algebra, max_bivector_norm=max_bivector_norm)
 
     def set_warp_state(self, warp_lr: Optional[torch.Tensor]):
@@ -89,29 +89,29 @@ class GDOOptimizer(Optimizer):
                 loss = closure()
 
         for group_idx, group in enumerate(self.param_groups):
-            betas = group['betas']
+            betas = group["betas"]
             beta1, beta2 = betas
-            eps = group['eps']
-            lr = group['lr']
-            manifold = group.get('manifold', MANIFOLD_EUCLIDEAN)
+            eps = group["eps"]
+            lr = group["lr"]
+            manifold = group.get("manifold", MANIFOLD_EUCLIDEAN)
 
             if self._group_scales is not None and group_idx < len(self._group_scales):
                 lr = lr * self._group_scales[group_idx]
 
-            for p in group['params']:
+            for p in group["params"]:
                 if p.grad is None:
                     continue
                 grad = p.grad
 
                 state = self.state[p]
                 if len(state) == 0:
-                    state['step'] = 0
-                    state['exp_avg'] = torch.zeros_like(p)
-                    state['exp_avg_sq'] = torch.zeros_like(p)
+                    state["step"] = 0
+                    state["exp_avg"] = torch.zeros_like(p)
+                    state["exp_avg_sq"] = torch.zeros_like(p)
 
-                state['step'] += 1
-                t = state['step']
-                exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
+                state["step"] += 1
+                t = state["step"]
+                exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
 
                 exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)

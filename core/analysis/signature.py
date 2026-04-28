@@ -12,18 +12,19 @@ Provides :class:`MetricSearch` (probe-based signature discovery) and
 reduction and bootstrap confidence intervals).
 """
 
-import torch
-import torch.nn as nn
-import warnings
-import copy
 import concurrent.futures
+import copy
+import warnings
 from collections import Counter
 from typing import Dict, List, Optional, Tuple
 
-from core.algebra import CliffordAlgebra
-from layers import CliffordLinear, RotorLayer, BladeSelector
+import torch
+import torch.nn as nn
 
-from ._types import CONSTANTS, DimensionResult, SignatureResult, SamplingConfig
+from core.algebra import CliffordAlgebra
+from layers import BladeSelector, CliffordLinear, RotorLayer
+
+from ._types import CONSTANTS, DimensionResult, SamplingConfig, SignatureResult
 from .geodesic import GeodesicFlow
 
 
@@ -57,7 +58,7 @@ class _SignatureProbe(nn.Module):
 def _apply_biased_init(
     probe: _SignatureProbe,
     algebra: CliffordAlgebra,
-    bias_type: str = 'random',
+    bias_type: str = "random",
 ) -> None:
     """Biases RotorLayer bivector weights based on signature type.
 
@@ -71,19 +72,19 @@ def _apply_biased_init(
     hyp = CONSTANTS.bv_sq_hyperbolic_bound
     for rotor in probe.get_rotor_layers():
         with torch.no_grad():
-            if bias_type == 'euclidean':
+            if bias_type == "euclidean":
                 weights = torch.where(bv_sq < ell, torch.tensor(1.0), torch.tensor(0.1))
                 rotor.bivector_weights.copy_(
                     weights.unsqueeze(0).expand_as(rotor.bivector_weights)
                     + torch.randn_like(rotor.bivector_weights) * 0.05
                 )
-            elif bias_type == 'minkowski':
+            elif bias_type == "minkowski":
                 weights = torch.where(bv_sq.abs() > hyp, torch.tensor(1.0), torch.tensor(0.1))
                 rotor.bivector_weights.copy_(
                     weights.unsqueeze(0).expand_as(rotor.bivector_weights)
                     + torch.randn_like(rotor.bivector_weights) * 0.05
                 )
-            elif bias_type == 'projective':
+            elif bias_type == "projective":
                 nn.init.uniform_(rotor.bivector_weights, -0.5, 0.5)
             else:  # 'random'
                 nn.init.normal_(rotor.bivector_weights, 0.0, 0.3)
@@ -102,7 +103,7 @@ class MetricSearch:
 
     def __init__(
         self,
-        device: str = 'cpu',
+        device: str = "cpu",
         num_probes: int = 6,
         probe_epochs: int = 80,
         probe_lr: float = 0.005,
@@ -152,7 +153,7 @@ class MetricSearch:
         self,
         mv_data: torch.Tensor,
         algebra: CliffordAlgebra,
-        bias_type: str = 'random',
+        bias_type: str = "random",
     ) -> Dict:
         """Trains a single probe and returns results."""
         probe = _SignatureProbe(algebra, channels=self.probe_channels)
@@ -162,7 +163,7 @@ class MetricSearch:
         gf = GeodesicFlow(algebra, k=self.k)
         optimizer = torch.optim.Adam(probe.parameters(), lr=self.probe_lr)
 
-        best_loss = float('inf')
+        best_loss = float("inf")
         best_state = None
         patience_counter = 0
         N = mv_data.shape[0]
@@ -207,10 +208,10 @@ class MetricSearch:
             curv = gf.curvature(output)
 
         return {
-            'loss': best_loss,
-            'coherence': coh,
-            'curvature': curv,
-            'probe': probe,
+            "loss": best_loss,
+            "coherence": coh,
+            "curvature": curv,
+            "probe": probe,
         }
 
     def _analyze_bivector_energy(
@@ -253,18 +254,18 @@ class MetricSearch:
 
             sq_val = bv_sq[bv_idx_pos].item()
             if sq_val < CONSTANTS.bv_sq_elliptic_bound:
-                sig_type = 'elliptic'
+                sig_type = "elliptic"
             elif sq_val > CONSTANTS.bv_sq_hyperbolic_bound:
-                sig_type = 'hyperbolic'
+                sig_type = "hyperbolic"
             else:
-                sig_type = 'null'
+                sig_type = "null"
 
             for b in bits:
                 if b not in base_type_energy:
                     base_type_energy[b] = {
-                        'elliptic': 0.0,
-                        'hyperbolic': 0.0,
-                        'null': 0.0,
+                        "elliptic": 0.0,
+                        "hyperbolic": 0.0,
+                        "null": 0.0,
                     }
                     base_active[b] = 0.0
                 base_type_energy[b][sig_type] += energy_val
@@ -279,9 +280,9 @@ class MetricSearch:
                 continue
             type_energy = base_type_energy[b_idx]
             dominant = max(type_energy, key=type_energy.get)
-            if dominant == 'null':
+            if dominant == "null":
                 active_null += 1
-            elif dominant == 'hyperbolic':
+            elif dominant == "hyperbolic":
                 active_negative += 1
             else:
                 active_positive += 1
@@ -307,11 +308,11 @@ class MetricSearch:
             p = original_dim
 
         energy_breakdown = {
-            'per_bivector_energy': normalized_energy.tolist(),
-            'active_positive': active_positive,
-            'active_negative': active_negative,
-            'active_null': active_null,
-            'bv_sq_scalar': bv_sq.tolist(),
+            "per_bivector_energy": normalized_energy.tolist(),
+            "active_positive": active_positive,
+            "active_negative": active_negative,
+            "active_null": active_null,
+            "bv_sq_scalar": bv_sq.tolist(),
         }
 
         return (p, q, r), energy_breakdown
@@ -326,7 +327,7 @@ class MetricSearch:
             Tuple[int, int, int]: Optimal signature (p, q, r).
         """
         result = self.search_detailed(data)
-        return result['signature']
+        return result["signature"]
 
     def search_detailed(self, data: torch.Tensor) -> Dict:
         """Returns signature and full diagnostics.
@@ -343,9 +344,9 @@ class MetricSearch:
 
         mv_data, algebra = self._lift_data(data)
 
-        bias_types = ['euclidean', 'minkowski', 'projective']
+        bias_types = ["euclidean", "minkowski", "projective"]
         while len(bias_types) < self.num_probes:
-            bias_types.append('random')
+            bias_types.append("random")
         bias_types = bias_types[: self.num_probes]
 
         def _run_probe(bias_type):
@@ -359,21 +360,21 @@ class MetricSearch:
                 futures = [pool.submit(_run_probe, bt) for bt in bias_types]
                 probe_results = [f.result() for f in futures]
 
-        best_idx = min(range(len(probe_results)), key=lambda i: probe_results[i]['loss'])
+        best_idx = min(range(len(probe_results)), key=lambda i: probe_results[i]["loss"])
         best = probe_results[best_idx]
 
-        signature, energy_breakdown = self._analyze_bivector_energy(best['probe'], algebra, X)
+        signature, energy_breakdown = self._analyze_bivector_energy(best["probe"], algebra, X)
 
         return {
-            'signature': signature,
-            'coherence': best['coherence'],
-            'curvature': best['curvature'],
-            'energy_breakdown': energy_breakdown,
-            'per_probe_results': [
+            "signature": signature,
+            "coherence": best["coherence"],
+            "curvature": best["curvature"],
+            "energy_breakdown": energy_breakdown,
+            "per_probe_results": [
                 {
-                    'loss': r['loss'],
-                    'coherence': r['coherence'],
-                    'curvature': r['curvature'],
+                    "loss": r["loss"],
+                    "coherence": r["coherence"],
+                    "curvature": r["curvature"],
                 }
                 for r in probe_results
             ],

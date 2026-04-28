@@ -3,20 +3,20 @@
 #
 # Tests for rotor_translate.py -- direct rotor-to-formula translation.
 
-import pytest
 import numpy as np
+import pytest
 import torch
 
 from core.algebra import CliffordAlgebra
 
 pytestmark = pytest.mark.unit
+from models.sr.net import SRGBN
 from models.sr.translator import (
+    RotorTerm,
     RotorTranslator,
     SimplePlane,
-    RotorTerm,
     _correlation,
 )
-from models.sr.net import SRGBN
 
 
 def test_import_and_instantiate(algebra_3d):

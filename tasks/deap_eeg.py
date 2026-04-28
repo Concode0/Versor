@@ -15,15 +15,16 @@ Key: emotional states are pushed into Grade-0 (rotor-invariant scalars).
 
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
-from tasks.base import BaseTask
 from datalib.deap import get_deap_loaders, get_group_sizes
-from models.deap import EEGNet
 from log import get_logger
+from models.deap import EEGNet
+from tasks.base import BaseTask
 
 logger = get_logger(__name__)
 
-VADL_NAMES = ['Valence', 'Arousal', 'Dominance', 'Liking']
+VADL_NAMES = ["Valence", "Arousal", "Dominance", "Liking"]
 
 
 class DEAPEEGTask(BaseTask):
@@ -36,18 +37,18 @@ class DEAPEEGTask(BaseTask):
     """
 
     def __init__(self, cfg):
-        self.data_root = cfg.dataset.get('data_root', 'data/deap/data_preprocessed_python')
-        self.subject_id = cfg.dataset.get('subject_id', 1)
-        self.eval_mode = cfg.dataset.get('eval_mode', 'cross_subject')
-        self.window_size = cfg.dataset.get('window_size', 512)
-        self.stride = cfg.dataset.get('stride', None)
+        self.data_root = cfg.dataset.get("data_root", "data/deap/data_preprocessed_python")
+        self.subject_id = cfg.dataset.get("subject_id", 1)
+        self.eval_mode = cfg.dataset.get("eval_mode", "cross_subject")
+        self.window_size = cfg.dataset.get("window_size", 512)
+        self.stride = cfg.dataset.get("stride", None)
         super().__init__(cfg)
 
     def setup_algebra(self):
         return CliffordAlgebra(
-            p=self.cfg.algebra.get('p', 3),
-            q=self.cfg.algebra.get('q', 1),
-            r=self.cfg.algebra.get('r', 0),
+            p=self.cfg.algebra.get("p", 3),
+            q=self.cfg.algebra.get("q", 1),
+            r=self.cfg.algebra.get("r", 0),
             device=self.device,
         )
 
@@ -55,7 +56,7 @@ class DEAPEEGTask(BaseTask):
         group_sizes = get_group_sizes()
 
         profiles = None
-        if self.cfg.model.get('use_profiler', False):
+        if self.cfg.model.get("use_profiler", False):
             profiles = self._compute_profiles(group_sizes)
 
         return EEGNet(
@@ -82,7 +83,7 @@ class DEAPEEGTask(BaseTask):
         for name in sorted(group_sizes.keys()):
             feats = torch.stack([ds[i][0][name] for i in range(len(ds))])  # [N, dim]
             U, V = compute_uncertainty_and_alignment(self.algebra, feats.to(self.device))
-            profiles[name] = {'U': U, 'V': V}
+            profiles[name] = {"U": U, "V": V}
             logger.info("Profile %s: U=%.4f, V shape=%s", name, U, list(V.shape))
 
         return profiles
@@ -136,7 +137,7 @@ class DEAPEEGTask(BaseTask):
         # RMSE per VADL dimension
         rmse = ((preds_tensor - labels_tensor) ** 2).mean(dim=0).sqrt()
         for i, name in enumerate(VADL_NAMES):
-            metrics[f'{name}_RMSE'] = rmse[i].item()
+            metrics[f"{name}_RMSE"] = rmse[i].item()
 
         # Binary F1 -- fixed threshold 0.5 (Koelstra 2012: midpoint of 1-9 scale = (5-1)/8)
         try:
@@ -147,7 +148,7 @@ class DEAPEEGTask(BaseTask):
             for i, name in enumerate(VADL_NAMES):
                 pred_bin = (preds_np[:, i] > 0.5).astype(int)
                 label_bin = (labels_np[:, i] > 0.5).astype(int)
-                metrics[f'{name}_F1'] = f1_score(label_bin, pred_bin, average='binary', zero_division=0)
+                metrics[f"{name}_F1"] = f1_score(label_bin, pred_bin, average="binary", zero_division=0)
         except ImportError:
             logger.warning("scikit-learn not available, skipping F1 metrics.")
 
@@ -162,12 +163,12 @@ class DEAPEEGTask(BaseTask):
         logger.info(header)
         logger.info(sep)
         for name in VADL_NAMES:
-            rmse = metrics.get(f'{name}_RMSE', float('nan'))
-            f1 = metrics.get(f'{name}_F1', float('nan'))
+            rmse = metrics.get(f"{name}_RMSE", float("nan"))
+            f1 = metrics.get(f"{name}_F1", float("nan"))
             logger.info(f"{name:<13} {rmse:>8.4f} {f1:>8.4f}")
         logger.info(sep)
-        mean_rmse = sum(metrics.get(f'{n}_RMSE', 0) for n in VADL_NAMES) / len(VADL_NAMES)
-        mean_f1 = sum(metrics.get(f'{n}_F1', 0) for n in VADL_NAMES) / len(VADL_NAMES)
+        mean_rmse = sum(metrics.get(f"{n}_RMSE", 0) for n in VADL_NAMES) / len(VADL_NAMES)
+        mean_f1 = sum(metrics.get(f"{n}_F1", 0) for n in VADL_NAMES) / len(VADL_NAMES)
         logger.info(f"{'Mean':<13} {mean_rmse:>8.4f} {mean_f1:>8.4f}")
         logger.info(sep)
 
@@ -181,7 +182,7 @@ class DEAPEEGTask(BaseTask):
         from tqdm import tqdm
 
         pbar = tqdm(range(self.epochs))
-        best_val_rmse = float('inf')
+        best_val_rmse = float("inf")
 
         for epoch in pbar:
             self.model.train()
@@ -196,7 +197,7 @@ class DEAPEEGTask(BaseTask):
             avg_loss = total_loss / max(n_batches, 1)
 
             val_metrics = self.evaluate(val_loader)
-            val_rmse_mean = sum(v for k, v in val_metrics.items() if k.endswith('_RMSE')) / 4
+            val_rmse_mean = sum(v for k, v in val_metrics.items() if k.endswith("_RMSE")) / 4
 
             self.scheduler.step(val_rmse_mean)
 
@@ -205,9 +206,9 @@ class DEAPEEGTask(BaseTask):
                 self.save_checkpoint(f"{self.cfg.name}_best.pt")
 
             display = {
-                'Loss': avg_loss,
-                'Val_RMSE': val_rmse_mean,
-                'LR': self.optimizer.param_groups[0]['lr'],
+                "Loss": avg_loss,
+                "Val_RMSE": val_rmse_mean,
+                "LR": self.optimizer.param_groups[0]["lr"],
             }
             desc = " | ".join(f"{k}: {v:.4f}" for k, v in display.items())
             pbar.set_description(desc)

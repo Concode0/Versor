@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Module mapping for sympy.lambdify to ensure numpy ufuncs work on compound exprs.
 # cosh/sinh use safe wrappers to prevent overflow on large theta values.
-from models.sr.numerics import safe_exp, safe_cosh, safe_sinh
+from models.sr.numerics import safe_cosh, safe_exp, safe_sinh
 
 LAMBDIFY_MODULES = [
     {

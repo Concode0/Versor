@@ -7,13 +7,14 @@
 
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader
+
 from core.algebra import CliffordAlgebra
-from layers import RotorLayer, BladeSelector, CliffordModule
-from functional.loss import SubspaceLoss
-from tasks.base import BaseTask
 from core.visualizer import GeneralVisualizer
 from examples.datasets.synthetic import Figure8Dataset
-from torch.utils.data import DataLoader
+from functional.loss import SubspaceLoss
+from layers import BladeSelector, CliffordModule, RotorLayer
+from tasks.base import BaseTask
 
 
 class ManifoldNetwork(CliffordModule):
@@ -55,7 +56,7 @@ class ManifoldTask(BaseTask):
         """Subspace Loss. Only Grade 1 allowed."""
         grade_1_indices = []
         for i in range(self.algebra.dim):
-            if bin(i).count('1') == 1:
+            if bin(i).count("1") == 1:
                 grade_1_indices.append(i)
 
         return SubspaceLoss(self.algebra, target_indices=grade_1_indices)

@@ -7,11 +7,11 @@
 
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
-from layers.primitives.base import CliffordModule
-from layers import CliffordLinear
-from layers import MultiRotorLayer
 from functional.activation import GeometricGELU
+from layers import CliffordLinear, MultiRotorLayer
+from layers.primitives.base import CliffordModule
 
 
 class MultiRotorModel(CliffordModule):

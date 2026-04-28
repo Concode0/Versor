@@ -36,7 +36,7 @@ class DimensionalLiftOracle:
         self.min_improvement = min_improvement
         self.accept_blend = accept_blend
 
-        self._best_loss = float('inf')
+        self._best_loss = float("inf")
         self._steps_no_improve = 0
         self._lift_count = 0
         self._consecutive_fails = 0

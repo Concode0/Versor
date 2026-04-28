@@ -6,7 +6,9 @@
 #
 
 import torch
+
 from core.algebra import CliffordAlgebra
+
 from ..primitives.base import CliffordModule
 
 
@@ -49,17 +51,17 @@ class ProjectiveEmbedding(CliffordModule):
         # Grade-1 indices for the Euclidean basis vectors e_1..e_d
         # In binary: e_i has index 2^(i-1), so for i=0..d-1: index = 1 << i
         g1_idx = (1 << torch.arange(d)).long()
-        self.register_buffer('_g1_idx', g1_idx)
+        self.register_buffer("_g1_idx", g1_idx)
 
         # Index of the degenerate basis vector e_0
         # It's the (p+q)-th basis vector, so index = 1 << (p + q)
         idx_e0 = 1 << (algebra.p + algebra.q)
-        self.register_buffer('_idx_e0', torch.tensor(idx_e0, dtype=torch.long))
+        self.register_buffer("_idx_e0", torch.tensor(idx_e0, dtype=torch.long))
 
         # Precomputed e_0 multivector for additive embedding
         e0 = torch.zeros(algebra.dim)
         e0[idx_e0] = 1.0
-        self.register_buffer('_e0', e0)
+        self.register_buffer("_e0", e0)
 
     def embed(self, x: torch.Tensor) -> torch.Tensor:
         """Embed Euclidean points into PGA as grade-1 elements.

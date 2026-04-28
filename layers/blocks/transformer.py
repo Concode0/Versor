@@ -7,11 +7,13 @@
 
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
+
+from ..adapters.mother import EntropyGatedAttention
 from ..primitives.base import CliffordModule
 from ..primitives.normalization import CliffordLayerNorm
 from .attention import GeometricProductAttention
-from ..adapters.mother import EntropyGatedAttention
 from .multi_rotor_ffn import MultiRotorFFN
 
 

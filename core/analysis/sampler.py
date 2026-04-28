@@ -12,8 +12,9 @@ stratification criterion -- it does not assume a specific metric
 signature for the data.
 """
 
-import torch
 from typing import Dict, List, Tuple, Union
+
+import torch
 
 from ._types import SamplingConfig
 
@@ -91,6 +92,7 @@ class StatisticalSampler:
         without assuming a specific metric signature.
         """
         from core.algebra import CliffordAlgebra
+
         from .geodesic import GeodesicFlow
 
         N, D = data.shape

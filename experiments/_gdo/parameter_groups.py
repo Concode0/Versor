@@ -11,6 +11,8 @@ import torch.nn as nn
 from core.algebra import CliffordAlgebra
 from core.analysis import (
     CommutatorAnalyzer as CoreCommutatorAnalyzer,
+)
+from core.analysis import (
     GeodesicFlow,
     SpectralAnalyzer,
 )

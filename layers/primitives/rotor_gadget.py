@@ -9,12 +9,14 @@ Reference:
     from Irreducibles." arXiv:2507.11688v1, Section 4.2, Equation 6
 """
 
+from typing import Literal
+
 import torch
 import torch.nn as nn
-from typing import Literal
-from core.validation import check_multivector, check_channels
 
 from core.algebra import CliffordAlgebra
+from core.validation import check_channels, check_multivector
+
 from .base import CliffordModule
 
 
@@ -48,8 +50,8 @@ class RotorGadget(CliffordModule):
         in_channels: int,
         out_channels: int,
         num_rotor_pairs: int = 4,
-        aggregation: Literal['mean', 'sum', 'learned'] = 'mean',
-        shuffle: Literal['none', 'fixed', 'random'] = 'none',
+        aggregation: Literal["mean", "sum", "learned"] = "mean",
+        shuffle: Literal["none", "fixed", "random"] = "none",
         bias: bool = False,
     ):
         """Initialize rotor gadget layer.
@@ -77,9 +79,9 @@ class RotorGadget(CliffordModule):
         # Use algebra's precomputed grade masks for bivector indices
         if algebra.num_grades > 2:
             bv_mask = algebra.grade_masks[2]
-            self.register_buffer('bivector_indices', bv_mask.nonzero(as_tuple=False).squeeze(-1))
+            self.register_buffer("bivector_indices", bv_mask.nonzero(as_tuple=False).squeeze(-1))
         else:
-            self.register_buffer('bivector_indices', torch.tensor([], dtype=torch.long, device=algebra.device))
+            self.register_buffer("bivector_indices", torch.tensor([], dtype=torch.long, device=algebra.device))
         self.num_bivectors = len(self.bivector_indices)
 
         if self.num_bivectors == 0:
@@ -88,27 +90,27 @@ class RotorGadget(CliffordModule):
         # Rotor parameters: bivector coefficients for exponential map
         # Left rotors: [num_rotor_pairs, num_bivectors]
         self.bivector_left = nn.Parameter(torch.randn(num_rotor_pairs, self.num_bivectors) * 0.1)
-        self.bivector_left._manifold = 'spin'
+        self.bivector_left._manifold = "spin"
         # Right rotors: [num_rotor_pairs, num_bivectors]
         self.bivector_right = nn.Parameter(torch.randn(num_rotor_pairs, self.num_bivectors) * 0.1)
-        self.bivector_right._manifold = 'spin'
+        self.bivector_right._manifold = "spin"
 
         # Channel routing: block diagonal partitioning (paper style)
         # Each rotor pair processes a subset of input channels
         self._setup_channel_routing()
 
         # Aggregation weights (if learned)
-        if aggregation == 'learned':
+        if aggregation == "learned":
             # Learned weights for combining rotor outputs
             self.agg_weights = nn.Parameter(torch.ones(num_rotor_pairs, out_channels) / num_rotor_pairs)
         else:
-            self.register_buffer('agg_weights', None)
+            self.register_buffer("agg_weights", None)
 
         # Optional bias
         if bias:
             self.bias = nn.Parameter(torch.zeros(out_channels, algebra.dim))
         else:
-            self.register_buffer('bias', None)
+            self.register_buffer("bias", None)
 
         # Rotor cache for eval mode
         self._cached_rotors = None
@@ -147,19 +149,19 @@ class RotorGadget(CliffordModule):
         for i, (s, e) in enumerate(in_indices):
             if e > s:
                 ch2pair[s:e] = i
-        self.register_buffer('_ch2pair', ch2pair)
+        self.register_buffer("_ch2pair", ch2pair)
 
         # Set up channel shuffle permutation
-        if self.shuffle == 'fixed':
+        if self.shuffle == "fixed":
             # Create fixed random permutation at initialization
             perm = torch.randperm(self.in_channels)
-            self.register_buffer('channel_permutation', perm)
-        elif self.shuffle == 'random':
+            self.register_buffer("channel_permutation", perm)
+        elif self.shuffle == "random":
             # Random shuffle each forward pass - no fixed permutation
-            self.register_buffer('channel_permutation', None)
+            self.register_buffer("channel_permutation", None)
         else:  # 'none'
             # No shuffle - identity permutation
-            self.register_buffer('channel_permutation', None)
+            self.register_buffer("channel_permutation", None)
 
     def _bivector_to_multivector(self, bivector_coeffs: torch.Tensor) -> torch.Tensor:
         """Convert bivector coefficients to full multivector via vectorized scatter.
@@ -213,9 +215,9 @@ class RotorGadget(CliffordModule):
         check_channels(x, self.in_channels, "RotorGadget input")
 
         # Apply input channel shuffle if enabled
-        if self.shuffle == 'fixed':
+        if self.shuffle == "fixed":
             x = x[:, self.channel_permutation, :]
-        elif self.shuffle == 'random':
+        elif self.shuffle == "random":
             perm = torch.randperm(self.in_channels, device=x.device)
             x = x[:, perm, :]
 
@@ -254,7 +256,7 @@ class RotorGadget(CliffordModule):
         """
         batch_size = x.shape[0]
 
-        if self.aggregation == 'learned':
+        if self.aggregation == "learned":
             # Weighted aggregation with learned weights
             # agg_weights: [num_pairs, out_channels]
             # Need to apply per-block
@@ -274,7 +276,7 @@ class RotorGadget(CliffordModule):
 
             out = torch.stack(outputs, dim=0).sum(dim=0)  # [B, out_ch, dim]
 
-        elif self.aggregation == 'sum':
+        elif self.aggregation == "sum":
             # Simple channel-wise sum with reshaping
             if x.shape[1] == self.out_channels:
                 out = x

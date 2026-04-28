@@ -16,7 +16,6 @@ workaround path.
 
 import torch
 
-
 if torch.backends.mps.is_available():
 
     def safe_linalg_solve(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:

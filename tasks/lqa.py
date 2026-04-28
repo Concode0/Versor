@@ -22,11 +22,11 @@ import torch.nn.functional as F
 from omegaconf import DictConfig
 
 from core.algebra import CliffordAlgebra
-from tasks.base import BaseTask
 from datalib.lqa import get_lqa_loaders
-from models.lqa.glr_net import GLRNet
 from functional.loss import AsymmetryLoss, InvolutionConsistencyLoss
 from log import get_logger
+from models.lqa.glr_net import GLRNet
+from tasks.base import BaseTask
 
 logger = get_logger(__name__)
 
@@ -351,7 +351,7 @@ class LQATask(BaseTask):
                 logs["ValAcc"] = acc
                 logs["BestAcc"] = best_acc
 
-            current_lr = self.optimizer.param_groups[0]['lr']
+            current_lr = self.optimizer.param_groups[0]["lr"]
             logs["Loss"] = avg_loss
             logs["LR"] = current_lr
             desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])

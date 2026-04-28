@@ -43,7 +43,7 @@ class VersorSR(BaseEstimator, RegressorMixin):
         sparsity_weight=0.01,
         random_state=42,
         max_time=600,
-        exp_policy='balanced',
+        exp_policy="balanced",
         max_bivector_norm=10.0,
         basis_config=None,
     ):
@@ -138,8 +138,9 @@ class VersorSR(BaseEstimator, RegressorMixin):
         self.formula_ = ""
         self._formula_fn = None
         try:
-            from models.sr.unbender import IterativeUnbender
             import sympy
+
+            from models.sr.unbender import IterativeUnbender
 
             x_mean_t = torch.from_numpy(self.x_mean_)
             x_std_t = torch.from_numpy(self.x_std_)
@@ -151,7 +152,7 @@ class VersorSR(BaseEstimator, RegressorMixin):
                 device="cpu",
                 max_stages=3,
                 stage_epochs=self.epochs // 3,
-                implicit_mode='auto',
+                implicit_mode="auto",
                 svd_warmstart=True,
                 basis_config=self.basis_config or {},
             )
@@ -194,7 +195,7 @@ class VersorSR(BaseEstimator, RegressorMixin):
         X = np.asarray(X, dtype=np.float32)
 
         # Try formula-based prediction first (reflects actual SR quality)
-        if hasattr(self, '_formula_fn') and self._formula_fn is not None:
+        if hasattr(self, "_formula_fn") and self._formula_fn is not None:
             try:
                 X_norm = (X - self.x_mean_) / self.x_std_
                 n_vars = X.shape[1]

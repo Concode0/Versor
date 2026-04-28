@@ -5,13 +5,12 @@
 # you may not use this file except in compliance with the License.
 #
 
-import torch
 import pytest
+import torch
+
 from core.algebra import CliffordAlgebra
 from core.decomposition import ExpPolicy
-from layers import CliffordLinear
-from layers import RotorLayer
-from layers import MultiRotorLayer
+from layers import CliffordLinear, MultiRotorLayer, RotorLayer
 from layers.primitives.reflection import ReflectionLayer
 
 pytestmark = pytest.mark.unit
@@ -229,7 +228,7 @@ class TestLayers:
 
     def test_reflection_different_signatures(self):
         for p, q in [(2, 0), (3, 0), (2, 1), (3, 1)]:
-            alg = CliffordAlgebra(p, q, device='cpu')
+            alg = CliffordAlgebra(p, q, device="cpu")
             C = 2
             layer = ReflectionLayer(alg, channels=C)
             x = torch.randn(3, C, alg.dim)
@@ -268,12 +267,12 @@ class TestLayers:
 # --- torch.compile smoke tests ---
 
 
-@pytest.mark.skipif(not hasattr(torch, 'compile'), reason="torch.compile not available")
+@pytest.mark.skipif(not hasattr(torch, "compile"), reason="torch.compile not available")
 class TestCompile:
     def test_compile_rotor_layer(self, algebra_3d):
         """RotorLayer compiles with aot_eager fullgraph."""
         layer = RotorLayer(algebra_3d, channels=4)
-        compiled = torch.compile(layer, backend='aot_eager', fullgraph=True)
+        compiled = torch.compile(layer, backend="aot_eager", fullgraph=True)
         x = torch.randn(2, 4, 8)
         y = compiled(x)
         assert y.shape == (2, 4, 8)
@@ -281,7 +280,7 @@ class TestCompile:
     def test_compile_multi_rotor_layer(self, algebra_3d):
         """MultiRotorLayer compiles with aot_eager fullgraph."""
         layer = MultiRotorLayer(algebra_3d, channels=4, num_rotors=3)
-        compiled = torch.compile(layer, backend='aot_eager', fullgraph=True)
+        compiled = torch.compile(layer, backend="aot_eager", fullgraph=True)
         x = torch.randn(2, 4, 8)
         y = compiled(x)
         assert y.shape == (2, 4, 8)
@@ -289,7 +288,7 @@ class TestCompile:
     def test_compile_backward(self, algebra_3d):
         """Gradients flow through compiled RotorLayer."""
         layer = RotorLayer(algebra_3d, channels=4)
-        compiled = torch.compile(layer, backend='aot_eager')
+        compiled = torch.compile(layer, backend="aot_eager")
         x = torch.randn(2, 4, 8, requires_grad=True)
         y = compiled(x)
         y.sum().backward()
@@ -297,15 +296,15 @@ class TestCompile:
         assert not torch.isnan(x.grad).any()
 
     @pytest.mark.skipif(
-        not (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()),
+        not (hasattr(torch.backends, "mps") and torch.backends.mps.is_available()),
         reason="MPS not available",
     )
     def test_mps_compile_smoke(self):
         """RotorLayer compiles and runs on MPS."""
-        alg = CliffordAlgebra(3, 0, device='mps')
-        layer = RotorLayer(alg, channels=4).to('mps')
-        compiled = torch.compile(layer, backend='aot_eager')
-        x = torch.randn(2, 4, 8, device='mps')
+        alg = CliffordAlgebra(3, 0, device="mps")
+        layer = RotorLayer(alg, channels=4).to("mps")
+        compiled = torch.compile(layer, backend="aot_eager")
+        x = torch.randn(2, 4, 8, device="mps")
         y = compiled(x)
         torch.mps.synchronize()
         assert y.shape == (2, 4, 8)

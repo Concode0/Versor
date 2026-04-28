@@ -50,8 +50,8 @@ class ImplicitFormulation:
 
     target_var_idx: int
     mode: str
-    probe_loss_explicit: float = float('inf')
-    probe_loss_implicit: float = float('inf')
+    probe_loss_explicit: float = float("inf")
+    probe_loss_implicit: float = float("inf")
     curvature_score: float = 0.0
     involution_score: float = 0.0
     null_dim_count: int = 0
@@ -71,7 +71,7 @@ class ImplicitSolver:
         jacobian_weight: Weight for Jacobian norm regularizer.
     """
 
-    def __init__(self, device='cpu', probe_epochs=50, jacobian_weight=0.1):
+    def __init__(self, device="cpu", probe_epochs=50, jacobian_weight=0.1):
         self.device = device
         self.probe_epochs = probe_epochs
         self.jacobian_weight = jacobian_weight
@@ -343,9 +343,9 @@ class ImplicitSolver:
         # Non-zero grade0_bias and grade1_proj give a non-trivial starting point.
         with torch.no_grad():
             for m in model.modules():
-                if hasattr(m, 'grade0_bias'):
+                if hasattr(m, "grade0_bias"):
                     torch.nn.init.normal_(m.grade0_bias, std=1.0)
-                if hasattr(m, 'grade1_proj'):
+                if hasattr(m, "grade1_proj"):
                     torch.nn.init.xavier_normal_(m.grade1_proj.weight)
 
         optimizer = RiemannianAdam(model.parameters(), lr=0.003, algebra=algebra)
@@ -399,7 +399,7 @@ class ImplicitSolver:
         # If gradient is near-zero, the model learned the trivial solution
         if jac_norm_sq.item() < 0.001:
             logger.info(f"Implicit probe: trivial (jac_norm_sq={jac_norm_sq.item():.6f}, f_loss={f_loss.item():.6f})")
-            return float('inf')
+            return float("inf")
 
         # Report raw f_loss (comparable to explicit MSE)
         logger.info(f"Implicit probe: f_loss={f_loss.item():.4f}, jac_norm_sq={jac_norm_sq.item():.4f}")

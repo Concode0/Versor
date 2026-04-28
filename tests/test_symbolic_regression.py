@@ -3,24 +3,24 @@
 #
 # Tests for Symbolic Regression (SRBench / PMLB) Task.
 
-import pytest
 import numpy as np
+import pytest
 import torch
 from omegaconf import OmegaConf
 
 from core.algebra import CliffordAlgebra
 from datalib.symbolic_regression import (
-    SRDataset,
-    get_sr_loaders,
-    get_dataset_ids,
-    _fetch_pmlb_data,
-    FIRST_PRINCIPLES_DATASETS,
     BLACKBOX_DATASETS,
+    FIRST_PRINCIPLES_DATASETS,
     SRBENCH_DATASETS,
+    SRDataset,
+    _fetch_pmlb_data,
+    get_dataset_ids,
+    get_sr_loaders,
 )
 from models.sr.net import (
-    SRMultiGradeEmbedding,
     SRGBN,
+    SRMultiGradeEmbedding,
     _blade_name,
     blade_names_for_algebra,
 )
@@ -334,7 +334,7 @@ def test_extract_formula_smoke():
 
     result = task.extract_formula(test_loader)
 
-    assert hasattr(result, 'formula')
+    assert hasattr(result, "formula")
     assert isinstance(result.formula, str)
-    assert hasattr(result, 'r2_final')
+    assert hasattr(result, "r2_final")
     assert np.isfinite(result.r2_final)

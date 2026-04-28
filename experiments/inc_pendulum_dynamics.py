@@ -40,7 +40,8 @@ from __future__ import annotations
 
 import argparse
 import math
-import os, sys
+import os
+import sys
 from typing import Dict
 
 import numpy as np
@@ -51,8 +52,11 @@ from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
+from core.algebra import CliffordAlgebra
+from core.metric import hermitian_norm
 from experiments._lib import (
     apply_residual_block,
+    build_visualization_metadata,
     count_parameters,
     ensure_output_dir,
     extract_grade1,
@@ -65,16 +69,11 @@ from experiments._lib import (
     save_training_curve,
     set_seed,
     setup_algebra,
-    build_visualization_metadata,
     signature_metadata,
 )
-
-from core.algebra import CliffordAlgebra
-from core.metric import hermitian_norm
 from layers import BladeSelector, CliffordLayerNorm, CliffordLinear
 from layers.primitives.base import CliffordModule
 from optimizers.riemannian import RiemannianAdam
-
 
 # ==============================================================================
 # Physics Simulation
@@ -144,10 +143,10 @@ class DoublePendulumODE:
             traj[i] = state
         return traj
 
-    def random_ic(self, rng: np.random.RandomState, regime: str = 'mixed') -> np.ndarray:
-        if regime == 'mixed':
-            regime = rng.choice(['regular', 'chaotic'])
-        if regime == 'regular':
+    def random_ic(self, rng: np.random.RandomState, regime: str = "mixed") -> np.ndarray:
+        if regime == "mixed":
+            regime = rng.choice(["regular", "chaotic"])
+        if regime == "regular":
             lo, hi, wmax = -np.pi / 4, np.pi / 4, 1.0
         else:
             lo, hi, wmax = -np.pi, np.pi, 3.0
@@ -222,13 +221,13 @@ class LorenzODE:
             traj[i] = state
         return traj
 
-    def random_ic(self, rng: np.random.RandomState, regime: str = 'mixed') -> np.ndarray:
-        if regime == 'mixed':
-            regime = rng.choice(['regular', 'chaotic'])
+    def random_ic(self, rng: np.random.RandomState, regime: str = "mixed") -> np.ndarray:
+        if regime == "mixed":
+            regime = rng.choice(["regular", "chaotic"])
         center = math.sqrt(self.beta * (self.rho - 1))
         sign = rng.choice([-1, 1])
         ic = np.array([sign * center, sign * center, self.rho - 1], dtype=np.float64)
-        scale = 1.0 if regime == 'regular' else 5.0
+        scale = 1.0 if regime == "regular" else 5.0
         return ic + rng.randn(3) * scale
 
 
@@ -247,7 +246,7 @@ class TrajectoryDataset(Dataset):
         traj_len: int = 200,
         dt: float = 0.01,
         n_steps_ahead: int = 1,
-        regime: str = 'mixed',
+        regime: str = "mixed",
         seed: int = 42,
     ):
         rng = np.random.RandomState(seed)
@@ -329,7 +328,7 @@ class HamiltonianRotorNet(CliffordModule):
         even_mask = torch.zeros(algebra.dim)
         for k in range(0, algebra.n + 1, 2):
             even_mask = even_mask + algebra.grade_masks_float[k].cpu()
-        self.register_buffer('even_grade_mask', even_mask)
+        self.register_buffer("even_grade_mask", even_mask)
 
     def _coerce(self, h: torch.Tensor) -> torch.Tensor:
         if self.coerce_even:
@@ -382,7 +381,7 @@ def rollout(
     n_steps: int,
     *,
     ode=None,
-    dataset: 'TrajectoryDataset' = None,
+    dataset: "TrajectoryDataset" = None,
     energy_shell_project: bool = False,
 ) -> torch.Tensor:
     """Autoregressive rollout from a single normalized initial condition.
@@ -397,7 +396,7 @@ def rollout(
     steps = [x0_norm.unsqueeze(0)]
     state = x0_norm.unsqueeze(0)
     can_project = (
-        energy_shell_project and ode is not None and dataset is not None and hasattr(ode, 'project_to_energy_shell')
+        energy_shell_project and ode is not None and dataset is not None and hasattr(ode, "project_to_energy_shell")
     )
     for _ in range(n_steps - 1):
         next_state = model(state)
@@ -496,11 +495,11 @@ def post_training_diagnostics(
 ) -> Dict[str, float]:
     """Gather every ex-loss-term and spectral claim as a measurement."""
     diagnostics: Dict[str, float] = {
-        'test_mse': test_mse(model, test_loader, device),
+        "test_mse": test_mse(model, test_loader, device),
     }
 
     rng = np.random.RandomState(999)
-    x0_phys = ode.random_ic(rng, 'chaotic')
+    x0_phys = ode.random_ic(rng, "chaotic")
     x0_norm = dataset.normalize(x0_phys.astype(np.float32))
     x0_t = torch.tensor(x0_norm, dtype=torch.float32, device=device)
     traj_norm = (
@@ -519,13 +518,13 @@ def post_training_diagnostics(
 
     gt_phys = ode.generate_trajectory(x0_phys, rollout_steps, dataset.dt)
     final_rmse = float(np.linalg.norm(traj_phys[-1] - gt_phys[-1]))
-    diagnostics['rollout_rmse_phys'] = final_rmse
+    diagnostics["rollout_rmse_phys"] = final_rmse
 
     if is_pendulum:
         H = ode.energy_batch(traj_phys)
         drift = np.abs(H - H[0])
-        diagnostics['energy_drift_mean'] = float(drift.mean())
-        diagnostics['energy_drift_final'] = float(drift[-1])
+        diagnostics["energy_drift_mean"] = float(drift.mean())
+        diagnostics["energy_drift_final"] = float(drift[-1])
 
         # Butterfly exponent: fit log‖x1 − x2‖ ~ λ t over the rollout
         x0_pert = x0_phys.copy()
@@ -546,7 +545,7 @@ def post_training_diagnostics(
         sep = np.linalg.norm(traj2_phys - traj_phys, axis=-1).clip(min=1e-12)
         t_axis = np.arange(rollout_steps) * dataset.dt
         lam, _ = np.polyfit(t_axis, np.log(sep), 1)
-        diagnostics['butterfly_lyapunov'] = float(lam)
+        diagnostics["butterfly_lyapunov"] = float(lam)
 
     # Grade spectrum on the *coerced* hidden state — what training sees.
     hiddens = []
@@ -556,9 +555,9 @@ def post_training_diagnostics(
     spectrum = mean_grade_spectrum(hiddens, model.algebra)
     total = spectrum.sum() + 1e-12
     for k, val in enumerate(spectrum):
-        diagnostics[f'grade_spectrum_{k}'] = float(val)
+        diagnostics[f"grade_spectrum_{k}"] = float(val)
     even = sum(spectrum[k] for k in range(len(spectrum)) if k % 2 == 0)
-    diagnostics['even_subalgebra_ratio'] = float(even / total)
+    diagnostics["even_subalgebra_ratio"] = float(even / total)
 
     # Pre-coercion leak — what the lift+linear stack would have produced
     # without the even-grade mask. Drops to ~zero when coerce_even is off
@@ -570,10 +569,10 @@ def post_training_diagnostics(
     raw_spec = mean_grade_spectrum(raw_hiddens, model.algebra)
     raw_total = raw_spec.sum() + 1e-12
     raw_even = sum(raw_spec[k] for k in range(len(raw_spec)) if k % 2 == 0)
-    diagnostics['odd_grade_leak'] = float(1.0 - raw_even / raw_total)
+    diagnostics["odd_grade_leak"] = float(1.0 - raw_even / raw_total)
 
-    diagnostics['rotor_norm_residual'] = _rotor_norm_residual(model)
-    diagnostics['gauge_covariance_residual'] = _gauge_covariance_residual(model, test_loader, device)
+    diagnostics["rotor_norm_residual"] = _rotor_norm_residual(model)
+    diagnostics["gauge_covariance_residual"] = _gauge_covariance_residual(model, test_loader, device)
     return diagnostics
 
 
@@ -585,7 +584,7 @@ def post_training_diagnostics(
 def train(args: argparse.Namespace) -> None:
     set_seed(args.seed)
     device = args.device
-    is_pendulum = args.system == 'double_pendulum'
+    is_pendulum = args.system == "double_pendulum"
 
     if is_pendulum:
         ode = DoublePendulumODE()
@@ -616,16 +615,16 @@ def train(args: argparse.Namespace) -> None:
     ).to(device)
 
     print_banner(
-        'Pendulum / Lorenz Incubator — Hamiltonian phase-space flow',
+        "Pendulum / Lorenz Incubator — Hamiltonian phase-space flow",
         system=args.system,
-        signature=f'Cl({algebra.p},{algebra.q})  dim={algebra.dim}',
+        signature=f"Cl({algebra.p},{algebra.q})  dim={algebra.dim}",
         regime=args.chaos,
-        natural_loss='MSE on grade-1 readout',
+        natural_loss="MSE on grade-1 readout",
         coerce_even=coerce_even,
         hermitian_renorm=args.hermitian_renorm,
         energy_shell_project=energy_shell,
-        parameters=f'{count_parameters(model):,}',
-        train=f'{len(train_ds):,}  test={len(test_ds):,}',
+        parameters=f"{count_parameters(model):,}",
+        train=f"{len(train_ds):,}  test={len(test_ds):,}",
     )
 
     optimizer = RiemannianAdam(model.parameters(), lr=args.lr, algebra=algebra)
@@ -635,7 +634,7 @@ def train(args: argparse.Namespace) -> None:
         return F.mse_loss(_model(states), nexts)
 
     def diag_fn(_model, _epoch) -> Dict[str, float]:
-        return {'test_mse': test_mse(_model, test_loader, device)}
+        return {"test_mse": test_mse(_model, test_loader, device)}
 
     history = run_supervised_loop(
         model,
@@ -646,7 +645,7 @@ def train(args: argparse.Namespace) -> None:
         diag_interval=args.diag_interval,
         grad_clip=1.0,
         diag_fn=diag_fn,
-        history_extra_keys=('test_mse',),
+        history_extra_keys=("test_mse",),
     )
 
     diagnostics = post_training_diagnostics(
@@ -662,7 +661,7 @@ def train(args: argparse.Namespace) -> None:
     print(
         report_diagnostics(
             diagnostics,
-            title='Pendulum post-training diagnostics',
+            title="Pendulum post-training diagnostics",
         )
     )
 
@@ -677,14 +676,14 @@ def train(args: argparse.Namespace) -> None:
     path = save_training_curve(
         history,
         output_dir=args.output_dir,
-        experiment_name='inc_pendulum_dynamics',
+        experiment_name="inc_pendulum_dynamics",
         metadata=metadata,
-        plot_name='training_curve',
+        plot_name="training_curve",
         args=args,
         module=__name__,
-        title=f'Pendulum — {args.system} MSE',
+        title=f"Pendulum — {args.system} MSE",
     )
-    print(f'  curve saved to {path}')
+    print(f"  curve saved to {path}")
 
 
 # ==============================================================================
@@ -694,47 +693,47 @@ def train(args: argparse.Namespace) -> None:
 
 def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
-        'Hamiltonian phase-space flow in Cl(p,q) — pendulum / Lorenz.',
-        include=('seed', 'device', 'epochs', 'lr', 'batch_size', 'output_dir', 'diag_interval', 'p', 'q'),
+        "Hamiltonian phase-space flow in Cl(p,q) — pendulum / Lorenz.",
+        include=("seed", "device", "epochs", "lr", "batch_size", "output_dir", "diag_interval", "p", "q"),
         defaults={
-            'epochs': 200,
-            'batch_size': 256,
-            'diag_interval': 20,
-            'output_dir': 'pendulum_plots',
-            'p': 3,
-            'q': 0,
+            "epochs": 200,
+            "batch_size": 256,
+            "diag_interval": 20,
+            "output_dir": "pendulum_plots",
+            "p": 3,
+            "q": 0,
         },
     )
-    p.add_argument('--system', choices=['double_pendulum', 'lorenz'], default='double_pendulum')
-    p.add_argument('--chaos', choices=['regular', 'chaotic', 'mixed'], default='mixed')
-    p.add_argument('--n-train', type=int, default=500)
-    p.add_argument('--hidden-dim', type=int, default=64)
-    p.add_argument('--num-layers', type=int, default=6)
-    p.add_argument('--rollout-steps', type=int, default=100)
+    p.add_argument("--system", choices=["double_pendulum", "lorenz"], default="double_pendulum")
+    p.add_argument("--chaos", choices=["regular", "chaotic", "mixed"], default="mixed")
+    p.add_argument("--n-train", type=int, default=500)
+    p.add_argument("--hidden-dim", type=int, default=64)
+    p.add_argument("--num-layers", type=int, default=6)
+    p.add_argument("--rollout-steps", type=int, default=100)
     p.add_argument(
-        '--coerce-even',
-        dest='coerce_even',
-        action='store_true',
+        "--coerce-even",
+        dest="coerce_even",
+        action="store_true",
         default=True,
-        help='(default for double_pendulum) Mask the hidden state onto the even subalgebra between blocks.',
+        help="(default for double_pendulum) Mask the hidden state onto the even subalgebra between blocks.",
     )
-    p.add_argument('--no-coerce-even', dest='coerce_even', action='store_false')
+    p.add_argument("--no-coerce-even", dest="coerce_even", action="store_false")
     p.add_argument(
-        '--hermitian-renorm',
-        dest='hermitian_renorm',
-        action='store_true',
+        "--hermitian-renorm",
+        dest="hermitian_renorm",
+        action="store_true",
         default=True,
-        help='Renormalize hidden multivectors to unit Hermitian norm after each block.',
+        help="Renormalize hidden multivectors to unit Hermitian norm after each block.",
     )
-    p.add_argument('--no-hermitian-renorm', dest='hermitian_renorm', action='store_false')
+    p.add_argument("--no-hermitian-renorm", dest="hermitian_renorm", action="store_false")
     p.add_argument(
-        '--energy-shell-project',
-        dest='energy_shell_project',
-        action='store_true',
+        "--energy-shell-project",
+        dest="energy_shell_project",
+        action="store_true",
         default=True,
-        help='(pendulum only) Renormalize predicted (ω1, ω2) at rollout so H(state_pred) = H(state_input).',
+        help="(pendulum only) Renormalize predicted (ω1, ω2) at rollout so H(state_pred) = H(state_input).",
     )
-    p.add_argument('--no-energy-shell-project', dest='energy_shell_project', action='store_false')
+    p.add_argument("--no-energy-shell-project", dest="energy_shell_project", action="store_false")
     return p.parse_args()
 
 
@@ -742,5 +741,5 @@ def main() -> None:
     train(parse_args())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

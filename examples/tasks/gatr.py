@@ -57,15 +57,16 @@ PGA Convention (Cl(3,0,1)):
   via e_0 sandwiches. See layers/adapters/projective.py for implementation.
 """
 
+import math
+
 import torch
 import torch.nn as nn
-import math
 from torch.utils.data import DataLoader, TensorDataset
+
 from core.algebra import CliffordAlgebra
 from layers import CliffordLinear, GeometricTransformerBlock
 from layers.adapters.projective import ProjectiveEmbedding
 from tasks.base import BaseTask
-
 
 # ---------------------------------------------------------------------------
 # Model
@@ -218,7 +219,7 @@ class GATrTask(BaseTask):
     def setup_algebra(self):
         # Cl(3,0,1): 3 Euclidean + 1 degenerate = Projective Geometric Algebra
         # dim = 2^4 = 16 multivector components
-        r = self.cfg.algebra.get('r', 1)
+        r = self.cfg.algebra.get("r", 1)
         return CliffordAlgebra(
             p=self.cfg.algebra.p,
             q=self.cfg.algebra.q,
@@ -233,10 +234,10 @@ class GATrTask(BaseTask):
         return nn.MSELoss()
 
     def get_data(self):
-        n_particles = self.cfg.dataset.get('n_particles', 5)
-        n_samples = self.cfg.dataset.get('n_samples', 512)
+        n_particles = self.cfg.dataset.get("n_particles", 5)
+        n_samples = self.cfg.dataset.get("n_samples", 512)
 
-        torch.manual_seed(self.cfg.training.get('seed', 42))
+        torch.manual_seed(self.cfg.training.get("seed", 42))
         pos, vel, tgt = _generate_nbody_data(n_samples, n_particles)
         dataset = TensorDataset(pos, vel, tgt)
         torch.manual_seed(torch.seed())  # re-randomize

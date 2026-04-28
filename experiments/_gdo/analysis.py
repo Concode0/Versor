@@ -38,7 +38,7 @@ def compute_overhead_ratio(
 ) -> float:
     """Wall-time ratio GDO / baseline."""
     if baseline_result.total_wall_time < 1e-6:
-        return float('inf')
+        return float("inf")
     return gdo_result.total_wall_time / baseline_result.total_wall_time
 
 
@@ -118,7 +118,7 @@ def analyze_experiment_results(
 
     ensure_output_dir(output_dir)
     report_path = os.path.join(output_dir, "analysis_report.txt")
-    with open(report_path, 'w') as f:
+    with open(report_path, "w") as f:
         f.write(report)
     print(f"  Saved: {report_path}")
 

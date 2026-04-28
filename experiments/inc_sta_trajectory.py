@@ -44,7 +44,8 @@ from __future__ import annotations
 
 import argparse
 import math
-import os, sys
+import os
+import sys
 from typing import Dict, Optional, Tuple
 
 import numpy as np
@@ -55,6 +56,8 @@ from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
+from core.algebra import CliffordAlgebra
+from core.metric import signature_norm_squared
 from experiments._lib import (
     build_visualization_metadata,
     count_parameters,
@@ -69,14 +72,10 @@ from experiments._lib import (
     setup_algebra,
     signature_metadata,
 )
-
-from core.algebra import CliffordAlgebra
-from core.metric import signature_norm_squared
+from functional.activation import GeometricGELU
 from layers import CliffordLayerNorm, GeometricNeutralizer, MotherEmbedding, RotorLayer
 from layers.primitives.base import CliffordModule
-from functional.activation import GeometricGELU
 from optimizers.riemannian import RiemannianAdam
-
 
 # ============================================================================
 # Physical priors
@@ -155,7 +154,7 @@ def _synthesize_worldline(
     gravity_b = np.zeros((num_trajs, T, 3), dtype=np.float32)
 
     for i in range(num_trajs):
-        if regime == 'free_particle':
+        if regime == "free_particle":
             v0 = rng.uniform(-2.0, 2.0, size=3)
             x0 = rng.uniform(-1.0, 1.0, size=3)
             vel = np.broadcast_to(v0, (T, 3)).copy()
@@ -164,7 +163,7 @@ def _synthesize_worldline(
             omega = np.zeros((T, 3))
             R_body = np.broadcast_to(np.eye(3), (T, 3, 3)).copy()
 
-        elif regime == 'lorentz_boost':
+        elif regime == "lorentz_boost":
             phi = rng.uniform(-1.0, 1.0)
             axis = rng.randint(0, 3)
             beta = math.tanh(phi)
@@ -178,7 +177,7 @@ def _synthesize_worldline(
             omega = np.zeros((T, 3))
             R_body = np.broadcast_to(np.eye(3), (T, 3, 3)).copy()
 
-        elif regime == 'helical_motion':
+        elif regime == "helical_motion":
             radius = rng.uniform(0.5, 2.0)
             omega_z = rng.uniform(0.5, 2.5)
             phi0 = rng.uniform(-math.pi, math.pi)
@@ -208,13 +207,13 @@ def _synthesize_worldline(
             R_body[:, 2, 2] = 1.0
 
         else:
-            raise ValueError(f'unknown regime {regime!r}')
+            raise ValueError(f"unknown regime {regime!r}")
 
         g_tile = np.broadcast_to(g_inertial, (T, 3))
         proper_accel = accel_inertial - g_tile
-        accel_body = np.einsum('tij,tj->ti', R_body, proper_accel)
-        gyro_body = np.einsum('tij,tj->ti', R_body, omega)
-        gravity_body = np.einsum('tij,tj->ti', R_body, g_tile)
+        accel_body = np.einsum("tij,tj->ti", R_body, proper_accel)
+        gyro_body = np.einsum("tij,tj->ti", R_body, omega)
+        gravity_body = np.einsum("tij,tj->ti", R_body, g_tile)
         fsr = np.linalg.norm(accel_inertial, axis=-1)
 
         sensors[i, :, 0:3] = accel_body.astype(np.float32)
@@ -326,8 +325,8 @@ class STAEmbed(CliffordModule):
         super().__init__(algebra)
         self.channels = channels
 
-        self.register_buffer('scatter_matrix', _build_imu_scatter(algebra.dim))
-        self.register_buffer('g2_mask', algebra.grade_masks[2].to(dtype=torch.float32))
+        self.register_buffer("scatter_matrix", _build_imu_scatter(algebra.dim))
+        self.register_buffer("g2_mask", algebra.grade_masks[2].to(dtype=torch.float32))
 
         if gravity_bivector is None:
             gravity_bivector = torch.zeros(algebra.dim)
@@ -374,7 +373,7 @@ class StepRotorFlow(CliffordModule):
         self.causal_pad = (kernel_size - 1) * dilation
 
         g2_indices = algebra.grade_masks[2].nonzero(as_tuple=False).squeeze(-1)
-        self.register_buffer('g2_indices', g2_indices)
+        self.register_buffer("g2_indices", g2_indices)
         self.num_bivecs = int(g2_indices.numel())
 
         # Bivector projector: causal conv over the full multivector to
@@ -491,8 +490,8 @@ def evaluate_rmse(model: STATrajectoryNet, loader: DataLoader, device: str) -> D
         vel_sq += ((vel_pred - vel_gt) ** 2).sum().item()
         n += pos_gt.numel()
     return {
-        'pos_rmse': math.sqrt(pos_sq / max(n, 1)),
-        'vel_rmse': math.sqrt(vel_sq / max(n, 1)),
+        "pos_rmse": math.sqrt(pos_sq / max(n, 1)),
+        "vel_rmse": math.sqrt(vel_sq / max(n, 1)),
     }
 
 
@@ -571,14 +570,14 @@ def post_training_diagnostics(
 ) -> Dict[str, float]:
     rmse = evaluate_rmse(model, test_loader, device)
     diagnostics: Dict[str, float] = {
-        'test_pos_rmse': rmse['pos_rmse'],
-        'test_vel_rmse': rmse['vel_rmse'],
-        'isometry_residual': isometry_residual(model, test_loader, algebra, device),
-        'lorentz_invariance_residual': lorentz_invariance_residual(model, test_loader, algebra, device),
-        'calib_bivector_norm': float(model.embedding.calib_bivector.detach().norm().item()),
+        "test_pos_rmse": rmse["pos_rmse"],
+        "test_vel_rmse": rmse["vel_rmse"],
+        "isometry_residual": isometry_residual(model, test_loader, algebra, device),
+        "lorentz_invariance_residual": lorentz_invariance_residual(model, test_loader, algebra, device),
+        "calib_bivector_norm": float(model.embedding.calib_bivector.detach().norm().item()),
     }
     if target_calib_bivector is not None:
-        diagnostics['calib_recovery_error'] = calibration_recovery_error(model, target_calib_bivector)
+        diagnostics["calib_recovery_error"] = calibration_recovery_error(model, target_calib_bivector)
     feats = []
     with torch.no_grad():
         for sensor, _, _ in test_loader:
@@ -587,10 +586,10 @@ def post_training_diagnostics(
             break
     spectrum = mean_grade_spectrum(feats, algebra)
     for k, val in enumerate(spectrum):
-        diagnostics[f'grade_spectrum_{k}'] = float(val)
+        diagnostics[f"grade_spectrum_{k}"] = float(val)
     if noisy_loader is not None:
         noisy_rmse = evaluate_rmse(model, noisy_loader, device)
-        diagnostics['noise_robustness_pos_rmse'] = noisy_rmse['pos_rmse']
+        diagnostics["noise_robustness_pos_rmse"] = noisy_rmse["pos_rmse"]
     return diagnostics
 
 
@@ -602,7 +601,7 @@ def post_training_diagnostics(
 def train(args: argparse.Namespace) -> None:
     set_seed(args.seed)
     device = args.device
-    algebra = setup_algebra(p=3, q=1, device='cpu')
+    algebra = setup_algebra(p=3, q=1, device="cpu")
 
     train_ds = SyntheticIMUWorldlineDataset(
         args.regime, num_trajs=args.num_trajs, window_size=args.window_size, dt=args.dt, seed=args.seed
@@ -622,8 +621,8 @@ def train(args: argparse.Namespace) -> None:
         seed=args.seed + 2,
     )
 
-    use_pin = device != 'cpu'
-    num_workers = 2 if device != 'cpu' else 0
+    use_pin = device != "cpu"
+    num_workers = 2 if device != "cpu" else 0
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True, drop_last=True, pin_memory=use_pin, num_workers=num_workers
     )
@@ -639,15 +638,15 @@ def train(args: argparse.Namespace) -> None:
     ).to(device)
 
     print_banner(
-        'STA Trajectory Incubator — Cl(3,1) synthetic worldline reconstruction',
-        signature='Cl(3, 1)  dim=16',
+        "STA Trajectory Incubator — Cl(3,1) synthetic worldline reconstruction",
+        signature="Cl(3, 1)  dim=16",
         regime=args.regime,
         channels=args.channels,
         num_layers=args.num_layers,
         window=args.window_size,
-        natural_loss='MSE(pos) + 0.5 · MSE(vel)',
-        parameters=f'{count_parameters(model):,}',
-        train=f'{len(train_ds):,}  val={len(val_ds):,}  test={len(test_ds):,}',
+        natural_loss="MSE(pos) + 0.5 · MSE(vel)",
+        parameters=f"{count_parameters(model):,}",
+        train=f"{len(train_ds):,}  val={len(val_ds):,}  test={len(test_ds):,}",
     )
 
     optimizer = RiemannianAdam(model.parameters(), lr=args.lr, algebra=algebra)
@@ -669,7 +668,7 @@ def train(args: argparse.Namespace) -> None:
         diag_interval=args.diag_interval,
         grad_clip=5.0,
         diag_fn=diag_fn,
-        history_extra_keys=('pos_rmse', 'vel_rmse'),
+        history_extra_keys=("pos_rmse", "vel_rmse"),
     )
 
     noisy_loader = None
@@ -687,7 +686,7 @@ def train(args: argparse.Namespace) -> None:
     diagnostics = post_training_diagnostics(
         model, test_loader, algebra, device, target_calib_bivector=train_ds.gravity_bivector, noisy_loader=noisy_loader
     )
-    print(report_diagnostics(diagnostics, title='STA trajectory post-training diagnostics'))
+    print(report_diagnostics(diagnostics, title="STA trajectory post-training diagnostics"))
 
     ensure_output_dir(args.output_dir)
     metadata = build_visualization_metadata(
@@ -700,35 +699,35 @@ def train(args: argparse.Namespace) -> None:
     path = save_training_curve(
         history,
         output_dir=args.output_dir,
-        experiment_name='inc_sta_trajectory',
+        experiment_name="inc_sta_trajectory",
         metadata=metadata,
-        plot_name='training_curve',
+        plot_name="training_curve",
         args=args,
         module=__name__,
-        title='STA Trajectory — supervised MSE',
+        title="STA Trajectory — supervised MSE",
     )
-    print(f'  curve saved to {path}')
+    print(f"  curve saved to {path}")
 
 
 def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
-        'STA trajectory reconstruction — Cl(3,1) synthetic worldlines.',
-        include=('seed', 'device', 'epochs', 'lr', 'batch_size', 'output_dir', 'diag_interval'),
-        defaults={'epochs': 200, 'lr': 0.001, 'batch_size': 64, 'output_dir': 'sta_plots', 'diag_interval': 10},
+        "STA trajectory reconstruction — Cl(3,1) synthetic worldlines.",
+        include=("seed", "device", "epochs", "lr", "batch_size", "output_dir", "diag_interval"),
+        defaults={"epochs": 200, "lr": 0.001, "batch_size": 64, "output_dir": "sta_plots", "diag_interval": 10},
     )
     p.add_argument(
-        '--regime',
-        choices=('free_particle', 'lorentz_boost', 'helical_motion'),
-        default='helical_motion',
-        help='Closed-form Minkowski worldline generator.',
+        "--regime",
+        choices=("free_particle", "lorentz_boost", "helical_motion"),
+        default="helical_motion",
+        help="Closed-form Minkowski worldline generator.",
     )
-    p.add_argument('--num-trajs', type=int, default=256)
-    p.add_argument('--window-size', type=int, default=128)
-    p.add_argument('--dt', type=float, default=0.02, help='Worldline timestep in seconds.')
-    p.add_argument('--channels', type=int, default=32)
-    p.add_argument('--num-layers', type=int, default=5)
-    p.add_argument('--kernel-size', type=int, default=3)
-    p.add_argument('--noise-scale', type=float, default=1.0, help='Noise robustness diagnostic scale (0 to disable).')
+    p.add_argument("--num-trajs", type=int, default=256)
+    p.add_argument("--window-size", type=int, default=128)
+    p.add_argument("--dt", type=float, default=0.02, help="Worldline timestep in seconds.")
+    p.add_argument("--channels", type=int, default=32)
+    p.add_argument("--num-layers", type=int, default=5)
+    p.add_argument("--kernel-size", type=int, default=3)
+    p.add_argument("--noise-scale", type=float, default=1.0, help="Noise robustness diagnostic scale (0 to disable).")
     return p.parse_args()
 
 
@@ -736,5 +735,5 @@ def main() -> None:
     train(parse_args())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

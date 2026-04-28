@@ -16,8 +16,9 @@ Reference:
 """
 
 import enum
+from typing import List, Optional, Tuple
+
 import torch
-from typing import Tuple, List, Optional
 
 
 class ExpPolicy(enum.Enum):

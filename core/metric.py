@@ -12,6 +12,7 @@ the metric signature.
 """
 
 import torch
+
 from core.algebra import CliffordAlgebra
 
 
@@ -170,7 +171,7 @@ def clifford_conjugate(algebra: CliffordAlgebra, mv: torch.Tensor) -> torch.Tens
     """
     result = mv.clone()
     for i in range(algebra.dim):
-        k = bin(i).count('1')
+        k = bin(i).count("1")
         sign = ((-1) ** k) * ((-1) ** (k * (k - 1) // 2))
         if sign == -1:
             result[..., i] = -result[..., i]

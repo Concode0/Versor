@@ -81,7 +81,7 @@ class RotorTranslator:
         analysis = model.get_rotor_analysis()
         n = self.algebra.n
         dim = self.algebra.dim
-        n_real = getattr(model, 'in_features', n)
+        n_real = getattr(model, "in_features", n)
 
         # Basis signature: e_i^2 = 1 (p), -1 (q), 0 (r)
         sig = [1.0] * self.algebra.p + [-1.0] * self.algebra.q + [0.0] * self.algebra.r

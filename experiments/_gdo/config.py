@@ -68,7 +68,7 @@ class ExperimentConfig:
     steps: int
     lr: float
     seed: int = 42
-    device: str = 'cpu'
+    device: str = "cpu"
     algebra_sig: Optional[Tuple[int, int]] = None
     gdo_config: Optional[GDOConfig] = None
 

@@ -59,11 +59,10 @@ from experiments._lib import (
     set_seed,
     setup_algebra,
 )
+from functional.activation import GeometricGELU
 from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, RotorLayer
 from layers.primitives.base import CliffordModule
-from functional.activation import GeometricGELU
 from optimizers.riemannian import RiemannianAdam
-
 
 # ---------------------------------------------------------------------------
 # Data — random 2-D points; target is the same point rotated by a fixed angle.
@@ -113,10 +112,10 @@ class RotorRegressorNet(CliffordModule):
             [
                 nn.ModuleDict(
                     {
-                        'norm': CliffordLayerNorm(algebra, hidden_channels),
-                        'rotor': RotorLayer(algebra, hidden_channels),
-                        'act': GeometricGELU(algebra, channels=hidden_channels),
-                        'linear': CliffordLinear(algebra, hidden_channels, hidden_channels),
+                        "norm": CliffordLayerNorm(algebra, hidden_channels),
+                        "rotor": RotorLayer(algebra, hidden_channels),
+                        "act": GeometricGELU(algebra, channels=hidden_channels),
+                        "linear": CliffordLinear(algebra, hidden_channels, hidden_channels),
                     }
                 )
                 for _ in range(num_layers)
@@ -130,10 +129,10 @@ class RotorRegressorNet(CliffordModule):
         h = self.in_proj(x)
         for block in self.blocks:
             residual = h
-            h = block['norm'](h)
-            h = block['rotor'](h)
-            h = block['act'](h)
-            h = block['linear'](h)
+            h = block["norm"](h)
+            h = block["rotor"](h)
+            h = block["act"](h)
+            h = block["linear"](h)
             h = residual + h
         h = self.out_norm(h)
         h = self.blade_select(h)
@@ -179,15 +178,15 @@ def evaluate(model, loader, device) -> float:
 
 def parse_args() -> argparse.Namespace:
     parser = make_experiment_parser(
-        'Incubator template — 2-D rotation regression.',
-        include=('seed', 'device', 'epochs', 'lr', 'batch_size', 'output_dir', 'diag_interval'),
-        defaults={'epochs': 30, 'batch_size': 64, 'output_dir': 'template_inc_plots', 'diag_interval': 5},
+        "Incubator template — 2-D rotation regression.",
+        include=("seed", "device", "epochs", "lr", "batch_size", "output_dir", "diag_interval"),
+        defaults={"epochs": 30, "batch_size": 64, "output_dir": "template_inc_plots", "diag_interval": 5},
     )
-    parser.add_argument('--hidden-channels', type=int, default=8)
-    parser.add_argument('--num-layers', type=int, default=2)
-    parser.add_argument('--n-train', type=int, default=512)
-    parser.add_argument('--n-test', type=int, default=128)
-    parser.add_argument('--angle-deg', type=float, default=45.0, help='Target rotation angle in degrees.')
+    parser.add_argument("--hidden-channels", type=int, default=8)
+    parser.add_argument("--num-layers", type=int, default=2)
+    parser.add_argument("--n-train", type=int, default=512)
+    parser.add_argument("--n-test", type=int, default=128)
+    parser.add_argument("--angle-deg", type=float, default=45.0, help="Target rotation angle in degrees.")
     return parser.parse_args()
 
 
@@ -198,8 +197,8 @@ def main() -> None:
     model = RotorRegressorNet(algebra, args.hidden_channels, args.num_layers).to(args.device)
 
     print_banner(
-        'Incubator Template — 2-D Rotation Regression',
-        signature='Cl(2, 0)',
+        "Incubator Template — 2-D Rotation Regression",
+        signature="Cl(2, 0)",
         hidden_channels=args.hidden_channels,
         num_layers=args.num_layers,
         params=count_parameters(model),
@@ -214,22 +213,22 @@ def main() -> None:
 
     optimizer = RiemannianAdam(model.parameters(), lr=args.lr, algebra=algebra)
 
-    history: Dict[str, List[float]] = {'epochs': [], 'train_loss': [], 'test_loss': []}
+    history: Dict[str, List[float]] = {"epochs": [], "train_loss": [], "test_loss": []}
     for epoch in range(1, args.epochs + 1):
         train_loss = train_one_epoch(model, train_loader, optimizer, args.device)
         if epoch % args.diag_interval == 0 or epoch == args.epochs:
             test_loss = evaluate(model, test_loader, args.device)
-            history['epochs'].append(epoch)
-            history['train_loss'].append(train_loss)
-            history['test_loss'].append(test_loss)
-            print(f'Epoch {epoch:4d}/{args.epochs} | train={train_loss:.6f} | test={test_loss:.6f}')
+            history["epochs"].append(epoch)
+            history["train_loss"].append(train_loss)
+            history["test_loss"].append(test_loss)
+            print(f"Epoch {epoch:4d}/{args.epochs} | train={train_loss:.6f} | test={test_loss:.6f}")
 
     out_dir = ensure_output_dir(args.output_dir)
     saved = save_training_curve(
-        history, os.path.join(out_dir, 'training_curves.png'), title='Incubator Template — training curves'
+        history, os.path.join(out_dir, "training_curves.png"), title="Incubator Template — training curves"
     )
-    print(f'Saved {saved}')
+    print(f"Saved {saved}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

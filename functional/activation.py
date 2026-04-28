@@ -13,6 +13,7 @@ Magnitude-scaling and grade-wise gating functions that preserve geometric struct
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from layers.primitives.base import CliffordModule
 
 
@@ -98,7 +99,7 @@ class GradeSwish(CliffordModule):
         self.grade_biases = nn.Parameter(torch.zeros(self.n_grades))
 
         # Reuse algebra's precomputed grade_index instead of building our own
-        self.register_buffer('_grade_index', self.algebra.grade_index.clone())
+        self.register_buffer("_grade_index", self.algebra.grade_index.clone())
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply per-grade gating.

@@ -7,7 +7,9 @@
 
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
+
 from .base import CliffordModule
 
 
@@ -46,7 +48,7 @@ class CliffordLayerNorm(CliffordModule):
         if recover:
             self.norm_scale = nn.Parameter(torch.zeros(channels))
         else:
-            self.register_buffer('norm_scale', None)
+            self.register_buffer("norm_scale", None)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Normalizes energy, preserves direction, optionally recovers scale in grade-0.

@@ -19,68 +19,70 @@ that subject's own mean/std. This accounts for large inter-subject variability
 in EEG amplitude and is critical for cross-subject generalization (LOSO).
 """
 
+import math
 import os
 import pickle
-import math
+from pathlib import Path
+
 import numpy as np
 import torch
-from pathlib import Path
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
+
 from log import get_logger
 
 logger = get_logger(__name__)
 
 # -- DEAP 10-20 channel order (indices 0-31) ----------------------------------
 DEAP_CHANNELS = [
-    'Fp1',
-    'AF3',
-    'F3',
-    'F7',
-    'FC5',
-    'FC1',
-    'C3',
-    'T7',
-    'CP5',
-    'CP1',
-    'P3',
-    'P7',
-    'PO3',
-    'O1',
-    'Oz',
-    'Pz',
-    'Fp2',
-    'AF4',
-    'F4',
-    'F8',
-    'FC6',
-    'FC2',
-    'C4',
-    'T8',
-    'CP6',
-    'CP2',
-    'P4',
-    'P8',
-    'PO4',
-    'O2',
-    'Fz',
-    'Cz',
+    "Fp1",
+    "AF3",
+    "F3",
+    "F7",
+    "FC5",
+    "FC1",
+    "C3",
+    "T7",
+    "CP5",
+    "CP1",
+    "P3",
+    "P7",
+    "PO3",
+    "O1",
+    "Oz",
+    "Pz",
+    "Fp2",
+    "AF4",
+    "F4",
+    "F8",
+    "FC6",
+    "FC2",
+    "C4",
+    "T8",
+    "CP6",
+    "CP2",
+    "P4",
+    "P8",
+    "PO4",
+    "O2",
+    "Fz",
+    "Cz",
 ]
 
 # -- Brain region groups ------------------------------------------------------
 REGION_GROUPS = {
-    'frontal': [0, 1, 2, 3, 4, 5, 16, 17, 18, 19, 20, 21, 30],  # 13 channels
-    'central': [6, 8, 9, 22, 24, 25, 31],  # 7 channels
-    'temporal': [7, 23],  # 2 channels
-    'parietal': [10, 11, 26, 27, 15],  # 5 channels
-    'occipital': [12, 13, 14, 28, 29],  # 5 channels
+    "frontal": [0, 1, 2, 3, 4, 5, 16, 17, 18, 19, 20, 21, 30],  # 13 channels
+    "central": [6, 8, 9, 22, 24, 25, 31],  # 7 channels
+    "temporal": [7, 23],  # 2 channels
+    "parietal": [10, 11, 26, 27, 15],  # 5 channels
+    "occipital": [12, 13, 14, 28, 29],  # 5 channels
 }
 
 # -- Frequency bands (Hz) -----------------------------------------------------
 BANDS = {
-    'theta': (4.0, 8.0),
-    'alpha': (8.0, 14.0),
-    'beta': (14.0, 31.0),
-    'gamma': (31.0, 50.0),
+    "theta": (4.0, 8.0),
+    "alpha": (8.0, 14.0),
+    "beta": (14.0, 31.0),
+    "gamma": (31.0, 50.0),
 }
 
 SAMPLING_RATE = 128
@@ -111,7 +113,7 @@ def _bandpass_filter(data, low, high, fs, order=5):
     from scipy.signal import butter, filtfilt
 
     nyq = 0.5 * fs
-    b, a = butter(order, [low / nyq, high / nyq], btype='band')
+    b, a = butter(order, [low / nyq, high / nyq], btype="band")
     return filtfilt(b, a, data, axis=-1)
 
 
@@ -274,16 +276,16 @@ class DEAPDataset(Dataset):
                 subject_samples = cached["samples"]
                 logger.info("Subject %02d: loaded %d windows from cache", sid, len(subject_samples))
             else:
-                path = os.path.join(self.data_root, f's{sid:02d}.dat')
+                path = os.path.join(self.data_root, f"s{sid:02d}.dat")
                 if not os.path.exists(path):
                     logger.warning("Subject file not found: %s", path)
                     continue
 
-                with open(path, 'rb') as f:
-                    dat = pickle.load(f, encoding='latin1')
+                with open(path, "rb") as f:
+                    dat = pickle.load(f, encoding="latin1")
 
-                data = dat['data']  # (40, 40, 8064) -- trials x channels x samples
-                labels = dat['labels']  # (40, 4) -- VADL
+                data = dat["data"]  # (40, 40, 8064) -- trials x channels x samples
+                labels = dat["labels"]  # (40, 4) -- VADL
 
                 subject_samples = []
                 for trial_idx in range(data.shape[0]):
@@ -341,7 +343,7 @@ def _collate_deap(batch):
 def get_deap_loaders(
     data_root,
     subject_id=1,
-    mode='cross_subject',
+    mode="cross_subject",
     batch_size=32,
     window_size=512,
     stride=None,
@@ -378,14 +380,14 @@ def get_deap_loaders(
             "and place preprocessed files in data/deap/data_preprocessed_python/"
         )
 
-    if mode == 'cross_subject':
+    if mode == "cross_subject":
         # LOSO: train on 31 subjects, validate on held-out subject
         all_subjects = list(range(1, 33))
         train_subjects = [s for s in all_subjects if s != subject_id]
         train_ds = DEAPDataset(data_root, train_subjects, window_size, stride)
         val_ds = DEAPDataset(data_root, [subject_id], window_size, stride)
 
-    elif mode == 'within_subject':
+    elif mode == "within_subject":
         # Single subject, 5-fold CV over 40 trials
         ds = DEAPDataset(data_root, [subject_id], window_size, stride)
         windows_per_trial = (STIMULUS_SAMPLES - window_size) // (stride or window_size) + 1

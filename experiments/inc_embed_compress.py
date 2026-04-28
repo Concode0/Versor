@@ -42,9 +42,9 @@ Execute Command
 
 from __future__ import annotations
 
-import sys
-import os
 import argparse
+import os
+import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -57,6 +57,14 @@ from torch.utils.data import DataLoader, TensorDataset
 # Ensure project root is importable when run as a script
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
+import matplotlib
+from datasets import load_dataset
+from sentence_transformers import SentenceTransformer
+
+from core.algebra import CliffordAlgebra
+from core.analysis._types import DimensionResult
+from core.analysis.dimension import DimensionLifter, EffectiveDimensionAnalyzer
+from core.analysis.spectral import SpectralAnalyzer
 from experiments._lib import (
     build_visualization_metadata,
     ensure_output_dir,
@@ -66,29 +74,20 @@ from experiments._lib import (
     setup_algebra,
     signature_metadata,
 )
-from core.algebra import CliffordAlgebra
-from core.analysis.dimension import EffectiveDimensionAnalyzer, DimensionLifter
-from core.analysis._types import DimensionResult
-from core.analysis.spectral import SpectralAnalyzer
+from functional.activation import GeometricGELU
 from layers import (
+    BladeSelector,
+    CliffordLayerNorm,
+    CliffordLinear,
     CliffordModule,
     RotorLayer,
-    CliffordLinear,
-    CliffordLayerNorm,
-    BladeSelector,
 )
-from functional.activation import GeometricGELU
 from optimizers.riemannian import RiemannianAdam
 
-from sentence_transformers import SentenceTransformer
-from datasets import load_dataset
-import matplotlib
-
-matplotlib.use('Agg')
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
-
 
 # ============================================================================
 # CLI
@@ -97,76 +96,76 @@ from sklearn.preprocessing import StandardScaler
 
 def build_parser() -> argparse.ArgumentParser:
     p = make_experiment_parser(
-        'GBN Embedding Compression — Incubator Experiment',
-        include=('seed', 'epochs', 'lr', 'batch_size', 'output_dir'),
-        defaults={'epochs': 30, 'batch_size': 256, 'lr': 5e-4, 'output_dir': 'embed_compress'},
+        "GBN Embedding Compression — Incubator Experiment",
+        include=("seed", "epochs", "lr", "batch_size", "output_dir"),
+        defaults={"epochs": 30, "batch_size": 256, "lr": 5e-4, "output_dir": "embed_compress"},
     )
     p.add_argument(
-        '--model',
-        default='BAAI/bge-large-en-v1.5',
-        help='SentenceTransformer model (text datasets only; ignored otherwise)',
+        "--model",
+        default="BAAI/bge-large-en-v1.5",
+        help="SentenceTransformer model (text datasets only; ignored otherwise)",
     )
     p.add_argument(
-        '--datasets',
-        nargs='+',
-        default=['sst2'],
+        "--datasets",
+        nargs="+",
+        default=["sst2"],
         choices=[
-            'sst2',
-            'snli',
-            'trec',
-            'agnews',
-            'mnist',
-            'cifar10',
-            'flat_plane',
-            'swiss_roll',
-            'torus',
-            'klein_bottle',
-            'mixed_curvature',
-            'manifold_ladder',
+            "sst2",
+            "snli",
+            "trec",
+            "agnews",
+            "mnist",
+            "cifar10",
+            "flat_plane",
+            "swiss_roll",
+            "torus",
+            "klein_bottle",
+            "mixed_curvature",
+            "manifold_ladder",
         ],
-        help='Data sources to run (default: sst2). '
-        'Text: sst2, snli, trec, agnews. Image: mnist, cifar10. '
-        'Synthetic: flat_plane, swiss_roll, torus, klein_bottle, '
-        'mixed_curvature. Umbrella: manifold_ladder (runs all 5).',
+        help="Data sources to run (default: sst2). "
+        "Text: sst2, snli, trec, agnews. Image: mnist, cifar10. "
+        "Synthetic: flat_plane, swiss_roll, torus, klein_bottle, "
+        "mixed_curvature. Umbrella: manifold_ladder (runs all 5).",
     )
-    p.add_argument('--max-train', type=int, default=8000, help='Max training samples per dataset (default: 8000)')
-    p.add_argument('--max-val', type=int, default=2000, help='Max validation samples per dataset (default: 2000)')
+    p.add_argument("--max-train", type=int, default=8000, help="Max training samples per dataset (default: 8000)")
+    p.add_argument("--max-val", type=int, default=2000, help="Max validation samples per dataset (default: 2000)")
     p.add_argument(
-        '--cache-dir', default='data/embed_compress', help='Directory to cache features (default: data/embed_compress)'
+        "--cache-dir", default="data/embed_compress", help="Directory to cache features (default: data/embed_compress)"
     )
     # Swiss roll synthetic data
     p.add_argument(
-        '--swiss-roll-dim',
+        "--swiss-roll-dim",
         type=int,
         default=1024,
-        help='High-D lift dimension for synthetic Swiss roll (default: 1024)',
+        help="High-D lift dimension for synthetic Swiss roll (default: 1024)",
     )
     p.add_argument(
-        '--swiss-roll-n',
+        "--swiss-roll-n",
         type=int,
         default=10000,
-        help='Total samples for synthetic Swiss roll, 80/20 split (default: 10000)',
+        help="Total samples for synthetic Swiss roll, 80/20 split (default: 10000)",
     )
     # GBN architecture
     p.add_argument(
-        '--algebra-p', type=int, default=5, help='Positive signature of internal Clifford algebra (default: 5)'
+        "--algebra-p", type=int, default=5, help="Positive signature of internal Clifford algebra (default: 5)"
     )
     p.add_argument(
-        '--algebra-q', type=int, default=0, help='Negative signature of internal Clifford algebra (default: 0)'
+        "--algebra-q", type=int, default=0, help="Negative signature of internal Clifford algebra (default: 0)"
     )
-    p.add_argument('--channels', type=int, default=8, help='Number of multivector channels in GBN (default: 8)')
+    p.add_argument("--channels", type=int, default=8, help="Number of multivector channels in GBN (default: 8)")
     # Training
-    p.add_argument('--alpha', type=float, default=1.0, help='Reconstruction loss weight (default: 1.0)')
-    p.add_argument('--beta', type=float, default=0.5, help='Classification loss weight (default: 0.5)')
+    p.add_argument("--alpha", type=float, default=1.0, help="Reconstruction loss weight (default: 1.0)")
+    p.add_argument("--beta", type=float, default=0.5, help="Classification loss weight (default: 0.5)")
     p.add_argument(
-        '--complexity-plot',
-        dest='complexity_plot',
-        action='store_true',
+        "--complexity-plot",
+        dest="complexity_plot",
+        action="store_true",
         default=True,
-        help='Produce gain-vs-complexity scatter (default: on).',
+        help="Produce gain-vs-complexity scatter (default: on).",
     )
     p.add_argument(
-        '--no-complexity-plot', dest='complexity_plot', action='store_false', help='Disable gain-vs-complexity scatter.'
+        "--no-complexity-plot", dest="complexity_plot", action="store_false", help="Disable gain-vs-complexity scatter."
     )
     return p
 
@@ -179,67 +178,67 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _load_sst2_raw(max_train: int, max_val: int):
-    ds = load_dataset('sst2', trust_remote_code=False)
-    train = ds['train'].shuffle(seed=42).select(range(min(max_train, len(ds['train']))))
-    val = ds['validation'].shuffle(seed=42).select(range(min(max_val, len(ds['validation']))))
-    return (list(train['sentence']), list(train['label'])), (list(val['sentence']), list(val['label']))
+    ds = load_dataset("sst2", trust_remote_code=False)
+    train = ds["train"].shuffle(seed=42).select(range(min(max_train, len(ds["train"]))))
+    val = ds["validation"].shuffle(seed=42).select(range(min(max_val, len(ds["validation"]))))
+    return (list(train["sentence"]), list(train["label"])), (list(val["sentence"]), list(val["label"]))
 
 
 def _load_snli_raw(max_train: int, max_val: int):
-    ds = load_dataset('snli', trust_remote_code=False)
+    ds = load_dataset("snli", trust_remote_code=False)
 
     def _pick(split, max_n):
-        rows = [(p, h, l) for p, h, l in zip(split['premise'], split['hypothesis'], split['label']) if l != -1]
+        rows = [(p, h, l) for p, h, l in zip(split["premise"], split["hypothesis"], split["label"]) if l != -1]
         rows = rows[:max_n]
         return [f"{p} [SEP] {h}" for p, h, _ in rows], [l for _, _, l in rows]
 
-    train = ds['train'].shuffle(seed=42)
-    val = ds['validation'].shuffle(seed=42)
+    train = ds["train"].shuffle(seed=42)
+    val = ds["validation"].shuffle(seed=42)
     return _pick(train, max_train), _pick(val, max_val)
 
 
 def _load_trec_raw(max_train: int, max_val: int):
-    ds = load_dataset('CogComp/trec', trust_remote_code=False)
-    train = ds['train'].shuffle(seed=42).select(range(min(max_train, len(ds['train']))))
-    val = ds['test'].shuffle(seed=42).select(range(min(max_val, len(ds['test']))))
-    label_key = 'coarse_label' if 'coarse_label' in train.column_names else 'label-coarse'
-    return (list(train['text']), list(train[label_key])), (list(val['text']), list(val[label_key]))
+    ds = load_dataset("CogComp/trec", trust_remote_code=False)
+    train = ds["train"].shuffle(seed=42).select(range(min(max_train, len(ds["train"]))))
+    val = ds["test"].shuffle(seed=42).select(range(min(max_val, len(ds["test"]))))
+    label_key = "coarse_label" if "coarse_label" in train.column_names else "label-coarse"
+    return (list(train["text"]), list(train[label_key])), (list(val["text"]), list(val[label_key]))
 
 
 def _load_agnews_raw(max_train: int, max_val: int):
-    ds = load_dataset('ag_news', trust_remote_code=False)
-    train = ds['train'].shuffle(seed=42).select(range(min(max_train, len(ds['train']))))
-    val = ds['test'].shuffle(seed=42).select(range(min(max_val, len(ds['test']))))
-    return (list(train['text']), list(train['label'])), (list(val['text']), list(val['label']))
+    ds = load_dataset("ag_news", trust_remote_code=False)
+    train = ds["train"].shuffle(seed=42).select(range(min(max_train, len(ds["train"]))))
+    val = ds["test"].shuffle(seed=42).select(range(min(max_val, len(ds["test"]))))
+    return (list(train["text"]), list(train["label"])), (list(val["text"]), list(val["label"]))
 
 
 TEXT_LOADERS = {
-    'sst2': _load_sst2_raw,
-    'snli': _load_snli_raw,
-    'trec': _load_trec_raw,
-    'agnews': _load_agnews_raw,
+    "sst2": _load_sst2_raw,
+    "snli": _load_snli_raw,
+    "trec": _load_trec_raw,
+    "agnews": _load_agnews_raw,
 }
 N_CLASSES = {
-    'sst2': 2,
-    'snli': 3,
-    'trec': 6,
-    'agnews': 4,
-    'mnist': 10,
-    'cifar10': 10,
-    'flat_plane': 4,
-    'swiss_roll': 4,
-    'torus': 4,
-    'klein_bottle': 4,
-    'mixed_curvature': 4,
+    "sst2": 2,
+    "snli": 3,
+    "trec": 6,
+    "agnews": 4,
+    "mnist": 10,
+    "cifar10": 10,
+    "flat_plane": 4,
+    "swiss_roll": 4,
+    "torus": 4,
+    "klein_bottle": 4,
+    "mixed_curvature": 4,
 }
 
 # Ordered ladder of synthetic manifolds with increasing intrinsic complexity.
 MANIFOLD_LADDER = (
-    'flat_plane',
-    'swiss_roll',
-    'torus',
-    'klein_bottle',
-    'mixed_curvature',
+    "flat_plane",
+    "swiss_roll",
+    "torus",
+    "klein_bottle",
+    "mixed_curvature",
 )
 
 
@@ -249,19 +248,19 @@ MANIFOLD_LADDER = (
 
 
 def _model_slug(model_name: str) -> str:
-    return model_name.replace('/', '_').replace('-', '_')
+    return model_name.replace("/", "_").replace("-", "_")
 
 
 def _load_cache(path: Path) -> Tuple[torch.Tensor, torch.Tensor]:
     print(f"  Loading cached features from {path}")
     data = torch.load(path, weights_only=True)
     # Back-compat: older cache files stored 'embeddings' instead of 'features'
-    feats = data.get('features', data.get('embeddings'))
-    return feats, data['labels']
+    feats = data.get("features", data.get("embeddings"))
+    return feats, data["labels"]
 
 
 def _save_cache(path: Path, features: torch.Tensor, labels: torch.Tensor):
-    torch.save({'features': features, 'labels': labels}, path)
+    torch.save({"features": features, "labels": labels}, path)
     print(f"  Saved to {path}")
 
 
@@ -313,14 +312,14 @@ def _prepare_mnist(
         return tr_x, tr_y, va_x, va_y
 
     print("  Loading MNIST via HuggingFace datasets …")
-    ds = load_dataset('ylecun/mnist')
-    train = ds['train'].shuffle(seed=42).select(range(min(args.max_train, len(ds['train']))))
-    val = ds['test'].shuffle(seed=42).select(range(min(args.max_val, len(ds['test']))))
+    ds = load_dataset("ylecun/mnist")
+    train = ds["train"].shuffle(seed=42).select(range(min(args.max_train, len(ds["train"]))))
+    val = ds["test"].shuffle(seed=42).select(range(min(args.max_val, len(ds["test"]))))
 
     def _flatten(split):
-        imgs = np.stack([np.asarray(img, dtype=np.float32) for img in split['image']])
+        imgs = np.stack([np.asarray(img, dtype=np.float32) for img in split["image"]])
         imgs = imgs.reshape(imgs.shape[0], -1) / 255.0
-        return (torch.from_numpy(imgs).float(), torch.tensor(split['label'], dtype=torch.long))
+        return (torch.from_numpy(imgs).float(), torch.tensor(split["label"], dtype=torch.long))
 
     tr_x, tr_y = _flatten(train)
     va_x, va_y = _flatten(val)
@@ -346,15 +345,15 @@ def _prepare_cifar10(
         return tr_x, tr_y, va_x, va_y
 
     print("  Loading CIFAR-10 via HuggingFace datasets …")
-    ds = load_dataset('cifar10')
-    img_key = 'img' if 'img' in ds['train'].column_names else 'image'
-    train = ds['train'].shuffle(seed=42).select(range(min(args.max_train, len(ds['train']))))
-    val = ds['test'].shuffle(seed=42).select(range(min(args.max_val, len(ds['test']))))
+    ds = load_dataset("cifar10")
+    img_key = "img" if "img" in ds["train"].column_names else "image"
+    train = ds["train"].shuffle(seed=42).select(range(min(args.max_train, len(ds["train"]))))
+    val = ds["test"].shuffle(seed=42).select(range(min(args.max_val, len(ds["test"]))))
 
     def _flatten(split):
         imgs = np.stack([np.asarray(img, dtype=np.float32) for img in split[img_key]])
         imgs = imgs.reshape(imgs.shape[0], -1) / 255.0  # [N, 3072]
-        return imgs, np.asarray(split['label'], dtype=np.int64)
+        return imgs, np.asarray(split["label"], dtype=np.int64)
 
     tr_raw, tr_lab = _flatten(train)
     va_raw, va_lab = _flatten(val)
@@ -564,11 +563,11 @@ def _prepare_mixed_curvature(
 
 
 _MANIFOLD_GENERATORS = {
-    'flat_plane': _prepare_flat_plane,
-    'swiss_roll': _prepare_swiss_roll,
-    'torus': _prepare_torus,
-    'klein_bottle': _prepare_klein_bottle,
-    'mixed_curvature': _prepare_mixed_curvature,
+    "flat_plane": _prepare_flat_plane,
+    "swiss_roll": _prepare_swiss_roll,
+    "torus": _prepare_torus,
+    "klein_bottle": _prepare_klein_bottle,
+    "mixed_curvature": _prepare_mixed_curvature,
 }
 
 
@@ -582,9 +581,9 @@ def prepare_features(
 
     if ds_name in TEXT_LOADERS:
         tr_x, tr_y, va_x, va_y = _prepare_text(ds_name, args, cache_dir)
-    elif ds_name == 'mnist':
+    elif ds_name == "mnist":
         tr_x, tr_y, va_x, va_y = _prepare_mnist(args, cache_dir)
-    elif ds_name == 'cifar10':
+    elif ds_name == "cifar10":
         tr_x, tr_y, va_x, va_y = _prepare_cifar10(args, cache_dir)
     elif ds_name in _MANIFOLD_GENERATORS:
         tr_x, tr_y, va_x, va_y = _MANIFOLD_GENERATORS[ds_name](args, cache_dir)
@@ -603,7 +602,7 @@ def analyze_effective_dimension(
     train_embs: torch.Tensor,
 ) -> DimensionResult:
     """Run EffectiveDimensionAnalyzer and print a summary."""
-    analyzer = EffectiveDimensionAnalyzer(device='cpu', dtype=torch.float32)
+    analyzer = EffectiveDimensionAnalyzer(device="cpu", dtype=torch.float32)
     result = analyzer.analyze(train_embs)
 
     print(f"\n  [Dimension Analysis]")
@@ -813,7 +812,7 @@ def train_gbn(
     dataset = TensorDataset(train_embs, train_labels)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=False)
 
-    history = {'loss': [], 'loss_recon': [], 'loss_clf': [], 'val_acc': []}
+    history = {"loss": [], "loss_recon": [], "loss_clf": [], "val_acc": []}
 
     model.train()
     for epoch in range(args.epochs):
@@ -836,9 +835,9 @@ def train_gbn(
             epoch_clf += loss_clf.item()
             n_batches += 1
 
-        history['loss'].append(epoch_loss / n_batches)
-        history['loss_recon'].append(epoch_recon / n_batches)
-        history['loss_clf'].append(epoch_clf / n_batches)
+        history["loss"].append(epoch_loss / n_batches)
+        history["loss_recon"].append(epoch_recon / n_batches)
+        history["loss_clf"].append(epoch_clf / n_batches)
 
         # Val accuracy every 5 epochs
         if (epoch + 1) % 5 == 0 or epoch == args.epochs - 1:
@@ -847,7 +846,7 @@ def train_gbn(
                 _, _, logits_val = model(val_embs)
                 preds = logits_val.argmax(dim=-1)
                 acc = (preds == val_labels).float().mean().item()
-            history['val_acc'].append(acc)
+            history["val_acc"].append(acc)
             model.train()
             print(
                 f"      epoch {epoch + 1:3d}/{args.epochs}  "
@@ -925,7 +924,7 @@ _LIFT_TEST_DIM = 6  # Reduce to this many dims before lifting test
 def run_lifting_test(
     train_embs: torch.Tensor,
     intrinsic_dim: int,
-    device: str = 'cpu',
+    device: str = "cpu",
 ) -> Dict:
     """DimensionLifter test on PCA-compressed embeddings.
 
@@ -970,8 +969,8 @@ def _manifold_complexity(dim_result, lifting_result: Dict, in_dim: int) -> float
     dim_component = float(np.log(intrinsic + 1) / np.log(in_dim + 1))
     dim_component = max(0.0, min(1.0, dim_component))
 
-    coh_orig = float(lifting_result['original']['coherence'])
-    coh_lift = float(lifting_result['lift_positive']['coherence'])
+    coh_orig = float(lifting_result["original"]["coherence"])
+    coh_lift = float(lifting_result["lift_positive"]["coherence"])
     lift_gain = max(0.0, coh_lift - coh_orig)
     # Clamp gain to a reasonable scale; empirically most datasets <= 0.5.
     lift_component = min(1.0, lift_gain / 0.5)
@@ -992,36 +991,36 @@ def plot_dimension_analysis(
     args: argparse.Namespace,
 ):
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
-    fig.suptitle(f'Effective Dimension Analysis — {dataset_name}', fontsize=13)
+    fig.suptitle(f"Effective Dimension Analysis — {dataset_name}", fontsize=13)
 
     # Panel 1: Eigenvalue spectrum
     ax = axes[0]
     eigs = dim_result.eigenvalues.numpy()
     top_n = min(100, len(eigs))
-    ax.plot(range(1, top_n + 1), eigs[:top_n], 'b-', lw=1.5)
-    ax.axvline(dim_result.intrinsic_dim, color='r', ls='--', lw=1.5, label=f'intrinsic dim={dim_result.intrinsic_dim}')
-    ax.set_xlabel('Component index')
-    ax.set_ylabel('Eigenvalue')
-    ax.set_title('Covariance eigenspectrum')
+    ax.plot(range(1, top_n + 1), eigs[:top_n], "b-", lw=1.5)
+    ax.axvline(dim_result.intrinsic_dim, color="r", ls="--", lw=1.5, label=f"intrinsic dim={dim_result.intrinsic_dim}")
+    ax.set_xlabel("Component index")
+    ax.set_ylabel("Eigenvalue")
+    ax.set_title("Covariance eigenspectrum")
     ax.legend(fontsize=8)
     ax.set_xlim(1, top_n)
 
     # Panel 2: Cumulative EVR
     ax = axes[1]
     evr_cumsum = dim_result.explained_variance_ratio.cumsum(0).numpy()
-    ax.plot(range(1, len(evr_cumsum) + 1), evr_cumsum, 'g-', lw=1.5)
-    ax.axvline(dim_result.intrinsic_dim, color='r', ls='--', lw=1.5, label=f'intrinsic dim={dim_result.intrinsic_dim}')
-    ax.axhline(0.90, color='gray', ls=':', lw=1, label='90% var')
-    ax.set_xlabel('Number of components')
-    ax.set_ylabel('Cumulative EVR')
-    ax.set_title('Cumulative explained variance')
+    ax.plot(range(1, len(evr_cumsum) + 1), evr_cumsum, "g-", lw=1.5)
+    ax.axvline(dim_result.intrinsic_dim, color="r", ls="--", lw=1.5, label=f"intrinsic dim={dim_result.intrinsic_dim}")
+    ax.axhline(0.90, color="gray", ls=":", lw=1, label="90% var")
+    ax.set_xlabel("Number of components")
+    ax.set_ylabel("Cumulative EVR")
+    ax.set_title("Cumulative explained variance")
     ax.legend(fontsize=8)
     ax.set_xlim(1, min(300, len(evr_cumsum)))
     ax.set_ylim(0, 1.05)
 
     # Panel 3: Summary text
     ax = axes[2]
-    ax.axis('off')
+    ax.axis("off")
     summary = (
         f"Embedding dim:  {len(eigs)}\n"
         f"Intrinsic dim (broken-stick): {dim_result.intrinsic_dim}\n"
@@ -1034,18 +1033,18 @@ def plot_dimension_analysis(
         summary,
         transform=ax.transAxes,
         fontsize=10,
-        verticalalignment='center',
-        fontfamily='monospace',
-        bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8),
+        verticalalignment="center",
+        fontfamily="monospace",
+        bbox=dict(boxstyle="round", facecolor="lightyellow", alpha=0.8),
     )
 
     plt.tight_layout()
     path = save_experiment_figure(
         fig,
         output_dir=str(out_dir),
-        experiment_name='inc_embed_compress',
+        experiment_name="inc_embed_compress",
         metadata=plot_metadata,
-        plot_name=f'{dataset_name}_dimension_analysis',
+        plot_name=f"{dataset_name}_dimension_analysis",
         args=args,
         module=__name__,
         dpi=120,
@@ -1061,36 +1060,36 @@ def plot_accuracy_vs_compression(
 ):
     n_ds = len(results_by_dataset)
     fig, axes = plt.subplots(1, n_ds, figsize=(6 * n_ds, 5), squeeze=False)
-    fig.suptitle('Classification Accuracy vs Target Dimension', fontsize=13)
+    fig.suptitle("Classification Accuracy vs Target Dimension", fontsize=13)
 
     for col, (ds_name, res) in enumerate(results_by_dataset.items()):
         ax = axes[0][col]
-        target_dims = res['target_dims']
-        pca_accs = res['pca_acc']
-        gbn_accs = res['gbn_acc']
-        in_dim = res['in_dim']
+        target_dims = res["target_dims"]
+        pca_accs = res["pca_acc"]
+        gbn_accs = res["gbn_acc"]
+        in_dim = res["in_dim"]
 
-        ax.plot(target_dims, pca_accs, 'b-o', label='PCA', markersize=5)
-        ax.plot(target_dims, gbn_accs, 'r-s', label='GBN', markersize=5)
-        ax.axvline(res['intrinsic_dim'], color='gray', ls='--', lw=1, label=f"intrinsic ({res['intrinsic_dim']})")
-        ax.set_xlabel('Target dimension')
-        ax.set_ylabel('Val accuracy')
+        ax.plot(target_dims, pca_accs, "b-o", label="PCA", markersize=5)
+        ax.plot(target_dims, gbn_accs, "r-s", label="GBN", markersize=5)
+        ax.axvline(res["intrinsic_dim"], color="gray", ls="--", lw=1, label=f"intrinsic ({res['intrinsic_dim']})")
+        ax.set_xlabel("Target dimension")
+        ax.set_ylabel("Val accuracy")
         ax.set_title(ds_name.upper())
         ax.legend(fontsize=9)
         # Secondary x-axis: compression ratio
         ax2 = ax.twiny()
         ax2.set_xlim(ax.get_xlim())
         ax2.set_xticks(target_dims)
-        ax2.set_xticklabels([f'{in_dim / d:.0f}×' for d in target_dims], fontsize=7)
-        ax2.set_xlabel('Compression ratio', fontsize=9)
+        ax2.set_xticklabels([f"{in_dim / d:.0f}×" for d in target_dims], fontsize=7)
+        ax2.set_xlabel("Compression ratio", fontsize=9)
 
     plt.tight_layout()
     path = save_experiment_figure(
         fig,
         output_dir=str(out_dir),
-        experiment_name='inc_embed_compress',
+        experiment_name="inc_embed_compress",
         metadata=plot_metadata,
-        plot_name='accuracy_vs_compression',
+        plot_name="accuracy_vs_compression",
         args=args,
         module=__name__,
         dpi=120,
@@ -1106,20 +1105,20 @@ def plot_reconstruction_similarity(
 ):
     n_ds = len(results_by_dataset)
     fig, axes = plt.subplots(1, n_ds, figsize=(6 * n_ds, 5), squeeze=False)
-    fig.suptitle('Reconstruction Cosine Similarity vs Compression Ratio', fontsize=13)
+    fig.suptitle("Reconstruction Cosine Similarity vs Compression Ratio", fontsize=13)
 
     for col, (ds_name, res) in enumerate(results_by_dataset.items()):
         ax = axes[0][col]
-        target_dims = res['target_dims']
-        in_dim = res['in_dim']
+        target_dims = res["target_dims"]
+        in_dim = res["in_dim"]
         ratios = [in_dim / d for d in target_dims]
-        pca_sims = res['pca_cos']
-        gbn_sims = res['gbn_cos']
+        pca_sims = res["pca_cos"]
+        gbn_sims = res["gbn_cos"]
 
-        ax.plot(ratios, pca_sims, 'b-o', label='PCA', markersize=5)
-        ax.plot(ratios, gbn_sims, 'r-s', label='GBN', markersize=5)
-        ax.set_xlabel('Compression ratio')
-        ax.set_ylabel('Mean cosine similarity')
+        ax.plot(ratios, pca_sims, "b-o", label="PCA", markersize=5)
+        ax.plot(ratios, gbn_sims, "r-s", label="GBN", markersize=5)
+        ax.set_xlabel("Compression ratio")
+        ax.set_ylabel("Mean cosine similarity")
         ax.set_title(ds_name.upper())
         ax.legend(fontsize=9)
         ax.invert_xaxis()  # higher compression on right
@@ -1128,9 +1127,9 @@ def plot_reconstruction_similarity(
     path = save_experiment_figure(
         fig,
         output_dir=str(out_dir),
-        experiment_name='inc_embed_compress',
+        experiment_name="inc_embed_compress",
         metadata=plot_metadata,
-        plot_name='reconstruction_similarity',
+        plot_name="reconstruction_similarity",
         args=args,
         module=__name__,
         dpi=120,
@@ -1151,28 +1150,28 @@ def plot_grade_energy_spectrum(
             continue
 
         fig, axes = plt.subplots(1, n_td, figsize=(4 * n_td, 4), squeeze=False)
-        fig.suptitle(f'GBN Grade Energy Spectrum — {ds_name.upper()}', fontsize=12)
+        fig.suptitle(f"GBN Grade Energy Spectrum — {ds_name.upper()}", fontsize=12)
 
         n_grades = spectra[target_dims[0]].shape[0]
-        grade_labels = [f'G{k}' for k in range(n_grades)]
+        grade_labels = [f"G{k}" for k in range(n_grades)]
 
         for col, td in enumerate(target_dims):
             ax = axes[0][col]
             energy = spectra[td].numpy()
             colors = plt.cm.viridis(np.linspace(0.1, 0.9, n_grades))
             ax.bar(grade_labels, energy, color=colors)
-            ax.set_title(f'target={td}')
-            ax.set_xlabel('Grade')
-            ax.set_ylabel('Hermitian energy')
-            ax.tick_params(axis='x', labelsize=8)
+            ax.set_title(f"target={td}")
+            ax.set_xlabel("Grade")
+            ax.set_ylabel("Hermitian energy")
+            ax.tick_params(axis="x", labelsize=8)
 
         plt.tight_layout()
         path = save_experiment_figure(
             fig,
             output_dir=str(out_dir),
-            experiment_name='inc_embed_compress',
+            experiment_name="inc_embed_compress",
             metadata=plot_metadata,
-            plot_name=f'{ds_name}_grade_energy_spectrum',
+            plot_name=f"{ds_name}_grade_energy_spectrum",
             args=args,
             module=__name__,
             dpi=120,
@@ -1193,35 +1192,35 @@ def plot_training_curves(
             continue
 
         fig, axes = plt.subplots(2, n_td, figsize=(4 * n_td, 7), squeeze=False)
-        fig.suptitle(f'GBN Training Curves — {ds_name.upper()}', fontsize=12)
+        fig.suptitle(f"GBN Training Curves — {ds_name.upper()}", fontsize=12)
 
         for col, td in enumerate(target_dims):
             h = histories[td]
-            ep = range(1, len(h['loss']) + 1)
+            ep = range(1, len(h["loss"]) + 1)
 
             ax = axes[0][col]
-            ax.plot(ep, h['loss_recon'], 'b-', lw=1.5, label='recon')
-            ax.plot(ep, h['loss_clf'], 'r-', lw=1.5, label='clf')
-            ax.set_title(f'target={td}')
-            ax.set_xlabel('Epoch')
-            ax.set_ylabel('Loss')
+            ax.plot(ep, h["loss_recon"], "b-", lw=1.5, label="recon")
+            ax.plot(ep, h["loss_clf"], "r-", lw=1.5, label="clf")
+            ax.set_title(f"target={td}")
+            ax.set_xlabel("Epoch")
+            ax.set_ylabel("Loss")
             ax.legend(fontsize=8)
 
             ax = axes[1][col]
-            val_ep = [5 * i for i in range(1, len(h['val_acc']) + 1)]
-            if h['val_acc']:
-                ax.plot(val_ep, h['val_acc'], 'g-o', lw=1.5, markersize=4)
-            ax.set_xlabel('Epoch')
-            ax.set_ylabel('Val accuracy')
+            val_ep = [5 * i for i in range(1, len(h["val_acc"]) + 1)]
+            if h["val_acc"]:
+                ax.plot(val_ep, h["val_acc"], "g-o", lw=1.5, markersize=4)
+            ax.set_xlabel("Epoch")
+            ax.set_ylabel("Val accuracy")
             ax.set_ylim(0, 1)
 
         plt.tight_layout()
         path = save_experiment_figure(
             fig,
             output_dir=str(out_dir),
-            experiment_name='inc_embed_compress',
+            experiment_name="inc_embed_compress",
             metadata=plot_metadata,
-            plot_name=f'{ds_name}_training_curves',
+            plot_name=f"{ds_name}_training_curves",
             args=args,
             module=__name__,
             dpi=120,
@@ -1240,38 +1239,38 @@ def plot_lifting_test(
 
     n_ds = len(lifting_results)
     fig, axes = plt.subplots(1, n_ds, figsize=(6 * n_ds, 4), squeeze=False)
-    fig.suptitle('DimensionLifter — Algebra Coherence Comparison', fontsize=13)
+    fig.suptitle("DimensionLifter — Algebra Coherence Comparison", fontsize=13)
 
     for col, (ds_name, res) in enumerate(lifting_results.items()):
         ax = axes[0][col]
-        keys = ['original', 'lift_positive', 'lift_null']
-        labels = ['Original\nCl(p,q)', '+Positive\nCl(p+1,q)', '+Null\nCl(p,q+1)']
-        cohs = [res[k]['coherence'] for k in keys]
-        colors = ['steelblue', 'darkorange', 'forestgreen']
-        bars = ax.bar(labels, cohs, color=colors, alpha=0.85, edgecolor='black', lw=0.8)
+        keys = ["original", "lift_positive", "lift_null"]
+        labels = ["Original\nCl(p,q)", "+Positive\nCl(p+1,q)", "+Null\nCl(p,q+1)"]
+        cohs = [res[k]["coherence"] for k in keys]
+        colors = ["steelblue", "darkorange", "forestgreen"]
+        bars = ax.bar(labels, cohs, color=colors, alpha=0.85, edgecolor="black", lw=0.8)
 
-        best = res['best']
+        best = res["best"]
         best_idx = keys.index(best)
-        bars[best_idx].set_edgecolor('gold')
+        bars[best_idx].set_edgecolor("gold")
         bars[best_idx].set_linewidth(3)
 
-        ax.set_ylabel('Geodesic coherence')
+        ax.set_ylabel("Geodesic coherence")
         ax.set_title(ds_name.upper())
         ax.set_ylim(min(0, min(cohs) - 0.05), max(cohs) + 0.1)
 
         # Annotate causal/noisy
         for i, k in enumerate(keys):
-            causal = res[k]['causal']
-            sign = 'O' if causal else 'X'
-            ax.text(i, cohs[i] + 0.01, sign, ha='center', va='bottom', fontsize=12, color='green' if causal else 'red')
+            causal = res[k]["causal"]
+            sign = "O" if causal else "X"
+            ax.text(i, cohs[i] + 0.01, sign, ha="center", va="bottom", fontsize=12, color="green" if causal else "red")
 
     plt.tight_layout()
     path = save_experiment_figure(
         fig,
         output_dir=str(out_dir),
-        experiment_name='inc_embed_compress',
+        experiment_name="inc_embed_compress",
         metadata=plot_metadata,
-        plot_name='lifting_test',
+        plot_name="lifting_test",
         args=args,
         module=__name__,
         dpi=120,
@@ -1324,7 +1323,7 @@ def run_dataset(
     lifting_result = run_lifting_test(train_embs, dim_result.intrinsic_dim)
 
     # Internal algebra
-    algebra = setup_algebra(p=args.algebra_p, q=args.algebra_q, device='cpu')
+    algebra = setup_algebra(p=args.algebra_p, q=args.algebra_q, device="cpu")
     print(f"\n  Internal algebra: Cl({args.algebra_p},{args.algebra_q})  dim={algebra.dim}")
 
     # Precompute PCA axes once
@@ -1335,13 +1334,13 @@ def run_dataset(
     print(f"\n    Sweep: {target_dims}")
 
     results = {
-        'target_dims': target_dims,
-        'pca_acc': [],
-        'gbn_acc': [],
-        'pca_cos': [],
-        'gbn_cos': [],
-        'intrinsic_dim': dim_result.intrinsic_dim,
-        'in_dim': in_dim,
+        "target_dims": target_dims,
+        "pca_acc": [],
+        "gbn_acc": [],
+        "pca_cos": [],
+        "gbn_cos": [],
+        "intrinsic_dim": dim_result.intrinsic_dim,
+        "in_dim": in_dim,
     }
     histories: Dict[int, Dict] = {}
     grade_spectra: Dict[int, torch.Tensor] = {}
@@ -1355,8 +1354,8 @@ def run_dataset(
         pca_acc = evaluate_linear_probe(train_pca, train_labels, val_pca, val_labels)
         pca_cos = cosine_similarity_mean(val_embs, val_recon_pca)
 
-        results['pca_acc'].append(pca_acc)
-        results['pca_cos'].append(pca_cos)
+        results["pca_acc"].append(pca_acc)
+        results["pca_cos"].append(pca_cos)
         print(f"    [PCA] acc={pca_acc:.3f}  cos_sim={pca_cos:.3f}")
 
         # GBN compressor
@@ -1386,8 +1385,8 @@ def run_dataset(
         # Report the best of probe vs direct classifier
         gbn_acc = max(gbn_acc_direct, gbn_probe_acc)
 
-        results['gbn_acc'].append(gbn_acc)
-        results['gbn_cos'].append(gbn_cos)
+        results["gbn_acc"].append(gbn_acc)
+        results["gbn_cos"].append(gbn_cos)
         print(f"    [GBN] acc={gbn_acc:.3f}  cos_sim={gbn_cos:.3f}")
 
         # Grade energy spectrum
@@ -1433,9 +1432,9 @@ def main():
     print("SUMMARY")
     print(f"{'=' * 60}")
     for ds_name, res in results_by_dataset.items():
-        deltas = [g - p for g, p in zip(res['gbn_acc'], res['pca_acc'])]
+        deltas = [g - p for g, p in zip(res["gbn_acc"], res["pca_acc"])]
         best_idx = max(range(len(deltas)), key=deltas.__getitem__)
-        best_td = res['target_dims'][best_idx]
+        best_td = res["target_dims"][best_idx]
         best_d = deltas[best_idx]
         headline = f"best GBN−PCA Δ = {best_d:+.3f} at target={best_td} (ratio {res['in_dim'] / best_td:.1f}×)"
         print(f"\n{ds_name.upper()} (intrinsic_dim={res['intrinsic_dim']}) — {headline}")
@@ -1443,7 +1442,7 @@ def main():
             f"  {'target':>8}  {'ratio':>6}  {'PCA acc':>8}  {'GBN acc':>8}  "
             f"{'Δ acc':>8}  {'PCA cos':>8}  {'GBN cos':>8}"
         )
-        for i, td in enumerate(res['target_dims']):
+        for i, td in enumerate(res["target_dims"]):
             print(
                 f"  {td:>8}  {res['in_dim'] / td:>5.1f}×  "
                 f"{res['pca_acc'][i]:>8.3f}  {res['gbn_acc'][i]:>8.3f}  "
@@ -1454,5 +1453,5 @@ def main():
     print(f"\nDone. Plots saved in: {out_dir}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

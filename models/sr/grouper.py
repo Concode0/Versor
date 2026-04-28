@@ -21,7 +21,7 @@ import numpy as np
 import torch
 
 from core.algebra import CliffordAlgebra
-from models.sr.utils import standardize, subsample, safe_svd
+from models.sr.utils import safe_svd, standardize, subsample
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class VariableGrouper:
         self,
         max_groups=4,
         min_group_size=2,
-        device='cpu',
+        device="cpu",
         sample_size=500,
         commutator_weight=0.4,
         coherence_weight=0.3,
@@ -177,11 +177,11 @@ class VariableGrouper:
         """
         from core.analysis import (
             CommutatorAnalyzer,
+            EffectiveDimensionAnalyzer,
             GeodesicFlow,
+            MetricSearch,
             SpectralAnalyzer,
             SymmetryDetector,
-            EffectiveDimensionAnalyzer,
-            MetricSearch,
         )
         from models.sr.relationship_graph import (
             RelationshipGraph,
@@ -285,7 +285,7 @@ class VariableGrouper:
         # 11. Build edges — for each variable pair in original space
         edges = []
         # bv_sq_scalar for edge type classification
-        bv_sq = algebra.bv_sq_scalar if hasattr(algebra, 'bv_sq_scalar') else None
+        bv_sq = algebra.bv_sq_scalar if hasattr(algebra, "bv_sq_scalar") else None
 
         for i in range(n_vars):
             for j in range(i + 1, n_vars):

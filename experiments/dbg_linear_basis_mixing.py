@@ -55,6 +55,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
+from core.algebra import CliffordAlgebra
 from experiments._lib import (
     RawDefaultsHelpFormatter,
     build_visualization_metadata,
@@ -67,10 +68,8 @@ from experiments._lib import (
     setup_algebra,
     signature_metadata,
 )
-from core.algebra import CliffordAlgebra
-from layers import CliffordLinear, BladeSelector
+from layers import BladeSelector, CliffordLinear
 from layers.primitives.base import CliffordModule
-
 
 # ==============================================================================
 # Synthetic regime generators
@@ -107,9 +106,9 @@ def make_R3_rotinv(algebra, N, C):
 
 
 REGIMES: Dict[str, Callable] = {
-    'R1 (pure grade-1)': lambda alg, N, C: make_R1_pure_grade(alg, N, C, grade=1),
-    'R2 (mixed wedge)': lambda alg, N, C: make_R2_mixed(alg, N, C),
-    'R3 (rot-invariant)': lambda alg, N, C: make_R3_rotinv(alg, N, C),
+    "R1 (pure grade-1)": lambda alg, N, C: make_R1_pure_grade(alg, N, C, grade=1),
+    "R2 (mixed wedge)": lambda alg, N, C: make_R2_mixed(alg, N, C),
+    "R3 (rot-invariant)": lambda alg, N, C: make_R3_rotinv(alg, N, C),
 }
 
 
@@ -131,7 +130,7 @@ class NNLinearBaseline(nn.Module):
 class ScalarCliffordLinear(nn.Module):
     def __init__(self, algebra, channels):
         super().__init__()
-        self.layer = CliffordLinear(algebra, channels, channels, backend='traditional')
+        self.layer = CliffordLinear(algebra, channels, channels, backend="traditional")
 
     def forward(self, x):
         return self.layer(x)
@@ -141,7 +140,7 @@ class RotorCliffordLinear(nn.Module):
     def __init__(self, algebra, channels, num_rotor_pairs=4):
         super().__init__()
         self.layer = CliffordLinear(
-            algebra, channels, channels, backend='rotor', num_rotor_pairs=num_rotor_pairs, aggregation='mean'
+            algebra, channels, channels, backend="rotor", num_rotor_pairs=num_rotor_pairs, aggregation="mean"
         )
 
     def forward(self, x):
@@ -158,7 +157,7 @@ class GradeWiseLinear(CliffordModule):
         self.lins = nn.ModuleList()
         for k in range(algebra.num_grades):
             idx = algebra.grade_masks[k].nonzero(as_tuple=False).squeeze(-1)
-            self.register_buffer(f'_slot_{k}', idx, persistent=False)
+            self.register_buffer(f"_slot_{k}", idx, persistent=False)
             self.grade_slots.append(idx)
             feat = channels * int(idx.numel())
             self.lins.append(nn.Linear(feat, feat) if feat > 0 else nn.Identity())
@@ -178,7 +177,7 @@ class GradeWiseLinear(CliffordModule):
 class BladeGatedScalar(nn.Module):
     def __init__(self, algebra, channels):
         super().__init__()
-        self.mix = CliffordLinear(algebra, channels, channels, backend='traditional')
+        self.mix = CliffordLinear(algebra, channels, channels, backend="traditional")
         self.gate = BladeSelector(algebra, channels)
 
     def forward(self, x):
@@ -187,13 +186,13 @@ class BladeGatedScalar(nn.Module):
 
 def build_methods(algebra, channels) -> Dict[str, nn.Module]:
     methods: Dict[str, nn.Module] = {
-        'nn.Linear baseline': NNLinearBaseline(channels, algebra.dim),
-        'CliffordLinear scalar': ScalarCliffordLinear(algebra, channels),
-        'Grade-wise Linear': GradeWiseLinear(algebra, channels),
-        'Blade-gated scalar': BladeGatedScalar(algebra, channels),
+        "nn.Linear baseline": NNLinearBaseline(channels, algebra.dim),
+        "CliffordLinear scalar": ScalarCliffordLinear(algebra, channels),
+        "Grade-wise Linear": GradeWiseLinear(algebra, channels),
+        "Blade-gated scalar": BladeGatedScalar(algebra, channels),
     }
     if algebra.n >= 2:
-        methods['CliffordLinear rotor'] = RotorCliffordLinear(algebra, channels, num_rotor_pairs=4)
+        methods["CliffordLinear rotor"] = RotorCliffordLinear(algebra, channels, num_rotor_pairs=4)
     return methods
 
 
@@ -205,7 +204,7 @@ def build_methods(algebra, channels) -> Dict[str, nn.Module]:
 @torch.no_grad()
 def leakage_matrix(model, algebra, x, eps=1e-8) -> torch.Tensor:
     ng = algebra.num_grades
-    L = torch.full((ng, ng), float('nan'))
+    L = torch.full((ng, ng), float("nan"))
     for j in range(ng):
         xj = algebra.grade_projection(x, j)
         denom = xj.pow(2).sum().item()
@@ -221,16 +220,16 @@ def grade_preservation(L: torch.Tensor) -> float:
     ng = L.shape[0]
     valid = ~torch.isnan(L).any(dim=0)
     if valid.sum() == 0:
-        return float('nan')
+        return float("nan")
     diag = sum(L[k, k].item() for k in range(ng) if valid[k])
     total = L[:, valid].sum().item()
-    return diag / total if total > 1e-12 else float('nan')
+    return diag / total if total > 1e-12 else float("nan")
 
 
 @torch.no_grad()
 def rotation_invariance_gap(model, algebra, x, trials=5) -> float:
     if algebra.n < 2:
-        return float('nan')
+        return float("nan")
     y0 = model(x)
     y0_e = y0.pow(2).sum().clamp(min=1e-12).item()
     gap = 0.0
@@ -254,7 +253,7 @@ def lift_nnlinear_to_clifford(nn_lin, algebra, channels) -> CliffordLinear:
     W = nn_lin.weight.data.reshape(channels, D, channels, D)
     W00 = W[:, 0, :, 0].contiguous()
     b0 = nn_lin.bias.data.reshape(channels, D)[:, 0]
-    cl = CliffordLinear(algebra, channels, channels, backend='traditional')
+    cl = CliffordLinear(algebra, channels, channels, backend="traditional")
     with torch.no_grad():
         cl.weight.copy_(W00)
         cl.bias.zero_()
@@ -271,10 +270,10 @@ def lift_nnlinear_to_clifford(nn_lin, algebra, channels) -> CliffordLinear:
 class RunResult:
     method: str
     params: int = 0
-    train_mse: float = float('nan')
-    test_mse: float = float('nan')
-    grade_pres: float = float('nan')
-    rot_inv_gap: float = float('nan')
+    train_mse: float = float("nan")
+    test_mse: float = float("nan")
+    grade_pres: float = float("nan")
+    rot_inv_gap: float = float("nan")
     L: Optional[torch.Tensor] = None
 
 
@@ -289,7 +288,7 @@ def fit_and_measure(model, algebra, x_tr, y_tr, x_te, y_te, *, epochs, batch, lr
     history = run_supervised_loop(
         model, opt, _mse_loss, loader, epochs=epochs, diag_interval=max(epochs // 5, 1), log=False, grad_clip=None
     )
-    train_mse = history['train_loss'][-1]
+    train_mse = history["train_loss"][-1]
     with torch.no_grad():
         model.eval()
         test_mse = F.mse_loss(model(x_te), y_te).item()
@@ -345,11 +344,11 @@ def run_lifting(algebra, channels, n_train, n_test, epochs_full, epochs_short, b
     scratch = ScalarCliffordLinear(algebra, channels).to(device)
     _, scratch_test = fit_and_measure(scratch, algebra, x_tr, y_tr, x_te, y_te, epochs=epochs_short, batch=batch, lr=lr)
     return {
-        'nn.Linear (full train) test MSE': base_test,
-        'Lifted init (no fine-tune) test MSE': lifted_init_test,
-        f'Lifted + {epochs_short}ep fine-tune test MSE': lifted_test,
-        f'Scratch CliffordLinear ({epochs_short}ep) test MSE': scratch_test,
-        'Fine-tune gap (lifted / scratch)': (lifted_test / scratch_test if scratch_test > 1e-12 else float('inf')),
+        "nn.Linear (full train) test MSE": base_test,
+        "Lifted init (no fine-tune) test MSE": lifted_init_test,
+        f"Lifted + {epochs_short}ep fine-tune test MSE": lifted_test,
+        f"Scratch CliffordLinear ({epochs_short}ep) test MSE": scratch_test,
+        "Fine-tune gap (lifted / scratch)": (lifted_test / scratch_test if scratch_test > 1e-12 else float("inf")),
     }
 
 
@@ -360,7 +359,7 @@ def run_lifting(algebra, channels, n_train, n_test, epochs_full, epochs_short, b
 
 def _fmt(x, width=8, prec=4):
     if x is None or (isinstance(x, float) and math.isnan(x)):
-        return '—'.rjust(width)
+        return "—".rjust(width)
     return f"{x:.{prec}f}".rjust(width)
 
 
@@ -386,23 +385,23 @@ def print_leakage(title, results, algebra):
             continue
         print(f"  {r.method}")
         for k in range(algebra.num_grades):
-            row = '    '
+            row = "    "
             for j in range(algebra.num_grades):
                 v = r.L[k, j].item()
-                row += (f"{v:6.2f}" if not math.isnan(v) else '     —') + ' '
+                row += (f"{v:6.2f}" if not math.isnan(v) else "     —") + " "
             print(row)
         print()
 
 
-def winner(results, key='test_mse') -> str:
+def winner(results, key="test_mse") -> str:
     valid = [r for r in results if not math.isnan(getattr(r, key))]
-    return min(valid, key=lambda r: getattr(r, key)).method if valid else '—'
+    return min(valid, key=lambda r: getattr(r, key)).method if valid else "—"
 
 
 def _load_pyplot():
     import matplotlib
 
-    matplotlib.use('Agg')
+    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     return plt
@@ -418,7 +417,7 @@ def save_regime_summary_plot(
 ) -> str:
     plt = _load_pyplot()
     fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-    fig.suptitle(f'Linear Basis Mixing — {title}', fontsize=13)
+    fig.suptitle(f"Linear Basis Mixing — {title}", fontsize=13)
 
     methods = [r.method for r in results]
     xs = list(range(len(results)))
@@ -426,34 +425,34 @@ def save_regime_summary_plot(
     grade_pres = [0.0 if math.isnan(r.grade_pres) else r.grade_pres for r in results]
     rot_gap = [max(r.rot_inv_gap, 1e-12) if not math.isnan(r.rot_inv_gap) else 1e-12 for r in results]
 
-    axes[0].bar(xs, test_mse, color='steelblue')
-    axes[0].set_yscale('log')
-    axes[0].set_title('Test MSE')
+    axes[0].bar(xs, test_mse, color="steelblue")
+    axes[0].set_yscale("log")
+    axes[0].set_title("Test MSE")
     axes[0].set_xticks(xs)
-    axes[0].set_xticklabels(methods, rotation=30, ha='right')
-    axes[0].grid(True, alpha=0.3, axis='y')
+    axes[0].set_xticklabels(methods, rotation=30, ha="right")
+    axes[0].grid(True, alpha=0.3, axis="y")
 
-    axes[1].bar(xs, grade_pres, color='darkorange')
+    axes[1].bar(xs, grade_pres, color="darkorange")
     axes[1].set_ylim(0.0, 1.05)
-    axes[1].set_title('Grade Preservation')
+    axes[1].set_title("Grade Preservation")
     axes[1].set_xticks(xs)
-    axes[1].set_xticklabels(methods, rotation=30, ha='right')
-    axes[1].grid(True, alpha=0.3, axis='y')
+    axes[1].set_xticklabels(methods, rotation=30, ha="right")
+    axes[1].grid(True, alpha=0.3, axis="y")
 
-    axes[2].bar(xs, rot_gap, color='seagreen')
-    axes[2].set_yscale('log')
-    axes[2].set_title('Rotation Invariance Gap')
+    axes[2].bar(xs, rot_gap, color="seagreen")
+    axes[2].set_yscale("log")
+    axes[2].set_title("Rotation Invariance Gap")
     axes[2].set_xticks(xs)
-    axes[2].set_xticklabels(methods, rotation=30, ha='right')
-    axes[2].grid(True, alpha=0.3, axis='y')
+    axes[2].set_xticklabels(methods, rotation=30, ha="right")
+    axes[2].grid(True, alpha=0.3, axis="y")
 
     fig.tight_layout()
     return save_experiment_figure(
         fig,
         output_dir=output_dir,
-        experiment_name='dbg_linear_basis_mixing',
+        experiment_name="dbg_linear_basis_mixing",
         metadata=metadata,
-        plot_name=f'{title}_summary',
+        plot_name=f"{title}_summary",
         args=args,
         module=__name__,
         dpi=150,
@@ -471,36 +470,36 @@ def save_leakage_heatmap_plot(
 ) -> str:
     plt = _load_pyplot()
     fig, axes = plt.subplots(1, len(results), figsize=(4 * len(results), 4), squeeze=False)
-    fig.suptitle(f'Leakage Matrices — {title}', fontsize=13)
+    fig.suptitle(f"Leakage Matrices — {title}", fontsize=13)
     axes_row = axes[0]
     im = None
 
     for ax, result in zip(axes_row, results):
         if result.L is None:
-            ax.axis('off')
+            ax.axis("off")
             continue
         matrix = result.L.numpy()
         masked = np.nan_to_num(matrix, nan=0.0)
-        im = ax.imshow(masked, vmin=0.0, vmax=max(1.0, float(masked.max())), cmap='magma')
+        im = ax.imshow(masked, vmin=0.0, vmax=max(1.0, float(masked.max())), cmap="magma")
         ax.set_title(result.method, fontsize=10)
-        ax.set_xlabel('Input grade')
-        ax.set_ylabel('Output grade')
+        ax.set_xlabel("Input grade")
+        ax.set_ylabel("Output grade")
         ax.set_xticks(range(algebra.num_grades))
         ax.set_yticks(range(algebra.num_grades))
         for row in range(algebra.num_grades):
             for col in range(algebra.num_grades):
-                label = '—' if math.isnan(matrix[row, col]) else f'{matrix[row, col]:.2f}'
-                ax.text(col, row, label, ha='center', va='center', fontsize=7, color='white')
+                label = "—" if math.isnan(matrix[row, col]) else f"{matrix[row, col]:.2f}"
+                ax.text(col, row, label, ha="center", va="center", fontsize=7, color="white")
 
     if im is not None:
-        fig.colorbar(im, ax=axes_row.tolist(), shrink=0.75, label='Leakage ratio')
+        fig.colorbar(im, ax=axes_row.tolist(), shrink=0.75, label="Leakage ratio")
     fig.tight_layout()
     return save_experiment_figure(
         fig,
         output_dir=output_dir,
-        experiment_name='dbg_linear_basis_mixing',
+        experiment_name="dbg_linear_basis_mixing",
         metadata=metadata,
-        plot_name=f'{title}_leakage',
+        plot_name=f"{title}_leakage",
         args=args,
         module=__name__,
         dpi=150,
@@ -519,20 +518,20 @@ def save_lifting_plot(
     values = [stats[label] for label in labels]
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.bar(range(len(labels)), values, color='mediumpurple')
-    ax.set_yscale('log')
-    ax.set_title('Lifting Study')
-    ax.set_ylabel('Value')
+    ax.bar(range(len(labels)), values, color="mediumpurple")
+    ax.set_yscale("log")
+    ax.set_title("Lifting Study")
+    ax.set_ylabel("Value")
     ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels(labels, rotation=25, ha='right')
-    ax.grid(True, alpha=0.3, axis='y')
+    ax.set_xticklabels(labels, rotation=25, ha="right")
+    ax.grid(True, alpha=0.3, axis="y")
     fig.tight_layout()
     return save_experiment_figure(
         fig,
         output_dir=output_dir,
-        experiment_name='dbg_linear_basis_mixing',
+        experiment_name="dbg_linear_basis_mixing",
         metadata=metadata,
-        plot_name='lifting_study',
+        plot_name="lifting_study",
         args=args,
         module=__name__,
         dpi=150,
@@ -547,22 +546,22 @@ def save_lifting_plot(
 def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
         __doc__,
-        include=('seed', 'device', 'output_dir'),
-        defaults={'seed': 0, 'output_dir': 'linear_basis_mixing_plots'},
+        include=("seed", "device", "output_dir"),
+        defaults={"seed": 0, "output_dir": "linear_basis_mixing_plots"},
         formatter_class=RawDefaultsHelpFormatter,
     )
-    p.add_argument('--p', type=int, default=3)
-    p.add_argument('--q', type=int, default=0)
-    p.add_argument('--r', type=int, default=0)
-    p.add_argument('--channels', type=int, default=4)
-    p.add_argument('--n-train', type=int, default=512)
-    p.add_argument('--n-test', type=int, default=128)
-    p.add_argument('--epochs', type=int, default=200)
-    p.add_argument('--epochs-short', type=int, default=50, help='fine-tune epochs for lifting study')
-    p.add_argument('--batch', type=int, default=64)
-    p.add_argument('--lr', type=float, default=1e-2)
-    p.add_argument('--regimes', type=str, default='all', help='comma-separated list: R1,R2,R3 (or "all")')
-    p.add_argument('--skip-lifting', action='store_true')
+    p.add_argument("--p", type=int, default=3)
+    p.add_argument("--q", type=int, default=0)
+    p.add_argument("--r", type=int, default=0)
+    p.add_argument("--channels", type=int, default=4)
+    p.add_argument("--n-train", type=int, default=512)
+    p.add_argument("--n-test", type=int, default=128)
+    p.add_argument("--epochs", type=int, default=200)
+    p.add_argument("--epochs-short", type=int, default=50, help="fine-tune epochs for lifting study")
+    p.add_argument("--batch", type=int, default=64)
+    p.add_argument("--lr", type=float, default=1e-2)
+    p.add_argument("--regimes", type=str, default="all", help='comma-separated list: R1,R2,R3 (or "all")')
+    p.add_argument("--skip-lifting", action="store_true")
     return p.parse_args()
 
 
@@ -588,8 +587,8 @@ def main() -> None:
 
     chosen = (
         list(REGIMES)
-        if args.regimes == 'all'
-        else [name for name in REGIMES if any(name.startswith(tag) for tag in args.regimes.split(','))]
+        if args.regimes == "all"
+        else [name for name in REGIMES if any(name.startswith(tag) for tag in args.regimes.split(","))]
     )
     metadata = build_visualization_metadata(
         signature_metadata(args.p, args.q, args.r),
@@ -668,5 +667,5 @@ def main() -> None:
         print(f"  lifting plot saved to {lifting_path}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

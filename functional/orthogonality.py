@@ -46,11 +46,12 @@ Usage:
 from __future__ import annotations
 
 import warnings
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
-from dataclasses import dataclass, field
+
 from layers.primitives.base import CliffordModule
 
 
@@ -71,7 +72,7 @@ class OrthogonalitySettings:
     """
 
     enabled: bool = True
-    mode: str = 'loss'
+    mode: str = "loss"
     weight: float = 0.1
     target_grades: Optional[List[int]] = None
     tolerance: float = 1e-4
@@ -118,9 +119,9 @@ class StrictOrthogonality(CliffordModule):
         # [n_grades, dim] boolean tensor: grade_masks_tensor[g, i] = (popcount(i) == g)
         masks = torch.zeros(n_grades, dim, dtype=torch.bool)
         for idx in range(dim):
-            g = bin(idx).count('1')
+            g = bin(idx).count("1")
             masks[g, idx] = True
-        self.register_buffer('grade_masks_tensor', masks)
+        self.register_buffer("grade_masks_tensor", masks)
 
         # Build target / parasitic masks
         target_grades = self.settings.target_grades
@@ -128,8 +129,8 @@ class StrictOrthogonality(CliffordModule):
             target_grades = list(range(n_grades))
 
         target_mask = masks[target_grades].any(dim=0)  # [dim]
-        self.register_buffer('target_mask', target_mask)
-        self.register_buffer('parasitic_mask', ~target_mask)
+        self.register_buffer("target_mask", target_mask)
+        self.register_buffer("parasitic_mask", ~target_mask)
 
     # Loss / Projection
 
@@ -170,9 +171,9 @@ class StrictOrthogonality(CliffordModule):
             mode='project': projected multivector.
         """
         if not self.settings.enabled:
-            return x if self.settings.mode == 'project' else x.new_zeros(())
+            return x if self.settings.mode == "project" else x.new_zeros(())
 
-        if self.settings.mode == 'project':
+        if self.settings.mode == "project":
             return self.project(x)
 
         return self.settings.weight * self.parasitic_energy(x)
@@ -304,11 +305,11 @@ class StrictOrthogonality(CliffordModule):
                 )
 
         return {
-            'grade_energies': energies,
-            'parasitic_ratio': p_ratio,
-            'coupling_matrix': coupling,
-            'orthogonality_satisfied': p_ratio < self.settings.tolerance,
-            'coupling_max_off_diag': max_off,
+            "grade_energies": energies,
+            "parasitic_ratio": p_ratio,
+            "coupling_matrix": coupling,
+            "orthogonality_satisfied": p_ratio < self.settings.tolerance,
+            "coupling_max_off_diag": max_off,
         }
 
     def format_diagnostics(self, x: torch.Tensor) -> str:
@@ -326,7 +327,7 @@ class StrictOrthogonality(CliffordModule):
             Coupling: max_off_diag=0.1234
         """
         d = self.diagnostics(x)
-        energies = d['grade_energies']
+        energies = d["grade_energies"]
         target_grades = set(self.settings.target_grades or range(self._n_grades))
 
         lines = ["  Grade energies (ASCII bar):"]
@@ -334,19 +335,19 @@ class StrictOrthogonality(CliffordModule):
         bar_width = 16
         for g, e in energies.items():
             filled = int(bar_width * e / max_e)
-            bar = '#' * filled + ' ' * (bar_width - filled)
-            tag = '  <- target' if g in target_grades else ''
+            bar = "#" * filled + " " * (bar_width - filled)
+            tag = "  <- target" if g in target_grades else ""
             lines.append(f"    G{g} [{bar}]  {e:.4f}{tag}")
 
         lines.append(f"  Parasitic ratio: {d['parasitic_ratio']:.4%}")
-        status = "YES" if d['orthogonality_satisfied'] else "NO"
+        status = "YES" if d["orthogonality_satisfied"] else "NO"
         lines.append(f"  Orthogonality satisfied: {status} (tol={self.settings.tolerance})")
 
-        if d['coupling_matrix'] is not None:
-            max_off = d['coupling_max_off_diag']
+        if d["coupling_matrix"] is not None:
+            max_off = d["coupling_max_off_diag"]
             lines.append(f"  Coupling: max_off_diag={max_off:.4f}")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     # Visualization
 
@@ -365,7 +366,7 @@ class StrictOrthogonality(CliffordModule):
         try:
             import matplotlib
 
-            matplotlib.use('Agg')
+            matplotlib.use("Agg")
             import matplotlib.pyplot as plt
             import numpy as np
         except ImportError:
@@ -377,30 +378,30 @@ class StrictOrthogonality(CliffordModule):
 
         n = coupling.shape[0]
         fig, ax = plt.subplots(figsize=(max(5, n + 1), max(5, n + 1)))
-        im = ax.imshow(coupling, cmap='RdBu_r', vmin=-1.0, vmax=1.0, aspect='auto', interpolation='nearest')
+        im = ax.imshow(coupling, cmap="RdBu_r", vmin=-1.0, vmax=1.0, aspect="auto", interpolation="nearest")
 
         # Annotate cells
         for i in range(n):
             for j in range(n):
                 val = coupling[i, j]
-                color = 'white' if abs(val) > 0.5 else 'black'
-                ax.text(j, i, f'{val:.2f}', ha='center', va='center', fontsize=9, color=color)
+                color = "white" if abs(val) > 0.5 else "black"
+                ax.text(j, i, f"{val:.2f}", ha="center", va="center", fontsize=9, color=color)
 
         ax.set_xticks(range(n))
         ax.set_yticks(range(n))
-        ax.set_xticklabels([f'G{g}' for g in range(n)])
-        ax.set_yticklabels([f'G{g}' for g in range(n)])
-        ax.set_xlabel('Grade')
-        ax.set_ylabel('Grade')
+        ax.set_xticklabels([f"G{g}" for g in range(n)])
+        ax.set_yticklabels([f"G{g}" for g in range(n)])
+        ax.set_xlabel("Grade")
+        ax.set_ylabel("Grade")
         ax.set_title(title)
 
         # Highlight target grades with lime borders
         target_grades = self.settings.target_grades or list(range(n))
         for g in target_grades:
             if 0 <= g < n:
-                rect = plt.Rectangle((g - 0.5, g - 0.5), 1, 1, linewidth=2, edgecolor='lime', facecolor='none')
+                rect = plt.Rectangle((g - 0.5, g - 0.5), 1, 1, linewidth=2, edgecolor="lime", facecolor="none")
                 ax.add_patch(rect)
 
-        plt.colorbar(im, ax=ax, label='Correlation', fraction=0.046, pad=0.04)
+        plt.colorbar(im, ax=ax, label="Correlation", fraction=0.046, pad=0.04)
         plt.tight_layout()
         return fig

@@ -14,16 +14,17 @@ Reference:
 
 import pytest
 import torch
+
 from core.algebra import CliffordAlgebra
 
 pytestmark = pytest.mark.unit
 from core.decomposition import (
     ExpPolicy,
-    ga_power_iteration,
+    _power_iteration_compiled_safe,
+    compiled_safe_decomposed_exp,
     differentiable_invariant_decomposition,
     exp_simple_bivector,
-    compiled_safe_decomposed_exp,
-    _power_iteration_compiled_safe,
+    ga_power_iteration,
 )
 
 
@@ -396,7 +397,7 @@ class TestExpPolicy:
 
     def test_policy_auto_n3_uses_closed_form(self):
         """AUTO with n<=3 should match closed-form exactly."""
-        alg = CliffordAlgebra(3, 0, device='cpu')
+        alg = CliffordAlgebra(3, 0, device="cpu")
         b = torch.randn(alg.dim) * 0.1
         # Zero non-bivector components
         bv_mask = alg.grade_masks[2]
@@ -410,7 +411,7 @@ class TestExpPolicy:
 
     def test_policy_auto_n4_nonsimple(self):
         """AUTO with n>=4 should produce valid rotors for non-simple bivectors."""
-        alg = CliffordAlgebra(4, 0, device='cpu')
+        alg = CliffordAlgebra(4, 0, device="cpu")
 
         # Construct a non-simple bivector: B = e12 + e34
         b = torch.zeros(alg.dim)
@@ -430,10 +431,10 @@ class TestExpPolicy:
 
     def test_policy_setter_runtime(self):
         """Verify runtime policy changes work."""
-        alg = CliffordAlgebra(3, 0, device='cpu')
+        alg = CliffordAlgebra(3, 0, device="cpu")
         assert alg.exp_policy == ExpPolicy.BALANCED
 
-        alg.exp_policy = 'precise'
+        alg.exp_policy = "precise"
         assert alg.exp_policy == ExpPolicy.PRECISE
 
         alg.exp_policy = ExpPolicy.BALANCED
@@ -441,7 +442,7 @@ class TestExpPolicy:
 
     def test_compiled_safe_power_iteration(self):
         """Compiled-safe power iteration produces valid simple bivectors."""
-        alg = CliffordAlgebra(3, 0, device='cpu')
+        alg = CliffordAlgebra(3, 0, device="cpu")
         v1 = alg.embed_vector(torch.tensor([1.0, 0.0, 0.0]))
         v2 = alg.embed_vector(torch.tensor([0.0, 1.0, 0.0]))
         b = alg.wedge(v1, v2)
@@ -455,7 +456,7 @@ class TestExpPolicy:
 
     def test_simplicity_check(self):
         """B*B grade-4 energy identifies simple vs non-simple bivectors."""
-        alg = CliffordAlgebra(4, 0, device='cpu')
+        alg = CliffordAlgebra(4, 0, device="cpu")
 
         # Simple bivector: single plane
         v1 = alg.embed_vector(torch.tensor([1.0, 0.0, 0.0, 0.0]))
@@ -479,7 +480,7 @@ class TestExpPolicy:
 
     def test_compiled_safe_decomposed_exp(self):
         """compiled_safe_decomposed_exp produces valid rotors."""
-        alg = CliffordAlgebra(4, 0, device='cpu')
+        alg = CliffordAlgebra(4, 0, device="cpu")
 
         # Non-simple bivector
         b = torch.zeros(alg.dim)
@@ -497,5 +498,5 @@ class TestExpPolicy:
         assert torch.allclose(identity, expected, atol=1e-3)
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

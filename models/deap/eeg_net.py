@@ -20,12 +20,13 @@ artifacts before pooling, then MultiTargetPhaseShiftHead mixes Grade-0
 
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
 from layers import (
-    MotherEmbedding,
-    GeometricTransformerBlock,
     CliffordLayerNorm,
     GeometricNeutralizer,
+    GeometricTransformerBlock,
+    MotherEmbedding,
 )
 from layers.primitives.base import CliffordModule
 
@@ -78,35 +79,35 @@ class EEGNet(CliffordModule):
         """
         p, q = 3, 1
         if config is not None:
-            if hasattr(config, 'algebra'):
-                p = config.algebra.get('p', 3)
-                q = config.algebra.get('q', 1)
+            if hasattr(config, "algebra"):
+                p = config.algebra.get("p", 3)
+                q = config.algebra.get("q", 1)
             elif isinstance(config, dict):
-                p = config.get('p', 3)
-                q = config.get('q', 1)
+                p = config.get("p", 3)
+                q = config.get("q", 1)
 
         algebra = CliffordAlgebra(p, q, device=device)
         super().__init__(algebra)
 
-        if config is not None and hasattr(config, 'model'):
+        if config is not None and hasattr(config, "model"):
             m = config.model
-            channels = m.get('channels', 16)
-            num_layers = m.get('num_layers', 3)
-            num_heads = m.get('num_heads', 4)
-            num_rotors = m.get('num_rotors', 8)
-            eta = m.get('eta_gating', 1.5)
-            H_base = m.get('H_base', 0.5)
-            dropout = m.get('dropout', 0.1)
-            num_targets = m.get('num_targets', 4)
+            channels = m.get("channels", 16)
+            num_layers = m.get("num_layers", 3)
+            num_heads = m.get("num_heads", 4)
+            num_rotors = m.get("num_rotors", 8)
+            eta = m.get("eta_gating", 1.5)
+            H_base = m.get("H_base", 0.5)
+            dropout = m.get("dropout", 0.1)
+            num_targets = m.get("num_targets", 4)
         elif isinstance(config, dict):
-            channels = config.get('channels', 16)
-            num_layers = config.get('num_layers', 3)
-            num_heads = config.get('num_heads', 4)
-            num_rotors = config.get('num_rotors', 8)
-            eta = config.get('eta_gating', 1.5)
-            H_base = config.get('H_base', 0.5)
-            dropout = config.get('dropout', 0.1)
-            num_targets = config.get('num_targets', 4)
+            channels = config.get("channels", 16)
+            num_layers = config.get("num_layers", 3)
+            num_heads = config.get("num_heads", 4)
+            num_rotors = config.get("num_rotors", 8)
+            eta = config.get("eta_gating", 1.5)
+            H_base = config.get("H_base", 0.5)
+            dropout = config.get("dropout", 0.1)
+            num_targets = config.get("num_targets", 4)
         else:
             channels, num_layers, num_heads, num_rotors = 16, 3, 4, 8
             eta, H_base, dropout, num_targets = 1.5, 0.5, 0.1, 4
@@ -116,8 +117,8 @@ class EEGNet(CliffordModule):
 
         self.embeddings = nn.ModuleDict()
         for name, size in group_sizes.items():
-            U = profiles[name]['U'] if profiles and name in profiles else 0.0
-            V = profiles[name]['V'] if profiles and name in profiles else None
+            U = profiles[name]["U"] if profiles and name in profiles else 0.0
+            V = profiles[name]["V"] if profiles and name in profiles else None
             self.embeddings[name] = MotherEmbedding(self.algebra, size, channels, U, V)
 
         self.blocks = nn.ModuleList(

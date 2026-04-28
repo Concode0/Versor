@@ -16,10 +16,11 @@ Three CliffordModule heads:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from core.algebra import CliffordAlgebra
 from layers.primitives.base import CliffordModule
-from layers.primitives.rotor import RotorLayer
 from layers.primitives.projection import GeometricNeutralizer
+from layers.primitives.rotor import RotorLayer
 
 
 class ChainReasoningHead(CliffordModule):
@@ -112,7 +113,7 @@ class EntailmentHead(CliffordModule):
         self.channels = channels
 
         g2_mask = algebra.grade_masks[2]
-        self.register_buffer('g2_idx', g2_mask.nonzero(as_tuple=False).squeeze(-1))
+        self.register_buffer("g2_idx", g2_mask.nonzero(as_tuple=False).squeeze(-1))
         self.d2 = len(self.g2_idx)
 
         # Features: grade-0 (1) + grade-2 norm (1) + grade-2 direction (min(d2, 4))

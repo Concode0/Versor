@@ -20,11 +20,11 @@ import torch
 from core.algebra import CliffordAlgebra
 from models.sr.translator import RotorTerm
 from models.sr.utils import (
+    make_lambdify_fn,
+    safe_svd,
     safe_sympy_solve,
     standardize,
     subsample,
-    safe_svd,
-    make_lambdify_fn,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ class PrepMixin:
 
         # Implicit mode probe (now with geometric criteria)
         implicit_form = None
-        if self.implicit_mode != 'explicit' and len(groups) == 1:
+        if self.implicit_mode != "explicit" and len(groups) == 1:
             try:
                 from models.sr.implicit import ImplicitSolver
 
@@ -90,10 +90,10 @@ class PrepMixin:
                     y_probe,
                     geometric_report=geo_report,
                 )
-                if self.implicit_mode == 'auto':
+                if self.implicit_mode == "auto":
                     implicit_form = solver_result
-                elif self.implicit_mode == 'implicit':
-                    solver_result.mode = 'implicit'
+                elif self.implicit_mode == "implicit":
+                    solver_result.mode = "implicit"
                     implicit_form = solver_result
             except (RuntimeError, ValueError) as e:
                 logger.warning(f"Implicit probe failed: {e}")
@@ -161,7 +161,7 @@ class PrepMixin:
         r2_lin = 1.0 - ss_res_lin / ss_tot
 
         # Branch 2: Log-log fit (power law detection + action)
-        from models.sr.numerics import safe_log, safe_exp
+        from models.sr.numerics import safe_exp, safe_log
 
         eps = 1e-8
         pos_mask = np.all(np.abs(X_raw) > eps, axis=1) & (np.abs(y_raw) > eps)

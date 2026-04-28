@@ -7,11 +7,12 @@
 
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
-from layers import RotorLayer, CliffordModule
-from functional.loss import GeometricMSELoss
-from tasks.base import BaseTask
 from core.visualizer import GeneralVisualizer
+from functional.loss import GeometricMSELoss
+from layers import CliffordModule, RotorLayer
+from tasks.base import BaseTask
 
 
 class IdentityNetwork(CliffordModule):

@@ -1,19 +1,20 @@
 # Tests for MD17 task with PGA motors, dynamic rotors, and RBF
 
-import torch
 import pytest
+import torch
+
 from core.algebra import CliffordAlgebra
 
 pytestmark = pytest.mark.unit
 from core.decomposition import ExpPolicy
-from core.metric import hermitian_norm, hermitian_grade_spectrum
-from models.md17 import MD17ForceNet, MD17InteractionBlock, GaussianRBF, DynamicRotorGenerator
+from core.metric import hermitian_grade_spectrum, hermitian_norm
 from functional.loss import ConservativeLoss, HermitianGradeRegularization
+from models.md17 import DynamicRotorGenerator, GaussianRBF, MD17ForceNet, MD17InteractionBlock
 
 
 @pytest.fixture
 def algebra():
-    return CliffordAlgebra(p=3, q=0, r=1, device='cpu')
+    return CliffordAlgebra(p=3, q=0, r=1, device="cpu")
 
 
 class TestGaussianRBF:

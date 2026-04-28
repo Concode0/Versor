@@ -11,8 +11,9 @@ Detects null directions, grade-involution symmetry, reflection
 symmetries, and continuous symmetries (via commutator analysis).
 """
 
-import torch
 from typing import Dict, List, Optional, Tuple
+
+import torch
 
 from core.algebra import CliffordAlgebra
 

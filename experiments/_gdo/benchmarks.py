@@ -19,7 +19,6 @@ from layers import (
 )
 from models.blocks.gbn import GeometricBladeNetwork
 
-
 # --- Category: Analytic Functions ---
 
 
@@ -88,7 +87,7 @@ class StyblinskiTangModel(nn.Module):
 class SmallGBNModel(CliffordModule):
     """Small Geometric Blade Network for testing optimizer on actual GA model."""
 
-    def __init__(self, p: int = 3, q: int = 0, channels: int = 4, device: str = 'cpu'):
+    def __init__(self, p: int = 3, q: int = 0, channels: int = 4, device: str = "cpu"):
         algebra = CliffordAlgebra(p, q, device=device)
         super().__init__(algebra)
         dim = 2 ** (p + q)
@@ -115,7 +114,7 @@ class RotorRegistrationModel(CliffordModule):
         n_points: int = 50,
         noise_std: float = 0.05,
         rotation_angle: float = 2.5,
-        device: str = 'cpu',
+        device: str = "cpu",
     ):
         algebra = CliffordAlgebra(3, 0, device=device)
         super().__init__(algebra)
@@ -123,12 +122,12 @@ class RotorRegistrationModel(CliffordModule):
         torch.manual_seed(42)
         raw = torch.randn(n_points, 3, device=device)
         raw = F.normalize(raw, dim=-1)
-        self.register_buffer('source', raw)
+        self.register_buffer("source", raw)
 
         axis = torch.tensor([1.0, 1.0, 1.0], device=device)
         axis = axis / axis.norm()
         gt_bv = self._axis_angle_to_bivector(axis, rotation_angle)
-        self.register_buffer('gt_bivector', gt_bv)
+        self.register_buffer("gt_bivector", gt_bv)
 
         gt_rotor = self.algebra.exp(-0.5 * gt_bv.unsqueeze(0))
         source_mv = self.algebra.embed_vector(raw)
@@ -138,7 +137,7 @@ class RotorRegistrationModel(CliffordModule):
         ).squeeze(1)
         target_pts = self._extract_vector(rotated)
         target_pts = target_pts + noise_std * torch.randn_like(target_pts)
-        self.register_buffer('target', target_pts)
+        self.register_buffer("target", target_pts)
 
         self.rotor = RotorLayer(self.algebra, channels=1)
 
@@ -175,7 +174,7 @@ class MinkowskiRotorModel(CliffordModule):
     """Fit a Lorentz boost in Cl(2,1) to align spacetime events.
     Tests optimizer on indefinite signature (mixed exp map regime)."""
 
-    def __init__(self, n_events: int = 30, boost_rapidity: float = 0.8, device: str = 'cpu'):
+    def __init__(self, n_events: int = 30, boost_rapidity: float = 0.8, device: str = "cpu"):
         algebra = CliffordAlgebra(2, 1, device=device)
         super().__init__(algebra)
         dim = self.algebra.dim  # 8
@@ -184,11 +183,11 @@ class MinkowskiRotorModel(CliffordModule):
         raw = torch.randn(n_events, 2, device=device)
         spatial = F.normalize(raw, dim=-1) * 0.5
         events_3d = torch.cat([spatial, torch.ones(n_events, 1, device=device)], dim=-1)
-        self.register_buffer('source', events_3d)
+        self.register_buffer("source", events_3d)
 
         gt_bv = torch.zeros(dim, device=device)
         gt_bv[5] = boost_rapidity
-        self.register_buffer('gt_bivector', gt_bv)
+        self.register_buffer("gt_bivector", gt_bv)
 
         gt_rotor = self.algebra.exp(-0.5 * gt_bv.unsqueeze(0))
         source_mv = self.algebra.embed_vector(events_3d)
@@ -198,7 +197,7 @@ class MinkowskiRotorModel(CliffordModule):
         ).squeeze(1)
         target_3d = torch.stack([boosted[..., 1], boosted[..., 2], boosted[..., 4]], dim=-1)
         target_3d = target_3d + 0.02 * torch.randn_like(target_3d)
-        self.register_buffer('target', target_3d)
+        self.register_buffer("target", target_3d)
 
         self.rotor = RotorLayer(self.algebra, channels=1)
 
@@ -219,21 +218,21 @@ class ConformalRegistrationModel(CliffordModule):
     """Fit a conformal rotor in Cl(4,1) for rotation+translation.
     Tests optimizer on 32-dimensional multivectors."""
 
-    def __init__(self, n_points: int = 40, device: str = 'cpu'):
+    def __init__(self, n_points: int = 40, device: str = "cpu"):
         algebra = CliffordAlgebra(4, 1, device=device)
         super().__init__(algebra)
         dim = self.algebra.dim  # 32
 
         torch.manual_seed(42)
         raw = torch.randn(n_points, 3, device=device) * 0.5
-        self.register_buffer('source_pts', raw)
+        self.register_buffer("source_pts", raw)
 
         gt_bv = torch.zeros(dim, device=device)
-        bv_indices = [i for i in range(dim) if bin(i).count('1') == 2]
+        bv_indices = [i for i in range(dim) if bin(i).count("1") == 2]
         if len(bv_indices) > 0:
             gt_bv[bv_indices[0]] = 0.4
 
-        self.register_buffer('gt_bivector', gt_bv)
+        self.register_buffer("gt_bivector", gt_bv)
 
         gt_rotor = self.algebra.exp(-0.5 * gt_bv.unsqueeze(0))
         src_5d = torch.zeros(n_points, 5, device=device)
@@ -246,8 +245,8 @@ class ConformalRegistrationModel(CliffordModule):
         target_mv = rotated.clone()
         target_mv[:, 1] += 0.3
         target_mv += 0.01 * torch.randn_like(target_mv)
-        self.register_buffer('target_mv', target_mv)
-        self.register_buffer('source_mv', source_mv)
+        self.register_buffer("target_mv", target_mv)
+        self.register_buffer("source_mv", source_mv)
 
         self.rotor = RotorLayer(self.algebra, channels=1)
 
@@ -261,7 +260,7 @@ class MultiRotorRegistrationModel(CliffordModule):
     """Fit a MultiRotorLayer to align multi-cluster point clouds.
     Tests commutator scheduling and multi-modal optimization."""
 
-    def __init__(self, n_clusters: int = 3, points_per_cluster: int = 20, device: str = 'cpu'):
+    def __init__(self, n_clusters: int = 3, points_per_cluster: int = 20, device: str = "cpu"):
         algebra = CliffordAlgebra(3, 0, device=device)
         super().__init__(algebra)
         dim = self.algebra.dim
@@ -290,8 +289,8 @@ class MultiRotorRegistrationModel(CliffordModule):
             tgt_pts = torch.stack([rotated[..., 1], rotated[..., 2], rotated[..., 4]], dim=-1)
             targets.append(tgt_pts + 0.03 * torch.randn_like(tgt_pts))
 
-        self.register_buffer('source', torch.cat(sources))
-        self.register_buffer('target', torch.cat(targets))
+        self.register_buffer("source", torch.cat(sources))
+        self.register_buffer("target", torch.cat(targets))
 
         self.multi_rotor = MultiRotorLayer(self.algebra, channels=1, num_rotors=n_clusters)
 
@@ -309,7 +308,7 @@ class MediumGBNModel(CliffordModule):
     """Medium GBN using GeometricBladeNetwork. 3 layers, 16ch.
     Task: learn regression on multivector inputs."""
 
-    def __init__(self, p=3, q=0, channels=16, layers=3, n_samples=64, device='cpu'):
+    def __init__(self, p=3, q=0, channels=16, layers=3, n_samples=64, device="cpu"):
         algebra = CliffordAlgebra(p, q, device=device)
         super().__init__(algebra)
         dim = self.algebra.dim
@@ -321,8 +320,8 @@ class MediumGBNModel(CliffordModule):
             layers=layers,
         )
         torch.manual_seed(42)
-        self.register_buffer('X', torch.randn(n_samples, channels, dim, device=device) * 0.3)
-        self.register_buffer('y', self.X[:, :, 0].mean(dim=1, keepdim=True))
+        self.register_buffer("X", torch.randn(n_samples, channels, dim, device=device) * 0.3)
+        self.register_buffer("y", self.X[:, :, 0].mean(dim=1, keepdim=True))
 
     def forward(self) -> torch.Tensor:
         out = self.gbn(self.X)
@@ -334,7 +333,7 @@ class MultiSigGBNModel(CliffordModule):
     """GBN in Minkowski signature Cl(2,1). 2 layers, 8ch.
     Tests optimizer with mixed exp map regime."""
 
-    def __init__(self, channels=8, layers=2, n_samples=48, device='cpu'):
+    def __init__(self, channels=8, layers=2, n_samples=48, device="cpu"):
         algebra = CliffordAlgebra(2, 1, device=device)
         super().__init__(algebra)
         dim = self.algebra.dim
@@ -346,8 +345,8 @@ class MultiSigGBNModel(CliffordModule):
             layers=layers,
         )
         torch.manual_seed(42)
-        self.register_buffer('X', torch.randn(n_samples, channels, dim, device=device) * 0.3)
-        self.register_buffer('y', self.X[:, :, 0].mean(dim=1, keepdim=True))
+        self.register_buffer("X", torch.randn(n_samples, channels, dim, device=device) * 0.3)
+        self.register_buffer("y", self.X[:, :, 0].mean(dim=1, keepdim=True))
 
     def forward(self) -> torch.Tensor:
         out = self.gbn(self.X)
@@ -362,7 +361,7 @@ class SO3InterpolationModel(CliffordModule):
     """Learn a smooth rotor trajectory through waypoints on SO(3).
     Tests geodesic integrator on curved manifold."""
 
-    def __init__(self, n_waypoints: int = 8, device: str = 'cpu'):
+    def __init__(self, n_waypoints: int = 8, device: str = "cpu"):
         algebra = CliffordAlgebra(3, 0, device=device)
         super().__init__(algebra)
         dim = self.algebra.dim
@@ -380,11 +379,11 @@ class SO3InterpolationModel(CliffordModule):
             waypoint_bivectors.append(bv)
         waypoint_bvs = torch.stack(waypoint_bivectors)
         waypoint_rotors = self.algebra.exp(-0.5 * waypoint_bvs)
-        self.register_buffer('target_rotors', waypoint_rotors)
+        self.register_buffer("target_rotors", waypoint_rotors)
 
         test_vec = torch.zeros(dim, device=device)
         test_vec[1] = 1.0
-        self.register_buffer('test_vec', test_vec)
+        self.register_buffer("test_vec", test_vec)
 
         targets = []
         for i in range(n_waypoints):
@@ -392,7 +391,7 @@ class SO3InterpolationModel(CliffordModule):
             v = test_vec.unsqueeze(0)
             rotated = self.algebra.sandwich_product(R, v.unsqueeze(1)).squeeze(1)
             targets.append(rotated)
-        self.register_buffer('target_points', torch.cat(targets))
+        self.register_buffer("target_points", torch.cat(targets))
 
         self.rotor_bank = RotorLayer(self.algebra, channels=n_waypoints)
 

@@ -17,8 +17,8 @@ from .benchmarks import (
     RastriginModel,
     RosenbrockModel,
     RotorRegistrationModel,
-    SO3InterpolationModel,
     SmallGBNModel,
+    SO3InterpolationModel,
     StyblinskiTangModel,
 )
 from .config import EXPERIMENT_REGISTRY, ExperimentConfig, register_experiment
@@ -57,10 +57,10 @@ def _gdo_metadata(
 @register_experiment("rosenbrock", "analytic")
 def run_rosenbrock(
     steps: int = 2000,
-    optimizers=('gdo', 'riemannian_adam', 'adam'),
+    optimizers=("gdo", "riemannian_adam", "adam"),
     seed: int = 42,
     output_dir: str = "gdo_plots",
-    device: str = 'cpu',
+    device: str = "cpu",
     cli_args=None,
 ):
     print("\n" + "=" * 60)
@@ -105,10 +105,10 @@ def run_rosenbrock(
 def run_rastrigin(
     n_dims: int = 8,
     steps: int = 3000,
-    optimizers=('gdo', 'riemannian_adam', 'adam'),
+    optimizers=("gdo", "riemannian_adam", "adam"),
     seed: int = 42,
     output_dir: str = "gdo_plots",
-    device: str = 'cpu',
+    device: str = "cpu",
     cli_args=None,
 ):
     print("\n" + "=" * 60)
@@ -146,10 +146,10 @@ def run_rastrigin(
 def run_ackley(
     n_dims: int = 10,
     steps: int = 3000,
-    optimizers=('gdo', 'riemannian_adam', 'adam'),
+    optimizers=("gdo", "riemannian_adam", "adam"),
     seed: int = 42,
     output_dir: str = "gdo_plots",
-    device: str = 'cpu',
+    device: str = "cpu",
     cli_args=None,
 ):
     print("\n" + "=" * 60)
@@ -187,10 +187,10 @@ def run_ackley(
 def run_styblinski_tang(
     n_dims: int = 6,
     steps: int = 2000,
-    optimizers=('gdo', 'riemannian_adam', 'adam'),
+    optimizers=("gdo", "riemannian_adam", "adam"),
     seed: int = 42,
     output_dir: str = "gdo_plots",
-    device: str = 'cpu',
+    device: str = "cpu",
     cli_args=None,
 ):
     print("\n" + "=" * 60)
@@ -224,10 +224,10 @@ def run_registration(
     steps: int = 1500,
     noise_std: float = 0.05,
     rotation_angle: float = 2.5,
-    optimizers=('gdo', 'riemannian_adam', 'adam'),
+    optimizers=("gdo", "riemannian_adam", "adam"),
     seed: int = 42,
     output_dir: str = "gdo_plots",
-    device: str = 'cpu',
+    device: str = "cpu",
     cli_args=None,
 ):
     print("\n" + "=" * 60)
@@ -287,10 +287,10 @@ def run_registration(
 @register_experiment("minkowski_rotor", "geometric")
 def run_minkowski_rotor(
     steps: int = 1500,
-    optimizers=('gdo', 'riemannian_adam', 'adam'),
+    optimizers=("gdo", "riemannian_adam", "adam"),
     seed: int = 42,
     output_dir: str = "gdo_plots",
-    device: str = 'cpu',
+    device: str = "cpu",
     cli_args=None,
 ):
     print("\n" + "=" * 60)
@@ -330,10 +330,10 @@ def run_minkowski_rotor(
 @register_experiment("conformal_registration", "geometric")
 def run_conformal_registration(
     steps: int = 2000,
-    optimizers=('gdo', 'riemannian_adam', 'adam'),
+    optimizers=("gdo", "riemannian_adam", "adam"),
     seed: int = 42,
     output_dir: str = "gdo_plots",
-    device: str = 'cpu',
+    device: str = "cpu",
     cli_args=None,
 ):
     print("\n" + "=" * 60)
@@ -371,10 +371,10 @@ def run_conformal_registration(
 @register_experiment("multi_rotor", "geometric")
 def run_multi_rotor(
     steps: int = 2000,
-    optimizers=('gdo', 'riemannian_adam', 'adam'),
+    optimizers=("gdo", "riemannian_adam", "adam"),
     seed: int = 42,
     output_dir: str = "gdo_plots",
-    device: str = 'cpu',
+    device: str = "cpu",
     cli_args=None,
 ):
     print("\n" + "=" * 60)
@@ -413,10 +413,10 @@ def run_multi_rotor(
 @register_experiment("gbn_small", "ga_neural")
 def run_gbn_small(
     steps: int = 200,
-    optimizers=('gdo', 'riemannian_adam', 'adam'),
+    optimizers=("gdo", "riemannian_adam", "adam"),
     seed: int = 42,
     output_dir: str = "gdo_plots",
-    device: str = 'cpu',
+    device: str = "cpu",
     cli_args=None,
 ):
     print("\n" + "=" * 60)
@@ -480,10 +480,10 @@ def run_gbn_small(
 @register_experiment("gbn_medium", "ga_neural")
 def run_gbn_medium(
     steps: int = 300,
-    optimizers=('gdo', 'riemannian_adam', 'adam'),
+    optimizers=("gdo", "riemannian_adam", "adam"),
     seed: int = 42,
     output_dir: str = "gdo_plots",
-    device: str = 'cpu',
+    device: str = "cpu",
     cli_args=None,
 ):
     print("\n" + "=" * 60)
@@ -536,10 +536,10 @@ def run_gbn_medium(
 @register_experiment("gbn_multisig", "ga_neural")
 def run_gbn_multisig(
     steps: int = 250,
-    optimizers=('gdo', 'riemannian_adam', 'adam'),
+    optimizers=("gdo", "riemannian_adam", "adam"),
     seed: int = 42,
     output_dir: str = "gdo_plots",
-    device: str = 'cpu',
+    device: str = "cpu",
     cli_args=None,
 ):
     print("\n" + "=" * 60)
@@ -578,10 +578,10 @@ def run_gbn_multisig(
 @register_experiment("so3_interpolation", "manifold")
 def run_so3_interpolation(
     steps: int = 1500,
-    optimizers=('gdo', 'riemannian_adam', 'adam'),
+    optimizers=("gdo", "riemannian_adam", "adam"),
     seed: int = 42,
     output_dir: str = "gdo_plots",
-    device: str = 'cpu',
+    device: str = "cpu",
     cli_args=None,
 ):
     print("\n" + "=" * 60)

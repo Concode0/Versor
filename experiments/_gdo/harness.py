@@ -10,8 +10,8 @@ import torch.nn as nn
 from torch.optim import Optimizer
 
 from core.algebra import CliffordAlgebra
-from layers import RotorLayer, MultiRotorLayer
-from optimizers.riemannian import RiemannianAdam, ExponentialSGD
+from layers import MultiRotorLayer, RotorLayer
+from optimizers.riemannian import ExponentialSGD, RiemannianAdam
 
 from .config import ExperimentConfig, ExperimentResult, GDOConfig
 from .controller import GDOController
@@ -36,20 +36,20 @@ def create_optimizer(
     algebra: Optional[CliffordAlgebra] = None,
     loss_fn: Optional[Callable] = None,
     config: Optional[GDOConfig] = None,
-    device: str = 'cpu',
+    device: str = "cpu",
 ) -> Tuple[Union[Optimizer, GDOController], str]:
     """Factory for all optimizer variants."""
-    if name == 'adam':
+    if name == "adam":
         return torch.optim.Adam(model.parameters(), lr=lr), "Adam"
-    elif name == 'riemannian_adam':
+    elif name == "riemannian_adam":
         if algebra is None:
             return torch.optim.Adam(model.parameters(), lr=lr), "Adam (no algebra)"
         return RiemannianAdam.from_model(model, lr=lr, algebra=algebra), "RiemannianAdam"
-    elif name == 'exponential_sgd':
+    elif name == "exponential_sgd":
         if algebra is None:
             return torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9), "SGD"
         return ExponentialSGD.from_model(model, lr=lr, algebra=algebra), "ExponentialSGD"
-    elif name == 'gdo':
+    elif name == "gdo":
         assert loss_fn is not None, "GDO requires loss_fn"
         gdo_opt = (
             GDOOptimizer.from_model(model, lr=lr, algebra=algebra)
@@ -110,7 +110,7 @@ def train_loop_standard(
         losses=losses,
         wall_times=wall_times,
         metrics=metrics,
-        final_loss=losses[-1] if losses else float('inf'),
+        final_loss=losses[-1] if losses else float("inf"),
         total_wall_time=sum(wall_times),
         bivector_norms=bv_norms,
     )
@@ -135,7 +135,7 @@ def train_loop_gdo(
         info = controller.optimize_step(loss)
         wt = time.perf_counter() - t0
 
-        losses.append(info['loss'])
+        losses.append(info["loss"])
         wall_times.append(wt)
         bv_norms.append(_collect_bivector_norms(model))
 
@@ -152,7 +152,7 @@ def train_loop_gdo(
         losses=losses,
         wall_times=wall_times,
         metrics=metrics,
-        final_loss=losses[-1] if losses else float('inf'),
+        final_loss=losses[-1] if losses else float("inf"),
         total_wall_time=sum(wall_times),
         gdo_diagnostics=controller.get_full_diagnostics(),
         bivector_norms=bv_norms,
@@ -165,7 +165,7 @@ def run_comparison(
     model_factory: Callable,
     loss_factory: Callable,
     config: ExperimentConfig,
-    optimizers: Tuple[str, ...] = ('gdo', 'riemannian_adam', 'adam'),
+    optimizers: Tuple[str, ...] = ("gdo", "riemannian_adam", "adam"),
     metric_factory: Optional[Callable] = None,
     pre_explore: bool = True,
     output_dir: str = "gdo_plots",
@@ -176,7 +176,7 @@ def run_comparison(
     torch.manual_seed(config.seed)
     ref_model = model_factory()
     init_state = {k: v.clone() for k, v in ref_model.state_dict().items()}
-    algebra = getattr(ref_model, 'algebra', None)
+    algebra = getattr(ref_model, "algebra", None)
     del ref_model
 
     for opt_name in optimizers:
@@ -187,7 +187,7 @@ def run_comparison(
         loss_fn = loss_factory(model)
         metric_fn = metric_factory(model) if metric_factory else None
 
-        if opt_name == 'gdo':
+        if opt_name == "gdo":
             if pre_explore and algebra is not None:
                 try:
                     pre_analyzer = PreExplorationAnalyzer(algebra=algebra, n_samples=100, device=config.device)
@@ -200,7 +200,7 @@ def run_comparison(
                 gdo_config = config.gdo_config or GDOConfig(lr=config.lr)
 
             controller_or_opt, label = create_optimizer(
-                'gdo', model, config.lr, algebra=algebra, loss_fn=loss_fn, config=gdo_config, device=config.device
+                "gdo", model, config.lr, algebra=algebra, loss_fn=loss_fn, config=gdo_config, device=config.device
             )
             result = train_loop_gdo(
                 model, controller_or_opt, config.steps, metric_fn=metric_fn, log_interval=max(config.steps // 5, 1)
@@ -253,6 +253,6 @@ def _collect_history(controller, info, history):
                 "step": info["step"],
                 "loss": info["loss"],
                 "success": "improved" in str(info["lift_oracle"]),
-                "sigma": getattr(controller.lift_oracle, '_current_sigma', 0),
+                "sigma": getattr(controller.lift_oracle, "_current_sigma", 0),
             }
         )

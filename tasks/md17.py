@@ -7,13 +7,14 @@
 
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
-from core.metric import hermitian_norm, hermitian_grade_spectrum
-from tasks.base import BaseTask
+from core.metric import hermitian_grade_spectrum, hermitian_norm
 from datalib.md17 import get_md17_loaders
-from models.md17 import MD17ForceNet
 from functional.loss import ConservativeLoss, HermitianGradeRegularization
 from log import get_logger
+from models.md17 import MD17ForceNet
+from tasks.base import BaseTask
 
 logger = get_logger(__name__)
 
@@ -34,16 +35,16 @@ class MD17Task(BaseTask):
     """
 
     def __init__(self, cfg):
-        self.molecule = cfg.dataset.get('molecule', 'aspirin')
-        self.revised = cfg.dataset.get('revised', True)
-        self.n_train = cfg.dataset.get('n_train', 1000)
-        self.n_val = cfg.dataset.get('n_val', 1000)
+        self.molecule = cfg.dataset.get("molecule", "aspirin")
+        self.revised = cfg.dataset.get("revised", True)
+        self.n_train = cfg.dataset.get("n_train", 1000)
+        self.n_val = cfg.dataset.get("n_val", 1000)
         self.data_root = "./data/rMD17" if self.revised else "./data/MD17"
-        self.loss_weights = cfg.training.get('loss_weights', {'energy': 1.0, 'force': 10.0})
+        self.loss_weights = cfg.training.get("loss_weights", {"energy": 1.0, "force": 10.0})
         super().__init__(cfg)
         self.conservative_loss = ConservativeLoss().to(self.device)
         # Hermitian grade regularization for Cl(3,0,1): 5 grades
-        target_spectrum = cfg.training.get('target_spectrum', [0.35, 0.30, 0.20, 0.10, 0.05])
+        target_spectrum = cfg.training.get("target_spectrum", [0.35, 0.30, 0.20, 0.10, 0.05])
         self.grade_reg = HermitianGradeRegularization(self.algebra, target_spectrum=target_spectrum).to(self.device)
 
     def setup_algebra(self):
@@ -57,14 +58,14 @@ class MD17Task(BaseTask):
             self.algebra,
             hidden_dim=self.cfg.model.hidden_dim,
             num_layers=self.cfg.model.layers,
-            num_static_rotors=self.cfg.model.get('num_static_rotors', 8),
-            num_dynamic_rotors=self.cfg.model.get('num_dynamic_rotors', 4),
-            max_z=self.cfg.model.get('max_z', 100),
-            num_rbf=self.cfg.model.get('num_rbf', 20),
-            rbf_cutoff=self.cfg.model.get('rbf_cutoff', 5.0),
-            use_rotor_backend=self.cfg.model.get('use_rotor_backend', False),
-            use_geo_square=self.cfg.model.get('use_geo_square', True),
-            use_checkpoint=self.cfg.model.get('use_checkpoint', False),
+            num_static_rotors=self.cfg.model.get("num_static_rotors", 8),
+            num_dynamic_rotors=self.cfg.model.get("num_dynamic_rotors", 4),
+            max_z=self.cfg.model.get("max_z", 100),
+            num_rbf=self.cfg.model.get("num_rbf", 20),
+            rbf_cutoff=self.cfg.model.get("rbf_cutoff", 5.0),
+            use_rotor_backend=self.cfg.model.get("use_rotor_backend", False),
+            use_geo_square=self.cfg.model.get("use_geo_square", True),
+            use_checkpoint=self.cfg.model.get("use_checkpoint", False),
         )
 
     def setup_criterion(self):
@@ -77,7 +78,7 @@ class MD17Task(BaseTask):
             root=self.data_root,
             molecule=self.molecule,
             batch_size=self.cfg.training.batch_size,
-            max_samples=self.cfg.dataset.get('samples', None),
+            max_samples=self.cfg.dataset.get("samples", None),
             revised=self.revised,
             n_train=self.n_train,
             n_val=self.n_val,
@@ -119,13 +120,13 @@ class MD17Task(BaseTask):
         force_loss = self.criterion(force_pred * force_scale, force_norm)
         sparsity_loss = self.model.total_sparsity_loss()
 
-        w_conservative = self.loss_weights.get('conservative', 0.0)
+        w_conservative = self.loss_weights.get("conservative", 0.0)
         if w_conservative > 0:
             conservative_loss = self.conservative_loss(energy_pred, force_pred, pos)
         else:
             conservative_loss = torch.tensor(0.0, device=self.device)
 
-        w_grade_reg = self.loss_weights.get('grade_reg', 0.0)
+        w_grade_reg = self.loss_weights.get("grade_reg", 0.0)
         if w_grade_reg > 0:
             latent = self.model.get_latent_features()
             if latent is not None:
@@ -135,10 +136,10 @@ class MD17Task(BaseTask):
         else:
             grade_reg_loss = torch.tensor(0.0, device=self.device)
 
-        w_sparsity = self.loss_weights.get('sparsity', 0.0)
+        w_sparsity = self.loss_weights.get("sparsity", 0.0)
         loss = (
-            self.loss_weights['energy'] * energy_loss
-            + self.loss_weights['force'] * force_loss
+            self.loss_weights["energy"] * energy_loss
+            + self.loss_weights["force"] * force_loss
             + w_sparsity * sparsity_loss
             + w_conservative * conservative_loss
             + w_grade_reg * grade_reg_loss
@@ -195,7 +196,7 @@ class MD17Task(BaseTask):
         avg_energy_mae = total_energy_mae / count
         avg_force_mae = total_force_mae / (count * force_target.size(-2))  # Normalize by num_atoms
 
-        return {'Energy_MAE': avg_energy_mae, 'Force_MAE': avg_force_mae}
+        return {"Energy_MAE": avg_energy_mae, "Force_MAE": avg_force_mae}
 
     def visualize(self, val_loader):
         self.model.eval()
@@ -217,23 +218,23 @@ class MD17Task(BaseTask):
 
             e_true = energy_target.cpu().numpy()
             e_pred = energy_pred.cpu().numpy()
-            axes[0].scatter(e_true, e_pred, alpha=0.5, label='Predictions')
+            axes[0].scatter(e_true, e_pred, alpha=0.5, label="Predictions")
             axes[0].set_xlabel("Actual Energy (kcal/mol)")
             axes[0].set_ylabel("Predicted Energy (kcal/mol)")
             min_val = min(e_true.min(), e_pred.min())
             max_val = max(e_true.max(), e_pred.max())
-            axes[0].plot([min_val, max_val], [min_val, max_val], 'r--', label='Perfect')
+            axes[0].plot([min_val, max_val], [min_val, max_val], "r--", label="Perfect")
             axes[0].set_title(f"MD17 Energy Prediction ({self.molecule})")
             axes[0].grid(True)
             axes[0].legend()
 
             f_true = force_target.cpu().numpy().flatten()
             f_pred = force_pred.cpu().numpy().flatten()
-            axes[1].hist(f_pred - f_true, bins=50, alpha=0.7, edgecolor='black')
+            axes[1].hist(f_pred - f_true, bins=50, alpha=0.7, edgecolor="black")
             axes[1].set_xlabel("Force Error (kcal/mol/A)")
             axes[1].set_ylabel("Frequency")
             axes[1].set_title(f"MD17 Force Error Distribution ({self.molecule})")
-            axes[1].axvline(0, color='r', linestyle='--', linewidth=2)
+            axes[1].axvline(0, color="r", linestyle="--", linewidth=2)
             axes[1].grid(True, alpha=0.3)
 
             plt.tight_layout()
@@ -249,7 +250,7 @@ class MD17Task(BaseTask):
         logger.info(f"Starting Task: {variant} ({self.molecule})")
 
         # CUDA warmup: ensure cuBLAS context is ready before first backward
-        if 'cuda' in str(self.device):
+        if "cuda" in str(self.device):
             _dummy = torch.zeros(1, device=self.device, requires_grad=True)
             (_dummy.sum()).backward()
             torch.cuda.synchronize()
@@ -260,7 +261,7 @@ class MD17Task(BaseTask):
 
         pbar = tqdm(range(self.epochs))
 
-        best_val_metric = float('inf')
+        best_val_metric = float("inf")
 
         for epoch in pbar:
             self.model.train()
@@ -272,8 +273,8 @@ class MD17Task(BaseTask):
             for batch in inner_pbar:
                 loss, logs = self.train_step(batch)
                 total_loss += loss
-                total_e_mae += logs['E_MAE']
-                total_f_mae += logs['F_MAE']
+                total_e_mae += logs["E_MAE"]
+                total_f_mae += logs["F_MAE"]
                 inner_pbar.set_postfix(E_MAE=f"{logs['E_MAE']:.4f}")
 
             avg_loss = total_loss / len(train_loader)
@@ -281,7 +282,7 @@ class MD17Task(BaseTask):
             avg_f_mae = total_f_mae / len(train_loader)
 
             val_metrics = self.evaluate(val_loader)
-            val_loss = val_metrics['Energy_MAE'] + val_metrics['Force_MAE']
+            val_loss = val_metrics["Energy_MAE"] + val_metrics["Force_MAE"]
 
             self.scheduler.step(val_loss)
 
@@ -290,12 +291,12 @@ class MD17Task(BaseTask):
                 self.save_checkpoint(f"{self.cfg.name}_best.pt")
 
             logs = {
-                'Loss': avg_loss,
-                'E_MAE': avg_e_mae,
-                'F_MAE': avg_f_mae,
-                'Val_E_MAE': val_metrics['Energy_MAE'],
-                'Val_F_MAE': val_metrics['Force_MAE'],
-                'LR': self.optimizer.param_groups[0]['lr'],
+                "Loss": avg_loss,
+                "E_MAE": avg_e_mae,
+                "F_MAE": avg_f_mae,
+                "Val_E_MAE": val_metrics["Energy_MAE"],
+                "Val_F_MAE": val_metrics["Force_MAE"],
+                "LR": self.optimizer.param_groups[0]["lr"],
             }
             desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])
             pbar.set_description(desc)

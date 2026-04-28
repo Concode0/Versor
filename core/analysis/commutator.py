@@ -12,8 +12,9 @@ adjoint operator, and tests for Lie-subalgebra closure among data
 bivectors.
 """
 
-import torch
 from typing import Dict
+
+import torch
 
 from core.algebra import CliffordAlgebra
 

@@ -44,7 +44,7 @@ class GDOController:
         max_navigate_steps: int = 150,
         lift_patience: int = 80,
         algebra: Optional[CliffordAlgebra] = None,
-        device: str = 'cpu',
+        device: str = "cpu",
         config: Optional[GDOConfig] = None,
     ):
         if config is not None:
@@ -108,11 +108,11 @@ class GDOController:
         self._mode_history: List[str] = []
 
         self._navigate_steps: int = 0
-        self._navigate_best_loss: float = float('inf')
+        self._navigate_best_loss: float = float("inf")
         self._navigate_no_improve: int = 0
 
         self._sprint_step: int = 0
-        self._last_schedule_loss: float = float('inf')
+        self._last_schedule_loss: float = float("inf")
         self._last_schedule_grad_norms: Optional[torch.Tensor] = None
 
         self._param_group_meta: List[Dict] = []
@@ -153,19 +153,19 @@ class GDOController:
     @staticmethod
     def _classify_param(name: str, param: nn.Parameter) -> Tuple[str, str, int]:
         """Classify a parameter into (manifold, role, depth)."""
-        manifold = getattr(param, '_manifold', MANIFOLD_EUCLIDEAN)
+        manifold = getattr(param, "_manifold", MANIFOLD_EUCLIDEAN)
 
         lower = name.lower()
-        if 'grade_weights' in lower or 'bivector' in lower:
+        if "grade_weights" in lower or "bivector" in lower:
             role = "bivector"
-        elif 'bias' in lower:
+        elif "bias" in lower:
             role = "bias"
-        elif 'weight' in lower and 'grade' not in lower and 'bivector' not in lower:
+        elif "weight" in lower and "grade" not in lower and "bivector" not in lower:
             role = "linear"
         else:
             role = "other"
 
-        depth_match = re.search(r'layer[_.]?(\d+)', lower)
+        depth_match = re.search(r"layer[_.]?(\d+)", lower)
         depth = int(depth_match.group(1)) if depth_match else 0
 
         return manifold, role, depth
@@ -233,7 +233,7 @@ class GDOController:
 
         for u_meta, u_params in undersized:
             best_idx = -1
-            best_dist = float('inf')
+            best_dist = float("inf")
             for i, (m, _) in enumerate(merged_groups):
                 if m["manifold"] == u_meta["manifold"]:
                     dist = abs(m["depth_range"][0] - u_meta["depth_range"][0])
@@ -259,7 +259,7 @@ class GDOController:
             )
             s_meta, s_params = merged_groups.pop(smallest_idx)
             best_idx = -1
-            best_dist = float('inf')
+            best_dist = float("inf")
             for i, (m, _) in enumerate(merged_groups):
                 if m["manifold"] == s_meta["manifold"]:
                     dist = abs(m["depth_range"][0] - s_meta["depth_range"][0])
@@ -397,7 +397,7 @@ class GDOController:
             self._commutator_schedule = [[0]] if self._param_groups else [[]]
             self._group_scales = [1.0]
 
-        self._last_schedule_loss = float('inf')
+        self._last_schedule_loss = float("inf")
         self._sprint_step = 0
 
     def _maybe_reschedule(self, current_loss: float) -> bool:
@@ -405,7 +405,7 @@ class GDOController:
         interval_trigger = self._sprint_step > 0 and self._sprint_step % self.config.reschedule_interval == 0
 
         loss_trigger = False
-        if self._last_schedule_loss < float('inf'):
+        if self._last_schedule_loss < float("inf"):
             rel_improve = (self._last_schedule_loss - current_loss) / (abs(self._last_schedule_loss) + 1e-8)
             loss_trigger = rel_improve > self.config.reschedule_loss_delta
 

@@ -5,12 +5,13 @@
 # you may not use this file except in compliance with the License.
 #
 
-import torch
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
+import torch
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+
 from core.algebra import CliffordAlgebra
 
 
@@ -61,7 +62,7 @@ class GeneralVisualizer:
         if filename is None:
             filename = f"viz_{self.img_counter}.png"
             self.img_counter += 1
-        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        plt.savefig(filename, dpi=300, bbox_inches="tight")
         print(f"Saved figure: {filename}")
         plt.close()
 
@@ -84,17 +85,17 @@ class GeneralVisualizer:
         z = data[:, dims[2]].cpu().numpy()
 
         fig = plt.figure(figsize=(12, 10), dpi=120)
-        ax = fig.add_subplot(111, projection='3d')
+        ax = fig.add_subplot(111, projection="3d")
 
         # Color by phase angle in XY plane
         c = np.arctan2(y, x)
 
-        ax.scatter(x, y, z, c=c, cmap='twilight', s=50, alpha=0.6, edgecolors='w', linewidth=0.3)
+        ax.scatter(x, y, z, c=c, cmap="twilight", s=50, alpha=0.6, edgecolors="w", linewidth=0.3)
 
         ax.set_xlabel(self.basis_names[dims[0]], fontsize=12)
         ax.set_ylabel(self.basis_names[dims[1]], fontsize=12)
         ax.set_zlabel(self.basis_names[dims[2]], fontsize=12)
-        ax.set_title(title, fontsize=16, fontweight='bold', pad=20)
+        ax.set_title(title, fontsize=16, fontweight="bold", pad=20)
 
         # Minimalist style
         ax.grid(False)
@@ -105,7 +106,7 @@ class GeneralVisualizer:
 
         return fig
 
-    def plot_latent_projection(self, data: torch.Tensor, method='pca', title=None):
+    def plot_latent_projection(self, data: torch.Tensor, method="pca", title=None):
         """Dimensionality reduction for visualization.
 
         Args:
@@ -121,11 +122,11 @@ class GeneralVisualizer:
 
         X = data.detach().cpu().numpy()
 
-        if method.lower() == 'pca':
+        if method.lower() == "pca":
             reducer = PCA(n_components=2)
             title = title or "Latent Space (PCA)"
             xlabel, ylabel = "PC 1", "PC 2"
-        elif method.lower() == 'tsne':
+        elif method.lower() == "tsne":
             reducer = TSNE(n_components=2, perplexity=30, n_iter=1000)
             title = title or "Latent Space (t-SNE)"
             xlabel, ylabel = "t-SNE Dim 1", "t-SNE Dim 2"
@@ -174,7 +175,7 @@ class GeneralVisualizer:
         sns.barplot(x=grade_labels, y=energy_per_grade, hue=grade_labels, palette="viridis", legend=False)
         plt.title(title)
         plt.ylabel("Average Energy")
-        plt.yscale('log')  # Use log scale for dynamic range
+        plt.yscale("log")  # Use log scale for dynamic range
         return plt.gcf()
 
     def plot_components_heatmap(self, data: torch.Tensor, title="Component Activation Heatmap"):
@@ -197,7 +198,7 @@ class GeneralVisualizer:
         X = data.abs().detach().cpu().numpy()
 
         plt.figure(figsize=(12, 8))
-        sns.heatmap(X.T, yticklabels=self.basis_names, cmap="magma", cbar_kws={'label': 'Magnitude'})
+        sns.heatmap(X.T, yticklabels=self.basis_names, cmap="magma", cbar_kws={"label": "Magnitude"})
         plt.title(title)
         plt.xlabel("Sample Index")
         return plt.gcf()

@@ -8,6 +8,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from core.metric import hermitian_grade_spectrum
 from layers.primitives.base import CliffordModule
 
@@ -24,7 +25,7 @@ class GeometricMSELoss(CliffordModule):
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """MSE."""
-        return F.mse_loss(pred, target, reduction='mean')
+        return F.mse_loss(pred, target, reduction="mean")
 
 
 class SubspaceLoss(CliffordModule):
@@ -46,7 +47,7 @@ class SubspaceLoss(CliffordModule):
         else:
             raise ValueError("Must provide target_indices or exclude_indices")
 
-        self.register_buffer('penalty_mask', mask)
+        self.register_buffer("penalty_mask", mask)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Penalizes deviations."""
@@ -64,7 +65,7 @@ class IsometryLoss(CliffordModule):
     def __init__(self, algebra):
         """Initialize isometry loss with metric diagonal."""
         super().__init__(algebra)
-        self.register_buffer('metric_diag', self._compute_metric_diagonal())
+        self.register_buffer("metric_diag", self._compute_metric_diagonal())
 
     def _compute_metric_diagonal(self):
         """Finds the signature."""
@@ -126,7 +127,7 @@ class HermitianGradeRegularization(CliffordModule):
         else:
             target = torch.tensor(target_spectrum, dtype=torch.float32)
             target = target / (target.sum() + 1e-8)
-        self.register_buffer('target', target)
+        self.register_buffer("target", target)
 
     def forward(self, features):
         """Compute grade regularization loss.

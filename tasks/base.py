@@ -5,14 +5,16 @@
 # you may not use this file except in compliance with the License.
 #
 
+from abc import ABC, abstractmethod
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from abc import ABC, abstractmethod
-from tqdm import tqdm
 from omegaconf import DictConfig
-from log import get_logger
+from tqdm import tqdm
+
 from core.device import DeviceConfig, resolve_device
+from log import get_logger
 
 logger = get_logger(__name__)
 
@@ -42,13 +44,13 @@ class BaseTask(ABC):
 
         # Build DeviceConfig from Hydra config
         self.device_config = DeviceConfig(
-            device=cfg.algebra.get('device', 'auto'),
-            pin_memory=cfg.training.get('pin_memory', None),
-            num_workers=cfg.training.get('num_workers', None),
-            compile_model=cfg.training.get('compile', False),
-            compile_backend=cfg.training.get('compile_backend', None),
-            amp=cfg.training.get('amp', False),
-            cudnn_benchmark=cfg.training.get('cudnn_benchmark', None),
+            device=cfg.algebra.get("device", "auto"),
+            pin_memory=cfg.training.get("pin_memory", None),
+            num_workers=cfg.training.get("num_workers", None),
+            compile_model=cfg.training.get("compile", False),
+            compile_backend=cfg.training.get("compile_backend", None),
+            amp=cfg.training.get("amp", False),
+            cudnn_benchmark=cfg.training.get("cudnn_benchmark", None),
         )
         self.device = self.device_config.device
         self.device_config.apply_backend_settings()
@@ -59,18 +61,18 @@ class BaseTask(ABC):
         self.criterion = self.setup_criterion()
         self.optimizer = self._setup_optimizer()
         self.epochs = cfg.training.epochs
-        sched_cfg = cfg.training.get('scheduler', {})
+        sched_cfg = cfg.training.get("scheduler", {})
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer,
-            mode='min',
-            factor=sched_cfg.get('factor', 0.5),
-            patience=sched_cfg.get('patience', 10),
+            mode="min",
+            factor=sched_cfg.get("factor", 0.5),
+            patience=sched_cfg.get("patience", 10),
         )
 
         # AMP scaler (None when AMP is disabled)
         self._scaler = self.device_config.get_scaler()
 
-        if cfg.get('checkpoint'):
+        if cfg.get("checkpoint"):
             self.load_checkpoint(cfg.checkpoint)
 
     @staticmethod
@@ -97,28 +99,28 @@ class BaseTask(ABC):
         Returns:
             Configured optimizer instance.
         """
-        opt_type = self.cfg.training.get('optimizer_type', 'riemannian_adam')
+        opt_type = self.cfg.training.get("optimizer_type", "riemannian_adam")
         lr = self.cfg.training.lr
 
-        if opt_type == 'exponential_sgd':
+        if opt_type == "exponential_sgd":
             from optimizers.riemannian import ExponentialSGD
 
             return ExponentialSGD.from_model(
                 self.model,
                 lr=lr,
-                momentum=self.cfg.training.get('momentum', 0.9),
+                momentum=self.cfg.training.get("momentum", 0.9),
                 algebra=self.algebra,
-                max_bivector_norm=self.cfg.training.get('max_bivector_norm', 10.0),
+                max_bivector_norm=self.cfg.training.get("max_bivector_norm", 10.0),
             )
-        elif opt_type == 'riemannian_adam':
+        elif opt_type == "riemannian_adam":
             from optimizers.riemannian import RiemannianAdam
 
             return RiemannianAdam.from_model(
                 self.model,
                 lr=lr,
-                betas=self.cfg.training.get('betas', (0.9, 0.999)),
+                betas=self.cfg.training.get("betas", (0.9, 0.999)),
                 algebra=self.algebra,
-                max_bivector_norm=self.cfg.training.get('max_bivector_norm', 10.0),
+                max_bivector_norm=self.cfg.training.get("max_bivector_norm", 10.0),
             )
         else:
             # Euclidean AdamW (for ablation experiments only)
@@ -178,10 +180,10 @@ class BaseTask(ABC):
     def save_checkpoint(self, path: str):
         """Save model, optimizer, and scheduler state to disk."""
         checkpoint = {
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict(),
-            'config': self.cfg,
+            "model_state_dict": self.model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "scheduler_state_dict": self.scheduler.state_dict(),
+            "config": self.cfg,
         }
         torch.save(checkpoint, path)
         logger.info("Checkpoint saved to %s", path)
@@ -193,9 +195,9 @@ class BaseTask(ABC):
         except TypeError:
             checkpoint = torch.load(path, map_location=self.device)
 
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        self.model.load_state_dict(checkpoint["model_state_dict"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
         logger.info("Checkpoint loaded from %s", path)
 
     def run(self):
@@ -216,14 +218,14 @@ class BaseTask(ABC):
                     loss, logs = self.train_step(batch)
                     total_loss += loss
                 avg_loss = total_loss / len(dataloader)
-                logs['Loss'] = avg_loss
+                logs["Loss"] = avg_loss
             else:
                 avg_loss, logs = self.train_step(dataloader)
 
             self.scheduler.step(avg_loss)
 
-            current_lr = self.optimizer.param_groups[0]['lr']
-            logs['LR'] = current_lr
+            current_lr = self.optimizer.param_groups[0]["lr"]
+            logs["LR"] = current_lr
 
             desc = " | ".join([f"{k}: {v:.4f}" for k, v in logs.items()])
             pbar.set_description(desc)

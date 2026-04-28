@@ -20,13 +20,13 @@ Reference:
   SRBench: La Cava et al. (2025), arXiv:2505.03977
 """
 
-import os
 import logging
+import os
 
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -37,34 +37,34 @@ _PMLB_GITHUB_RAW = "https://github.com/EpistasisLab/pmlb/raw/master/datasets"
 
 # Phenomenological & first-principles track (12 datasets)
 FIRST_PRINCIPLES_DATASETS = [
-    'first_principles_absorption',
-    'first_principles_bode',
-    'first_principles_hubble',
-    'first_principles_ideal_gas',
-    'first_principles_kepler',
-    'first_principles_leavitt',
-    'first_principles_newton',
-    'first_principles_planck',
-    'first_principles_rydberg',
-    'first_principles_schechter',
-    'first_principles_supernovae_zr',
-    'first_principles_tully_fisher',
+    "first_principles_absorption",
+    "first_principles_bode",
+    "first_principles_hubble",
+    "first_principles_ideal_gas",
+    "first_principles_kepler",
+    "first_principles_leavitt",
+    "first_principles_newton",
+    "first_principles_planck",
+    "first_principles_rydberg",
+    "first_principles_schechter",
+    "first_principles_supernovae_zr",
+    "first_principles_tully_fisher",
 ]
 
 # Black-box track (12 datasets)
 BLACKBOX_DATASETS = [
-    '1028_SWD',
-    '1089_USCrime',
-    '1193_BNG_lowbwt',
-    '1199_BNG_echoMonths',
-    '192_vineyard',
-    '210_cloud',
-    '522_pm10',
-    '557_analcatdata_apnea1',
-    '579_fri_c0_250_5',
-    '606_fri_c2_1000_10',
-    '650_fri_c0_500_50',
-    '678_visualizing_environmental',
+    "1028_SWD",
+    "1089_USCrime",
+    "1193_BNG_lowbwt",
+    "1199_BNG_echoMonths",
+    "192_vineyard",
+    "210_cloud",
+    "522_pm10",
+    "557_analcatdata_apnea1",
+    "579_fri_c0_250_5",
+    "606_fri_c2_1000_10",
+    "650_fri_c0_500_50",
+    "678_visualizing_environmental",
 ]
 
 # All 24 SRBench datasets
@@ -102,9 +102,9 @@ def _fetch_pmlb_data(dataset_name: str, cache_dir: str) -> pd.DataFrame:
     """
     # Try local cache first
     if cache_dir:
-        cached_path = os.path.join(cache_dir, dataset_name, dataset_name + '.tsv.gz')
+        cached_path = os.path.join(cache_dir, dataset_name, dataset_name + ".tsv.gz")
         if os.path.exists(cached_path):
-            return pd.read_csv(cached_path, sep='\t', compression='gzip')
+            return pd.read_csv(cached_path, sep="\t", compression="gzip")
 
     # Try pmlb.fetch_data (works for datasets in the PyPI index)
     try:
@@ -118,14 +118,14 @@ def _fetch_pmlb_data(dataset_name: str, cache_dir: str) -> pd.DataFrame:
     # Fallback: fetch directly from PMLB GitHub
     url = f"{_PMLB_GITHUB_RAW}/{dataset_name}/{dataset_name}.tsv.gz"
     logger.info(f"Fetching {dataset_name} from PMLB GitHub...")
-    df = pd.read_csv(url, sep='\t', compression='gzip')
+    df = pd.read_csv(url, sep="\t", compression="gzip")
 
     # Cache locally for future use
     if cache_dir:
         local_dir = os.path.join(cache_dir, dataset_name)
         os.makedirs(local_dir, exist_ok=True)
-        local_path = os.path.join(local_dir, dataset_name + '.tsv.gz')
-        df.to_csv(local_path, sep='\t', compression='gzip', index=False)
+        local_path = os.path.join(local_dir, dataset_name + ".tsv.gz")
+        df.to_csv(local_path, sep="\t", compression="gzip", index=False)
 
     return df
 

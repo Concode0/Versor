@@ -11,12 +11,13 @@ Computes grade-energy spectrum, bivector-field decomposition, and
 (optionally) the eigenvalue spectrum of the geometric-product operator.
 """
 
-import torch
 from typing import List, Optional
 
+import torch
+
 from core.algebra import CliffordAlgebra
-from core.metric import hermitian_grade_spectrum
 from core.decomposition import differentiable_invariant_decomposition
+from core.metric import hermitian_grade_spectrum
 
 from ._types import CONSTANTS, SpectralResult
 

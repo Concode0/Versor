@@ -6,13 +6,15 @@
 #
 
 import torch
+
 from core.algebra import CliffordAlgebra
+from functional.activation import GeometricGELU
+
 from ..primitives.base import CliffordModule
 from ..primitives.linear import CliffordLinear
-from ..primitives.normalization import CliffordLayerNorm
 from ..primitives.multi_rotor import MultiRotorLayer
+from ..primitives.normalization import CliffordLayerNorm
 from ..primitives.projection import BladeSelector
-from functional.activation import GeometricGELU
 
 
 class MultiRotorFFN(CliffordModule):
@@ -54,7 +56,7 @@ class MultiRotorFFN(CliffordModule):
         super().__init__(algebra)
         self.channels = channels
         ffn_channels = channels * ffn_mult
-        backend = 'rotor' if use_rotor_backend else 'traditional'
+        backend = "rotor" if use_rotor_backend else "traditional"
 
         self.expand = CliffordLinear(algebra, channels, ffn_channels, backend=backend)
         self.norm = CliffordLayerNorm(algebra, ffn_channels)

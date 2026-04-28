@@ -6,7 +6,9 @@
 #
 
 import torch
+
 from core.algebra import CliffordAlgebra
+
 from ..primitives.base import CliffordModule
 
 
@@ -45,17 +47,17 @@ class ConformalEmbedding(CliffordModule):
         idx_ep = 1 << d
         idx_em = 1 << (d + 1)
         g1_idx = (1 << torch.arange(d)).long()
-        self.register_buffer('_g1_idx', g1_idx)
+        self.register_buffer("_g1_idx", g1_idx)
 
         e_inf = torch.zeros(algebra.dim)
         e_inf[idx_em] = 1.0
         e_inf[idx_ep] = 1.0
-        self.register_buffer('_e_inf', e_inf)
+        self.register_buffer("_e_inf", e_inf)
 
         e_o = torch.zeros(algebra.dim)
         e_o[idx_em] = 0.5
         e_o[idx_ep] = -0.5
-        self.register_buffer('_e_o', e_o)
+        self.register_buffer("_e_o", e_o)
 
     def embed(self, x: torch.Tensor) -> torch.Tensor:
         """Embed Euclidean points into the conformal null cone.

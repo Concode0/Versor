@@ -6,6 +6,7 @@
 #
 
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
 
 
@@ -33,7 +34,7 @@ class CliffordModule(nn.Module):
         super().__init__()
         # Bypass nn.Module.__setattr__ to avoid registering algebra as submodule.
         # Multiple layers share the same algebra - only one should "own" it.
-        object.__setattr__(self, '_algebra', algebra)
+        object.__setattr__(self, "_algebra", algebra)
 
     @property
     def algebra(self) -> CliffordAlgebra:

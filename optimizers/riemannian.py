@@ -18,15 +18,15 @@ References:
     - Boumal "An Introduction to Optimization on Smooth Manifolds" (2023)
 """
 
+from typing import Dict, List, Optional
+
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
-from typing import Dict, List, Optional
 
-
-MANIFOLD_SPIN = 'spin'
-MANIFOLD_SPHERE = 'sphere'
-MANIFOLD_EUCLIDEAN = 'euclidean'
+MANIFOLD_SPIN = "spin"
+MANIFOLD_SPHERE = "sphere"
+MANIFOLD_EUCLIDEAN = "euclidean"
 
 _VALID_MANIFOLDS = {MANIFOLD_SPIN, MANIFOLD_SPHERE, MANIFOLD_EUCLIDEAN}
 
@@ -71,7 +71,7 @@ def group_parameters_by_manifold(
         MANIFOLD_EUCLIDEAN: [],
     }
     for p in model.parameters():
-        manifold = getattr(p, '_manifold', MANIFOLD_EUCLIDEAN)
+        manifold = getattr(p, "_manifold", MANIFOLD_EUCLIDEAN)
         groups[manifold].append(p)
     return groups
 
@@ -159,7 +159,7 @@ class ExponentialSGD(Optimizer):
         for manifold in (MANIFOLD_SPIN, MANIFOLD_SPHERE, MANIFOLD_EUCLIDEAN):
             params = grouped[manifold]
             if params:
-                param_groups.append({'params': params, 'manifold': manifold})
+                param_groups.append({"params": params, "manifold": manifold})
         if not param_groups:
             raise ValueError("Model has no parameters")
         return cls(param_groups, lr=lr, momentum=momentum, algebra=algebra, max_bivector_norm=max_bivector_norm)
@@ -180,11 +180,11 @@ class ExponentialSGD(Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
-            lr = group['lr']
-            momentum = group['momentum']
-            manifold = group.get('manifold', None)
+            lr = group["lr"]
+            momentum = group["momentum"]
+            manifold = group.get("manifold", None)
 
-            for p in group['params']:
+            for p in group["params"]:
                 if p.grad is None:
                     continue
 
@@ -193,10 +193,10 @@ class ExponentialSGD(Optimizer):
                 # Apply momentum (if enabled)
                 if momentum != 0:
                     param_state = self.state[p]
-                    if 'momentum_buffer' not in param_state:
-                        buf = param_state['momentum_buffer'] = torch.zeros_like(grad)
+                    if "momentum_buffer" not in param_state:
+                        buf = param_state["momentum_buffer"] = torch.zeros_like(grad)
                     else:
-                        buf = param_state['momentum_buffer']
+                        buf = param_state["momentum_buffer"]
                     buf.mul_(momentum).add_(grad)
                     grad = buf
 
@@ -299,7 +299,7 @@ class RiemannianAdam(Optimizer):
         for manifold in (MANIFOLD_SPIN, MANIFOLD_SPHERE, MANIFOLD_EUCLIDEAN):
             params = grouped[manifold]
             if params:
-                param_groups.append({'params': params, 'manifold': manifold})
+                param_groups.append({"params": params, "manifold": manifold})
         if not param_groups:
             raise ValueError("Model has no parameters")
         return cls(param_groups, lr=lr, betas=betas, eps=eps, algebra=algebra, max_bivector_norm=max_bivector_norm)
@@ -327,12 +327,12 @@ class RiemannianAdam(Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
-            lr = group['lr']
-            beta1, beta2 = group['betas']
-            eps = group['eps']
-            manifold = group.get('manifold', None)
+            lr = group["lr"]
+            beta1, beta2 = group["betas"]
+            eps = group["eps"]
+            manifold = group.get("manifold", None)
 
-            for p in group['params']:
+            for p in group["params"]:
                 if p.grad is None:
                     continue
 
@@ -341,20 +341,20 @@ class RiemannianAdam(Optimizer):
 
                 # State initialization
                 if len(state) == 0:
-                    state['step'] = 0
-                    state['exp_avg'] = torch.zeros_like(p)
-                    state['exp_avg_sq'] = torch.zeros_like(p)
+                    state["step"] = 0
+                    state["exp_avg"] = torch.zeros_like(p)
+                    state["exp_avg_sq"] = torch.zeros_like(p)
 
-                exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
-                state['step'] += 1
+                exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
+                state["step"] += 1
 
                 # Decay the first and second moment running average coefficient
                 exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
 
                 # Bias correction
-                bias_correction1 = 1 - beta1 ** state['step']
-                bias_correction2 = 1 - beta2 ** state['step']
+                bias_correction1 = 1 - beta1 ** state["step"]
+                bias_correction2 = 1 - beta2 ** state["step"]
 
                 # Compute step size
                 step_size = lr / bias_correction1

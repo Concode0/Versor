@@ -116,7 +116,7 @@ class RelationshipGraph:
         """Return the n strongest edges globally."""
         return self.edges[:n]
 
-    def edge_between(self, var_i: int, var_j: int) -> Optional['VariableEdge']:
+    def edge_between(self, var_i: int, var_j: int) -> Optional["VariableEdge"]:
         """Lookup a specific edge (order-independent)."""
         for e in self.edges:
             if (e.var_i == var_i and e.var_j == var_j) or (e.var_i == var_j and e.var_j == var_i):

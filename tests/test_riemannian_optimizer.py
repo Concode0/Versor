@@ -13,20 +13,18 @@ import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from core.algebra import CliffordAlgebra
+from layers import MultiRotorLayer, RotorGadget, RotorLayer
 from optimizers.riemannian import (
+    MANIFOLD_EUCLIDEAN,
+    MANIFOLD_SPHERE,
+    MANIFOLD_SPIN,
     ExponentialSGD,
     RiemannianAdam,
-    tag_manifold,
     group_parameters_by_manifold,
-    MANIFOLD_SPIN,
-    MANIFOLD_SPHERE,
-    MANIFOLD_EUCLIDEAN,
+    tag_manifold,
 )
-from layers import RotorLayer
-from layers import MultiRotorLayer
-from layers import RotorGadget
-
 
 # Fixtures
 
@@ -110,7 +108,7 @@ def test_exponential_sgd_momentum(algebra_3d, rotor_layer):
 
     # Check momentum buffer created
     param = rotor_layer.bivector_weights
-    assert 'momentum_buffer' in optimizer.state[param]
+    assert "momentum_buffer" in optimizer.state[param]
 
     optimizer.zero_grad()
 
@@ -120,7 +118,7 @@ def test_exponential_sgd_momentum(algebra_3d, rotor_layer):
     loss2.backward()
 
     # Check momentum buffer updated
-    buf = optimizer.state[param]['momentum_buffer']
+    buf = optimizer.state[param]["momentum_buffer"]
     assert not torch.allclose(buf, torch.zeros_like(buf))
 
 
@@ -139,9 +137,9 @@ def test_riemannian_adam_momentum(algebra_3d, rotor_layer):
     # Check state created
     param = rotor_layer.bivector_weights
     state = optimizer.state[param]
-    assert 'exp_avg' in state
-    assert 'exp_avg_sq' in state
-    assert state['step'] == 1
+    assert "exp_avg" in state
+    assert "exp_avg_sq" in state
+    assert state["step"] == 1
 
     optimizer.zero_grad()
 
@@ -152,8 +150,8 @@ def test_riemannian_adam_momentum(algebra_3d, rotor_layer):
     optimizer.step()
 
     # Check state updated
-    assert state['step'] == 2
-    assert not torch.allclose(state['exp_avg'], torch.zeros_like(state['exp_avg']))
+    assert state["step"] == 2
+    assert not torch.allclose(state["exp_avg"], torch.zeros_like(state["exp_avg"]))
 
 
 # Unit Tests: Parameter Updates
@@ -499,7 +497,7 @@ def test_optimizer_state_dict(algebra_3d, rotor_layer):
     # Check state transferred
     for param, new_param in zip(rotor_layer.parameters(), new_layer.parameters()):
         if param in optimizer.state and new_param in new_optimizer.state:
-            assert 'step' in new_optimizer.state[new_param]
+            assert "step" in new_optimizer.state[new_param]
 
 
 # Edge Cases
@@ -523,7 +521,7 @@ def test_zero_learning_rate(algebra_3d, rotor_layer):
 
 def test_invalid_parameters():
     """Verify optimizers validate input parameters."""
-    algebra_3d = CliffordAlgebra(p=3, q=0, device='cpu')
+    algebra_3d = CliffordAlgebra(p=3, q=0, device="cpu")
     layer = RotorLayer(algebra_3d, channels=2)
 
     # Invalid learning rate
@@ -558,32 +556,32 @@ def test_manifold_tagging(algebra_3d):
     from layers.primitives.reflection import ReflectionLayer
 
     rotor = RotorLayer(algebra_3d, channels=4)
-    assert getattr(rotor.bivector_weights, '_manifold', None) == 'spin'
+    assert getattr(rotor.bivector_weights, "_manifold", None) == "spin"
 
     reflection = ReflectionLayer(algebra_3d, channels=4)
-    assert getattr(reflection.vector_weights, '_manifold', None) == 'sphere'
+    assert getattr(reflection.vector_weights, "_manifold", None) == "sphere"
 
     multi = MultiRotorLayer(algebra_3d, channels=4, num_rotors=2)
-    assert getattr(multi.rotor_bivectors, '_manifold', None) == 'spin'
-    assert not hasattr(multi.weights, '_manifold')  # Euclidean, untagged
+    assert getattr(multi.rotor_bivectors, "_manifold", None) == "spin"
+    assert not hasattr(multi.weights, "_manifold")  # Euclidean, untagged
 
     gadget = RotorGadget(algebra_3d, in_channels=4, out_channels=8)
-    assert getattr(gadget.bivector_left, '_manifold', None) == 'spin'
-    assert getattr(gadget.bivector_right, '_manifold', None) == 'spin'
+    assert getattr(gadget.bivector_left, "_manifold", None) == "spin"
+    assert getattr(gadget.bivector_right, "_manifold", None) == "spin"
 
 
 def test_tag_manifold_helper():
     """Verify tag_manifold utility works correctly."""
     p = nn.Parameter(torch.randn(3, 4))
-    result = tag_manifold(p, 'spin')
+    result = tag_manifold(p, "spin")
     assert result is p
-    assert p._manifold == 'spin'
+    assert p._manifold == "spin"
 
-    tag_manifold(p, 'sphere')
-    assert p._manifold == 'sphere'
+    tag_manifold(p, "sphere")
+    assert p._manifold == "sphere"
 
     with pytest.raises(ValueError, match="Unknown manifold"):
-        tag_manifold(p, 'invalid')
+        tag_manifold(p, "invalid")
 
 
 def test_from_model_groups(algebra_3d):
@@ -603,15 +601,15 @@ def test_from_model_groups(algebra_3d):
     model = MixedModel()
     groups = group_parameters_by_manifold(model)
 
-    assert len(groups['spin']) == 1  # bivector_weights
-    assert len(groups['sphere']) == 1  # vector_weights
-    assert len(groups['euclidean']) >= 2  # linear weight + bias
+    assert len(groups["spin"]) == 1  # bivector_weights
+    assert len(groups["sphere"]) == 1  # vector_weights
+    assert len(groups["euclidean"]) >= 2  # linear weight + bias
 
     opt = RiemannianAdam.from_model(model, lr=0.001, algebra=algebra_3d)
-    manifolds = [g.get('manifold') for g in opt.param_groups]
-    assert 'spin' in manifolds
-    assert 'sphere' in manifolds
-    assert 'euclidean' in manifolds
+    manifolds = [g.get("manifold") for g in opt.param_groups]
+    assert "spin" in manifolds
+    assert "sphere" in manifolds
+    assert "euclidean" in manifolds
 
 
 def test_sphere_retraction(algebra_3d):
@@ -670,7 +668,7 @@ def test_legacy_backward_compat(algebra_3d):
 
     # No 'manifold' key in param_groups (legacy mode)
     for g in opt.param_groups:
-        assert 'manifold' not in g
+        assert "manifold" not in g
 
     # Set large bivector norms
     with torch.no_grad():

@@ -18,25 +18,25 @@ Also re-exports the legacy classes :class:`MetricSearch`,
 """
 
 from ._types import (
-    AnalysisConstants,
     CONSTANTS,
-    SamplingConfig,
     AnalysisConfig,
+    AnalysisConstants,
+    AnalysisReport,
+    CommutatorResult,
     DimensionResult,
+    SamplingConfig,
     SignatureResult,
     SpectralResult,
     SymmetryResult,
-    CommutatorResult,
-    AnalysisReport,
 )
-from .sampler import StatisticalSampler
-from .dimension import EffectiveDimensionAnalyzer, DimensionLifter
-from .signature import MetricSearch, SignatureSearchAnalyzer
+from .commutator import CommutatorAnalyzer, compute_uncertainty_and_alignment
+from .dimension import DimensionLifter, EffectiveDimensionAnalyzer
 from .geodesic import GeodesicFlow
+from .pipeline import GeometricAnalyzer
+from .sampler import StatisticalSampler
+from .signature import MetricSearch, SignatureSearchAnalyzer
 from .spectral import SpectralAnalyzer
 from .symmetry import SymmetryDetector
-from .commutator import CommutatorAnalyzer, compute_uncertainty_and_alignment
-from .pipeline import GeometricAnalyzer
 
 __all__ = [
     # Constants

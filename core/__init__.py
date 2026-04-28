@@ -12,34 +12,32 @@ until first access, keeping ``import core`` lightweight.
 """
 
 from .algebra import CliffordAlgebra
-from .multivector import Multivector
-from .device import DeviceConfig, resolve_device
-from .validation import check_multivector, check_channels
-
-from .metric import (
-    inner_product,
-    induced_norm,
-    geometric_distance,
-    grade_purity,
-    mean_active_grade,
-    clifford_conjugate,
-    hermitian_inner_product,
-    hermitian_norm,
-    hermitian_distance,
-    hermitian_angle,
-    grade_hermitian_norm,
-    hermitian_grade_spectrum,
-    signature_trace_form,
-    signature_norm_squared,
-)
-
 from .decomposition import (
     ExpPolicy,
-    ga_power_iteration,
+    compiled_safe_decomposed_exp,
     differentiable_invariant_decomposition,
     exp_simple_bivector,
-    compiled_safe_decomposed_exp,
+    ga_power_iteration,
 )
+from .device import DeviceConfig, resolve_device
+from .metric import (
+    clifford_conjugate,
+    geometric_distance,
+    grade_hermitian_norm,
+    grade_purity,
+    hermitian_angle,
+    hermitian_distance,
+    hermitian_grade_spectrum,
+    hermitian_inner_product,
+    hermitian_norm,
+    induced_norm,
+    inner_product,
+    mean_active_grade,
+    signature_norm_squared,
+    signature_trace_form,
+)
+from .multivector import Multivector
+from .validation import check_channels, check_multivector
 
 __all__ = [
     # algebra

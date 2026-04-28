@@ -14,19 +14,19 @@ Run from the project root:
     streamlit run examples/demo.py
 """
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import numpy as np
+import plotly.graph_objects as go
 import streamlit as st
 import torch
 import torch.optim as optim
-import numpy as np
-import plotly.graph_objects as go
+
 from core.algebra import CliffordAlgebra
-from layers import RotorLayer
-from layers import BladeSelector
+from layers import BladeSelector, RotorLayer
 
 # Setup Page
 st.set_page_config(page_title="Versor: Geometric Algebra Demo", layout="wide")
@@ -85,15 +85,15 @@ def plot_3d_manifold(data, title, color_data=None):
                 x=x,
                 y=y,
                 z=z,
-                mode='markers',
-                marker=dict(size=5, color=color, colorscale='Viridis', opacity=0.8, colorbar=dict(title="Z-Value")),
+                mode="markers",
+                marker=dict(size=5, color=color, colorscale="Viridis", opacity=0.8, colorbar=dict(title="Z-Value")),
             )
         ]
     )
 
     fig.update_layout(
         title=title,
-        scene=dict(xaxis_title='e1 (X)', yaxis_title='e2 (Y)', zaxis_title='e3 (Z)', aspectmode='data'),
+        scene=dict(xaxis_title="e1 (X)", yaxis_title="e2 (Y)", zaxis_title="e3 (Z)", aspectmode="data"),
         margin=dict(l=0, r=0, b=0, t=40),
     )
     return fig
@@ -102,7 +102,7 @@ def plot_3d_manifold(data, title, color_data=None):
 # Main app logic
 
 # 1. Generate Data
-algebra = CliffordAlgebra(3, 0, device='cpu')
+algebra = CliffordAlgebra(3, 0, device="cpu")
 t = torch.linspace(0, 2 * np.pi, samples)
 x = torch.sin(t)
 y = torch.sin(t) * torch.cos(t)
@@ -119,7 +119,7 @@ original_z_colors = z.numpy()
 # 2. State Management
 param_hash = f"{samples}_{distortion}"
 
-if 'last_params' not in st.session_state:
+if "last_params" not in st.session_state:
     st.session_state.last_params = param_hash
     st.session_state.trained_output = None
 
@@ -177,7 +177,7 @@ if start_align:
                 st.warning(f"Training in progress... (Epoch {epoch})")
                 st.plotly_chart(
                     plot_3d_manifold(out, f"Unbending... Loss: {loss.item():.4f}", color_data=original_z_colors),
-                    width='stretch',
+                    width="stretch",
                 )
 
     # Save final result strictly

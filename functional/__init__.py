@@ -4,19 +4,17 @@ Includes activation functions, loss functions, and orthogonality enforcement.
 """
 
 from .activation import GeometricGELU, GradeSwish
-
 from .loss import (
-    GeometricMSELoss,
-    SubspaceLoss,
-    IsometryLoss,
     BivectorRegularization,
-    HermitianGradeRegularization,
     ChamferDistance,
     ConservativeLoss,
+    GeometricMSELoss,
+    HermitianGradeRegularization,
+    IsometryLoss,
     PhysicsInformedLoss,
+    SubspaceLoss,
 )
-
-from .orthogonality import StrictOrthogonality, OrthogonalitySettings
+from .orthogonality import OrthogonalitySettings, StrictOrthogonality
 
 __all__ = [
     # activations

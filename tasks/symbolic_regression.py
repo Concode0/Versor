@@ -21,11 +21,11 @@ import torch.optim as optim
 from omegaconf import DictConfig
 
 from core.algebra import CliffordAlgebra
-from tasks.base import BaseTask
-from datalib.symbolic_regression import get_sr_loaders, get_sr_raw_splits, get_dataset_ids, _fetch_pmlb_data
+from datalib.symbolic_regression import _fetch_pmlb_data, get_dataset_ids, get_sr_loaders, get_sr_raw_splits
+from log import get_logger
 from models.sr import SRGBN
 from models.sr.unbender import IterativeUnbender
-from log import get_logger
+from tasks.base import BaseTask
 
 logger = get_logger(__name__)
 
@@ -81,17 +81,17 @@ class SRTask(BaseTask):
         # Merge new pipeline config sections
         self.iterative_cfg.update(
             {
-                'implicit_mode': cfg.get("implicit", {}).get("mode", "auto"),
-                'probe_config': dict(cfg.get("implicit", {})),
-                'grouping_enabled': cfg.get("grouping", {}).get("enabled", True),
-                'max_groups': cfg.get("grouping", {}).get("max_groups", 4),
-                'svd_warmstart': cfg.get("svd", {}).get("warmstart", True),
-                'soft_rejection_alpha': cfg.get("rejection", {}).get("soft_alpha", 10.0),
-                'soft_rejection_threshold': cfg.get("rejection", {}).get("soft_threshold", 0.01),
-                'mother_cross_threshold': cfg.get("mother_algebra", {}).get("cross_term_threshold", 0.01),
-                'basis_config': dict(cfg.get("basis", {})),
-                'grouping_config': dict(cfg.get("grouping", {})),
-                'feedback_config': dict(cfg.get("feedback", {})),
+                "implicit_mode": cfg.get("implicit", {}).get("mode", "auto"),
+                "probe_config": dict(cfg.get("implicit", {})),
+                "grouping_enabled": cfg.get("grouping", {}).get("enabled", True),
+                "max_groups": cfg.get("grouping", {}).get("max_groups", 4),
+                "svd_warmstart": cfg.get("svd", {}).get("warmstart", True),
+                "soft_rejection_alpha": cfg.get("rejection", {}).get("soft_alpha", 10.0),
+                "soft_rejection_threshold": cfg.get("rejection", {}).get("soft_threshold", 0.01),
+                "mother_cross_threshold": cfg.get("mother_algebra", {}).get("cross_term_threshold", 0.01),
+                "basis_config": dict(cfg.get("basis", {})),
+                "grouping_config": dict(cfg.get("grouping", {})),
+                "feedback_config": dict(cfg.get("feedback", {})),
             }
         )
 
@@ -101,7 +101,7 @@ class SRTask(BaseTask):
         sched_patience = cfg.training.get("scheduler_patience", 10)
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer,
-            mode='min',
+            mode="min",
             factor=0.5,
             patience=sched_patience,
         )
@@ -120,8 +120,9 @@ class SRTask(BaseTask):
 
     def _run_metric_search(self, cfg):
         """Auto-discover optimal (p,q,r) via MetricSearch."""
-        from core.analysis import MetricSearch
         import numpy as np
+
+        from core.analysis import MetricSearch
 
         cache_dir = cfg.dataset.get("cache_dir", "./data/pmlb_cache")
         df = _fetch_pmlb_data(self.dataset_name, cache_dir)

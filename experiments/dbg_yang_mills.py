@@ -54,6 +54,8 @@ from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
+from core.algebra import CliffordAlgebra
+from core.metric import hermitian_grade_spectrum, hermitian_inner_product
 from experiments._lib import (
     build_visualization_metadata,
     count_parameters,
@@ -67,14 +69,11 @@ from experiments._lib import (
     setup_algebra,
     signature_metadata,
 )
-from core.algebra import CliffordAlgebra
-from core.metric import hermitian_grade_spectrum, hermitian_inner_product
+from functional.activation import GeometricGELU
 from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, RotorLayer
 from layers.adapters.conformal import ConformalEmbedding
 from layers.primitives.base import CliffordModule
-from functional.activation import GeometricGELU
 from optimizers.riemannian import RiemannianAdam
-
 
 # ---------------------------------------------------------------------------
 # su(2) bivector layout — identical in Cl(3,0) and CGA Cl(4,1).
@@ -98,7 +97,7 @@ class SU2BladeSelector(CliffordModule):
         mask = torch.zeros(algebra.dim)
         for idx in _BV_INDICES:
             mask[idx] = 1.0
-        self.register_buffer('su2_mask', mask)
+        self.register_buffer("su2_mask", mask)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         gates = torch.sigmoid(self.su2_gates)
@@ -153,7 +152,7 @@ def bpst_gauge_potential(
     bv_idx = _BV_MAP_INDICES.to(x.device)
     bv_signs = _BV_MAP_SIGNS.to(x.device, x.dtype)
 
-    coeff = torch.einsum('amn, bn -> bam', eta, x) / denom.unsqueeze(-1)
+    coeff = torch.einsum("amn, bn -> bam", eta, x) / denom.unsqueeze(-1)
 
     A = torch.zeros(B, 4, algebra_dim, dtype=x.dtype, device=x.device)
     for a in range(3):
@@ -259,7 +258,7 @@ class YangMillsNet(CliffordModule):
         self.hidden_dim = hidden_dim
 
         self.conformal_embed = ConformalEmbedding(algebra, euclidean_dim=3)
-        self.register_buffer('freq_bands', torch.randn(4, num_freqs) * 2.0)
+        self.register_buffer("freq_bands", torch.randn(4, num_freqs) * 2.0)
         input_dim = 4 + 2 * num_freqs + algebra.dim + 2
 
         self.input_lift = nn.Linear(input_dim, hidden_dim * algebra.dim)
@@ -270,10 +269,10 @@ class YangMillsNet(CliffordModule):
             self.blocks.append(
                 nn.ModuleDict(
                     {
-                        'norm': CliffordLayerNorm(algebra, hidden_dim),
-                        'rotor': RotorLayer(algebra, hidden_dim),
-                        'act': GeometricGELU(algebra, channels=hidden_dim),
-                        'linear': CliffordLinear(algebra, hidden_dim, hidden_dim),
+                        "norm": CliffordLayerNorm(algebra, hidden_dim),
+                        "rotor": RotorLayer(algebra, hidden_dim),
+                        "act": GeometricGELU(algebra, channels=hidden_dim),
+                        "linear": CliffordLinear(algebra, hidden_dim, hidden_dim),
                     }
                 )
             )
@@ -306,10 +305,10 @@ class YangMillsNet(CliffordModule):
         h = self.input_norm(h)
         for block in self.blocks:
             residual = h
-            h = block['norm'](h)
-            h = block['rotor'](h)
-            h = block['act'](h)
-            h = block['linear'](h)
+            h = block["norm"](h)
+            h = block["rotor"](h)
+            h = block["act"](h)
+            h = block["linear"](h)
             h = residual + h
         h = self.output_norm(h)
         h = self.blade_selector(h)
@@ -422,10 +421,10 @@ def self_duality_and_action(algebra, model, coords, action_exact, rho):
     q_ratio = q_pred / max(abs(q_exact), 1e-12)
 
     return {
-        'self_duality_residual': sd,
-        'action_mse': action_mse,
-        'sobolev_F_mse': sobolev,
-        'topological_Q_ratio': q_ratio,
+        "self_duality_residual": sd,
+        "action_mse": action_mse,
+        "sobolev_F_mse": sobolev,
+        "topological_Q_ratio": q_ratio,
     }
 
 
@@ -469,7 +468,7 @@ def F_grade_spectrum(algebra, F_dict) -> Dict[str, float]:
         spec = s if spec is None else spec + s
         n += 1
     spec = spec / max(n, 1)
-    return {f'F_g{k}': spec[k].item() for k in range(spec.shape[0])}
+    return {f"F_g{k}": spec[k].item() for k in range(spec.shape[0])}
 
 
 def post_training_diagnostics(model, algebra, test_ds, device, rho):
@@ -493,8 +492,8 @@ def post_training_diagnostics(model, algebra, test_ds, device, rho):
     A_pred = model(coords_leaf)
     F_dict = _field_strength_nograph(algebra, A_pred, coords_leaf)
 
-    diag['gauge_covariance'] = gauge_covariance_residual(algebra, F_dict)
-    diag['A_grade2_purity'] = grade_purity_A(algebra, A_pred.detach())
+    diag["gauge_covariance"] = gauge_covariance_residual(algebra, F_dict)
+    diag["A_grade2_purity"] = grade_purity_A(algebra, A_pred.detach())
     diag.update(F_grade_spectrum(algebra, F_dict))
     return diag
 
@@ -506,16 +505,16 @@ def post_training_diagnostics(model, algebra, test_ds, device, rho):
 
 def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
-        'Yang-Mills SU(2) instanton in CGA Cl(4,1) — supervised BPST.',
-        defaults={'output_dir': 'ym_plots'},
+        "Yang-Mills SU(2) instanton in CGA Cl(4,1) — supervised BPST.",
+        defaults={"output_dir": "ym_plots"},
     )
-    p.add_argument('--rho', type=float, default=1.0)
-    p.add_argument('--num-train', type=int, default=2048)
-    p.add_argument('--num-test', type=int, default=512)
-    p.add_argument('--sampling-radius', type=float, default=5.0)
-    p.add_argument('--hidden-dim', type=int, default=32)
-    p.add_argument('--num-layers', type=int, default=4)
-    p.add_argument('--num-freqs', type=int, default=16)
+    p.add_argument("--rho", type=float, default=1.0)
+    p.add_argument("--num-train", type=int, default=2048)
+    p.add_argument("--num-test", type=int, default=512)
+    p.add_argument("--sampling-radius", type=float, default=5.0)
+    p.add_argument("--hidden-dim", type=int, default=32)
+    p.add_argument("--num-layers", type=int, default=4)
+    p.add_argument("--num-freqs", type=int, default=16)
     return p.parse_args()
 
 
@@ -551,11 +550,11 @@ def main() -> None:
     ).to(device)
 
     print_banner(
-        'Yang-Mills — CGA Cl(4,1) supervised BPST reconstruction',
-        signature=f'Cl(4, 1) — su(2) bivectors at indices {tuple(_BV_INDICES)}',
-        natural_loss='MSE(A_pred, A_exact) on 4-component gauge potential',
+        "Yang-Mills — CGA Cl(4,1) supervised BPST reconstruction",
+        signature=f"Cl(4, 1) — su(2) bivectors at indices {tuple(_BV_INDICES)}",
+        natural_loss="MSE(A_pred, A_exact) on 4-component gauge potential",
         rho=args.rho,
-        parameters=f'{count_parameters(model):,}',
+        parameters=f"{count_parameters(model):,}",
     )
 
     optimizer = RiemannianAdam(model.parameters(), lr=args.lr, algebra=algebra)
@@ -565,7 +564,7 @@ def main() -> None:
         return nn.functional.mse_loss(_model(coords), A_exact)
 
     def diag_fn(_model, _epoch) -> Dict[str, float]:
-        return {'test_A_mse': supervised_mse(_model, test_loader, device)}
+        return {"test_A_mse": supervised_mse(_model, test_loader, device)}
 
     history = run_supervised_loop(
         model,
@@ -576,11 +575,11 @@ def main() -> None:
         diag_interval=args.diag_interval,
         grad_clip=1.0,
         diag_fn=diag_fn,
-        history_extra_keys=('test_A_mse',),
+        history_extra_keys=("test_A_mse",),
     )
 
     diagnostics = {
-        'test_A_mse': supervised_mse(model, test_loader, device),
+        "test_A_mse": supervised_mse(model, test_loader, device),
     }
     diagnostics.update(
         post_training_diagnostics(
@@ -594,7 +593,7 @@ def main() -> None:
     print(
         report_diagnostics(
             diagnostics,
-            title='Yang-Mills post-training physics diagnostics',
+            title="Yang-Mills post-training physics diagnostics",
         )
     )
 
@@ -607,15 +606,15 @@ def main() -> None:
     path = save_training_curve(
         history,
         output_dir=args.output_dir,
-        experiment_name='dbg_yang_mills',
+        experiment_name="dbg_yang_mills",
         metadata=metadata,
-        plot_name='training_curve',
+        plot_name="training_curve",
         args=args,
         module=__name__,
-        title='Yang-Mills — supervised BPST gauge potential loss',
+        title="Yang-Mills — supervised BPST gauge potential loss",
     )
-    print(f'  curve saved to {path}')
+    print(f"  curve saved to {path}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -5,25 +5,25 @@ Spin group (bivectors), unit sphere (vectors), and Euclidean (unconstrained).
 """
 
 from .riemannian import (
+    MANIFOLD_EUCLIDEAN,
+    MANIFOLD_SPHERE,
+    MANIFOLD_SPIN,
     ExponentialSGD,
     RiemannianAdam,
-    project_to_tangent_space,
     exponential_retraction,
-    tag_manifold,
     group_parameters_by_manifold,
-    MANIFOLD_SPIN,
-    MANIFOLD_SPHERE,
-    MANIFOLD_EUCLIDEAN,
+    project_to_tangent_space,
+    tag_manifold,
 )
 
 __all__ = [
-    'ExponentialSGD',
-    'RiemannianAdam',
-    'project_to_tangent_space',
-    'exponential_retraction',
-    'tag_manifold',
-    'group_parameters_by_manifold',
-    'MANIFOLD_SPIN',
-    'MANIFOLD_SPHERE',
-    'MANIFOLD_EUCLIDEAN',
+    "ExponentialSGD",
+    "RiemannianAdam",
+    "project_to_tangent_space",
+    "exponential_retraction",
+    "tag_manifold",
+    "group_parameters_by_manifold",
+    "MANIFOLD_SPIN",
+    "MANIFOLD_SPHERE",
+    "MANIFOLD_EUCLIDEAN",
 ]

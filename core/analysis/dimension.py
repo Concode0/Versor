@@ -13,8 +13,9 @@ dimensions the data actually occupies and whether lifting reveals
 latent structure.
 """
 
-import torch
 from typing import Dict, Optional
+
+import torch
 
 from core.algebra import CliffordAlgebra
 
@@ -189,7 +190,7 @@ class DimensionLifter:
     indicates that the extra dimension captures hidden geometric structure.
     """
 
-    def __init__(self, device: str = 'cpu'):
+    def __init__(self, device: str = "cpu"):
         self.device = device
 
     def lift(
@@ -266,41 +267,41 @@ class DimensionLifter:
             baseline = gf._random_baseline_coherence()
             coh_threshold = (1.0 + baseline) / 2.0
             return {
-                'signature': (alg.p, alg.q),
-                'coherence': coh,
-                'curvature': curv,
-                'causal': (coh > coh_threshold) and (curv < CONSTANTS.curvature_causal_threshold),
+                "signature": (alg.p, alg.q),
+                "coherence": coh,
+                "curvature": curv,
+                "causal": (coh > coh_threshold) and (curv < CONSTANTS.curvature_causal_threshold),
             }
 
         alg_orig = CliffordAlgebra(p, q, device=self.device)
         mv_orig = alg_orig.embed_vector(data[..., : alg_orig.n])
-        results['original'] = _measure(alg_orig, mv_orig)
+        results["original"] = _measure(alg_orig, mv_orig)
 
         alg_pos = CliffordAlgebra(p + 1, q, device=self.device)
         mv_pos = self.lift(data, alg_pos, fill=1.0)
-        results['lift_positive'] = _measure(alg_pos, mv_pos)
+        results["lift_positive"] = _measure(alg_pos, mv_pos)
 
         alg_null = CliffordAlgebra(p, q + 1, device=self.device)
         mv_null = self.lift(data, alg_null, fill=0.0)
-        results['lift_null'] = _measure(alg_null, mv_null)
+        results["lift_null"] = _measure(alg_null, mv_null)
 
         best = max(
-            ('original', 'lift_positive', 'lift_null'),
-            key=lambda key: results[key]['coherence'],
+            ("original", "lift_positive", "lift_null"),
+            key=lambda key: results[key]["coherence"],
         )
-        results['best'] = best
+        results["best"] = best
 
         return results
 
     def format_report(self, results: Dict) -> str:
         """Renders a lifting test result as a human-readable string."""
-        lines = ['Dimension Lifting Report', '=' * 40]
-        for key in ('original', 'lift_positive', 'lift_null'):
+        lines = ["Dimension Lifting Report", "=" * 40]
+        for key in ("original", "lift_positive", "lift_null"):
             r = results[key]
-            p, q = r['signature']
-            coh = r['coherence']
-            curv = r['curvature']
-            causal = 'O Causal' if r['causal'] else 'X Noisy'
+            p, q = r["signature"]
+            coh = r["coherence"]
+            curv = r["curvature"]
+            causal = "O Causal" if r["causal"] else "X Noisy"
             lines.append(f"  Cl({p},{q})  coherence={coh:+.3f}  curvature={curv:.3f}  {causal}")
         lines.append(f"\n  Best algebra: {results['best']}")
-        return '\n'.join(lines)
+        return "\n".join(lines)

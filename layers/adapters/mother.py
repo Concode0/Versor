@@ -7,10 +7,12 @@
 
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
+
+from ..blocks.attention import GeometricProductAttention
 from ..primitives.base import CliffordModule
 from ..primitives.normalization import CliffordLayerNorm
-from ..blocks.attention import GeometricProductAttention
 
 
 class MotherEmbedding(CliffordModule):
@@ -36,7 +38,7 @@ class MotherEmbedding(CliffordModule):
         # Procrustes Alignment Matrix (Fixed Rotor Proxy)
         if V is None:
             V = torch.eye(input_dim)
-        self.register_buffer('R_fixed', V)
+        self.register_buffer("R_fixed", V)
 
         # Up-cast to Mother Algebra multivector channels
         self.linear = nn.Linear(input_dim, channels * algebra.dim)
@@ -44,7 +46,7 @@ class MotherEmbedding(CliffordModule):
 
         # Pre-condition LayerNorm scale with Uncertainty Index
         with torch.no_grad():
-            if hasattr(self.norm, 'weight'):
+            if hasattr(self.norm, "weight"):
                 # Suppress highly uncertain (twisted) manifolds initially
                 scale = 1.0 / (1.0 + U)
                 self.norm.weight.data.fill_(scale)
@@ -92,8 +94,8 @@ class EntropyGatedAttention(CliffordModule):
 
         # Cache bivector indices and float mask for compile-friendly gating
         mask = self.algebra.grade_masks[2]
-        self.register_buffer('g2_idx', mask.nonzero(as_tuple=True)[0])
-        self.register_buffer('_g2_float_mask', mask.float())
+        self.register_buffer("g2_idx", mask.nonzero(as_tuple=True)[0])
+        self.register_buffer("_g2_float_mask", mask.float())
 
     def forward(
         self, x: torch.Tensor, key_padding_mask: torch.Tensor = None, return_gating: bool = False
@@ -163,7 +165,7 @@ class PhaseShiftHead(CliffordModule):
         # Identify grade-4 pseudoscalar in Cl(3,1)
         mask_g4 = self.algebra.grade_masks[4]
         if mask_g4.sum() > 0:
-            self.register_buffer('g4_idx', mask_g4.nonzero(as_tuple=True)[0])
+            self.register_buffer("g4_idx", mask_g4.nonzero(as_tuple=True)[0])
         else:
             # Fallback if algebra doesn't have grade 4
             self.g4_idx = None

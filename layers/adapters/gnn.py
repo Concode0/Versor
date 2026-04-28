@@ -7,7 +7,9 @@
 
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
+
 from ..primitives.base import CliffordModule
 from ..primitives.linear import CliffordLinear
 

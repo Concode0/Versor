@@ -1,24 +1,25 @@
 # Tests for Hermitian metrics in core/metric.py
 
-import torch
 import pytest
+import torch
+
 from core.algebra import CliffordAlgebra
 
 pytestmark = pytest.mark.unit
 from core.metric import (
-    inner_product,
-    induced_norm,
-    geometric_distance,
+    _hermitian_signs,
     clifford_conjugate,
+    geometric_distance,
+    grade_hermitian_norm,
+    hermitian_angle,
+    hermitian_distance,
+    hermitian_grade_spectrum,
     hermitian_inner_product,
     hermitian_norm,
-    hermitian_distance,
-    hermitian_angle,
-    grade_hermitian_norm,
-    hermitian_grade_spectrum,
-    signature_trace_form,
+    induced_norm,
+    inner_product,
     signature_norm_squared,
-    _hermitian_signs,
+    signature_trace_form,
 )
 
 
@@ -35,7 +36,7 @@ class TestHermitianSigns:
     def test_buffer_registered(self, algebra_minkowski):
         """Hermitian signs are precomputed as a buffer on the algebra."""
         s1 = _hermitian_signs(algebra_minkowski)
-        assert hasattr(algebra_minkowski, '_hermitian_signs')
+        assert hasattr(algebra_minkowski, "_hermitian_signs")
         assert torch.allclose(s1, algebra_minkowski._hermitian_signs)
 
     def test_values_are_pm1(self, algebra_conformal):

@@ -3,8 +3,7 @@
 __version__ = "1.0.0"
 
 from core.algebra import CliffordAlgebra
-from layers import RotorLayer
-from layers import CliffordLinear
+from layers import CliffordLinear, RotorLayer
 
 __all__ = [
     "__version__",

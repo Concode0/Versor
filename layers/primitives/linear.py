@@ -10,11 +10,14 @@
 Supports traditional matrix-based mixing and parameter-efficient rotor-based backends.
 """
 
+from typing import Literal, Optional
+
 import torch
 import torch.nn as nn
-from typing import Literal, Optional
-from core.validation import check_multivector, check_channels
+
 from core.algebra import CliffordAlgebra
+from core.validation import check_channels, check_multivector
+
 from .base import CliffordModule
 
 
@@ -43,10 +46,10 @@ class CliffordLinear(CliffordModule):
         algebra: CliffordAlgebra,
         in_channels: int,
         out_channels: int,
-        backend: Literal['traditional', 'rotor'] = 'traditional',
+        backend: Literal["traditional", "rotor"] = "traditional",
         num_rotor_pairs: int = 4,
-        aggregation: Literal['mean', 'sum', 'learned'] = 'mean',
-        shuffle: Literal['none', 'fixed', 'random'] = 'none',
+        aggregation: Literal["mean", "sum", "learned"] = "mean",
+        shuffle: Literal["none", "fixed", "random"] = "none",
     ):
         """Initialize Clifford Linear.
 
@@ -68,13 +71,13 @@ class CliffordLinear(CliffordModule):
         self.out_channels = out_channels
         self.backend = backend
 
-        if backend == 'traditional':
+        if backend == "traditional":
             self.weight = nn.Parameter(torch.Tensor(out_channels, in_channels))
             self.bias = nn.Parameter(torch.Tensor(out_channels, algebra.dim))
             self.reset_parameters()
             self.gadget = None
 
-        elif backend == 'rotor':
+        elif backend == "rotor":
             from .rotor_gadget import RotorGadget
 
             self.gadget = RotorGadget(
@@ -94,7 +97,7 @@ class CliffordLinear(CliffordModule):
 
     def reset_parameters(self):
         """Initialize weights with Xavier uniform and zero bias."""
-        if self.backend == 'traditional':
+        if self.backend == "traditional":
             nn.init.xavier_uniform_(self.weight)
             nn.init.zeros_(self.bias)
 
@@ -110,12 +113,12 @@ class CliffordLinear(CliffordModule):
         check_multivector(x, self.algebra, "CliffordLinear input")
         check_channels(x, self.in_channels, "CliffordLinear input")
 
-        if self.backend == 'traditional':
+        if self.backend == "traditional":
             # Traditional linear transformation
             # x: [Batch, In, Dim]
             # weight: [Out, In]
             # out: [Batch, Out, Dim]
-            out = torch.einsum('oi,bid->bod', self.weight, x)
+            out = torch.einsum("oi,bid->bod", self.weight, x)
             out = out + self.bias.unsqueeze(0)
             return out
         else:
@@ -128,7 +131,7 @@ class CliffordLinear(CliffordModule):
         Returns:
             str: Layer parameters description
         """
-        if self.backend == 'traditional':
+        if self.backend == "traditional":
             return f"in_channels={self.in_channels}, out_channels={self.out_channels}, backend=traditional"
         else:
             return f"in_channels={self.in_channels}, out_channels={self.out_channels}, backend=rotor"

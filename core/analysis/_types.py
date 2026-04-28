@@ -7,9 +7,10 @@
 
 """Shared dataclass types for the geometric analysis toolkit."""
 
-import torch
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
+
+import torch
 
 
 @dataclass

@@ -57,6 +57,7 @@ from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
+from core.algebra import CliffordAlgebra
 from experiments._lib import (
     build_visualization_metadata,
     ensure_output_dir,
@@ -69,12 +70,10 @@ from experiments._lib import (
     setup_algebra,
     signature_metadata,
 )
-from core.algebra import CliffordAlgebra
-from layers.primitives.base import CliffordModule
-from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, RotorLayer
 from functional.activation import GeometricGELU
+from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, RotorLayer
+from layers.primitives.base import CliffordModule
 from optimizers.riemannian import RiemannianAdam
-
 
 # ---------------------------------------------------------------------------
 # Cl(3,1) basis layout
@@ -88,7 +87,7 @@ G2_SLOTS = list(E_BLADES) + list(B_BLADES)
 
 
 def _assert_cl31(algebra: CliffordAlgebra) -> None:
-    if algebra.p != 3 or algebra.q != 1 or getattr(algebra, 'r', 0) != 0:
+    if algebra.p != 3 or algebra.q != 1 or getattr(algebra, "r", 0) != 0:
         raise ValueError(f"Expected Cl(3,1); got Cl({algebra.p},{algebra.q},{getattr(algebra, 'r', 0)})")
 
 
@@ -120,17 +119,17 @@ def _sample_wave(rng, kmin: float, kmax: float) -> Dict[str, np.ndarray]:
     e_hat = u / (np.linalg.norm(u) + 1e-12)
     b_hat = np.cross(k_hat, e_hat)
     phase = float(rng.uniform(0.0, 2.0 * math.pi))
-    return {'k': k, 'e_hat': e_hat, 'b_hat': b_hat, 'phase': phase, 'w': k_mag}
+    return {"k": k, "e_hat": e_hat, "b_hat": b_hat, "phase": phase, "w": k_mag}
 
 
 def compute_plane_wave_F(tr: np.ndarray, wave: Dict[str, np.ndarray]) -> np.ndarray:
     t = tr[:, 0]
     r = tr[:, 1:4]
-    c = np.cos(r @ wave['k'] - wave['w'] * t + wave['phase'])
+    c = np.cos(r @ wave["k"] - wave["w"] * t + wave["phase"])
     F = np.zeros((tr.shape[0], 16), dtype=np.float64)
     for axis in range(3):
-        F[:, E_BLADES[axis]] = wave['e_hat'][axis] * c
-        F[:, B_BLADES[axis]] = wave['b_hat'][axis] * c
+        F[:, E_BLADES[axis]] = wave["e_hat"][axis] * c
+        F[:, B_BLADES[axis]] = wave["b_hat"][axis] * c
     return F
 
 
@@ -152,7 +151,7 @@ class PlaneWaveDataset(Dataset):
             mask = self.wave_idx == i
             if mask.any():
                 F[mask] = compute_plane_wave_F(self.tr[mask], self.waves[i])
-                k_feat[mask] = self.waves[i]['k']
+                k_feat[mask] = self.waves[i]["k"]
         inputs = torch.zeros(num_samples, 16, dtype=torch.float32)
         for axis, blade in enumerate(SPACETIME_BLADES):
             inputs[:, blade] = torch.tensor(self.tr[:, axis], dtype=torch.float32)
@@ -188,7 +187,7 @@ class MaxwellNet(CliffordModule):
             math.log2(max(num_freqs, 2)),
             num_freqs,
         )
-        self.register_buffer('freq_bands', directions * log_scales.unsqueeze(0))
+        self.register_buffer("freq_bands", directions * log_scales.unsqueeze(0))
         input_dim = 7 + 2 * num_freqs
         self.input_lift = nn.Linear(input_dim, hidden_dim * algebra.dim)
         self.input_norm = CliffordLayerNorm(algebra, hidden_dim)
@@ -196,10 +195,10 @@ class MaxwellNet(CliffordModule):
             [
                 nn.ModuleDict(
                     {
-                        'norm': CliffordLayerNorm(algebra, hidden_dim),
-                        'rotor': RotorLayer(algebra, hidden_dim),
-                        'act': GeometricGELU(algebra, channels=hidden_dim),
-                        'linear': CliffordLinear(algebra, hidden_dim, hidden_dim),
+                        "norm": CliffordLayerNorm(algebra, hidden_dim),
+                        "rotor": RotorLayer(algebra, hidden_dim),
+                        "act": GeometricGELU(algebra, channels=hidden_dim),
+                        "linear": CliffordLinear(algebra, hidden_dim, hidden_dim),
                     }
                 )
                 for _ in range(num_layers)
@@ -218,10 +217,10 @@ class MaxwellNet(CliffordModule):
         h = self.input_norm(self.input_lift(features).reshape(B, self.hidden_dim, self.algebra.dim))
         for block in self.blocks:
             res = h
-            h = block['norm'](h)
-            h = block['rotor'](h)
-            h = block['act'](h)
-            h = block['linear'](h)
+            h = block["norm"](h)
+            h = block["rotor"](h)
+            h = block["act"](h)
+            h = block["linear"](h)
             h = res + h
         h = self.output_norm(h)
         h = self.blade_selector(h)
@@ -240,7 +239,7 @@ class _Norms:
         self.target_mean, self.target_std = target_mean, target_std
 
     def to(self, device):
-        for attr in ('input_mean', 'input_std', 'k_mean', 'k_std', 'target_mean', 'target_std'):
+        for attr in ("input_mean", "input_std", "k_mean", "k_std", "target_mean", "target_std"):
             setattr(self, attr, getattr(self, attr).to(device))
         return self
 
@@ -350,12 +349,12 @@ def lorentz_invariants(model, algebra, dataset, norms, device, n_tests=200) -> D
     s1_p, s2_p = _scalars(pred)
     s1_pb, s2_pb = _scalars(_boost(pred))
     return {
-        'gt_inv1_residual': (s1_tb - s1_t).abs().mean().item(),
-        'gt_inv2_residual': (s2_tb - s2_t).abs().mean().item(),
-        'pred_inv1_residual': (s1_pb - s1_p).abs().mean().item(),
-        'pred_inv2_residual': (s2_pb - s2_p).abs().mean().item(),
-        'pred_vs_true_inv1': (s1_p - s1_t).abs().mean().item(),
-        'pred_vs_true_inv2': (s2_p - s2_t).abs().mean().item(),
+        "gt_inv1_residual": (s1_tb - s1_t).abs().mean().item(),
+        "gt_inv2_residual": (s2_tb - s2_t).abs().mean().item(),
+        "pred_inv1_residual": (s1_pb - s1_p).abs().mean().item(),
+        "pred_inv2_residual": (s2_pb - s2_p).abs().mean().item(),
+        "pred_vs_true_inv1": (s1_p - s1_t).abs().mean().item(),
+        "pred_vs_true_inv2": (s2_p - s2_t).abs().mean().item(),
     }
 
 
@@ -436,9 +435,9 @@ def train(args) -> None:
     _assert_cl31(algebra)
 
     print_banner(
-        f'Maxwell Reconstruction — Cl(3,1)',
-        field='F = E + I·B  (pure grade-2 bivector)',
-        natural_loss='Masked MSE on grade-2 slots + MSE on (F·F) Lorentz scalars',
+        f"Maxwell Reconstruction — Cl(3,1)",
+        field="F = E + I·B  (pure grade-2 bivector)",
+        natural_loss="Masked MSE on grade-2 slots + MSE on (F·F) Lorentz scalars",
     )
 
     train_ds = PlaneWaveDataset(
@@ -472,7 +471,7 @@ def train(args) -> None:
         dtype=torch.float32,
     )
     test_ds.k_feat = torch.stack(
-        [torch.tensor(train_ds.waves[int(w)]['k'], dtype=torch.float32) for w in test_ds.wave_idx]
+        [torch.tensor(train_ds.waves[int(w)]["k"], dtype=torch.float32) for w in test_ds.wave_idx]
     )
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
@@ -484,7 +483,7 @@ def train(args) -> None:
     model = MaxwellNet(algebra, hidden_dim=args.hidden_dim, num_layers=args.num_layers, num_freqs=args.num_freqs).to(
         device
     )
-    print(f'  Parameters: {sum(p.numel() for p in model.parameters()):,}')
+    print(f"  Parameters: {sum(p.numel() for p in model.parameters()):,}")
     optimizer = RiemannianAdam(model.parameters(), lr=args.lr, algebra=algebra)
 
     def loss_fn(_model, batch):
@@ -497,7 +496,7 @@ def train(args) -> None:
         return masked + invariants
 
     def diag_fn(_model, _epoch) -> Dict[str, float]:
-        return {'test_l2_g2': test_l2_g2(_model, test_loader, norms, device)}
+        return {"test_l2_g2": test_l2_g2(_model, test_loader, norms, device)}
 
     history = run_supervised_loop(
         model,
@@ -519,22 +518,22 @@ def train(args) -> None:
         device,
     )
     diagnostics = {
-        'test_l2_g2': test_l2_g2(model, test_loader, norms, device),
-        'grade2_purity': grade2_purity_fraction(model, test_ds, norms, device),
-        'dual_symmetry_residual': dual_symmetry_residual(model, algebra, test_ds, norms, device),
-        'gt_inv1_residual': inv['gt_inv1_residual'],
-        'gt_inv2_residual': inv['gt_inv2_residual'],
-        'pred_inv1_residual': inv['pred_inv1_residual'],
-        'pred_inv2_residual': inv['pred_inv2_residual'],
-        'pred_vs_true_inv1': inv['pred_vs_true_inv1'],
-        'pred_vs_true_inv2': inv['pred_vs_true_inv2'],
-        'maxwell_pred_residual': maxw_pred_res,
-        'maxwell_true_fd_floor': maxw_true_res,
+        "test_l2_g2": test_l2_g2(model, test_loader, norms, device),
+        "grade2_purity": grade2_purity_fraction(model, test_ds, norms, device),
+        "dual_symmetry_residual": dual_symmetry_residual(model, algebra, test_ds, norms, device),
+        "gt_inv1_residual": inv["gt_inv1_residual"],
+        "gt_inv2_residual": inv["gt_inv2_residual"],
+        "pred_inv1_residual": inv["pred_inv1_residual"],
+        "pred_inv2_residual": inv["pred_inv2_residual"],
+        "pred_vs_true_inv1": inv["pred_vs_true_inv1"],
+        "pred_vs_true_inv2": inv["pred_vs_true_inv2"],
+        "maxwell_pred_residual": maxw_pred_res,
+        "maxwell_true_fd_floor": maxw_true_res,
     }
     print(
         report_diagnostics(
             diagnostics,
-            title='Maxwell post-training physics diagnostics',
+            title="Maxwell post-training physics diagnostics",
         )
     )
 
@@ -547,14 +546,14 @@ def train(args) -> None:
     path = save_training_curve(
         history,
         output_dir=args.output_dir,
-        experiment_name='dbg_maxwell_equations',
+        experiment_name="dbg_maxwell_equations",
         metadata=metadata,
-        plot_name='training_curve',
+        plot_name="training_curve",
         args=args,
         module=__name__,
-        title='Maxwell — grade-2 reconstruction loss',
+        title="Maxwell — grade-2 reconstruction loss",
     )
-    print(f'  curve saved to {path}')
+    print(f"  curve saved to {path}")
 
 
 # ---------------------------------------------------------------------------
@@ -564,20 +563,20 @@ def train(args) -> None:
 
 def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
-        'Maxwell equations debugger in Cl(3,1)',
-        include=('seed', 'device', 'epochs', 'lr', 'batch_size', 'output_dir', 'diag_interval'),
-        defaults={'epochs': 200, 'lr': 0.001, 'batch_size': 128, 'output_dir': 'maxwell_plots', 'diag_interval': 20},
+        "Maxwell equations debugger in Cl(3,1)",
+        include=("seed", "device", "epochs", "lr", "batch_size", "output_dir", "diag_interval"),
+        defaults={"epochs": 200, "lr": 0.001, "batch_size": 128, "output_dir": "maxwell_plots", "diag_interval": 20},
     )
-    p.add_argument('--tmax', type=float, default=5.0)
-    p.add_argument('--rmax', type=float, default=5.0)
-    p.add_argument('--kmin', type=float, default=0.5)
-    p.add_argument('--kmax', type=float, default=2.0)
-    p.add_argument('--num-waves', type=int, default=8)
-    p.add_argument('--num-train', type=int, default=5000)
-    p.add_argument('--num-test', type=int, default=1000)
-    p.add_argument('--hidden-dim', type=int, default=64)
-    p.add_argument('--num-layers', type=int, default=6)
-    p.add_argument('--num-freqs', type=int, default=32)
+    p.add_argument("--tmax", type=float, default=5.0)
+    p.add_argument("--rmax", type=float, default=5.0)
+    p.add_argument("--kmin", type=float, default=0.5)
+    p.add_argument("--kmax", type=float, default=2.0)
+    p.add_argument("--num-waves", type=int, default=8)
+    p.add_argument("--num-train", type=int, default=5000)
+    p.add_argument("--num-test", type=int, default=1000)
+    p.add_argument("--hidden-dim", type=int, default=64)
+    p.add_argument("--num-layers", type=int, default=6)
+    p.add_argument("--num-freqs", type=int, default=32)
     return p.parse_args()
 
 
@@ -585,5 +584,5 @@ def main() -> None:
     train(parse_args())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

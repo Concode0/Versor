@@ -18,12 +18,8 @@ import torch
 import torch.nn as nn
 
 from core.algebra import CliffordAlgebra
-from layers import CliffordModule
-from layers import CliffordLinear
-from layers import CliffordLayerNorm
-from layers import BladeSelector
-from layers import RotorLayer
 from functional.activation import GeometricGELU, GeometricSquare
+from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, CliffordModule, RotorLayer
 
 
 def _blade_name(idx: int, n: int) -> str:
@@ -131,10 +127,10 @@ class SRMultiGradeEmbedding(CliffordModule):
 
         # Precompute grade-1 indices
         dim = algebra.dim
-        g1_idx = [i for i in range(dim) if bin(i).count('1') == 1]
+        g1_idx = [i for i in range(dim) if bin(i).count("1") == 1]
         self.n_g1 = len(g1_idx)
 
-        self.register_buffer('g1_idx', torch.tensor(g1_idx, dtype=torch.long))
+        self.register_buffer("g1_idx", torch.tensor(g1_idx, dtype=torch.long))
 
         # Grade-0: scalar bias per channel
         self.grade0_bias = nn.Parameter(torch.zeros(channels))

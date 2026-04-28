@@ -5,14 +5,15 @@
 # you may not use this file except in compliance with the License.
 #
 
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
-from layers import RotorLayer, CliffordModule
-from functional.loss import GeometricMSELoss
-from tasks.base import BaseTask
 from core.visualizer import GeneralVisualizer
-import matplotlib.pyplot as plt
+from functional.loss import GeometricMSELoss
+from layers import CliffordModule, RotorLayer
+from tasks.base import BaseTask
 
 
 class HyperbolicNetwork(CliffordModule):
@@ -116,16 +117,16 @@ class HyperbolicTask(BaseTask):
         plt.figure(figsize=(8, 8))
         plt.scatter(x_orig, t_orig, label="Original (Rest)", alpha=0.6)
         plt.scatter(x_boost, t_boost, label="Boosted (Input)", alpha=0.6)
-        plt.scatter(x_rec, t_rec, label="Recovered", marker='x', alpha=0.6)
+        plt.scatter(x_rec, t_rec, label="Recovered", marker="x", alpha=0.6)
 
-        plt.plot([-3, 3], [-3, 3], 'k--', alpha=0.3, label="Light Cone")
-        plt.plot([-3, 3], [3, -3], 'k--', alpha=0.3)
+        plt.plot([-3, 3], [-3, 3], "k--", alpha=0.3, label="Light Cone")
+        plt.plot([-3, 3], [3, -3], "k--", alpha=0.3)
 
         plt.xlabel("Space (x)")
         plt.ylabel("Time (t)")
         plt.title("Lorentz Boost Recovery in Cl(1, 1)")
         plt.legend()
         plt.grid(True)
-        plt.axis('equal')
+        plt.axis("equal")
         plt.savefig("hyperbolic_viz.png")
         print("Saved hyperbolic visualization.")

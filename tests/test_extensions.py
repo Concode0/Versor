@@ -5,8 +5,9 @@
 # you may not use this file except in compliance with the License.
 #
 
-import torch
 import pytest
+import torch
+
 from core.algebra import CliffordAlgebra
 from layers import CliffordGraphConv
 from layers.adapters.conformal import ConformalEmbedding
@@ -20,11 +21,11 @@ class TestExtensions:
         """
         Test that points embedded in CGA are null vectors (P * P = 0).
         """
-        algebra = CliffordAlgebra(p=4, q=1, device='cpu')
+        algebra = CliffordAlgebra(p=4, q=1, device="cpu")
         embed = ConformalEmbedding(algebra, euclidean_dim=3)
 
         # Random Euclidean points
-        x = torch.randn(5, 3, device='cpu')
+        x = torch.randn(5, 3, device="cpu")
 
         # Embed
         P = embed.embed(x)
@@ -42,10 +43,10 @@ class TestExtensions:
 
     def test_pga_embed_extract_roundtrip(self):
         """Points embedded in PGA can be extracted back."""
-        algebra = CliffordAlgebra(p=3, q=0, r=1, device='cpu')
+        algebra = CliffordAlgebra(p=3, q=0, r=1, device="cpu")
         embed = ProjectiveEmbedding(algebra, euclidean_dim=3)
 
-        x = torch.randn(5, 3, device='cpu')
+        x = torch.randn(5, 3, device="cpu")
         P = embed.embed(x)
 
         # Should be grade-1 only
@@ -61,7 +62,7 @@ class TestExtensions:
 
     def test_pga_direction_has_no_e0(self):
         """Directions (ideal points) have e_0 = 0."""
-        algebra = CliffordAlgebra(p=3, q=0, r=1, device='cpu')
+        algebra = CliffordAlgebra(p=3, q=0, r=1, device="cpu")
         embed = ProjectiveEmbedding(algebra, euclidean_dim=3)
 
         v = torch.tensor([[1.0, 0.0, 0.0]])
@@ -72,7 +73,7 @@ class TestExtensions:
         """Rotors in PGA correctly rotate embedded points."""
         import math
 
-        algebra = CliffordAlgebra(p=3, q=0, r=1, device='cpu')
+        algebra = CliffordAlgebra(p=3, q=0, r=1, device="cpu")
         embed = ProjectiveEmbedding(algebra, euclidean_dim=3)
 
         # Embed (1, 0, 0)
@@ -101,7 +102,7 @@ class TestExtensions:
         Test Clifford GCN forward pass.
         """
         # Algebra (e.g., 2D)
-        algebra = CliffordAlgebra(p=2, q=0, device='cpu')
+        algebra = CliffordAlgebra(p=2, q=0, device="cpu")
         gnn = CliffordGraphConv(algebra, in_channels=2, out_channels=4)
 
         # 3 Nodes, 2 Channels, 2^2=4 Dim

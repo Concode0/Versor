@@ -23,13 +23,15 @@ real sequence structure to attend over:
 
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
-from layers.primitives.base import CliffordModule
-from layers.adapters.mother import MotherEmbedding
 from layers.adapters.embedding import RotaryBivectorPE
+from layers.adapters.mother import MotherEmbedding
 from layers.blocks.transformer import GeometricTransformerBlock
-from layers.primitives.projection import GeometricNeutralizer
+from layers.primitives.base import CliffordModule
 from layers.primitives.normalization import CliffordLayerNorm
+from layers.primitives.projection import GeometricNeutralizer
+
 from .heads import ChainReasoningHead, EntailmentHead, NegationHead
 
 

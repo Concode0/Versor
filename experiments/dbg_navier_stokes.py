@@ -56,6 +56,7 @@ from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
+from core.metric import hermitian_grade_spectrum, hermitian_inner_product
 from experiments._lib import (
     build_visualization_metadata,
     count_parameters,
@@ -69,12 +70,10 @@ from experiments._lib import (
     setup_algebra,
     signature_metadata,
 )
-from core.metric import hermitian_inner_product, hermitian_grade_spectrum
-from layers.primitives.base import CliffordModule
-from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, RotorLayer
 from functional.activation import GeometricGELU
+from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, RotorLayer
+from layers.primitives.base import CliffordModule
 from optimizers.riemannian import RiemannianAdam
-
 
 # ---------------------------------------------------------------------------
 # Taylor-Green vortex (analytic)
@@ -208,7 +207,7 @@ def _eval_grid(re: float, t: float, n: int) -> Tuple[torch.Tensor, torch.Tensor]
     """Dense (x,y,z) grid at fixed time, with analytic targets — for diagnostics."""
     nu = 1.0 / re
     lin = torch.linspace(0, 2 * math.pi, n, dtype=torch.float32)
-    X, Y, Z = torch.meshgrid(lin, lin, lin, indexing='ij')
+    X, Y, Z = torch.meshgrid(lin, lin, lin, indexing="ij")
     x, y, z = X.reshape(-1), Y.reshape(-1), Z.reshape(-1)
     tt = torch.full_like(x, t)
     log_re = torch.full_like(x, math.log(re))
@@ -252,9 +251,9 @@ class GaugeFluidNet(CliffordModule):
         self.hidden_dim = hidden_dim
 
         spatial_freqs = torch.arange(1, num_spatial_freqs + 1, dtype=torch.float32)
-        self.register_buffer('spatial_freqs', spatial_freqs)
-        self.register_buffer('temporal_freqs', torch.randn(num_temporal_freqs) * 2.0)
-        self.register_buffer('re_freqs', torch.randn(num_temporal_freqs) * 0.5)
+        self.register_buffer("spatial_freqs", spatial_freqs)
+        self.register_buffer("temporal_freqs", torch.randn(num_temporal_freqs) * 2.0)
+        self.register_buffer("re_freqs", torch.randn(num_temporal_freqs) * 0.5)
 
         input_dim = 5 + 3 * 2 * num_spatial_freqs + 2 * num_temporal_freqs + 2 * num_temporal_freqs
 
@@ -266,10 +265,10 @@ class GaugeFluidNet(CliffordModule):
             self.blocks.append(
                 nn.ModuleDict(
                     {
-                        'norm': CliffordLayerNorm(algebra, hidden_dim),
-                        'rotor': RotorLayer(algebra, hidden_dim),
-                        'act': GeometricGELU(algebra, channels=hidden_dim),
-                        'linear': CliffordLinear(algebra, hidden_dim, hidden_dim),
+                        "norm": CliffordLayerNorm(algebra, hidden_dim),
+                        "rotor": RotorLayer(algebra, hidden_dim),
+                        "act": GeometricGELU(algebra, channels=hidden_dim),
+                        "linear": CliffordLinear(algebra, hidden_dim, hidden_dim),
                     }
                 )
             )
@@ -301,10 +300,10 @@ class GaugeFluidNet(CliffordModule):
         h = self.input_norm(h)
         for block in self.blocks:
             residual = h
-            h = block['norm'](h)
-            h = block['rotor'](h)
-            h = block['act'](h)
-            h = block['linear'](h)
+            h = block["norm"](h)
+            h = block["rotor"](h)
+            h = block["act"](h)
+            h = block["linear"](h)
             h = residual + h
         h = self.output_norm(h)
         h = self.blade_selector(h)
@@ -331,8 +330,8 @@ def supervised_l2(model, loader, device) -> Dict[str, float]:
         sse_grad += ((pred_grad - target_grad) ** 2).mean().item() * coords.shape[0]
         n += coords.shape[0]
     return {
-        'test_l2_mv': sse_mv / max(n, 1),
-        'test_l2_grad': sse_grad / max(n, 1),
+        "test_l2_mv": sse_mv / max(n, 1),
+        "test_l2_grad": sse_grad / max(n, 1),
     }
 
 
@@ -369,7 +368,7 @@ def _autograd_div_curl_lap(
 
     div_u = du1_dx + du2_dy + du3_dz
     curl = torch.stack([du3_dy - du2_dz, du1_dz - du3_dx, du2_dx - du1_dy], dim=-1)
-    return {'mv': mv.detach(), 'div_u': div_u.detach(), 'curl': curl.detach()}
+    return {"mv": mv.detach(), "div_u": div_u.detach(), "curl": curl.detach()}
 
 
 @torch.no_grad()
@@ -397,7 +396,7 @@ def grade_spectrum(model, algebra, coords, device) -> Dict[str, float]:
     coords = coords.to(device)
     mv, _ = model(coords)
     spec = hermitian_grade_spectrum(algebra, mv).mean(dim=0)
-    labels = ['g0_pressure', 'g1_velocity', 'g2_vorticity', 'g3_helicity']
+    labels = ["g0_pressure", "g1_velocity", "g2_vorticity", "g3_helicity"]
     return {labels[k]: spec[k].item() for k in range(4)}
 
 
@@ -413,21 +412,21 @@ def post_training_diagnostics(
 
     # autograd-based: divergence and curl from the velocity head only.
     derived = _autograd_div_curl_lap(model, coords)
-    mv = derived['mv']
-    out['div_residual'] = (derived['div_u'] ** 2).mean().item()
+    mv = derived["mv"]
+    out["div_residual"] = (derived["div_u"] ** 2).mean().item()
 
     w_pred = torch.stack([mv[:, 6], -mv[:, 5], mv[:, 3]], dim=-1)
-    out['vorticity_consistency'] = ((derived['curl'] - w_pred) ** 2).mean().item()
+    out["vorticity_consistency"] = ((derived["curl"] - w_pred) ** 2).mean().item()
 
     # Gradient-head divergence: trace of the predicted ∂u/∂x Jacobian.
     # Should also collapse toward 0 because every TGV target has zero trace.
     with torch.no_grad():
         _, pred_grad = model(coords.detach())
     trace_div = pred_grad[:, 0] + pred_grad[:, 4] + pred_grad[:, 8]
-    out['div_residual_grad_head'] = (trace_div**2).mean().item()
+    out["div_residual_grad_head"] = (trace_div**2).mean().item()
 
     # algebraic / no_grad
-    out['gauge_covariance'] = gauge_covariance_residual(
+    out["gauge_covariance"] = gauge_covariance_residual(
         model,
         algebra,
         coords.detach(),
@@ -445,16 +444,16 @@ def post_training_diagnostics(
 
 def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
-        'Navier-Stokes in Cl(3,0) — supervised IC+BC reconstruction.',
-        defaults={'output_dir': 'ns_plots'},
+        "Navier-Stokes in Cl(3,0) — supervised IC+BC reconstruction.",
+        defaults={"output_dir": "ns_plots"},
     )
-    p.add_argument('--re', type=float, default=100.0)
-    p.add_argument('--t-max', type=float, default=1.0)
-    p.add_argument('--num-ic', type=int, default=1024)
-    p.add_argument('--num-bc', type=int, default=512)
-    p.add_argument('--num-test', type=int, default=512)
-    p.add_argument('--hidden-dim', type=int, default=32)
-    p.add_argument('--num-layers', type=int, default=4)
+    p.add_argument("--re", type=float, default=100.0)
+    p.add_argument("--t-max", type=float, default=1.0)
+    p.add_argument("--num-ic", type=int, default=1024)
+    p.add_argument("--num-bc", type=int, default=512)
+    p.add_argument("--num-test", type=int, default=512)
+    p.add_argument("--hidden-dim", type=int, default=32)
+    p.add_argument("--num-layers", type=int, default=4)
     return p.parse_args()
 
 
@@ -489,11 +488,11 @@ def main() -> None:
     ).to(device)
 
     print_banner(
-        'Navier-Stokes — Cl(3,0) supervised reconstruction',
-        signature='Cl(3, 0)  grades: G0=p, G1=u, G2=ω, G3=h',
-        natural_loss='MSE on (packed mv, ∂u/∂x_i) at IC + BC samples',
-        Re=f'{args.re:.0f}',
-        parameters=f'{count_parameters(model):,}',
+        "Navier-Stokes — Cl(3,0) supervised reconstruction",
+        signature="Cl(3, 0)  grades: G0=p, G1=u, G2=ω, G3=h",
+        natural_loss="MSE on (packed mv, ∂u/∂x_i) at IC + BC samples",
+        Re=f"{args.re:.0f}",
+        parameters=f"{count_parameters(model):,}",
     )
 
     optimizer = RiemannianAdam(model.parameters(), lr=args.lr, algebra=algebra)
@@ -515,7 +514,7 @@ def main() -> None:
         diag_interval=args.diag_interval,
         grad_clip=1.0,
         diag_fn=diag_fn,
-        history_extra_keys=('test_l2_mv', 'test_l2_grad'),
+        history_extra_keys=("test_l2_mv", "test_l2_grad"),
     )
 
     diagnostics = supervised_l2(model, test_loader, device)
@@ -531,7 +530,7 @@ def main() -> None:
     print(
         report_diagnostics(
             diagnostics,
-            title='Navier-Stokes post-training physics diagnostics',
+            title="Navier-Stokes post-training physics diagnostics",
         )
     )
 
@@ -544,15 +543,15 @@ def main() -> None:
     path = save_training_curve(
         history,
         output_dir=args.output_dir,
-        experiment_name='dbg_navier_stokes',
+        experiment_name="dbg_navier_stokes",
         metadata=metadata,
-        plot_name='training_curve',
+        plot_name="training_curve",
         args=args,
         module=__name__,
-        title='Navier-Stokes — supervised IC+BC loss',
+        title="Navier-Stokes — supervised IC+BC loss",
     )
-    print(f'  curve saved to {path}')
+    print(f"  curve saved to {path}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

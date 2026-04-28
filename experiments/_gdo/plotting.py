@@ -6,14 +6,13 @@ from typing import Callable, Dict, List, Tuple
 
 import matplotlib
 
-matplotlib.use('Agg')
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
 import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from matplotlib.patches import Patch
 
 from experiments._lib import ensure_output_dir, save_experiment_figure
 
@@ -37,7 +36,7 @@ def _save_gdo_figure(
     return save_experiment_figure(
         fig,
         output_dir=output_dir,
-        experiment_name='inc_gdo',
+        experiment_name="inc_gdo",
         metadata=metadata,
         plot_name=plot_name,
         args=args,
@@ -56,20 +55,20 @@ def plot_pre_exploration(
     """2x3 dashboard: eigenvalues, local dims, grade energy, coherence, geometry, config."""
     _ensure_output_dir(output_dir)
     fig, axes = plt.subplots(2, 3, figsize=(18, 10))
-    fig.suptitle(title, fontsize=14, fontweight='bold')
+    fig.suptitle(title, fontsize=14, fontweight="bold")
 
     ax = axes[0, 0]
     if pre_result.dim_result is not None:
         ev = pre_result.dim_result.eigenvalues.cpu().numpy()
-        ax.semilogy(range(1, len(ev) + 1), ev, 'b.-')
+        ax.semilogy(range(1, len(ev) + 1), ev, "b.-")
         ax.axhline(
             y=ev[pre_result.dim_result.broken_stick_threshold - 1]
             if pre_result.dim_result.broken_stick_threshold > 0
             else ev[-1],
-            color='r',
-            linestyle='--',
+            color="r",
+            linestyle="--",
             alpha=0.7,
-            label='broken-stick',
+            label="broken-stick",
         )
         ax.set_title(
             f"Eigenvalue Spectrum\n"
@@ -78,7 +77,7 @@ def plot_pre_exploration(
         )
         ax.legend()
     else:
-        ax.text(0.5, 0.5, "No dimension\nanalysis", ha='center', va='center', transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No dimension\nanalysis", ha="center", va="center", transform=ax.transAxes)
     ax.set_xlabel("Component")
     ax.set_ylabel("Eigenvalue")
     ax.grid(True, alpha=0.3)
@@ -86,12 +85,12 @@ def plot_pre_exploration(
     ax = axes[0, 1]
     if pre_result.dim_result is not None and pre_result.dim_result.local_dims is not None:
         ld = pre_result.dim_result.local_dims.cpu().numpy()
-        ax.hist(ld, bins=20, color='steelblue', edgecolor='white', alpha=0.8)
+        ax.hist(ld, bins=20, color="steelblue", edgecolor="white", alpha=0.8)
         ax.axvline(
             pre_result.dim_result.participation_ratio,
-            color='red',
-            linestyle='--',
-            label=f'PR={pre_result.dim_result.participation_ratio:.1f}',
+            color="red",
+            linestyle="--",
+            label=f"PR={pre_result.dim_result.participation_ratio:.1f}",
         )
         ax.set_title("Local Dimension Distribution")
         ax.legend()
@@ -100,10 +99,10 @@ def plot_pre_exploration(
         if ls:
             vals = [ls["min"], ls["mean"], ls["max"]]
             labels = ["min", "mean", "max"]
-            ax.barh(labels, vals, color=['green', 'steelblue', 'red'], alpha=0.7)
+            ax.barh(labels, vals, color=["green", "steelblue", "red"], alpha=0.7)
             ax.set_title("Loss Statistics")
         else:
-            ax.text(0.5, 0.5, "N/A", ha='center', va='center', transform=ax.transAxes)
+            ax.text(0.5, 0.5, "N/A", ha="center", va="center", transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[0, 2]
@@ -112,7 +111,7 @@ def plot_pre_exploration(
         ge = pre_result.spectral_result.grade_energy.cpu().numpy()
         grades = list(range(len(ge)))
         colors = plt.cm.viridis(np.linspace(0.2, 0.9, len(ge)))
-        ax.bar(grades, ge, color=colors, edgecolor='white')
+        ax.bar(grades, ge, color=colors, edgecolor="white")
         ax.set_xlabel("Grade")
         ax.set_ylabel("Energy")
         ax.set_title("Grade Energy Spectrum")
@@ -120,12 +119,12 @@ def plot_pre_exploration(
         ge = gs["grade_energy"].cpu().numpy()
         grades = list(range(len(ge)))
         colors = plt.cm.viridis(np.linspace(0.2, 0.9, len(ge)))
-        ax.bar(grades, ge, color=colors, edgecolor='white')
+        ax.bar(grades, ge, color=colors, edgecolor="white")
         ax.set_xlabel("Grade")
         ax.set_ylabel("Energy")
         ax.set_title("Grade Energy Spectrum")
     else:
-        ax.text(0.5, 0.5, "No spectral\nanalysis", ha='center', va='center', transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No spectral\nanalysis", ha="center", va="center", transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[1, 0]
@@ -134,10 +133,10 @@ def plot_pre_exploration(
     bar_colors = []
     for v, name in zip(values, metrics_names):
         if name == "Coherence":
-            bar_colors.append('green' if v > 0.5 else ('orange' if v > 0.3 else 'red'))
+            bar_colors.append("green" if v > 0.5 else ("orange" if v > 0.3 else "red"))
         else:
-            bar_colors.append('green' if v < 0.3 else ('orange' if v < 0.5 else 'red'))
-    ax.barh(metrics_names, values, color=bar_colors, alpha=0.7, edgecolor='white')
+            bar_colors.append("green" if v < 0.3 else ("orange" if v < 0.5 else "red"))
+    ax.barh(metrics_names, values, color=bar_colors, alpha=0.7, edgecolor="white")
     ax.set_xlim(0, 1)
     ax.set_title(f"Landscape Geometry\nStrategy: {pre_result.strategy_label}")
     ax.grid(True, alpha=0.3)
@@ -148,25 +147,25 @@ def plot_pre_exploration(
         labels_gs.append("Lie Closure\nError")
         vals_gs.append(gs["closure_error"])
         ce = gs["closure_error"]
-        colors_gs.append('green' if ce < 0.1 else ('orange' if ce < 0.5 else 'red'))
+        colors_gs.append("green" if ce < 0.1 else ("orange" if ce < 0.5 else "red"))
     if "grade_entropy" in gs:
         labels_gs.append("Grade\nEntropy")
         vals_gs.append(gs["grade_entropy"])
-        colors_gs.append('purple')
+        colors_gs.append("purple")
     if "coherence" in gs:
         labels_gs.append("Bivector\nCoherence")
         vals_gs.append(gs["coherence"])
-        colors_gs.append('steelblue')
+        colors_gs.append("steelblue")
     if labels_gs:
-        ax.barh(labels_gs, vals_gs, color=colors_gs, alpha=0.7, edgecolor='white')
+        ax.barh(labels_gs, vals_gs, color=colors_gs, alpha=0.7, edgecolor="white")
         ax.set_xlim(0, max(1.0, max(vals_gs) * 1.1))
         ax.set_title("Geometric Signals")
     else:
-        ax.text(0.5, 0.5, "No geometric\nscores", ha='center', va='center', transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No geometric\nscores", ha="center", va="center", transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[1, 2]
-    ax.axis('off')
+    ax.axis("off")
     cfg = pre_result.recommended_config
     lines = [
         f"lr: {cfg.lr}",
@@ -183,10 +182,10 @@ def plot_pre_exploration(
         0.95,
         "Recommended Config\n" + "-" * 25 + "\n" + "\n".join(lines),
         transform=ax.transAxes,
-        va='top',
+        va="top",
         fontsize=9,
-        family='monospace',
-        bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8),
+        family="monospace",
+        bbox=dict(boxstyle="round,pad=0.5", facecolor="lightyellow", alpha=0.8),
     )
 
     plt.tight_layout()
@@ -194,7 +193,7 @@ def plot_pre_exploration(
         fig,
         output_dir=output_dir,
         metadata=metadata,
-        plot_name=f'{title}_pre_exploration',
+        plot_name=f"{title}_pre_exploration",
         args=args,
     )
     print(f"  Saved: {path}")
@@ -211,20 +210,20 @@ def plot_optimization_trajectory(
     """Loss curve, probe results, landscape map summary."""
     _ensure_output_dir(output_dir)
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle(title, fontsize=14, fontweight='bold')
+    fig.suptitle(title, fontsize=14, fontweight="bold")
 
     ax = axes[0, 0]
     losses = history.get("losses", [])
     modes = history.get("modes", [])
     if losses:
-        ax.semilogy(losses, 'b-', linewidth=0.8)
+        ax.semilogy(losses, "b-", linewidth=0.8)
         mode_colors = {"explore": "#cce5ff", "navigate": "#d4edda", "sprint": "#fff3cd"}
         if modes:
             prev = modes[0]
             start = 0
             for i, m in enumerate(modes + [None]):
                 if m != prev or i == len(modes):
-                    ax.axvspan(start, i, alpha=0.15, color=mode_colors.get(prev, '#ffffff'))
+                    ax.axvspan(start, i, alpha=0.15, color=mode_colors.get(prev, "#ffffff"))
                     prev = m
                     start = i
     ax.set_xlabel("Step")
@@ -237,29 +236,29 @@ def plot_optimization_trajectory(
     curvatures = history.get("curvatures", [])
     grad_norms = history.get("grad_norms", [])
     if probe_steps and curvatures:
-        ax.plot(probe_steps, curvatures, 'b.-', label='Mean curvature')
+        ax.plot(probe_steps, curvatures, "b.-", label="Mean curvature")
         ax2 = ax.twinx()
-        ax2.plot(probe_steps, grad_norms, 'r.-', alpha=0.7, label='Grad norm')
-        ax2.set_ylabel("Grad Norm", color='red')
+        ax2.plot(probe_steps, grad_norms, "r.-", alpha=0.7, label="Grad norm")
+        ax2.set_ylabel("Grad Norm", color="red")
         ax.set_xlabel("Step")
-        ax.set_ylabel("Mean Curvature", color='blue')
+        ax.set_ylabel("Mean Curvature", color="blue")
         ax.set_title("Probe Results")
-        ax.legend(loc='upper left', fontsize=8)
-        ax2.legend(loc='upper right', fontsize=8)
+        ax.legend(loc="upper left", fontsize=8)
+        ax2.legend(loc="upper right", fontsize=8)
     else:
-        ax.text(0.5, 0.5, "No probe data", ha='center', va='center', transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No probe data", ha="center", va="center", transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[1, 0]
     betas = history.get("betas", [])
     if probe_steps and betas:
-        ax.plot(probe_steps, betas, 'g.-')
+        ax.plot(probe_steps, betas, "g.-")
         ax.set_xlabel("Step")
         ax.set_ylabel("Lorentz beta")
         ax.set_title("Lorentz Warp Factor")
-        ax.axhline(0.0, color='gray', linestyle='--', alpha=0.3)
+        ax.axhline(0.0, color="gray", linestyle="--", alpha=0.3)
     else:
-        ax.text(0.5, 0.5, "No warp data", ha='center', va='center', transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No warp data", ha="center", va="center", transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[1, 1]
@@ -267,12 +266,12 @@ def plot_optimization_trajectory(
     if lifts:
         lift_steps = [l["step"] for l in lifts]
         lift_losses = [l["loss"] for l in lifts]
-        lift_colors = ['green' if l["success"] else 'red' for l in lifts]
+        lift_colors = ["green" if l["success"] else "red" for l in lifts]
         ax.scatter(lift_steps, lift_losses, c=lift_colors, s=50, zorder=5)
         ax.set_xlabel("Step")
         ax.set_ylabel("Loss at Lift")
         ax.set_title(f"Lift Oracle Events ({len(lifts)} total)")
-        patches = [Patch(color='green', label='Success'), Patch(color='red', label='Fail')]
+        patches = [Patch(color="green", label="Success"), Patch(color="red", label="Fail")]
         ax.legend(handles=patches, fontsize=8)
     else:
         if modes:
@@ -280,11 +279,11 @@ def plot_optimization_trajectory(
             for m in modes:
                 mode_counts[m] = mode_counts.get(m, 0) + 1
             ax.bar(
-                mode_counts.keys(), mode_counts.values(), color=['steelblue', 'seagreen', 'orange'][: len(mode_counts)]
+                mode_counts.keys(), mode_counts.values(), color=["steelblue", "seagreen", "orange"][: len(mode_counts)]
             )
             ax.set_title("Mode Distribution")
         else:
-            ax.text(0.5, 0.5, "No lift/mode data", ha='center', va='center', transform=ax.transAxes)
+            ax.text(0.5, 0.5, "No lift/mode data", ha="center", va="center", transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -292,7 +291,7 @@ def plot_optimization_trajectory(
         fig,
         output_dir=output_dir,
         metadata=metadata,
-        plot_name=f'{title}_trajectory',
+        plot_name=f"{title}_trajectory",
         args=args,
     )
     print(f"  Saved: {path}")
@@ -309,26 +308,26 @@ def plot_geometric_controller(
     """2x2 dashboard: FIM, commutativity heatmap, group scales, grade energy."""
     _ensure_output_dir(output_dir)
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle(title, fontsize=14, fontweight='bold')
+    fig.suptitle(title, fontsize=14, fontweight="bold")
 
     ax = axes[0, 0]
     fim = diagnostics.get("fim_diag", {})
     if fim:
         groups = sorted(fim.keys())
         means = [fim[g].mean().item() for g in groups]
-        ax.bar(groups, means, color='steelblue', edgecolor='white')
+        ax.bar(groups, means, color="steelblue", edgecolor="white")
         ax.set_xlabel("Param Group")
         ax.set_ylabel("Mean FIM")
         ax.set_title("Fisher Information (per group)")
     else:
-        ax.text(0.5, 0.5, "No FIM data", ha='center', va='center', transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No FIM data", ha="center", va="center", transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[0, 1]
     gs = diagnostics.get("geometric_scores", {})
     if "comm_result" in gs:
         mat = gs["comm_result"].commutativity_matrix.cpu().numpy()
-        im = ax.imshow(mat, cmap='RdYlGn_r', aspect='auto')
+        im = ax.imshow(mat, cmap="RdYlGn_r", aspect="auto")
         fig.colorbar(im, ax=ax, shrink=0.8)
         ax.set_title("Commutativity Matrix")
         ax.set_xlabel("Dimension")
@@ -347,11 +346,11 @@ def plot_geometric_controller(
             for (i, j), v in hybrid.items():
                 mat[i, j] = v
                 mat[j, i] = v
-            im = ax.imshow(mat, cmap='RdYlGn_r', aspect='auto')
+            im = ax.imshow(mat, cmap="RdYlGn_r", aspect="auto")
             fig.colorbar(im, ax=ax, shrink=0.8)
             ax.set_title("Hybrid Commutativity Scores")
         else:
-            ax.text(0.5, 0.5, "No commutativity\ndata", ha='center', va='center', transform=ax.transAxes)
+            ax.text(0.5, 0.5, "No commutativity\ndata", ha="center", va="center", transform=ax.transAxes)
     ax.grid(False)
 
     ax = axes[1, 0]
@@ -361,20 +360,20 @@ def plot_geometric_controller(
         bar_colors = []
         for s in scales:
             if s > 1.3:
-                bar_colors.append('green')
+                bar_colors.append("green")
             elif s < 0.5:
-                bar_colors.append('red')
+                bar_colors.append("red")
             elif s < 0.8:
-                bar_colors.append('orange')
+                bar_colors.append("orange")
             else:
-                bar_colors.append('steelblue')
-        ax.bar(x, scales, color=bar_colors, edgecolor='white')
-        ax.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5)
+                bar_colors.append("steelblue")
+        ax.bar(x, scales, color=bar_colors, edgecolor="white")
+        ax.axhline(y=1.0, color="gray", linestyle="--", alpha=0.5)
         ax.set_xlabel("Param Group")
         ax.set_ylabel("Update Scale")
         ax.set_title("Group Update Scales\n(green=trust, red=caution)")
     else:
-        ax.text(0.5, 0.5, "No scale data", ha='center', va='center', transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No scale data", ha="center", va="center", transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[1, 1]
@@ -382,7 +381,7 @@ def plot_geometric_controller(
         ge = gs["grade_energy"].cpu().numpy()
         grades = list(range(len(ge)))
         colors = plt.cm.viridis(np.linspace(0.2, 0.9, len(ge)))
-        ax.bar(grades, ge, color=colors, edgecolor='white')
+        ax.bar(grades, ge, color=colors, edgecolor="white")
         ax.set_xlabel("Grade")
         ax.set_ylabel("Energy")
         title_parts = ["Grade Energy"]
@@ -392,7 +391,7 @@ def plot_geometric_controller(
             title_parts.append(f"closure={gs['closure_error']:.3f}")
         ax.set_title(" | ".join(title_parts))
     else:
-        ax.text(0.5, 0.5, "No grade energy\ndata", ha='center', va='center', transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No grade energy\ndata", ha="center", va="center", transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -400,7 +399,7 @@ def plot_geometric_controller(
         fig,
         output_dir=output_dir,
         metadata=metadata,
-        plot_name='geometric_controller',
+        plot_name="geometric_controller",
         args=args,
     )
     print(f"  Saved: {path}")
@@ -418,7 +417,7 @@ def plot_topology_map(
 ):
     """Contour plot of 2D loss surface + critical points + trajectory."""
     _ensure_output_dir(output_dir)
-    if not hasattr(model, 'a'):
+    if not hasattr(model, "a"):
         return None
 
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -427,17 +426,17 @@ def plot_topology_map(
     yr = np.linspace(-1.5, 3.5, 100)
     X, Y = np.meshgrid(xr, yr)
     Z = (model.a - X) ** 2 + model.b * (Y - X**2) ** 2
-    ax.contourf(X, Y, np.log10(Z + 1e-10), levels=30, cmap='terrain', alpha=0.7)
-    ax.contour(X, Y, np.log10(Z + 1e-10), levels=15, colors='gray', linewidths=0.3, alpha=0.5)
+    ax.contourf(X, Y, np.log10(Z + 1e-10), levels=30, cmap="terrain", alpha=0.7)
+    ax.contour(X, Y, np.log10(Z + 1e-10), levels=15, colors="gray", linewidths=0.3, alpha=0.5)
 
     cp_markers = {
-        CriticalPointType.MINIMUM: ('o', 'blue', 'Minimum'),
-        CriticalPointType.SADDLE: ('^', 'red', 'Saddle'),
-        CriticalPointType.MAXIMUM: ('s', 'gray', 'Maximum'),
+        CriticalPointType.MINIMUM: ("o", "blue", "Minimum"),
+        CriticalPointType.SADDLE: ("^", "red", "Saddle"),
+        CriticalPointType.MAXIMUM: ("s", "gray", "Maximum"),
     }
     for cp in landscape.critical_points:
         if cp.params.shape[0] >= 2:
-            marker, color, cp_label = cp_markers.get(cp.point_type, ('x', 'black', 'Unknown'))
+            marker, color, cp_label = cp_markers.get(cp.point_type, ("x", "black", "Unknown"))
             ax.scatter(
                 cp.params[0].item(),
                 cp.params[1].item(),
@@ -445,7 +444,7 @@ def plot_topology_map(
                 c=color,
                 s=80,
                 zorder=5,
-                edgecolors='white',
+                edgecolors="white",
                 linewidths=1,
                 label=cp_label,
             )
@@ -461,9 +460,9 @@ def plot_topology_map(
                 linewidth=0.5,
                 alpha=0.7,
             )
-        ax.scatter(*trajectory[0], marker='*', c='lime', s=150, zorder=6, edgecolors='black', label='Start')
-        ax.scatter(*trajectory[-1], marker='*', c='red', s=150, zorder=6, edgecolors='black', label='End')
-        ax.scatter(1.0, 1.0, marker='D', c='gold', s=100, zorder=6, edgecolors='black', label='Optimum')
+        ax.scatter(*trajectory[0], marker="*", c="lime", s=150, zorder=6, edgecolors="black", label="Start")
+        ax.scatter(*trajectory[-1], marker="*", c="red", s=150, zorder=6, edgecolors="black", label="End")
+        ax.scatter(1.0, 1.0, marker="D", c="gold", s=100, zorder=6, edgecolors="black", label="Optimum")
 
     ax.set_xlabel("x")
     ax.set_ylabel("y")
@@ -474,7 +473,7 @@ def plot_topology_map(
         fig,
         output_dir=output_dir,
         metadata=metadata,
-        plot_name='topology_map',
+        plot_name="topology_map",
         args=args,
     )
     print(f"  Saved: {path}")
@@ -491,7 +490,7 @@ def plot_three_way_comparison(
     """4-panel: loss curves, final loss bars, wall time bars, convergence rate."""
     _ensure_output_dir(output_dir)
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle(title, fontsize=14, fontweight='bold')
+    fig.suptitle(title, fontsize=14, fontweight="bold")
 
     styles = {
         "GDO": ("b-", 2.0),
@@ -523,22 +522,22 @@ def plot_three_way_comparison(
     ax = axes[0, 1]
     names = list(results.keys())
     finals = [results[n].final_loss for n in names]
-    bar_colors = [color_map.get(n, 'gray') for n in names]
-    ax.bar(names, finals, color=bar_colors, edgecolor='white')
+    bar_colors = [color_map.get(n, "gray") for n in names]
+    ax.bar(names, finals, color=bar_colors, edgecolor="white")
     ax.set_ylabel("Final Loss")
     ax.set_title("Final Loss")
     ax.grid(True, alpha=0.3)
     for i, v in enumerate(finals):
-        ax.text(i, v, f'{v:.4f}', ha='center', va='bottom', fontsize=8)
+        ax.text(i, v, f"{v:.4f}", ha="center", va="bottom", fontsize=8)
 
     ax = axes[1, 0]
     wall_times = [results[n].total_wall_time for n in names]
-    ax.bar(names, wall_times, color=bar_colors, edgecolor='white')
+    ax.bar(names, wall_times, color=bar_colors, edgecolor="white")
     ax.set_ylabel("Total Wall Time (s)")
     ax.set_title("Wall Time")
     ax.grid(True, alpha=0.3)
     for i, v in enumerate(wall_times):
-        ax.text(i, v, f'{v:.1f}s', ha='center', va='bottom', fontsize=8)
+        ax.text(i, v, f"{v:.1f}s", ha="center", va="bottom", fontsize=8)
 
     ax = axes[1, 1]
     for name, res in results.items():
@@ -556,7 +555,7 @@ def plot_three_way_comparison(
         fig,
         output_dir=output_dir,
         metadata=metadata,
-        plot_name=f'{title}_comparison',
+        plot_name=f"{title}_comparison",
         args=args,
     )
     print(f"  Saved: {path}")
@@ -573,7 +572,7 @@ def plot_convergence_rate(
     """3-panel: loss vs step, loss vs wall-time, convergence rate."""
     _ensure_output_dir(output_dir)
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-    fig.suptitle(title, fontsize=14, fontweight='bold')
+    fig.suptitle(title, fontsize=14, fontweight="bold")
 
     styles = {"GDO": "b-", "RiemannianAdam": "r--", "Adam": "g:", "Adam (no algebra)": "g:"}
 
@@ -602,7 +601,7 @@ def plot_convergence_rate(
         if len(res.losses) > window:
             losses_arr = np.array(res.losses)
             rate = -(losses_arr[window:] - losses_arr[:-window]) / window
-            smoothed = np.convolve(rate, np.ones(20) / 20, mode='valid')
+            smoothed = np.convolve(rate, np.ones(20) / 20, mode="valid")
             ax.plot(smoothed, styles.get(name, "k-"), label=name, linewidth=1.2)
     ax.set_xlabel("Step")
     ax.set_ylabel("Convergence Rate (loss drop/step)")
@@ -617,7 +616,7 @@ def plot_convergence_rate(
         fig,
         output_dir=output_dir,
         metadata=metadata,
-        plot_name=f'{title}_convergence',
+        plot_name=f"{title}_convergence",
         args=args,
     )
     print(f"  Saved: {path}")
@@ -634,7 +633,7 @@ def plot_timing_breakdown(
     """2-panel: per-step wall time, cumulative time vs loss."""
     _ensure_output_dir(output_dir)
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    fig.suptitle(title, fontsize=14, fontweight='bold')
+    fig.suptitle(title, fontsize=14, fontweight="bold")
 
     styles = {"GDO": "b", "RiemannianAdam": "r", "Adam": "g", "Adam (no algebra)": "g"}
 
@@ -643,10 +642,10 @@ def plot_timing_breakdown(
         wt = np.array(res.wall_times) * 1000
         window = max(1, len(wt) // 100)
         if window > 1:
-            wt_smooth = np.convolve(wt, np.ones(window) / window, mode='valid')
+            wt_smooth = np.convolve(wt, np.ones(window) / window, mode="valid")
         else:
             wt_smooth = wt
-        ax.plot(wt_smooth, color=styles.get(name, 'k'), label=name, linewidth=0.8, alpha=0.8)
+        ax.plot(wt_smooth, color=styles.get(name, "k"), label=name, linewidth=0.8, alpha=0.8)
     ax.set_xlabel("Step")
     ax.set_ylabel("Wall Time (ms)")
     ax.set_title("Per-Step Wall Time")
@@ -656,10 +655,10 @@ def plot_timing_breakdown(
     ax = axes[1]
     for name, res in results.items():
         cum_time = np.cumsum(res.wall_times)
-        ax.plot(cum_time, res.losses, color=styles.get(name, 'k'), label=name, linewidth=1.2)
+        ax.plot(cum_time, res.losses, color=styles.get(name, "k"), label=name, linewidth=1.2)
     ax.set_xlabel("Cumulative Time (s)")
     ax.set_ylabel("Loss")
-    ax.set_yscale('log')
+    ax.set_yscale("log")
     ax.set_title("Cumulative Time vs Loss")
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
@@ -669,7 +668,7 @@ def plot_timing_breakdown(
         fig,
         output_dir=output_dir,
         metadata=metadata,
-        plot_name=f'{title}_timing',
+        plot_name=f"{title}_timing",
         args=args,
     )
     print(f"  Saved: {path}")
@@ -686,7 +685,7 @@ def plot_bivector_trajectory(
     """Bivector param norm evolution across optimizers."""
     _ensure_output_dir(output_dir)
     fig, ax = plt.subplots(figsize=(10, 5))
-    fig.suptitle(title, fontsize=14, fontweight='bold')
+    fig.suptitle(title, fontsize=14, fontweight="bold")
 
     styles = {"GDO": "b-", "RiemannianAdam": "r--", "Adam": "g:", "Adam (no algebra)": "g:"}
     for name, res in results.items():
@@ -704,7 +703,7 @@ def plot_bivector_trajectory(
         fig,
         output_dir=output_dir,
         metadata=metadata,
-        plot_name=f'{title}_bivector_trajectory',
+        plot_name=f"{title}_bivector_trajectory",
         args=args,
     )
     print(f"  Saved: {path}")
@@ -725,25 +724,25 @@ def plot_optimizer_state_dashboard(
         return None
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle(title, fontsize=14, fontweight='bold')
+    fig.suptitle(title, fontsize=14, fontweight="bold")
 
     ax = axes[0, 0]
     mode_hist = gdo_result.mode_history or diag.get("mode_history", [])
     if mode_hist:
         mode_to_int = {"explore": 0, "navigate": 1, "sprint": 2}
         mode_ints = [mode_to_int.get(m, 0) for m in mode_hist]
-        mode_colors = {0: '#4a90d9', 1: '#66bb6a', 2: '#ffa726'}
+        mode_colors = {0: "#4a90d9", 1: "#66bb6a", 2: "#ffa726"}
         for i in range(len(mode_ints)):
-            ax.bar(i, 1, color=mode_colors.get(mode_ints[i], 'gray'), width=1.0)
+            ax.bar(i, 1, color=mode_colors.get(mode_ints[i], "gray"), width=1.0)
         ax.set_xlabel("Step")
         ax.set_yticks([])
         ax.set_title("Mode Timeline (blue=explore, green=navigate, orange=sprint)")
     else:
-        ax.text(0.5, 0.5, "No mode data", ha='center', va='center', transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No mode data", ha="center", va="center", transform=ax.transAxes)
 
     ax = axes[0, 1]
     topo = diag.get("topology_map", {})
-    ax.axis('off')
+    ax.axis("off")
     lines = [
         f"Critical points detected: {topo.get('critical_points', 0)}",
         f"Plateau episodes: {len(topo.get('plateau_episodes', []))}",
@@ -764,33 +763,33 @@ def plot_optimizer_state_dashboard(
         0.95,
         "\n".join(lines),
         transform=ax.transAxes,
-        va='top',
+        va="top",
         fontsize=10,
-        family='monospace',
-        bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8),
+        family="monospace",
+        bbox=dict(boxstyle="round,pad=0.5", facecolor="lightyellow", alpha=0.8),
     )
     ax.set_title("GDO State Summary")
 
     ax = axes[1, 0]
     curv_hist = topo.get("curvature_history", [])
     if curv_hist:
-        ax.plot(curv_hist, 'b.-', linewidth=0.8)
+        ax.plot(curv_hist, "b.-", linewidth=0.8)
         ax.set_xlabel("Probe Index")
         ax.set_ylabel("Mean Curvature")
         ax.set_title("Curvature History")
     else:
-        ax.text(0.5, 0.5, "No curvature data", ha='center', va='center', transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No curvature data", ha="center", va="center", transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     ax = axes[1, 1]
     grad_hist = topo.get("gradient_norm_history", [])
     if grad_hist:
-        ax.semilogy(grad_hist, 'r.-', linewidth=0.8)
+        ax.semilogy(grad_hist, "r.-", linewidth=0.8)
         ax.set_xlabel("Probe Index")
         ax.set_ylabel("Gradient Norm")
         ax.set_title("Gradient Norm History")
     else:
-        ax.text(0.5, 0.5, "No gradient data", ha='center', va='center', transform=ax.transAxes)
+        ax.text(0.5, 0.5, "No gradient data", ha="center", va="center", transform=ax.transAxes)
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -798,7 +797,7 @@ def plot_optimizer_state_dashboard(
         fig,
         output_dir=output_dir,
         metadata=metadata,
-        plot_name=f'{title}_gdo_state',
+        plot_name=f"{title}_gdo_state",
         args=args,
     )
     print(f"  Saved: {path}")
@@ -850,9 +849,9 @@ def plot_loss_landscape_2d_slice(
 
     fig, ax = plt.subplots(figsize=(8, 7))
     A, B = np.meshgrid(alphas, betas)
-    cs = ax.contourf(A, B, np.log10(Z + 1e-10), levels=30, cmap='viridis')
-    fig.colorbar(cs, ax=ax, label='log10(loss)')
-    ax.scatter([0], [0], c='red', s=100, marker='*', zorder=5, label='Current')
+    cs = ax.contourf(A, B, np.log10(Z + 1e-10), levels=30, cmap="viridis")
+    fig.colorbar(cs, ax=ax, label="log10(loss)")
+    ax.scatter([0], [0], c="red", s=100, marker="*", zorder=5, label="Current")
     ax.set_xlabel("Direction 1")
     ax.set_ylabel("Direction 2")
     ax.set_title(title)
@@ -863,7 +862,7 @@ def plot_loss_landscape_2d_slice(
         fig,
         output_dir=output_dir,
         metadata=metadata,
-        plot_name=f'{title}_loss_landscape',
+        plot_name=f"{title}_loss_landscape",
         args=args,
     )
     print(f"  Saved: {path}")

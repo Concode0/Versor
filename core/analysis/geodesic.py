@@ -12,8 +12,9 @@ field* -- a bivector at each point encoding the direction of shortest
 algebraic paths to its k-nearest neighbours.
 """
 
-import torch
 from typing import Dict
+
+import torch
 
 from core.algebra import CliffordAlgebra
 
@@ -87,7 +88,7 @@ class GeodesicFlow:
         k = min(self.k, N - 1)
         diff = mv.unsqueeze(1) - mv.unsqueeze(0)  # [N, N, dim]
         dists = diff.norm(dim=-1)  # [N, N]
-        dists.fill_diagonal_(float('inf'))
+        dists.fill_diagonal_(float("inf"))
         _, idx = dists.topk(k, dim=-1, largest=False)
         return idx  # [N, k]
 
@@ -321,15 +322,15 @@ class GeodesicFlow:
         threshold = (1.0 + baseline) / 2.0
         is_causal = (coh > threshold) and (curv < CONSTANTS.curvature_causal_threshold)
         return {
-            'coherence': coh,
-            'curvature': curv,
-            'baseline': baseline,
-            'threshold': threshold,
-            'causal': is_causal,
-            'label': (
-                'Causal - smooth, aligned flow (low curvature)'
+            "coherence": coh,
+            "curvature": curv,
+            "baseline": baseline,
+            "threshold": threshold,
+            "causal": is_causal,
+            "label": (
+                "Causal - smooth, aligned flow (low curvature)"
                 if is_causal
-                else 'Noisy - fragmented, colliding flow (high curvature)'
+                else "Noisy - fragmented, colliding flow (high curvature)"
             ),
         }
 

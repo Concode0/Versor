@@ -3,19 +3,20 @@
 #
 # Tests for Iterative Geometric Unbending v2 pipeline.
 
-import pytest
+from unittest.mock import MagicMock, patch
+
 import numpy as np
+import pytest
 import torch
-from unittest.mock import patch, MagicMock
 
 pytestmark = pytest.mark.slow
 
 from core.algebra import CliffordAlgebra
 from models.sr.unbender import (
     IterativeUnbender,
+    OrthogonalEliminationResult,
     StageResult,
     UnbendingResult,
-    OrthogonalEliminationResult,
 )
 
 
@@ -51,7 +52,7 @@ def test_iterative_unbender_smoke(simple_sin_data):
         stage_epochs=3,
         geodesic_k=4,
         grouping_enabled=False,
-        implicit_mode='explicit',
+        implicit_mode="explicit",
     )
 
     result = unbender.run(
@@ -81,7 +82,7 @@ def test_stage_result_fields(simple_sin_data):
         stage_epochs=2,
         geodesic_k=4,
         grouping_enabled=False,
-        implicit_mode='explicit',
+        implicit_mode="explicit",
     )
 
     result = unbender.run(
@@ -205,7 +206,7 @@ def test_coherence_backtrack():
         geodesic_k=4,
         coherence_degradation_threshold=0.0,
         grouping_enabled=False,
-        implicit_mode='explicit',
+        implicit_mode="explicit",
     )
 
     call_count = {"n": 0}
@@ -473,4 +474,4 @@ def test_orthogonal_elimination_result_fields():
 def test_polynomial_fallback_removed():
     """Polynomial fallback was removed in favor of implicit mode + parabolic terms."""
     unbender = IterativeUnbender(in_features=1, device="cpu")
-    assert not hasattr(unbender, '_polynomial_fallback')
+    assert not hasattr(unbender, "_polynomial_fallback")

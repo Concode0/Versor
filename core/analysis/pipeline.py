@@ -7,21 +7,21 @@
 
 """Orchestrates all geometric analyzers into a single pipeline."""
 
-import time
 import concurrent.futures
+import time
+from typing import Optional
 
 import torch
-from typing import Optional
 
 from core.algebra import CliffordAlgebra
 
 from ._types import AnalysisConfig, AnalysisReport, SamplingConfig
-from .sampler import StatisticalSampler
+from .commutator import CommutatorAnalyzer
 from .dimension import EffectiveDimensionAnalyzer
+from .sampler import StatisticalSampler
 from .signature import SignatureSearchAnalyzer
 from .spectral import SpectralAnalyzer
 from .symmetry import SymmetryDetector
-from .commutator import CommutatorAnalyzer
 
 
 class GeometricAnalyzer:

@@ -7,7 +7,9 @@
 
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
+
 from ..primitives.base import CliffordModule
 
 
@@ -49,7 +51,7 @@ class MultivectorEmbedding(CliffordModule):
             # Build grade-1 mask (indices with exactly 1 bit set)
             grade1_flat = []
             for i in range(dim):
-                if bin(i).count('1') == 1:
+                if bin(i).count("1") == 1:
                     grade1_flat.append(i)
 
             # Zero everything
@@ -112,8 +114,8 @@ class RotaryBivectorPE(CliffordModule):
         self.learnable = learnable
 
         # Identify grade-2 basis elements
-        indices = [i for i in range(algebra.dim) if bin(i).count('1') == 2]
-        self.register_buffer('bivector_indices', torch.tensor(indices, dtype=torch.long))
+        indices = [i for i in range(algebra.dim) if bin(i).count("1") == 2]
+        self.register_buffer("bivector_indices", torch.tensor(indices, dtype=torch.long))
         self.num_bivectors = len(indices)
 
         # Sinusoidal initialization
@@ -121,9 +123,9 @@ class RotaryBivectorPE(CliffordModule):
 
         if learnable:
             self.bivector_weights = nn.Parameter(init)
-            self.bivector_weights._manifold = 'spin'
+            self.bivector_weights._manifold = "spin"
         else:
-            self.register_buffer('bivector_weights', init)
+            self.register_buffer("bivector_weights", init)
 
     def _sinusoidal_init(self, L: int, num_bv: int) -> torch.Tensor:
         """Sinusoidal initialization: B[p, k] = p * 10000^(-2k/num_bv) * 0.01."""

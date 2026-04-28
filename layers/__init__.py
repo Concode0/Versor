@@ -3,18 +3,18 @@
 Organized into Primitives, Canonical Blocks, and Task-Specific Adapters.
 """
 
-from .primitives.base import CliffordModule
-from .primitives.rotor import RotorLayer
-from .primitives.multi_rotor import MultiRotorLayer
-from .primitives.linear import CliffordLinear
-from .primitives.rotor_gadget import RotorGadget
-from .primitives.normalization import CliffordLayerNorm
-from .primitives.projection import BladeSelector, GeometricNeutralizer
 from .adapters.embedding import MultivectorEmbedding, RotaryBivectorPE
-from .adapters.mother import MotherEmbedding, EntropyGatedAttention, PhaseShiftHead
+from .adapters.mother import EntropyGatedAttention, MotherEmbedding, PhaseShiftHead
 from .blocks.attention import GeometricProductAttention
 from .blocks.multi_rotor_ffn import MultiRotorFFN
 from .blocks.transformer import GeometricTransformerBlock
+from .primitives.base import CliffordModule
+from .primitives.linear import CliffordLinear
+from .primitives.multi_rotor import MultiRotorLayer
+from .primitives.normalization import CliffordLayerNorm
+from .primitives.projection import BladeSelector, GeometricNeutralizer
+from .primitives.rotor import RotorLayer
+from .primitives.rotor_gadget import RotorGadget
 
 # CliffordGraphConv requires torch_geometric
 try:

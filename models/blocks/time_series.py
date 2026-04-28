@@ -7,10 +7,10 @@
 
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
+from layers import CliffordLinear, RotorLayer
 from layers.primitives.base import CliffordModule
-from layers import CliffordLinear
-from layers import RotorLayer
 
 
 class RotorTCN(CliffordModule):

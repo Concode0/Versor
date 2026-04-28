@@ -15,8 +15,8 @@ import logging
 import numpy as np
 import torch
 
-from models.sr.translator import RotorTranslator
 from models.sr.net import SRGBN
+from models.sr.translator import RotorTranslator
 from models.sr.utils import standardize
 
 logger = logging.getLogger(__name__)

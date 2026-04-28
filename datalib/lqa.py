@@ -22,8 +22,8 @@ import re
 from pathlib import Path
 
 import torch
-from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import DataLoader, Dataset
 
 from log import get_logger
 
@@ -96,7 +96,7 @@ CLUTRR_RELATIONS = [
 def _split_story_sentences(story: str) -> list[str]:
     """Split a CLUTRR story into individual sentences."""
     # Split on sentence boundaries: '. ' or '.\n' or end-of-string period
-    sentences = re.split(r'(?<=[.!?])\s+', story.strip())
+    sentences = re.split(r"(?<=[.!?])\s+", story.strip())
     return [s.strip() for s in sentences if s.strip()]
 
 

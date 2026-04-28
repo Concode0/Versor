@@ -7,8 +7,10 @@
 
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
 from utils.compat import safe_linalg_solve
+
 from .base import CliffordModule
 
 
@@ -79,8 +81,8 @@ class GeometricNeutralizer(CliffordModule):
         self.momentum = momentum
 
         # Get indices for Grade-0 and Grade-2
-        self.register_buffer('g0_idx', algebra.grade_masks[0].nonzero(as_tuple=False).squeeze(-1))
-        self.register_buffer('g2_idx', algebra.grade_masks[2].nonzero(as_tuple=False).squeeze(-1))
+        self.register_buffer("g0_idx", algebra.grade_masks[0].nonzero(as_tuple=False).squeeze(-1))
+        self.register_buffer("g2_idx", algebra.grade_masks[2].nonzero(as_tuple=False).squeeze(-1))
 
         # Dimensions for Cl(3,1): Grade-0 is 1, Grade-2 is 6
         self.d0 = len(self.g0_idx)
@@ -92,10 +94,10 @@ class GeometricNeutralizer(CliffordModule):
         #   - Mean of bivector (Grade-2): [C, D2]
         #   - Covariance(bivector, bivector): [C, D2, D2]
         #   - Covariance(bivector, scalar): [C, D2, D0]
-        self.register_buffer('running_mean_scalar', torch.zeros(channels, self.d0))
-        self.register_buffer('running_mean_bivec', torch.zeros(channels, self.d2))
-        self.register_buffer('running_cov_bb', torch.eye(self.d2).unsqueeze(0).repeat(channels, 1, 1))
-        self.register_buffer('running_cov_bs', torch.zeros(channels, self.d2, self.d0))
+        self.register_buffer("running_mean_scalar", torch.zeros(channels, self.d0))
+        self.register_buffer("running_mean_bivec", torch.zeros(channels, self.d2))
+        self.register_buffer("running_cov_bb", torch.eye(self.d2).unsqueeze(0).repeat(channels, 1, 1))
+        self.register_buffer("running_cov_bs", torch.zeros(channels, self.d2, self.d0))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Neutralizes the multivector signal using EMA statistics.
@@ -121,9 +123,9 @@ class GeometricNeutralizer(CliffordModule):
             b_centered = bivec - batch_mean_b.unsqueeze(0)
 
             # batch_cov_bb: [C, D2, D2]
-            batch_cov_bb = torch.einsum('bci, bcj -> cij', b_centered, b_centered) / (B - 1 + 1e-8)
+            batch_cov_bb = torch.einsum("bci, bcj -> cij", b_centered, b_centered) / (B - 1 + 1e-8)
             # batch_cov_bs: [C, D2, D0]
-            batch_cov_bs = torch.einsum('bci, bcj -> cij', b_centered, s_centered) / (B - 1 + 1e-8)
+            batch_cov_bs = torch.einsum("bci, bcj -> cij", b_centered, s_centered) / (B - 1 + 1e-8)
 
             # Update EMA buffers
             self.running_mean_scalar = (1 - self.momentum) * self.running_mean_scalar + self.momentum * batch_mean_s
@@ -152,7 +154,7 @@ class GeometricNeutralizer(CliffordModule):
         b_centered = bivec - cur_mean_b.unsqueeze(0)
 
         # Projection: [B, C, D0]
-        projection = torch.einsum('bci, cij -> bcj', b_centered, weights)
+        projection = torch.einsum("bci, cij -> bcj", b_centered, weights)
 
         # Neutralized scalar
         scalar_n = scalar - projection

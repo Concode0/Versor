@@ -5,8 +5,9 @@
 # you may not use this file except in compliance with the License.
 #
 
-import torch
 import pytest
+import torch
+
 from core.algebra import CliffordAlgebra
 from layers import CliffordLayerNorm
 

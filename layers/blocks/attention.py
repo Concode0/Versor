@@ -6,13 +6,15 @@
 #
 
 import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from core.algebra import CliffordAlgebra
+
 from ..primitives.base import CliffordModule
 from ..primitives.linear import CliffordLinear
-
 
 # Memory-bounded block size for chunked attention computation
 _BLOCK_SIZE = 64
@@ -99,12 +101,12 @@ class GeometricProductAttention(CliffordModule):
         # Grade-0 metric: metric_rev[a] = gp_signs[a, 0] * rev_signs[a]
         # gp_signs[a, 0] is the sign when A[a] * B[a] contributes to output blade 0
         metric_rev = alg.gp_signs[:, 0].float() * alg.rev_signs.float()
-        self.register_buffer('_metric_rev', metric_rev)  # [D]
+        self.register_buffer("_metric_rev", metric_rev)  # [D]
 
         # Grade-2 tables: for each grade-2 blade r, for each A-blade a:
         #   B-blade  = a XOR r
         #   sign     = rev_sign[a^r] * gp_signs[a, r]
-        g2_blades = [i for i in range(D) if bin(i).count('1') == 2]
+        g2_blades = [i for i in range(D) if bin(i).count("1") == 2]
         n_g2 = len(g2_blades)
         self.n_g2 = n_g2
 
@@ -127,8 +129,8 @@ class GeometricProductAttention(CliffordModule):
             b_idx = torch.zeros(0, D, dtype=torch.long, device=alg.device)
             g2_sign = torch.zeros(0, D, device=alg.device)
 
-        self.register_buffer('_g2_b_idx', b_idx)  # [n_g2, D] long
-        self.register_buffer('_g2_sign', g2_sign)  # [n_g2, D] float
+        self.register_buffer("_g2_b_idx", b_idx)  # [n_g2, D] long
+        self.register_buffer("_g2_sign", g2_sign)  # [n_g2, D] float
 
     def _compute_score(
         self,
@@ -242,12 +244,12 @@ class GeometricProductAttention(CliffordModule):
             # Apply causal mask
             if causal_mask is not None:
                 mask_block = causal_mask[q_start:q_end, :]  # [Lq, L]
-                scores = scores.masked_fill(mask_block.unsqueeze(0).unsqueeze(0), float('-inf'))
+                scores = scores.masked_fill(mask_block.unsqueeze(0).unsqueeze(0), float("-inf"))
 
             # Apply key padding mask: True = padded -> -inf
             if key_padding_mask is not None:
                 # key_padding_mask: [B, L] -> [B, 1, 1, L]
-                scores = scores.masked_fill(key_padding_mask.unsqueeze(1).unsqueeze(2), float('-inf'))
+                scores = scores.masked_fill(key_padding_mask.unsqueeze(1).unsqueeze(2), float("-inf"))
 
             # Softmax + dropout
             attn_weights = F.softmax(scores, dim=-1)  # [B, H, Lq, L]
@@ -258,7 +260,7 @@ class GeometricProductAttention(CliffordModule):
             # attn_weights: [B, H, Lq, L]
             # V:            [B, H, L,  Hc, D]
             # out:          [B, H, Lq, Hc, D]
-            out_block = torch.einsum('bhij,bhjcd->bhicd', attn_weights, V)
+            out_block = torch.einsum("bhij,bhjcd->bhicd", attn_weights, V)
             output_chunks.append(out_block)
 
         # Reassemble: [B, H, L, Hc, D]

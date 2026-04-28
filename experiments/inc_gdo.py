@@ -45,10 +45,10 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
-from experiments._lib import make_experiment_parser, set_seed
 from experiments._gdo import EXPERIMENT_REGISTRY
 from experiments._gdo.analysis import analyze_experiment_results
 from experiments._gdo.experiments import run_all_experiments, run_category
+from experiments._lib import make_experiment_parser, set_seed
 
 
 def parse_args():
@@ -63,8 +63,8 @@ def parse_args():
     ]
     p = make_experiment_parser(
         "Geometric Deterministic Optimizer (GDO) Experiment Suite",
-        include=('seed', 'device', 'output_dir'),
-        defaults={'output_dir': 'gdo_plots'},
+        include=("seed", "device", "output_dir"),
+        defaults={"output_dir": "gdo_plots"},
     )
     p.add_argument("--task", choices=all_choices, default="rosenbrock")
     p.add_argument("--optimizers", nargs="+", default=["gdo", "riemannian_adam", "adam"], help="Optimizers to compare")

@@ -17,8 +17,8 @@ The implementation has been decomposed into:
 
 from models.sr.pipeline import (  # noqa: F401
     IterativeUnbender,
-    UnbendingResult,
-    StageResult,
     OrthogonalEliminationResult,
+    StageResult,
+    UnbendingResult,
     _PrepResult,
 )

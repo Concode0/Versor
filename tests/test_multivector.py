@@ -1,14 +1,15 @@
 # Tests for core/multivector.py operator overloading
 
-import torch
 import pytest
+import torch
+
 from core.algebra import CliffordAlgebra
 from core.multivector import Multivector
 
 
 @pytest.fixture
 def alg():
-    return CliffordAlgebra(3, 0, device='cpu')
+    return CliffordAlgebra(3, 0, device="cpu")
 
 
 @pytest.fixture
@@ -354,8 +355,8 @@ def test_shape_device_dtype(alg, rng):
 
 
 def test_algebra_mismatch_raises():
-    a1 = CliffordAlgebra(3, 0, device='cpu')
-    a2 = CliffordAlgebra(2, 1, device='cpu')
+    a1 = CliffordAlgebra(3, 0, device="cpu")
+    a2 = CliffordAlgebra(2, 1, device="cpu")
     m1 = Multivector(a1, torch.randn(8))
     m2 = Multivector(a2, torch.randn(8))
     with pytest.raises(ValueError, match="Algebra mismatch"):
@@ -366,7 +367,7 @@ def test_algebra_mismatch_raises():
 
 
 def test_notimplemented():
-    alg = CliffordAlgebra(2, 0, device='cpu')
+    alg = CliffordAlgebra(2, 0, device="cpu")
     mv = Multivector(alg, torch.randn(4))
     with pytest.raises(TypeError):
         mv + "string"

@@ -20,14 +20,14 @@ import torch.nn.functional as F
 
 from core.algebra import CliffordAlgebra
 from core.analysis import GeodesicFlow, MetricSearch
-from models.sr.translator import RotorTranslator, RotorTerm
 from models.sr.net import SRGBN
+from models.sr.translator import RotorTerm, RotorTranslator
 from models.sr.utils import (
-    safe_sympy_solve,
+    make_lambdify_fn,
     safe_float,
+    safe_sympy_solve,
     standardize,
     subsample,
-    make_lambdify_fn,
 )
 from optimizers.riemannian import RiemannianAdam
 
@@ -103,7 +103,7 @@ class ExtractionMixin:
         # Break F==0 dead gradient (see implicit_solver._probe_implicit)
         with torch.no_grad():
             for m in model.modules():
-                if hasattr(m, 'grade0_bias'):
+                if hasattr(m, "grade0_bias"):
                     torch.nn.init.normal_(m.grade0_bias, std=1.0)
 
         model = solver.train_implicit(
@@ -217,7 +217,7 @@ class ExtractionMixin:
         Returns:
             (list[RotorTerm], list[StageResult])
         """
-        from models.sr.pipeline import StageResult, OrthogonalEliminationResult
+        from models.sr.pipeline import OrthogonalEliminationResult, StageResult
 
         algebra = group.algebra
         var_indices = group.var_indices
@@ -453,7 +453,7 @@ class ExtractionMixin:
         # Find the RotorLayer's bivector parameter
         rotor_layer = None
         for m in model.modules():
-            if hasattr(m, 'bivector') and isinstance(getattr(m, 'bivector', None), torch.nn.Parameter):
+            if hasattr(m, "bivector") and isinstance(getattr(m, "bivector", None), torch.nn.Parameter):
                 rotor_layer = m
                 break
 

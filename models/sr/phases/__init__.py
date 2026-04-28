@@ -12,9 +12,9 @@ IterativeUnbender class.  The pipeline.py module composes them
 via multiple inheritance.
 """
 
-from models.sr.phases.prep import PrepMixin
-from models.sr.phases.extraction import ExtractionMixin
 from models.sr.phases.cross_terms import CrossTermMixin
+from models.sr.phases.extraction import ExtractionMixin
+from models.sr.phases.prep import PrepMixin
 from models.sr.phases.refinement import RefinementMixin
 
 __all__ = [

@@ -54,21 +54,22 @@ What's verified (synthetic data):
   These test the algebraic property, not real-world prediction quality.
 """
 
+import math
+
 import torch
 import torch.nn as nn
-import math
 from torch.utils.data import DataLoader, TensorDataset
+
 from core.algebra import CliffordAlgebra
+from functional.activation import GeometricSquare
 from layers import (
-    CliffordLinear,
-    CliffordLayerNorm,
-    RotorLayer,
     BladeSelector,
+    CliffordLayerNorm,
+    CliffordLinear,
+    RotorLayer,
 )
 from layers.primitives.base import CliffordModule
-from functional.activation import GeometricSquare
 from tasks.base import BaseTask
-
 
 # ---------------------------------------------------------------------------
 # Model
@@ -217,8 +218,8 @@ class CGENNTask(BaseTask):
         return nn.MSELoss()
 
     def get_data(self):
-        n_points = self.cfg.dataset.get('n_points', 20)
-        n_samples = self.cfg.dataset.get('n_samples', 256)
+        n_points = self.cfg.dataset.get("n_points", 20)
+        n_samples = self.cfg.dataset.get("n_samples", 256)
 
         points, targets = _generate_invariant_data(n_samples, n_points)
         dataset = TensorDataset(points, targets)

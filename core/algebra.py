@@ -11,10 +11,12 @@ Implements the geometric product, grade projections, and rotor operations
 for arbitrary signatures Cl(p, q, r).
 """
 
-import torch
-import torch.nn as nn
 import math
 from typing import Optional
+
+import torch
+import torch.nn as nn
+
 from core.validation import check_multivector
 
 
@@ -44,9 +46,9 @@ class CliffordAlgebra(nn.Module):
         p: int,
         q: int = 0,
         r: int = 0,
-        device='cuda',
+        device="cuda",
         dtype: torch.dtype = torch.float32,
-        exp_policy: str = 'balanced',
+        exp_policy: str = "balanced",
         fixed_iterations: Optional[int] = None,
     ):
         """Initialize the algebra and cache the Cayley table.
@@ -82,11 +84,11 @@ class CliffordAlgebra(nn.Module):
 
         # Exp regime: dispatch at init
         if p == 0 or q == 0:
-            self._exp_regime = 'elliptic'
+            self._exp_regime = "elliptic"
         elif p == 1 and q == 1 and r == 0:
-            self._exp_regime = 'hyperbolic'
+            self._exp_regime = "hyperbolic"
         else:
-            self._exp_regime = 'mixed'
+            self._exp_regime = "mixed"
 
         # Exp policy: controls decomposition iteration budget
         from core.decomposition import ExpPolicy, resolve_fixed_iterations
@@ -122,35 +124,35 @@ class CliffordAlgebra(nn.Module):
         ) = CliffordAlgebra._CACHED_TABLES[cache_key]
 
         # Register all tables as non-persistent buffers so .to(device) moves them
-        self.register_buffer('cayley_indices', cayley_indices, persistent=False)
-        self.register_buffer('cayley_signs', cayley_signs, persistent=False)
-        self.register_buffer('gp_signs', gp_signs, persistent=False)
-        self.register_buffer('rev_signs', rev_signs, persistent=False)
-        self.register_buffer('bv_sq_scalar', bv_sq_scalar, persistent=False)
-        self.register_buffer('wedge_gp_signs', wedge_gp_signs, persistent=False)
-        self.register_buffer('inner_gp_signs', inner_gp_signs, persistent=False)
-        self.register_buffer('grade_index', grade_index, persistent=False)
-        self.register_buffer('rc_action', rc_action, persistent=False)
-        self.register_buffer('lc_gp_signs', lc_gp_signs, persistent=False)
-        self.register_buffer('conj_signs', conj_signs, persistent=False)
-        self.register_buffer('comm_gp_signs', comm_gp_signs, persistent=False)
-        self.register_buffer('anti_comm_gp_signs', anti_comm_gp_signs, persistent=False)
+        self.register_buffer("cayley_indices", cayley_indices, persistent=False)
+        self.register_buffer("cayley_signs", cayley_signs, persistent=False)
+        self.register_buffer("gp_signs", gp_signs, persistent=False)
+        self.register_buffer("rev_signs", rev_signs, persistent=False)
+        self.register_buffer("bv_sq_scalar", bv_sq_scalar, persistent=False)
+        self.register_buffer("wedge_gp_signs", wedge_gp_signs, persistent=False)
+        self.register_buffer("inner_gp_signs", inner_gp_signs, persistent=False)
+        self.register_buffer("grade_index", grade_index, persistent=False)
+        self.register_buffer("rc_action", rc_action, persistent=False)
+        self.register_buffer("lc_gp_signs", lc_gp_signs, persistent=False)
+        self.register_buffer("conj_signs", conj_signs, persistent=False)
+        self.register_buffer("comm_gp_signs", comm_gp_signs, persistent=False)
+        self.register_buffer("anti_comm_gp_signs", anti_comm_gp_signs, persistent=False)
 
         # Grade involution signs: (-1)^k per basis element
         inv_signs = ((-1.0) ** grade_index.float()).to(dtype=conj_signs.dtype)
-        self.register_buffer('_involution_signs', inv_signs, persistent=False)
+        self.register_buffer("_involution_signs", inv_signs, persistent=False)
 
         # Stack grade masks: [n+1, dim] bool and float
         stacked = torch.stack(grade_masks_list)  # [n+1, dim]
-        self.register_buffer('_grade_masks', stacked, persistent=False)
-        self.register_buffer('_grade_masks_float', stacked.to(dtype=cayley_signs.dtype), persistent=False)
+        self.register_buffer("_grade_masks", stacked, persistent=False)
+        self.register_buffer("_grade_masks_float", stacked.to(dtype=cayley_signs.dtype), persistent=False)
 
         # Bivector indices
         if self.n >= 2:
             bv_idx = stacked[2].nonzero(as_tuple=False).squeeze(-1)
         else:
             bv_idx = torch.zeros(0, dtype=torch.long, device=device)
-        self.register_buffer('_bv_indices', bv_idx, persistent=False)
+        self.register_buffer("_bv_indices", bv_idx, persistent=False)
 
         # Pre-initialize derived tables (sandwich_product / pseudoscalar_product)
         self._init_derived_tables()
@@ -217,22 +219,22 @@ class CliffordAlgebra(nn.Module):
 
         # For sandwich_product: left-sign table
         ls = self.gp_signs[ci, k_range.unsqueeze(0).expand(D, D)]
-        self.register_buffer('_left_sign_T', ls.T.contiguous(), persistent=False)
+        self.register_buffer("_left_sign_T", ls.T.contiguous(), persistent=False)
 
         # For pseudoscalar_product: permutation and signs
-        self.register_buffer('_ps_source', k_range ^ (D - 1), persistent=False)
-        self.register_buffer('_ps_signs', self.gp_signs[self._ps_source, k_range], persistent=False)
+        self.register_buffer("_ps_source", k_range ^ (D - 1), persistent=False)
+        self.register_buffer("_ps_signs", self.gp_signs[self._ps_source, k_range], persistent=False)
 
         # Diagonal of cayley_signs: sign of e_I^2 for each basis element
         cayley_diag = torch.diagonal(self.cayley_signs).clone()
-        self.register_buffer('_cayley_diag', cayley_diag, persistent=False)
+        self.register_buffer("_cayley_diag", cayley_diag, persistent=False)
 
         # Pre-merged signs for norm_sq: rev_signs * cayley_diag
-        self.register_buffer('_norm_sq_signs', (self.rev_signs * cayley_diag).clone(), persistent=False)
+        self.register_buffer("_norm_sq_signs", (self.rev_signs * cayley_diag).clone(), persistent=False)
 
         # Hermitian signs: conj_signs * cayley_diag
         # Equivalent to the full _hermitian_signs() computation but vectorized
-        self.register_buffer('_hermitian_signs', (self.conj_signs * cayley_diag).clone(), persistent=False)
+        self.register_buffer("_hermitian_signs", (self.conj_signs * cayley_diag).clone(), persistent=False)
 
     @property
     def num_grades(self) -> int:
@@ -298,7 +300,7 @@ class CliffordAlgebra(nn.Module):
 
         # Grade index: maps each basis element to its grade (popcount)
         # Compute once, derive grade_masks and rev_signs from it.
-        grade_index = torch.tensor([bin(i).count('1') for i in range(self.dim)], dtype=torch.long, device=device)
+        grade_index = torch.tensor([bin(i).count("1") for i in range(self.dim)], dtype=torch.long, device=device)
 
         # Grade masks: one bool tensor per grade
         grade_masks = [grade_index == k for k in range(self.n + 1)]
@@ -568,7 +570,7 @@ class CliffordAlgebra(nn.Module):
             rc = rc.to(dtype=A.dtype)
 
         # M[..., i, j] = sum_b bv_coeffs[..., b] * rc_action[b, i, j]
-        M = torch.einsum('...b, bij -> ...ij', bv_coeffs, rc)  # [..., n, n]
+        M = torch.einsum("...b, bij -> ...ij", bv_coeffs, rc)  # [..., n, n]
         result_v = torch.matmul(M, v_coeffs.unsqueeze(-1)).squeeze(-1)  # [..., n]
 
         result = torch.zeros_like(A)
@@ -715,7 +717,7 @@ class CliffordAlgebra(nn.Module):
 
         # Apply: result[b, c, k] = sum_j M[c, j, k] * x[b, c, j]
         # x: [B, C, D], M.T: [C, D, D] -> einsum or matmul with broadcast
-        return torch.einsum('bcd,cdk->bck', x, M.transpose(-2, -1))
+        return torch.einsum("bcd,cdk->bck", x, M.transpose(-2, -1))
 
     def multi_rotor_sandwich(self, R: torch.Tensor, x: torch.Tensor, R_rev: torch.Tensor = None) -> torch.Tensor:
         """Sandwich product with K rotors applied to C-channel input.
@@ -750,7 +752,7 @@ class CliffordAlgebra(nn.Module):
         M = torch.bmm(R_Rr, L_R)  # [K, D, D]
 
         # Apply all K rotors: x[B,C,D] @ M[K,D,D].T -> [B,C,K,D]
-        return torch.einsum('bcd,kde->bcke', x, M.transpose(-2, -1))
+        return torch.einsum("bcd,kde->bcke", x, M.transpose(-2, -1))
 
     def pseudoscalar_product(self, x: torch.Tensor) -> torch.Tensor:
         """Multiply by the unit pseudoscalar: x * I.
@@ -995,7 +997,7 @@ class CliffordAlgebra(nn.Module):
             g0_mask = g0_mask.to(dtype=B.dtype)
 
         # Dispatch by signature regime (Python branch, no graph break)
-        if self._exp_regime == 'elliptic':
+        if self._exp_regime == "elliptic":
             # Pure Euclidean: alpha is always negative, only cos/sinc needed
             cos_theta = torch.cos(theta)
             sinc_theta = torch.where(
@@ -1005,7 +1007,7 @@ class CliffordAlgebra(nn.Module):
             )
             return cos_theta * g0_mask + sinc_theta * B
 
-        if self._exp_regime == 'hyperbolic':
+        if self._exp_regime == "hyperbolic":
             # Pure negative: alpha is always positive, only cosh/sinhc needed
             cosh_theta = torch.cosh(theta)
             sinhc_theta = torch.where(

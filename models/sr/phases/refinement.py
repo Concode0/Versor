@@ -17,7 +17,7 @@ import numpy as np
 import sympy
 
 from models.sr.translator import RotorTerm
-from models.sr.utils import safe_sympy_solve, make_lambdify_fn
+from models.sr.utils import make_lambdify_fn, safe_sympy_solve
 
 logger = logging.getLogger(__name__)
 

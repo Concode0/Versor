@@ -8,13 +8,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from core.algebra import CliffordAlgebra
-from layers import CliffordModule
-from layers import CliffordLinear
-from layers import MultiRotorLayer
-from layers import CliffordLayerNorm
-from layers import BladeSelector
 from functional.activation import GeometricGELU, GeometricSquare
+from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, CliffordModule, MultiRotorLayer
 
 try:
     from torch_geometric.nn import global_add_pool
@@ -33,7 +30,7 @@ class GaussianRBF(nn.Module):
         self.num_rbf = num_rbf
         self.cutoff = cutoff
         centers = torch.linspace(0, cutoff, num_rbf)
-        self.register_buffer('centers', centers)
+        self.register_buffer("centers", centers)
         self.sigma = cutoff / num_rbf
 
     def forward(self, distances: torch.Tensor) -> torch.Tensor:
@@ -54,13 +51,13 @@ class DynamicRotorGenerator(CliffordModule):
         self.num_dynamic_rotors = num_dynamic_rotors
 
         bv_mask = algebra.grade_masks[2]
-        self.register_buffer('bivector_indices', bv_mask.nonzero(as_tuple=False).squeeze(-1))
+        self.register_buffer("bivector_indices", bv_mask.nonzero(as_tuple=False).squeeze(-1))
         self.num_bivectors = len(self.bivector_indices)
 
         # Precompute one-hot projection: [num_bv, D] -- avoids in-place scatter_ in forward
         one_hot = torch.zeros(self.num_bivectors, algebra.dim)
         one_hot[torch.arange(self.num_bivectors), self.bivector_indices] = 1.0
-        self.register_buffer('bv_one_hot', one_hot)
+        self.register_buffer("bv_one_hot", one_hot)
 
         self.net = nn.Sequential(
             nn.Linear(input_dim, input_dim),
@@ -123,7 +120,7 @@ class MD17InteractionBlock(CliffordModule):
         self.num_dynamic_rotors = num_dynamic_rotors
         self.num_total_rotors = num_static_rotors + num_dynamic_rotors
 
-        backend = 'rotor' if use_rotor_backend else 'traditional'
+        backend = "rotor" if use_rotor_backend else "traditional"
         self.lin_h = CliffordLinear(algebra, hidden_dim, hidden_dim, backend=backend)
         self.norm = CliffordLayerNorm(algebra, hidden_dim)
         self.act = GeometricGELU(algebra, channels=hidden_dim)
@@ -191,7 +188,7 @@ class MD17InteractionBlock(CliffordModule):
         if self.num_static_rotors > 0:
             Rb_s = gp(R_static.unsqueeze(1), basis.unsqueeze(0))  # [K, D, D]
             M_s = gp(Rb_s, R_static_rev.unsqueeze(1))  # [K, D, D]
-            phi = torch.einsum('ek, kdl, ehd -> ehl', edge_weights[:, : self.num_static_rotors], M_s, psi)
+            phi = torch.einsum("ek, kdl, ehd -> ehl", edge_weights[:, : self.num_static_rotors], M_s, psi)
         else:
             phi = torch.zeros_like(psi)
 
@@ -203,7 +200,7 @@ class MD17InteractionBlock(CliffordModule):
             Rb_d = gp(R_flat.unsqueeze(1), basis.unsqueeze(0))  # [E*K_d, D, D]
             M_d = gp(Rb_d, R_rev_flat.unsqueeze(1))  # [E*K_d, D, D]
             M_d = M_d.reshape(E_size, K_d, D, D)
-            phi = phi + torch.einsum('ek, ekdl, ehd -> ehl', edge_weights[:, self.num_static_rotors :], M_d, psi)
+            phi = phi + torch.einsum("ek, ekdl, ehd -> ehl", edge_weights[:, self.num_static_rotors :], M_d, psi)
 
         gate = self.msg_gate(inv_feat)  # [E, Hidden]
         phi_gated = phi * gate.unsqueeze(-1)
@@ -342,9 +339,9 @@ class MD17ForceNet(CliffordModule):
         device = next(self.parameters()).device
         loss = torch.tensor(0.0, device=device)
         for layer in self.layers:
-            if hasattr(layer, 'multi_rotor'):
+            if hasattr(layer, "multi_rotor"):
                 loss = loss + layer.multi_rotor.sparsity_loss()
-            if hasattr(layer, 'dynamic_rotor_gen'):
+            if hasattr(layer, "dynamic_rotor_gen"):
                 for p in layer.dynamic_rotor_gen.net.parameters():
                     loss = loss + torch.norm(p, p=1) * 0.01
         return loss

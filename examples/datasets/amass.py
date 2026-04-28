@@ -5,9 +5,10 @@
 # you may not use this file except in compliance with the License.
 #
 
-import torch
 import numpy as np
+import torch
 from torch.utils.data import Dataset
+
 from core.algebra import CliffordAlgebra
 
 
@@ -18,13 +19,13 @@ class AMASSDataset(Dataset):
     Walking, Running, Jumping.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, num_samples=1000, subset='train'):
+    def __init__(self, algebra: CliffordAlgebra, num_samples=1000, subset="train"):
         """Sets up the fake motion."""
         self.algebra = algebra
         self.num_samples = num_samples
         self.subset = subset
 
-        self.classes = ['Walking', 'Running', 'Jumping']
+        self.classes = ["Walking", "Running", "Jumping"]
         self.num_classes = len(self.classes)
 
         self.data, self.labels = self._generate_synthetic_motion()

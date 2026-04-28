@@ -56,6 +56,11 @@ from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
+from core.metric import (
+    hermitian_grade_spectrum,
+    signature_norm_squared,
+    signature_trace_form,
+)
 from experiments._lib import (
     build_visualization_metadata,
     ensure_output_dir,
@@ -68,16 +73,10 @@ from experiments._lib import (
     setup_algebra,
     signature_metadata,
 )
-from core.metric import (
-    hermitian_grade_spectrum,
-    signature_norm_squared,
-    signature_trace_form,
-)
-from layers.primitives.base import CliffordModule
-from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, RotorLayer
 from functional.activation import GeometricGELU
+from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, RotorLayer
+from layers.primitives.base import CliffordModule
 from optimizers.riemannian import RiemannianAdam
-
 
 # ---------------------------------------------------------------------------
 # Boost / rotation bivector helpers
@@ -106,7 +105,7 @@ class LorentzDataset(Dataset):
     """(original, boosted) event pairs in Cl(3,1) with the analytic rotor."""
 
     def __init__(
-        self, algebra, num_samples: int, *, boost_type: str = 'pure_boost', rapidity_max: float = 1.5, seed: int = 42
+        self, algebra, num_samples: int, *, boost_type: str = "pure_boost", rapidity_max: float = 1.5, seed: int = 42
     ):
         rng = np.random.RandomState(seed)
         dim = algebra.dim
@@ -122,9 +121,9 @@ class LorentzDataset(Dataset):
             )
             phi = float(rng.uniform(-rapidity_max, rapidity_max))
             rapidities[i] = phi
-            if boost_type == 'pure_boost':
+            if boost_type == "pure_boost":
                 bv = _boost_bivector(algebra, rng.randint(0, 3))
-            elif boost_type == 'pure_rotation':
+            elif boost_type == "pure_rotation":
                 bv = _rotation_bivector(algebra, rng.randint(0, 3))
             else:
                 bv_b = _boost_bivector(algebra, rng.randint(0, 3))
@@ -165,7 +164,7 @@ class LorentzNet(CliffordModule):
         super().__init__(algebra)
         self.hidden_dim = hidden_dim
         self.coord_norm = nn.LayerNorm(8)
-        self.register_buffer('freq_bands', torch.randn(8, num_freqs) * 2.0)
+        self.register_buffer("freq_bands", torch.randn(8, num_freqs) * 2.0)
         input_dim = 8 + 2 * num_freqs
         self.input_lift = nn.Linear(input_dim, hidden_dim * algebra.dim)
         self.input_norm = CliffordLayerNorm(algebra, hidden_dim)
@@ -173,10 +172,10 @@ class LorentzNet(CliffordModule):
             [
                 nn.ModuleDict(
                     {
-                        'norm': CliffordLayerNorm(algebra, hidden_dim),
-                        'rotor': RotorLayer(algebra, hidden_dim),
-                        'act': GeometricGELU(algebra, channels=hidden_dim),
-                        'linear': CliffordLinear(algebra, hidden_dim, hidden_dim),
+                        "norm": CliffordLayerNorm(algebra, hidden_dim),
+                        "rotor": RotorLayer(algebra, hidden_dim),
+                        "act": GeometricGELU(algebra, channels=hidden_dim),
+                        "linear": CliffordLinear(algebra, hidden_dim, hidden_dim),
                     }
                 )
                 for _ in range(num_layers)
@@ -196,10 +195,10 @@ class LorentzNet(CliffordModule):
         h = self.input_norm(self.input_lift(features).reshape(B, self.hidden_dim, self.algebra.dim))
         for block in self.blocks:
             res = h
-            h = block['norm'](h)
-            h = block['rotor'](h)
-            h = block['act'](h)
-            h = block['linear'](h)
+            h = block["norm"](h)
+            h = block["rotor"](h)
+            h = block["act"](h)
+            h = block["linear"](h)
             h = res + h
         h = self.output_norm(h)
         h = self.blade_selector(h)
@@ -255,13 +254,13 @@ class LorentzDebugger:
         m2_t = -signature_norm_squared(self.algebra, transformed).squeeze(-1)
         timelike = m2_o > 0.05
         if timelike.sum() == 0:
-            return float('nan')
+            return float("nan")
         return (m2_o[timelike] - m2_t[timelike]).abs().mean().item()
 
     def rapidity_mae(self, rotors_pred, rapidities_true) -> Tuple[float, float, int]:
         scalar = rotors_pred[:, 0]
         bv_mask = torch.tensor(
-            [bin(i).count('1') == 2 for i in range(self.algebra.dim)],
+            [bin(i).count("1") == 2 for i in range(self.algebra.dim)],
             dtype=torch.bool,
             device=rotors_pred.device,
         )
@@ -334,11 +333,11 @@ def _evaluate(model, loader, algebra, device) -> Dict[str, torch.Tensor]:
         all_pred.append(pred.cpu())
         all_raps.append(raps)
     return {
-        'test_loss': torch.tensor(total / max(n, 1)),
-        'events': torch.cat(all_events),
-        'rotors_true': torch.cat(all_true),
-        'rotors_pred': torch.cat(all_pred),
-        'rapidities': torch.cat(all_raps),
+        "test_loss": torch.tensor(total / max(n, 1)),
+        "events": torch.cat(all_events),
+        "rotors_true": torch.cat(all_true),
+        "rotors_pred": torch.cat(all_pred),
+        "rapidities": torch.cat(all_raps),
     }
 
 
@@ -349,10 +348,10 @@ def train(args) -> None:
     debugger = LorentzDebugger(algebra)
 
     print_banner(
-        'Lorentz Debugger — Cl(3,1)',
-        signature='(+,+,+,-)',
+        "Lorentz Debugger — Cl(3,1)",
+        signature="(+,+,+,-)",
         boost_type=args.boost_type,
-        natural_loss='Action: ||R x R̃ − y||² over (original, boosted) event pair',
+        natural_loss="Action: ||R x R̃ − y||² over (original, boosted) event pair",
     )
 
     # Pure-algebra sanity (not a loss term)
@@ -360,11 +359,11 @@ def train(args) -> None:
         n_tests=100,
         rapidity_max=args.rapidity_max,
     )
-    print(f'  Rapidity additivity error (algebra kernel): {vel_err:.3e}')
+    print(f"  Rapidity additivity error (algebra kernel): {vel_err:.3e}")
     if vel_err > 1e-4:
         warnings.warn(
-            f'Rapidity additivity error {vel_err:.2e} is large; '
-            'inspect algebra.exp() before trusting training results.',
+            f"Rapidity additivity error {vel_err:.2e} is large; "
+            "inspect algebra.exp() before trusting training results.",
             RuntimeWarning,
             stacklevel=2,
         )
@@ -381,7 +380,7 @@ def train(args) -> None:
     model = LorentzNet(algebra, hidden_dim=args.hidden_dim, num_layers=args.num_layers, num_freqs=args.num_freqs).to(
         device
     )
-    print(f'  Parameters: {sum(p.numel() for p in model.parameters()):,}')
+    print(f"  Parameters: {sum(p.numel() for p in model.parameters()):,}")
     optimizer = RiemannianAdam(model.parameters(), lr=args.lr, algebra=algebra)
 
     def loss_fn(_model, batch):
@@ -391,7 +390,7 @@ def train(args) -> None:
 
     def diag_fn(_model, _epoch) -> Dict[str, float]:
         ev = _evaluate(_model, test_loader, algebra, device)
-        return {'test_loss': float(ev['test_loss'])}
+        return {"test_loss": float(ev["test_loss"])}
 
     history = run_supervised_loop(
         model,
@@ -405,35 +404,35 @@ def train(args) -> None:
 
     # Post-training report: every ex-loss-term is now a measurement.
     ev = _evaluate(model, test_loader, algebra, device)
-    even_ratio, odd_energy = debugger.grade_confinement(ev['rotors_pred'])
+    even_ratio, odd_energy = debugger.grade_confinement(ev["rotors_pred"])
     rap_mae, rap_corr, rap_clamped = debugger.rapidity_mae(
-        ev['rotors_pred'],
-        ev['rapidities'],
+        ev["rotors_pred"],
+        ev["rapidities"],
     )
     diagnostics = {
-        'test_loss': float(ev['test_loss']),
-        'interval_err_true': debugger.interval_invariance(ev['events']),
-        'rotor_norm_err_true': debugger.rotor_normalization(ev['rotors_true']),
-        'rotor_norm_err_pred': debugger.rotor_normalization(ev['rotors_pred']),
-        'even_ratio_pred': even_ratio,
-        'odd_energy_pred': odd_energy,
-        'causality_preservation': debugger.causality_preservation(
-            ev['events'],
-            ev['rotors_pred'],
+        "test_loss": float(ev["test_loss"]),
+        "interval_err_true": debugger.interval_invariance(ev["events"]),
+        "rotor_norm_err_true": debugger.rotor_normalization(ev["rotors_true"]),
+        "rotor_norm_err_pred": debugger.rotor_normalization(ev["rotors_pred"]),
+        "even_ratio_pred": even_ratio,
+        "odd_energy_pred": odd_energy,
+        "causality_preservation": debugger.causality_preservation(
+            ev["events"],
+            ev["rotors_pred"],
         ),
-        'invariant_mass_err': debugger.invariant_mass_error(
-            ev['events'],
-            ev['rotors_pred'],
+        "invariant_mass_err": debugger.invariant_mass_error(
+            ev["events"],
+            ev["rotors_pred"],
         ),
-        'rapidity_mae': rap_mae,
-        'rapidity_corr': rap_corr,
-        'rapidity_clamped_frac': rap_clamped / max(len(ev['rotors_pred']), 1),
-        'velocity_addition_err': vel_err,
+        "rapidity_mae": rap_mae,
+        "rapidity_corr": rap_corr,
+        "rapidity_clamped_frac": rap_clamped / max(len(ev["rotors_pred"]), 1),
+        "velocity_addition_err": vel_err,
     }
     print(
         report_diagnostics(
             diagnostics,
-            title='Lorentz post-training physics diagnostics',
+            title="Lorentz post-training physics diagnostics",
         )
     )
 
@@ -446,14 +445,14 @@ def train(args) -> None:
     path = save_training_curve(
         history,
         output_dir=args.output_dir,
-        experiment_name='dbg_lorentz',
+        experiment_name="dbg_lorentz",
         metadata=metadata,
-        plot_name='training_curve',
+        plot_name="training_curve",
         args=args,
         module=__name__,
-        title='Lorentz — rotor Hermitian loss',
+        title="Lorentz — rotor Hermitian loss",
     )
-    print(f'  curve saved to {path}')
+    print(f"  curve saved to {path}")
 
 
 # ---------------------------------------------------------------------------
@@ -463,17 +462,17 @@ def train(args) -> None:
 
 def parse_args() -> argparse.Namespace:
     p = make_experiment_parser(
-        'Lorentz boost debugger in Cl(3,1)',
-        include=('seed', 'device', 'epochs', 'lr', 'batch_size', 'output_dir', 'diag_interval'),
-        defaults={'epochs': 200, 'lr': 0.001, 'batch_size': 128, 'output_dir': 'lorentz_plots', 'diag_interval': 20},
+        "Lorentz boost debugger in Cl(3,1)",
+        include=("seed", "device", "epochs", "lr", "batch_size", "output_dir", "diag_interval"),
+        defaults={"epochs": 200, "lr": 0.001, "batch_size": 128, "output_dir": "lorentz_plots", "diag_interval": 20},
     )
-    p.add_argument('--boost-type', choices=['pure_boost', 'pure_rotation', 'combined'], default='pure_boost')
-    p.add_argument('--rapidity-max', type=float, default=1.5)
-    p.add_argument('--num-train', type=int, default=3000)
-    p.add_argument('--num-test', type=int, default=500)
-    p.add_argument('--hidden-dim', type=int, default=64)
-    p.add_argument('--num-layers', type=int, default=6)
-    p.add_argument('--num-freqs', type=int, default=32)
+    p.add_argument("--boost-type", choices=["pure_boost", "pure_rotation", "combined"], default="pure_boost")
+    p.add_argument("--rapidity-max", type=float, default=1.5)
+    p.add_argument("--num-train", type=int, default=3000)
+    p.add_argument("--num-test", type=int, default=500)
+    p.add_argument("--hidden-dim", type=int, default=64)
+    p.add_argument("--num-layers", type=int, default=6)
+    p.add_argument("--num-freqs", type=int, default=32)
     return p.parse_args()
 
 
@@ -481,5 +480,5 @@ def main() -> None:
     train(parse_args())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

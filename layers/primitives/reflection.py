@@ -7,8 +7,10 @@
 
 import torch
 import torch.nn as nn
+
 from core.algebra import CliffordAlgebra
-from core.validation import check_multivector, check_channels
+from core.validation import check_channels, check_multivector
+
 from .base import CliffordModule
 
 
@@ -41,11 +43,11 @@ class ReflectionLayer(CliffordModule):
 
         # Grade-1 indices: 2^0, 2^1, ..., 2^(n-1)
         g1_mask = algebra.grade_masks[1]
-        self.register_buffer('vector_indices', g1_mask.nonzero(as_tuple=False).squeeze(-1))
+        self.register_buffer("vector_indices", g1_mask.nonzero(as_tuple=False).squeeze(-1))
         self.num_vectors = algebra.n
 
         self.vector_weights = nn.Parameter(torch.Tensor(channels, self.num_vectors))
-        self.vector_weights._manifold = 'sphere'
+        self.vector_weights._manifold = "sphere"
 
         # Cache for eval mode
         self._cached_n = None

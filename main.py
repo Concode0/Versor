@@ -13,13 +13,13 @@ Dispatches geometric learning tasks via Hydra configuration.
 import hydra
 from omegaconf import DictConfig
 
-EXAMPLE_TASKS = {'manifold', 'hyperbolic', 'sanity'}
+EXAMPLE_TASKS = {"manifold", "hyperbolic", "sanity"}
 
 _TASK_MODULES = {
-    'md17': ('tasks.md17', 'MD17Task'),
-    'sr': ('tasks.symbolic_regression', 'SRTask'),
-    'lqa': ('tasks.lqa', 'LQATask'),
-    'deap_eeg': ('tasks.deap_eeg', 'DEAPEEGTask'),
+    "md17": ("tasks.md17", "MD17Task"),
+    "sr": ("tasks.symbolic_regression", "SRTask"),
+    "lqa": ("tasks.lqa", "LQATask"),
+    "deap_eeg": ("tasks.deap_eeg", "DEAPEEGTask"),
 }
 
 

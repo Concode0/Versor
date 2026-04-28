@@ -38,14 +38,15 @@ Manual download (rMD17):
 
 from __future__ import annotations
 
-import os
 import glob
+import os
 import warnings
 from typing import Optional, Tuple
 
-import torch
 import numpy as np
-from torch.utils.data import Dataset, DataLoader as _TorchDataLoader
+import torch
+from torch.utils.data import DataLoader as _TorchDataLoader
+from torch.utils.data import Dataset
 
 # Optional PyTorch Geometric import
 _HAS_PYG = False
@@ -113,12 +114,12 @@ if _HAS_PYG:
 
         # Override PyG's broken URL (record_id=466 → 404).
         # Materials Cloud migrated to alphanumeric record IDs.
-        revised_url = 'https://archive.materialscloud.org/api/records/pfffs-fff86/files/rmd17.tar.bz2/content'
+        revised_url = "https://archive.materialscloud.org/api/records/pfffs-fff86/files/rmd17.tar.bz2/content"
 
         def __init__(
             self,
             root: str,
-            molecule: str = 'aspirin',
+            molecule: str = "aspirin",
             radius: float = 5.0,
             revised: bool = True,
             transform=None,
@@ -166,7 +167,7 @@ if _HAS_PYG:
         Returns:
             Tuple[float, float, float, float]: energy_mean, energy_std, force_mean, force_std.
         """
-        if hasattr(dataset, '_data'):
+        if hasattr(dataset, "_data"):
             energy = dataset._data.energy
             force = dataset._data.force
         else:
@@ -196,7 +197,7 @@ class _GraphData:
         batch (torch.Tensor | None): Batch indices for nodes.
     """
 
-    __slots__ = ('pos', 'z', 'energy', 'force', 'edge_index', 'num_nodes', 'batch')
+    __slots__ = ("pos", "z", "energy", "force", "edge_index", "num_nodes", "batch")
 
     def __init__(
         self, pos: torch.Tensor, z: torch.Tensor, energy: torch.Tensor, force: torch.Tensor, edge_index: torch.Tensor
@@ -258,28 +259,28 @@ def _collate_graphs(batch):
 
 # Canonical NPZ filenames for original MD17
 _NPZ_PATTERNS = {
-    'aspirin': ['aspirin_dft.npz', 'md17_aspirin.npz'],
-    'benzene': ['benzene_dft.npz', 'md17_benzene2017.npz', 'md17_benzene.npz'],
-    'ethanol': ['ethanol_dft.npz', 'md17_ethanol.npz'],
-    'malonaldehyde': ['malonaldehyde_dft.npz', 'md17_malonaldehyde.npz'],
-    'naphthalene': ['naphthalene_dft.npz', 'md17_naphthalene.npz'],
-    'salicylic_acid': ['salicylic_acid_dft.npz', 'md17_salicylicacid.npz'],
-    'toluene': ['toluene_dft.npz', 'md17_toluene.npz'],
-    'uracil': ['uracil_dft.npz', 'md17_uracil.npz'],
+    "aspirin": ["aspirin_dft.npz", "md17_aspirin.npz"],
+    "benzene": ["benzene_dft.npz", "md17_benzene2017.npz", "md17_benzene.npz"],
+    "ethanol": ["ethanol_dft.npz", "md17_ethanol.npz"],
+    "malonaldehyde": ["malonaldehyde_dft.npz", "md17_malonaldehyde.npz"],
+    "naphthalene": ["naphthalene_dft.npz", "md17_naphthalene.npz"],
+    "salicylic_acid": ["salicylic_acid_dft.npz", "md17_salicylicacid.npz"],
+    "toluene": ["toluene_dft.npz", "md17_toluene.npz"],
+    "uracil": ["uracil_dft.npz", "md17_uracil.npz"],
 }
 
 # Canonical NPZ filenames for revised MD17 (rMD17)
 _RMD17_NPZ_PATTERNS = {
-    'aspirin': ['rmd17_aspirin.npz'],
-    'azobenzene': ['rmd17_azobenzene.npz'],
-    'benzene': ['rmd17_benzene.npz'],
-    'ethanol': ['rmd17_ethanol.npz'],
-    'malonaldehyde': ['rmd17_malonaldehyde.npz'],
-    'naphthalene': ['rmd17_naphthalene.npz'],
-    'paracetamol': ['rmd17_paracetamol.npz'],
-    'salicylic_acid': ['rmd17_salicylic_acid.npz'],
-    'toluene': ['rmd17_toluene.npz'],
-    'uracil': ['rmd17_uracil.npz'],
+    "aspirin": ["rmd17_aspirin.npz"],
+    "azobenzene": ["rmd17_azobenzene.npz"],
+    "benzene": ["rmd17_benzene.npz"],
+    "ethanol": ["rmd17_ethanol.npz"],
+    "malonaldehyde": ["rmd17_malonaldehyde.npz"],
+    "naphthalene": ["rmd17_naphthalene.npz"],
+    "paracetamol": ["rmd17_paracetamol.npz"],
+    "salicylic_acid": ["rmd17_salicylic_acid.npz"],
+    "toluene": ["rmd17_toluene.npz"],
+    "uracil": ["rmd17_uracil.npz"],
 }
 
 
@@ -292,7 +293,7 @@ class VersorMD17NPZ(Dataset):
     Produces _GraphData objects compatible with PyG-based task code.
     """
 
-    def __init__(self, root: str, molecule: str = 'aspirin', radius: float = 5.0, revised: bool = True):
+    def __init__(self, root: str, molecule: str = "aspirin", radius: float = 5.0, revised: bool = True):
         """Initialize NPZ-based MD17/rMD17 dataset.
 
         Args:
@@ -327,25 +328,25 @@ class VersorMD17NPZ(Dataset):
 
         data = np.load(npz_path)
         # rMD17 npz uses 'coords' key, original MD17 uses 'R'
-        if 'coords' in data:
-            R = torch.tensor(data['coords'], dtype=torch.float32)
+        if "coords" in data:
+            R = torch.tensor(data["coords"], dtype=torch.float32)
         else:
-            R = torch.tensor(data['R'], dtype=torch.float32)
+            R = torch.tensor(data["R"], dtype=torch.float32)
         # rMD17 uses 'energies', original uses 'E'
-        if 'energies' in data:
-            E = torch.tensor(data['energies'], dtype=torch.float32).squeeze(-1)
+        if "energies" in data:
+            E = torch.tensor(data["energies"], dtype=torch.float32).squeeze(-1)
         else:
-            E = torch.tensor(data['E'], dtype=torch.float32).squeeze(-1)
+            E = torch.tensor(data["E"], dtype=torch.float32).squeeze(-1)
         # rMD17 uses 'forces', original uses 'F'
-        if 'forces' in data:
-            F = torch.tensor(data['forces'], dtype=torch.float32)
+        if "forces" in data:
+            F = torch.tensor(data["forces"], dtype=torch.float32)
         else:
-            F = torch.tensor(data['F'], dtype=torch.float32)
+            F = torch.tensor(data["F"], dtype=torch.float32)
         # rMD17 uses 'nuclear_charges', original uses 'z'
-        if 'nuclear_charges' in data:
-            z = torch.tensor(data['nuclear_charges'], dtype=torch.long)
+        if "nuclear_charges" in data:
+            z = torch.tensor(data["nuclear_charges"], dtype=torch.long)
         else:
-            z = torch.tensor(data['z'], dtype=torch.long)
+            z = torch.tensor(data["z"], dtype=torch.long)
 
         self._R = R
         self._E = E
@@ -362,16 +363,16 @@ class VersorMD17NPZ(Dataset):
         """
         if self.revised:
             patterns = _RMD17_NPZ_PATTERNS
-            default = [f'rmd17_{self.molecule}.npz']
+            default = [f"rmd17_{self.molecule}.npz"]
         else:
             patterns = _NPZ_PATTERNS
-            default = [f'md17_{self.molecule}.npz']
+            default = [f"md17_{self.molecule}.npz"]
         candidates = patterns.get(self.molecule, default)
         search_dirs = [
             self.root,
-            os.path.join(self.root, 'raw'),
-            os.path.join(self.root, 'MD17', self.molecule),
-            os.path.join(self.root, 'rMD17', self.molecule),
+            os.path.join(self.root, "raw"),
+            os.path.join(self.root, "MD17", self.molecule),
+            os.path.join(self.root, "rMD17", self.molecule),
         ]
         for d in search_dirs:
             for name in candidates:
@@ -454,7 +455,7 @@ def _compute_split(N: int, n_train: Optional[int], n_val: Optional[int]):
 
 def get_md17_loaders(
     root: str,
-    molecule: str = 'aspirin',
+    molecule: str = "aspirin",
     batch_size: int = 32,
     max_samples: Optional[int] = None,
     revised: bool = True,

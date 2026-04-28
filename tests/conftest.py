@@ -1,4 +1,5 @@
 import pytest
+
 from core.algebra import CliffordAlgebra
 
 DEVICE = "cpu"

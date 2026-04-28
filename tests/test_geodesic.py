@@ -8,10 +8,12 @@ Covers:
 """
 
 import math
+
 import pytest
 import torch
+
 from core.algebra import CliffordAlgebra
-from core.analysis import GeodesicFlow, DimensionLifter, MetricSearch
+from core.analysis import DimensionLifter, GeodesicFlow, MetricSearch
 
 pytestmark = pytest.mark.unit
 
@@ -88,7 +90,7 @@ class TestGeodesicFlow:
         bv = gf._connection_bivectors(mv)  # [N, k, dim]
 
         # Non-grade-2 components must be zero
-        non_g2_mask = [i for i in range(alg2.dim) if bin(i).count('1') != 2]
+        non_g2_mask = [i for i in range(alg2.dim) if bin(i).count("1") != 2]
         other_energy = bv[:, :, non_g2_mask].abs().max().item()
         assert other_energy < 1e-5, f"Non-grade-2 energy should be ~0, got {other_energy}"
 
@@ -172,8 +174,8 @@ class TestGeodesicFlow:
         data = torch.randn(10, 3)
         mv = gf._embed(data)
         # Grade-1 blades in Cl(3,0): indices 1,2,4 (one bit set)
-        grade1_mask = [i for i in range(alg3.dim) if bin(i).count('1') == 1]
-        other_mask = [i for i in range(alg3.dim) if bin(i).count('1') != 1]
+        grade1_mask = [i for i in range(alg3.dim) if bin(i).count("1") == 1]
+        other_mask = [i for i in range(alg3.dim) if bin(i).count("1") != 1]
         assert mv[:, other_mask].abs().max().item() < 1e-6
 
     def test_knn_count(self, alg2):
@@ -208,27 +210,27 @@ class TestGeodesicFlow:
         """causal_report must return all expected keys."""
         gf = GeodesicFlow(alg2, k=4)
         report = gf.causal_report(_circle_data(32))
-        for key in ('coherence', 'curvature', 'causal', 'label'):
+        for key in ("coherence", "curvature", "causal", "label"):
             assert key in report, f"Missing key: {key}"
 
     def test_causal_report_types(self, alg2):
         """causal_report values must have correct types."""
         gf = GeodesicFlow(alg2, k=4)
         report = gf.causal_report(_circle_data(32))
-        assert isinstance(report['coherence'], float)
-        assert isinstance(report['curvature'], float)
-        assert isinstance(report['causal'], bool)
-        assert isinstance(report['label'], str)
+        assert isinstance(report["coherence"], float)
+        assert isinstance(report["curvature"], float)
+        assert isinstance(report["causal"], bool)
+        assert isinstance(report["label"], str)
 
     def test_causal_report_causal_data(self, alg2):
         """Structured spiral data should be labelled 'Causal' if coherence > 0.5."""
         gf = GeodesicFlow(alg2, k=6)
         report = gf.causal_report(_causal_flow_data(128))
         # Whether it's causal depends on the data; at least check label consistency
-        if report['causal']:
-            assert 'Causal' in report['label']
+        if report["causal"]:
+            assert "Causal" in report["label"]
         else:
-            assert 'Noisy' in report['label']
+            assert "Noisy" in report["label"]
 
     def test_causal_report_label_consistency(self, alg2):
         """'causal' flag and 'label' string must be consistent."""
@@ -236,10 +238,10 @@ class TestGeodesicFlow:
         gf = GeodesicFlow(alg2, k=6)
         for data in [_circle_data(64), _random_data(64, dim=2)]:
             report = gf.causal_report(data)
-            if report['causal']:
-                assert 'Causal' in report['label']
+            if report["causal"]:
+                assert "Causal" in report["label"]
             else:
-                assert 'Noisy' in report['label']
+                assert "Noisy" in report["label"]
 
 
 # TestDimensionLifter
@@ -250,117 +252,117 @@ class TestDimensionLifter:
 
     def test_lift_shape(self):
         """Lifted multivectors must have shape [N, target_dim]."""
-        lifter = DimensionLifter(device='cpu')
+        lifter = DimensionLifter(device="cpu")
         data = torch.randn(20, 2)
-        alg = CliffordAlgebra(3, 0, device='cpu')  # 2D data -> 3D algebra
+        alg = CliffordAlgebra(3, 0, device="cpu")  # 2D data -> 3D algebra
         mv = lifter.lift(data, alg, fill=1.0)
         assert mv.shape == (20, alg.dim)
 
     def test_lift_grade1_only(self):
         """Lifted multivectors must have energy only in grade-1 blades."""
-        lifter = DimensionLifter(device='cpu')
+        lifter = DimensionLifter(device="cpu")
         data = torch.randn(10, 2)
-        alg = CliffordAlgebra(3, 0, device='cpu')
+        alg = CliffordAlgebra(3, 0, device="cpu")
         mv = lifter.lift(data, alg, fill=1.0)
-        other = [i for i in range(alg.dim) if bin(i).count('1') != 1]
+        other = [i for i in range(alg.dim) if bin(i).count("1") != 1]
         assert mv[:, other].abs().max().item() < 1e-6
 
     def test_lift_same_dimension(self):
         """Lifting to the same dimension (no padding) should still work."""
-        lifter = DimensionLifter(device='cpu')
+        lifter = DimensionLifter(device="cpu")
         data = torch.randn(10, 3)
-        alg = CliffordAlgebra(3, 0, device='cpu')
+        alg = CliffordAlgebra(3, 0, device="cpu")
         mv = lifter.lift(data, alg, fill=1.0)
         assert mv.shape == (10, alg.dim)
 
     def test_lift_fill_values(self):
         """The extra coordinate should equal `fill` in the extra blade."""
-        lifter = DimensionLifter(device='cpu')
+        lifter = DimensionLifter(device="cpu")
         data = torch.zeros(5, 2)  # all-zero 2D data
-        alg = CliffordAlgebra(3, 0, device='cpu')
+        alg = CliffordAlgebra(3, 0, device="cpu")
         # The third grade-1 blade is index 4 (= 1 << 2)
         mv = lifter.lift(data, alg, fill=0.7)
         assert torch.allclose(mv[:, 4], torch.full((5,), 0.7), atol=1e-5)
 
     def test_lift_too_large_raises(self):
         """Lifting to a smaller algebra must raise ValueError."""
-        lifter = DimensionLifter(device='cpu')
+        lifter = DimensionLifter(device="cpu")
         data = torch.randn(10, 4)
-        alg = CliffordAlgebra(2, 0, device='cpu')  # only 2D
+        alg = CliffordAlgebra(2, 0, device="cpu")  # only 2D
         with pytest.raises(ValueError):
             lifter.lift(data, alg)
 
     def test_test_output_keys(self):
         """test() must return all expected keys."""
-        lifter = DimensionLifter(device='cpu')
+        lifter = DimensionLifter(device="cpu")
         data = _circle_data(32)
         results = lifter.test(data, p=2, q=0, k=4)
-        for key in ('original', 'lift_positive', 'lift_null', 'best'):
+        for key in ("original", "lift_positive", "lift_null", "best"):
             assert key in results
 
     def test_test_signature_fields(self):
         """Each algebra result must include signature, coherence, curvature, causal."""
-        lifter = DimensionLifter(device='cpu')
+        lifter = DimensionLifter(device="cpu")
         data = _circle_data(32)
         results = lifter.test(data, p=2, q=0, k=4)
-        for key in ('original', 'lift_positive', 'lift_null'):
+        for key in ("original", "lift_positive", "lift_null"):
             r = results[key]
-            assert 'signature' in r
-            assert 'coherence' in r
-            assert 'curvature' in r
-            assert 'causal' in r
+            assert "signature" in r
+            assert "coherence" in r
+            assert "curvature" in r
+            assert "causal" in r
 
     def test_test_original_signature(self):
         """Original result must carry the correct (p, q) signature."""
-        lifter = DimensionLifter(device='cpu')
+        lifter = DimensionLifter(device="cpu")
         results = lifter.test(_circle_data(32), p=2, q=0, k=4)
-        assert results['original']['signature'] == (2, 0)
+        assert results["original"]["signature"] == (2, 0)
 
     def test_test_lifted_signatures(self):
         """Lifted results must carry incremented signatures."""
-        lifter = DimensionLifter(device='cpu')
+        lifter = DimensionLifter(device="cpu")
         results = lifter.test(_circle_data(32), p=2, q=0, k=4)
-        assert results['lift_positive']['signature'] == (3, 0)
-        assert results['lift_null']['signature'] == (2, 1)
+        assert results["lift_positive"]["signature"] == (3, 0)
+        assert results["lift_null"]["signature"] == (2, 1)
 
     def test_test_best_is_valid_key(self):
         """'best' must point to one of the three algebra keys."""
-        lifter = DimensionLifter(device='cpu')
+        lifter = DimensionLifter(device="cpu")
         results = lifter.test(_circle_data(32), p=2, q=0, k=4)
-        assert results['best'] in ('original', 'lift_positive', 'lift_null')
+        assert results["best"] in ("original", "lift_positive", "lift_null")
 
     def test_test_best_has_highest_coherence(self):
         """'best' must indeed be the algebra with the highest coherence."""
-        lifter = DimensionLifter(device='cpu')
+        lifter = DimensionLifter(device="cpu")
         results = lifter.test(_circle_data(48), p=2, q=0, k=6)
-        best_key = results['best']
-        best_coh = results[best_key]['coherence']
-        for key in ('original', 'lift_positive', 'lift_null'):
-            assert results[key]['coherence'] <= best_coh + 1e-6
+        best_key = results["best"]
+        best_coh = results[best_key]["coherence"]
+        for key in ("original", "lift_positive", "lift_null"):
+            assert results[key]["coherence"] <= best_coh + 1e-6
 
     def test_positive_lift_expands_algebra_dim(self):
         """Positive lift must produce [N, 2^(n+1)] multivectors."""
-        lifter = DimensionLifter(device='cpu')
+        lifter = DimensionLifter(device="cpu")
         data = _circle_data(16)
-        alg_pos = CliffordAlgebra(3, 0, device='cpu')
+        alg_pos = CliffordAlgebra(3, 0, device="cpu")
         mv = lifter.lift(data, alg_pos, fill=1.0)
         assert mv.shape == (16, alg_pos.dim)  # 2^3 = 8
 
     def test_format_report_returns_string(self):
         """format_report must return a non-empty string."""
-        lifter = DimensionLifter(device='cpu')
+        lifter = DimensionLifter(device="cpu")
         results = lifter.test(_circle_data(32), p=2, q=0, k=4)
         report = lifter.format_report(results)
         assert isinstance(report, str)
         assert len(report) > 0
-        assert 'Cl(' in report
+        assert "Cl(" in report
 
     def test_format_report_contains_all_algebras(self):
         """Report must mention all three algebras."""
-        lifter = DimensionLifter(device='cpu')
+        lifter = DimensionLifter(device="cpu")
         results = lifter.test(_circle_data(32), p=2, q=0, k=4)
         report = lifter.format_report(results)
         # All three signatures should appear
-        assert 'Cl(2,0)' in report
-        assert 'Cl(3,0)' in report
-        assert 'Cl(2,1)' in report
+        assert "Cl(2,0)" in report
+        assert "Cl(3,0)" in report
+        assert "Cl(2,1)" in report
