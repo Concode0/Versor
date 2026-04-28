@@ -53,25 +53,15 @@ from experiments._lib import make_experiment_parser, set_seed
 
 def parse_args():
     registered = list(EXPERIMENT_REGISTRY.keys())
-    all_choices = registered + [
-        "all",
-        "analytic",
-        "geometric",
-        "ga_neural",
-        "manifold",
-        "compare_all",
-    ]
+    all_choices = registered + ["all", "geometric", "ga_neural", "compare_all"]
     p = make_experiment_parser(
         "Geometric Deterministic Optimizer (GDO) Experiment Suite",
         include=("seed", "device", "output_dir"),
         defaults={"output_dir": "gdo_plots"},
     )
-    p.add_argument("--task", choices=all_choices, default="rosenbrock")
+    p.add_argument("--task", choices=all_choices, default="gbn_small")
     p.add_argument("--optimizers", nargs="+", default=["gdo", "riemannian_adam", "adam"], help="Optimizers to compare")
-    p.add_argument("--steps", type=int, default=2000)
-    p.add_argument("--n-dims", type=int, default=10)
-    p.add_argument("--noise-std", type=float, default=0.05)
-    p.add_argument("--rotation-angle", type=float, default=2.5)
+    p.add_argument("--steps", type=int, default=200)
     return p.parse_args()
 
 
@@ -99,22 +89,11 @@ def main() -> None:
 
     if args.task in EXPERIMENT_REGISTRY:
         fn, _cat = EXPERIMENT_REGISTRY[args.task]
-        kwargs = dict(steps=args.steps, **common)
-        if args.task in ("rastrigin", "ackley", "styblinski_tang"):
-            kwargs["n_dims"] = args.n_dims
-        if args.task == "registration":
-            kwargs["noise_std"] = args.noise_std
-            kwargs["rotation_angle"] = args.rotation_angle
-        fn(**kwargs)
-
-    elif args.task == "analytic":
-        run_category("analytic", steps=args.steps, n_dims=args.n_dims, **common)
+        fn(steps=args.steps, **common)
     elif args.task == "geometric":
         run_category("geometric", steps=args.steps, **common)
     elif args.task == "ga_neural":
         run_category("ga_neural", steps=args.steps, **common)
-    elif args.task == "manifold":
-        run_category("manifold", steps=args.steps, **common)
     elif args.task in ("all", "compare_all"):
         all_results = run_all_experiments(steps=min(args.steps, 1000), **common)
         report = analyze_experiment_results(all_results, output_dir=od)

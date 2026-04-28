@@ -1,4 +1,11 @@
-"""Registered experiment runners and category/all runners."""
+"""Registered experiment runners and category/all helpers.
+
+Three registrations matching the curated benchmark suite:
+
+- ``gbn_small``    -> ``SmallGBNModel`` (primitives showcase).
+- ``multi_rotor``  -> ``MultiRotorRegistrationModel`` (rotor-bank showcase).
+- ``transformer_toy`` -> ``GeometricTransformerToyModel`` (blocks/transformer showcase).
+"""
 
 from __future__ import annotations
 
@@ -8,27 +15,16 @@ import torch.nn.functional as F
 from experiments._lib import build_visualization_metadata, signature_metadata
 
 from .benchmarks import (
-    AckleyModel,
-    ConformalRegistrationModel,
-    MediumGBNModel,
-    MinkowskiRotorModel,
+    GeometricTransformerToyModel,
     MultiRotorRegistrationModel,
-    MultiSigGBNModel,
-    RastriginModel,
-    RosenbrockModel,
-    RotorRegistrationModel,
     SmallGBNModel,
-    SO3InterpolationModel,
-    StyblinskiTangModel,
 )
 from .config import EXPERIMENT_REGISTRY, ExperimentConfig, register_experiment
 from .harness import run_comparison
 from .plotting import (
     plot_bivector_trajectory,
-    plot_convergence_rate,
     plot_optimizer_state_dashboard,
     plot_three_way_comparison,
-    plot_timing_breakdown,
 )
 
 
@@ -37,377 +33,11 @@ def _gdo_metadata(
     *,
     seed: int,
     algebra_sig: tuple[int, int] | None = None,
-    n_dims: int | None = None,
-    rotation_angle: float | None = None,
-    noise_std: float | None = None,
 ) -> str:
     parts = []
     if algebra_sig is not None:
         parts.append(signature_metadata(*algebra_sig))
-    return build_visualization_metadata(
-        *parts,
-        task=task,
-        n_dims=n_dims,
-        rotation_angle=rotation_angle,
-        noise_std=noise_std,
-        seed=seed,
-    )
-
-
-@register_experiment("rosenbrock", "analytic")
-def run_rosenbrock(
-    steps: int = 2000,
-    optimizers=("gdo", "riemannian_adam", "adam"),
-    seed: int = 42,
-    output_dir: str = "gdo_plots",
-    device: str = "cpu",
-    cli_args=None,
-):
-    print("\n" + "=" * 60)
-    print("EXPERIMENT: Rosenbrock Function (a=1, b=100)")
-    print("=" * 60)
-
-    config = ExperimentConfig(name="rosenbrock", category="analytic", steps=steps, lr=1e-3, seed=seed, device=device)
-    results = run_comparison(
-        "rosenbrock",
-        model_factory=RosenbrockModel,
-        loss_factory=lambda m: m.forward,
-        config=config,
-        optimizers=optimizers,
-        output_dir=output_dir,
-    )
-    metadata = _gdo_metadata("rosenbrock", seed=seed)
-    plot_three_way_comparison(
-        results,
-        title="Rosenbrock",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    plot_convergence_rate(
-        results,
-        title="Rosenbrock",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    plot_timing_breakdown(
-        results,
-        title="Rosenbrock",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    return results
-
-
-@register_experiment("rastrigin", "analytic")
-def run_rastrigin(
-    n_dims: int = 8,
-    steps: int = 3000,
-    optimizers=("gdo", "riemannian_adam", "adam"),
-    seed: int = 42,
-    output_dir: str = "gdo_plots",
-    device: str = "cpu",
-    cli_args=None,
-):
-    print("\n" + "=" * 60)
-    print(f"EXPERIMENT: Rastrigin Function ({n_dims}D)")
-    print("=" * 60)
-
-    config = ExperimentConfig(name="rastrigin", category="analytic", steps=steps, lr=1e-2, seed=seed, device=device)
-    results = run_comparison(
-        "rastrigin",
-        model_factory=lambda: RastriginModel(n_dims=n_dims),
-        loss_factory=lambda m: m.forward,
-        config=config,
-        optimizers=optimizers,
-        output_dir=output_dir,
-    )
-    metadata = _gdo_metadata("rastrigin", seed=seed, n_dims=n_dims)
-    plot_three_way_comparison(
-        results,
-        title=f"Rastrigin {n_dims}D",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    plot_convergence_rate(
-        results,
-        title=f"Rastrigin {n_dims}D",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    return results
-
-
-@register_experiment("ackley", "analytic")
-def run_ackley(
-    n_dims: int = 10,
-    steps: int = 3000,
-    optimizers=("gdo", "riemannian_adam", "adam"),
-    seed: int = 42,
-    output_dir: str = "gdo_plots",
-    device: str = "cpu",
-    cli_args=None,
-):
-    print("\n" + "=" * 60)
-    print(f"EXPERIMENT: Ackley Function ({n_dims}D)")
-    print("=" * 60)
-
-    config = ExperimentConfig(name="ackley", category="analytic", steps=steps, lr=1e-2, seed=seed, device=device)
-    results = run_comparison(
-        "ackley",
-        model_factory=lambda: AckleyModel(n_dims=n_dims),
-        loss_factory=lambda m: m.forward,
-        config=config,
-        optimizers=optimizers,
-        output_dir=output_dir,
-    )
-    metadata = _gdo_metadata("ackley", seed=seed, n_dims=n_dims)
-    plot_three_way_comparison(
-        results,
-        title=f"Ackley {n_dims}D",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    plot_convergence_rate(
-        results,
-        title=f"Ackley {n_dims}D",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    return results
-
-
-@register_experiment("styblinski_tang", "analytic")
-def run_styblinski_tang(
-    n_dims: int = 6,
-    steps: int = 2000,
-    optimizers=("gdo", "riemannian_adam", "adam"),
-    seed: int = 42,
-    output_dir: str = "gdo_plots",
-    device: str = "cpu",
-    cli_args=None,
-):
-    print("\n" + "=" * 60)
-    print(f"EXPERIMENT: Styblinski-Tang Function ({n_dims}D)")
-    print("=" * 60)
-
-    config = ExperimentConfig(
-        name="styblinski_tang", category="analytic", steps=steps, lr=5e-3, seed=seed, device=device
-    )
-    results = run_comparison(
-        "styblinski_tang",
-        model_factory=lambda: StyblinskiTangModel(n_dims=n_dims),
-        loss_factory=lambda m: m.forward,
-        config=config,
-        optimizers=optimizers,
-        output_dir=output_dir,
-    )
-    metadata = _gdo_metadata("styblinski_tang", seed=seed, n_dims=n_dims)
-    plot_three_way_comparison(
-        results,
-        title=f"Styblinski-Tang {n_dims}D",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    return results
-
-
-@register_experiment("registration", "geometric")
-def run_registration(
-    steps: int = 1500,
-    noise_std: float = 0.05,
-    rotation_angle: float = 2.5,
-    optimizers=("gdo", "riemannian_adam", "adam"),
-    seed: int = 42,
-    output_dir: str = "gdo_plots",
-    device: str = "cpu",
-    cli_args=None,
-):
-    print("\n" + "=" * 60)
-    print(f"EXPERIMENT: Rotor Registration (Cl(3,0), angle={rotation_angle:.2f} rad)")
-    print("=" * 60)
-
-    config = ExperimentConfig(
-        name="registration", category="geometric", steps=steps, lr=1e-3, seed=seed, device=device, algebra_sig=(3, 0)
-    )
-    results = run_comparison(
-        "registration",
-        model_factory=lambda: RotorRegistrationModel(noise_std=noise_std, rotation_angle=rotation_angle, device=device),
-        loss_factory=lambda m: m.forward,
-        config=config,
-        optimizers=optimizers,
-        metric_factory=lambda m: lambda: {"angle_error": m.angular_error()},
-        output_dir=output_dir,
-    )
-    metadata = _gdo_metadata(
-        "registration",
-        seed=seed,
-        algebra_sig=(3, 0),
-        rotation_angle=rotation_angle,
-        noise_std=noise_std,
-    )
-    plot_three_way_comparison(
-        results,
-        title="Rotor Registration",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    plot_convergence_rate(
-        results,
-        title="Rotor Registration",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    plot_timing_breakdown(
-        results,
-        title="Rotor Registration",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    plot_bivector_trajectory(
-        results,
-        title="Rotor Registration",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    return results
-
-
-@register_experiment("minkowski_rotor", "geometric")
-def run_minkowski_rotor(
-    steps: int = 1500,
-    optimizers=("gdo", "riemannian_adam", "adam"),
-    seed: int = 42,
-    output_dir: str = "gdo_plots",
-    device: str = "cpu",
-    cli_args=None,
-):
-    print("\n" + "=" * 60)
-    print("EXPERIMENT: Minkowski Rotor Registration (Cl(2,1))")
-    print("=" * 60)
-
-    config = ExperimentConfig(
-        name="minkowski_rotor", category="geometric", steps=steps, lr=1e-3, seed=seed, device=device, algebra_sig=(2, 1)
-    )
-    results = run_comparison(
-        "minkowski_rotor",
-        model_factory=lambda: MinkowskiRotorModel(device=device),
-        loss_factory=lambda m: m.forward,
-        config=config,
-        optimizers=optimizers,
-        metric_factory=lambda m: lambda: {"rapidity_error": m.rapidity_error()},
-        output_dir=output_dir,
-    )
-    metadata = _gdo_metadata("minkowski_rotor", seed=seed, algebra_sig=(2, 1))
-    plot_three_way_comparison(
-        results,
-        title="Minkowski Rotor Cl(2,1)",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    plot_bivector_trajectory(
-        results,
-        title="Minkowski Rotor",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    return results
-
-
-@register_experiment("conformal_registration", "geometric")
-def run_conformal_registration(
-    steps: int = 2000,
-    optimizers=("gdo", "riemannian_adam", "adam"),
-    seed: int = 42,
-    output_dir: str = "gdo_plots",
-    device: str = "cpu",
-    cli_args=None,
-):
-    print("\n" + "=" * 60)
-    print("EXPERIMENT: Conformal Registration (Cl(4,1), 32D)")
-    print("=" * 60)
-
-    config = ExperimentConfig(
-        name="conformal_registration",
-        category="geometric",
-        steps=steps,
-        lr=5e-4,
-        seed=seed,
-        device=device,
-        algebra_sig=(4, 1),
-    )
-    results = run_comparison(
-        "conformal_registration",
-        model_factory=lambda: ConformalRegistrationModel(device=device),
-        loss_factory=lambda m: m.forward,
-        config=config,
-        optimizers=optimizers,
-        output_dir=output_dir,
-    )
-    metadata = _gdo_metadata("conformal_registration", seed=seed, algebra_sig=(4, 1))
-    plot_three_way_comparison(
-        results,
-        title="Conformal Cl(4,1)",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    return results
-
-
-@register_experiment("multi_rotor", "geometric")
-def run_multi_rotor(
-    steps: int = 2000,
-    optimizers=("gdo", "riemannian_adam", "adam"),
-    seed: int = 42,
-    output_dir: str = "gdo_plots",
-    device: str = "cpu",
-    cli_args=None,
-):
-    print("\n" + "=" * 60)
-    print("EXPERIMENT: Multi-Rotor Registration (Cl(3,0), 3 clusters)")
-    print("=" * 60)
-
-    config = ExperimentConfig(
-        name="multi_rotor", category="geometric", steps=steps, lr=1e-3, seed=seed, device=device, algebra_sig=(3, 0)
-    )
-    results = run_comparison(
-        "multi_rotor",
-        model_factory=lambda: MultiRotorRegistrationModel(device=device),
-        loss_factory=lambda m: m.forward,
-        config=config,
-        optimizers=optimizers,
-        output_dir=output_dir,
-    )
-    metadata = _gdo_metadata("multi_rotor", seed=seed, algebra_sig=(3, 0))
-    plot_three_way_comparison(
-        results,
-        title="Multi-Rotor",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    plot_bivector_trajectory(
-        results,
-        title="Multi-Rotor",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    return results
+    return build_visualization_metadata(*parts, task=task, seed=seed)
 
 
 @register_experiment("gbn_small", "ga_neural")
@@ -477,9 +107,9 @@ def run_gbn_small(
     return results
 
 
-@register_experiment("gbn_medium", "ga_neural")
-def run_gbn_medium(
-    steps: int = 300,
+@register_experiment("multi_rotor", "geometric")
+def run_multi_rotor(
+    steps: int = 2000,
     optimizers=("gdo", "riemannian_adam", "adam"),
     seed: int = 42,
     output_dir: str = "gdo_plots",
@@ -487,45 +117,31 @@ def run_gbn_medium(
     cli_args=None,
 ):
     print("\n" + "=" * 60)
-    print("EXPERIMENT: Medium GBN (Cl(3,0), 16ch, 3 layers)")
+    print("EXPERIMENT: Multi-Rotor Registration (Cl(3,0), 3 clusters)")
     print("=" * 60)
 
     config = ExperimentConfig(
-        name="gbn_medium", category="ga_neural", steps=steps, lr=3e-4, seed=seed, device=device, algebra_sig=(3, 0)
+        name="multi_rotor", category="geometric", steps=steps, lr=1e-3, seed=seed, device=device, algebra_sig=(3, 0)
     )
     results = run_comparison(
-        "gbn_medium",
-        model_factory=lambda: MediumGBNModel(channels=16, layers=3, device=device),
+        "multi_rotor",
+        model_factory=lambda: MultiRotorRegistrationModel(device=device),
         loss_factory=lambda m: m.forward,
         config=config,
         optimizers=optimizers,
         output_dir=output_dir,
     )
-    metadata = _gdo_metadata("gbn_medium", seed=seed, algebra_sig=(3, 0))
+    metadata = _gdo_metadata("multi_rotor", seed=seed, algebra_sig=(3, 0))
     plot_three_way_comparison(
         results,
-        title="Medium GBN",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    plot_convergence_rate(
-        results,
-        title="Medium GBN",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    plot_timing_breakdown(
-        results,
-        title="Medium GBN",
+        title="Multi-Rotor",
         output_dir=output_dir,
         metadata=metadata,
         args=cli_args,
     )
     plot_bivector_trajectory(
         results,
-        title="Medium GBN",
+        title="Multi-Rotor",
         output_dir=output_dir,
         metadata=metadata,
         args=cli_args,
@@ -533,9 +149,9 @@ def run_gbn_medium(
     return results
 
 
-@register_experiment("gbn_multisig", "ga_neural")
-def run_gbn_multisig(
-    steps: int = 250,
+@register_experiment("transformer_toy", "ga_neural")
+def run_transformer_toy(
+    steps: int = 200,
     optimizers=("gdo", "riemannian_adam", "adam"),
     seed: int = 42,
     output_dir: str = "gdo_plots",
@@ -543,87 +159,31 @@ def run_gbn_multisig(
     cli_args=None,
 ):
     print("\n" + "=" * 60)
-    print("EXPERIMENT: Minkowski GBN (Cl(2,1), 8ch)")
+    print("EXPERIMENT: Geometric Transformer Toy (Cl(3,0), 1 block)")
     print("=" * 60)
 
     config = ExperimentConfig(
-        name="gbn_multisig", category="ga_neural", steps=steps, lr=3e-4, seed=seed, device=device, algebra_sig=(2, 1)
+        name="transformer_toy", category="ga_neural", steps=steps, lr=5e-4, seed=seed, device=device, algebra_sig=(3, 0)
     )
     results = run_comparison(
-        "gbn_multisig",
-        model_factory=lambda: MultiSigGBNModel(channels=8, layers=2, device=device),
+        "transformer_toy",
+        model_factory=lambda: GeometricTransformerToyModel(device=device),
         loss_factory=lambda m: m.forward,
         config=config,
         optimizers=optimizers,
         output_dir=output_dir,
     )
-    metadata = _gdo_metadata("gbn_multisig", seed=seed, algebra_sig=(2, 1))
+    metadata = _gdo_metadata("transformer_toy", seed=seed, algebra_sig=(3, 0))
     plot_three_way_comparison(
         results,
-        title="Minkowski GBN Cl(2,1)",
+        title="Geometric Transformer Toy",
         output_dir=output_dir,
         metadata=metadata,
         args=cli_args,
     )
     plot_bivector_trajectory(
         results,
-        title="Minkowski GBN",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    return results
-
-
-@register_experiment("so3_interpolation", "manifold")
-def run_so3_interpolation(
-    steps: int = 1500,
-    optimizers=("gdo", "riemannian_adam", "adam"),
-    seed: int = 42,
-    output_dir: str = "gdo_plots",
-    device: str = "cpu",
-    cli_args=None,
-):
-    print("\n" + "=" * 60)
-    print("EXPERIMENT: SO(3) Rotor Interpolation")
-    print("=" * 60)
-
-    config = ExperimentConfig(
-        name="so3_interpolation",
-        category="manifold",
-        steps=steps,
-        lr=1e-3,
-        seed=seed,
-        device=device,
-        algebra_sig=(3, 0),
-    )
-    results = run_comparison(
-        "so3_interpolation",
-        model_factory=lambda: SO3InterpolationModel(n_waypoints=8, device=device),
-        loss_factory=lambda m: m.forward,
-        config=config,
-        optimizers=optimizers,
-        metric_factory=lambda m: lambda: {"geodesic_deviation": m.geodesic_deviation()},
-        output_dir=output_dir,
-    )
-    metadata = _gdo_metadata("so3_interpolation", seed=seed, algebra_sig=(3, 0))
-    plot_three_way_comparison(
-        results,
-        title="SO(3) Interpolation",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    plot_convergence_rate(
-        results,
-        title="SO(3) Interpolation",
-        output_dir=output_dir,
-        metadata=metadata,
-        args=cli_args,
-    )
-    plot_bivector_trajectory(
-        results,
-        title="SO(3) Interpolation",
+        title="Geometric Transformer Toy",
         output_dir=output_dir,
         metadata=metadata,
         args=cli_args,

@@ -42,7 +42,13 @@ from .config import (
 )
 from .controller import GDOController, GeometricDeterministicOptimizer
 from .optimizer import GDOOptimizer
-from .pre_exploration import PreExplorationAnalyzer, PreExplorationResult
+from .pre_exploration import (
+    LayerTopology,
+    PreExplorationAnalyzer,
+    PreExplorationResult,
+    TopologyReport,
+    TuningRecommendation,
+)
 
 __all__ = [
     "EXPERIMENT_REGISTRY",
@@ -52,7 +58,10 @@ __all__ = [
     "GDOController",
     "GDOOptimizer",
     "GeometricDeterministicOptimizer",
+    "LayerTopology",
     "PreExplorationAnalyzer",
     "PreExplorationResult",
+    "TopologyReport",
+    "TuningRecommendation",
     "register_experiment",
 ]
