@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from core.algebra import CliffordAlgebra
-from layers.primitives.base import CliffordModule
+from core.module import CliffordModule
 from layers.primitives.projection import GeometricNeutralizer
 from layers.primitives.rotor import RotorLayer
 

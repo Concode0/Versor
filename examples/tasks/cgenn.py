@@ -61,6 +61,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 from functional.activation import GeometricSquare
 from layers import (
     BladeSelector,
@@ -68,7 +69,6 @@ from layers import (
     CliffordLinear,
     RotorLayer,
 )
-from layers.primitives.base import CliffordModule
 from tasks.base import BaseTask
 
 # ---------------------------------------------------------------------------

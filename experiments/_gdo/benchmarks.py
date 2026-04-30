@@ -32,12 +32,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 from functional.activation import GeometricGELU
 from layers import (
     BladeSelector,
     CliffordLayerNorm,
     CliffordLinear,
-    CliffordModule,
     GeometricTransformerBlock,
     MultiRotorLayer,
     MultivectorEmbedding,

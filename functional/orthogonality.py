@@ -52,7 +52,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 
-from layers.primitives.base import CliffordModule
+from core.module import CliffordModule
 
 
 @dataclass

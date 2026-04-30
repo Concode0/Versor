@@ -10,10 +10,11 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 from core.visualizer import GeneralVisualizer
 from examples.datasets.synthetic import Figure8Dataset
 from functional.loss import SubspaceLoss
-from layers import BladeSelector, CliffordModule, RotorLayer
+from layers import BladeSelector, RotorLayer
 from tasks.base import BaseTask
 
 

@@ -1,8 +1,5 @@
 # Layers
 
-## Base
-::: layers.primitives.base.CliffordModule
-
 ## Primitives
 ::: layers.primitives.rotor.RotorLayer
 ::: layers.primitives.multi_rotor.MultiRotorLayer

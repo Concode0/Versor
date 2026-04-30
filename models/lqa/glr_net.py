@@ -25,10 +25,10 @@ import torch
 import torch.nn as nn
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 from layers.adapters.embedding import RotaryBivectorPE
 from layers.adapters.mother import MotherEmbedding
 from layers.blocks.transformer import GeometricTransformerBlock
-from layers.primitives.base import CliffordModule
 from layers.primitives.normalization import CliffordLayerNorm
 from layers.primitives.projection import GeometricNeutralizer
 

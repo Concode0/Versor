@@ -36,12 +36,14 @@ from .metric import (
     signature_norm_squared,
     signature_trace_form,
 )
+from .module import CliffordModule
 from .multivector import Multivector
 from .validation import check_channels, check_multivector
 
 __all__ = [
     # algebra
     "CliffordAlgebra",
+    "CliffordModule",
     "Multivector",
     # device / validation
     "DeviceConfig",

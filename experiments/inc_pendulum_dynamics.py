@@ -54,6 +54,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pa
 
 from core.algebra import CliffordAlgebra
 from core.metric import hermitian_norm
+from core.module import CliffordModule
 from experiments._lib import (
     apply_residual_block,
     build_visualization_metadata,
@@ -72,7 +73,6 @@ from experiments._lib import (
     signature_metadata,
 )
 from layers import BladeSelector, CliffordLayerNorm, CliffordLinear
-from layers.primitives.base import CliffordModule
 from optimizers.riemannian import RiemannianAdam
 
 # ==============================================================================

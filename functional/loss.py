@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from core.metric import hermitian_grade_spectrum
-from layers.primitives.base import CliffordModule
+from core.module import CliffordModule
 
 
 class GeometricMSELoss(CliffordModule):

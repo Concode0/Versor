@@ -9,8 +9,7 @@ import torch
 import torch.nn as nn
 
 from core.algebra import CliffordAlgebra
-
-from .base import CliffordModule
+from core.module import CliffordModule
 
 
 class CliffordLayerNorm(CliffordModule):

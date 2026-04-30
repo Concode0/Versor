@@ -8,9 +8,9 @@
 import torch
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 from functional.activation import GeometricGELU
 
-from ..primitives.base import CliffordModule
 from ..primitives.linear import CliffordLinear
 from ..primitives.multi_rotor import MultiRotorLayer
 from ..primitives.normalization import CliffordLayerNorm

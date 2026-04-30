@@ -9,9 +9,9 @@ import torch
 import torch.nn as nn
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 
 from ..blocks.attention import GeometricProductAttention
-from ..primitives.base import CliffordModule
 from ..primitives.normalization import CliffordLayerNorm
 
 

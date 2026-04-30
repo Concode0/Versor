@@ -9,9 +9,9 @@ import torch
 import torch.nn as nn
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 
 from ..adapters.mother import EntropyGatedAttention
-from ..primitives.base import CliffordModule
 from ..primitives.normalization import CliffordLayerNorm
 from .attention import GeometricProductAttention
 from .multi_rotor_ffn import MultiRotorFFN

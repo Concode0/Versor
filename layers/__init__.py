@@ -3,12 +3,13 @@
 Organized into Primitives, Canonical Blocks, and Task-Specific Adapters.
 """
 
+from core.module import CliffordModule
+
 from .adapters.embedding import MultivectorEmbedding, RotaryBivectorPE
 from .adapters.mother import EntropyGatedAttention, MotherEmbedding, PhaseShiftHead
 from .blocks.attention import GeometricProductAttention
 from .blocks.multi_rotor_ffn import MultiRotorFFN
 from .blocks.transformer import GeometricTransformerBlock
-from .primitives.base import CliffordModule
 from .primitives.linear import CliffordLinear
 from .primitives.multi_rotor import MultiRotorLayer
 from .primitives.normalization import CliffordLayerNorm

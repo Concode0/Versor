@@ -9,8 +9,8 @@ import torch
 import torch.nn as nn
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 from layers import CliffordLinear, RotorLayer
-from layers.primitives.base import CliffordModule
 
 
 class RotorTCN(CliffordModule):

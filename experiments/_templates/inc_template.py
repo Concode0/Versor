@@ -50,6 +50,7 @@ from torch.utils.data import DataLoader, TensorDataset
 # Bootstrap project root so the file runs both via ``-m`` and as a bare script.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)))
 
+from core.module import CliffordModule
 from experiments._lib import (
     count_parameters,
     ensure_output_dir,
@@ -61,7 +62,6 @@ from experiments._lib import (
 )
 from functional.activation import GeometricGELU
 from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, RotorLayer
-from layers.primitives.base import CliffordModule
 from optimizers.riemannian import RiemannianAdam
 
 # ---------------------------------------------------------------------------

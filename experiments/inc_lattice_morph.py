@@ -51,6 +51,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pa
 from core.algebra import CliffordAlgebra
 from core.decomposition import ExpPolicy
 from core.metric import induced_norm
+from core.module import CliffordModule
 from experiments._lib import (
     build_visualization_metadata,
     ensure_output_dir,
@@ -60,7 +61,6 @@ from experiments._lib import (
     set_seed,
     signature_metadata,
 )
-from layers.primitives.base import CliffordModule
 from optimizers.riemannian import RiemannianAdam
 
 _DTYPE_MAP = {

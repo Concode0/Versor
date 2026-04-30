@@ -56,6 +56,7 @@ from torch.utils.data import DataLoader, TensorDataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 from experiments._lib import (
     RawDefaultsHelpFormatter,
     build_visualization_metadata,
@@ -69,7 +70,6 @@ from experiments._lib import (
     signature_metadata,
 )
 from layers import BladeSelector, CliffordLinear
-from layers.primitives.base import CliffordModule
 
 # ==============================================================================
 # Synthetic regime generators
