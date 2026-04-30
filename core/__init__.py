@@ -37,12 +37,14 @@ from .metric import (
     signature_trace_form,
 )
 from .multivector import Multivector
+from .partitioned_algebra import PartitionedCliffordAlgebra
 from .validation import check_channels, check_multivector
 
 __all__ = [
     # algebra
     "CliffordAlgebra",
     "Multivector",
+    "PartitionedCliffordAlgebra",
     # device / validation
     "DeviceConfig",
     "resolve_device",
