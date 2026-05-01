@@ -32,7 +32,8 @@ import torch.nn as nn
 from core.algebra import CliffordAlgebra
 from core.validation import check_multivector
 
-_MAX_LEFT_MATRIX_LEAF_N = 6
+_LOCAL_DENSE_LEAF_N = 4
+_DEFAULT_PRODUCT_CHUNK_SIZE = 64
 
 
 def _signature_for_range(p: int, q: int, r: int, start: int, width: int) -> tuple[int, int, int]:
@@ -107,6 +108,32 @@ class _PartitionSplit:
         return self.right_dims + self.left_dims
 
 
+@dataclass(frozen=True)
+class _ExpSettings:
+    """Resolved exponential dispatch settings for one algebra signature."""
+
+    regime: str
+    policy: object
+    fixed_iterations: int
+
+
+@dataclass(frozen=True)
+class _StructuralBuffers:
+    """Purely generated buffers plus dtype-derived scalar tolerances."""
+
+    buffers: tuple[tuple[str, torch.Tensor], ...]
+    eps: float
+    eps_sq: float
+
+
+@dataclass(frozen=True)
+class _ProductPlan:
+    """Runtime product chunk plan for one recursive node."""
+
+    right_pair_count: int
+    chunk_size: int
+
+
 def _partition_split(p: int, q: int, r: int) -> _PartitionSplit:
     """Return the single recursive split used by the partitioned algebra.
 
@@ -171,6 +198,106 @@ def _grade_index(n: int, device) -> torch.Tensor:
     return grades
 
 
+def _bit_range_mask(start: int, end: int) -> int:
+    """Return an integer bit mask covering ``[start, end)``."""
+    mask = 0
+    for bit in range(start, end):
+        mask |= 1 << bit
+    return mask
+
+
+def _vector_square(bit: int, p: int, q: int) -> float:
+    """Return the metric square of one basis vector."""
+    if bit < p:
+        return 1.0
+    if bit < p + q:
+        return -1.0
+    return 0.0
+
+
+def _resolve_exp_settings(
+    p: int,
+    q: int,
+    r: int,
+    dtype: torch.dtype,
+    exp_policy,
+    fixed_iterations: Optional[int],
+) -> _ExpSettings:
+    """Resolve signature-wide exponential policy without mutating a module."""
+    if p == 0 or q == 0:
+        regime = "elliptic"
+    elif p == 1 and q == 1 and r == 0:
+        regime = "hyperbolic"
+    else:
+        regime = "mixed"
+
+    from core.decomposition import ExpPolicy, resolve_fixed_iterations
+
+    policy = exp_policy if isinstance(exp_policy, ExpPolicy) else ExpPolicy(exp_policy)
+    iterations = (
+        int(fixed_iterations)
+        if fixed_iterations is not None
+        else resolve_fixed_iterations(policy, dtype, p + q + r)
+    )
+    return _ExpSettings(regime=regime, policy=policy, fixed_iterations=iterations)
+
+
+def _default_product_chunk_size(pair_count: int) -> int:
+    """Choose a memory-conscious right-pair chunk size."""
+    return max(1, min(pair_count, _DEFAULT_PRODUCT_CHUNK_SIZE))
+
+
+def _right_pair_count(right_n: int, right_r: int) -> int:
+    """Return the number of right basis pairs that survive the null metric."""
+    non_null_n = right_n - right_r
+    return (4**non_null_n) * (3**right_r)
+
+
+def _product_plan(right_n: int, right_r: int, requested_chunk_size: Optional[int]) -> _ProductPlan:
+    """Return the recursive product plan without allocating routing tables."""
+    right_pair_count = _right_pair_count(right_n, right_r)
+    chunk_size = (
+        _default_product_chunk_size(right_pair_count)
+        if requested_chunk_size is None
+        else max(1, int(requested_chunk_size))
+    )
+    return _ProductPlan(right_pair_count=right_pair_count, chunk_size=chunk_size)
+
+
+def _compact_surviving_basis_pairs(
+    compact_pair_indices: torch.Tensor,
+    n: int,
+    p: int,
+    q: int,
+    r: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Map compact mixed-radix pair indices to surviving basis-product pairs.
+
+    Non-null basis-vector bits have four states: absent, left only, right only,
+    or both. Null bits have only three active states because the ``both`` case
+    squares a null vector and annihilates the product.
+    """
+    right_a_indices = torch.zeros_like(compact_pair_indices)
+    right_b_indices = torch.zeros_like(compact_pair_indices)
+    quotient = compact_pair_indices
+    non_null_n = p + q
+
+    for bit in range(n):
+        if bit < non_null_n:
+            digit = quotient.remainder(4)
+            quotient = torch.div(quotient, 4, rounding_mode="floor")
+            right_a_indices = right_a_indices | ((digit & 1) << bit)
+            right_b_indices = right_b_indices | (((digit >> 1) & 1) << bit)
+        else:
+            digit = quotient.remainder(3)
+            quotient = torch.div(quotient, 3, rounding_mode="floor")
+            right_a_indices = right_a_indices | ((digit == 1).to(torch.long) << bit)
+            right_b_indices = right_b_indices | ((digit == 2).to(torch.long) << bit)
+
+    assert r == n - non_null_n
+    return right_a_indices, right_b_indices
+
+
 def _subalgebra_cache_key(
     p: int,
     q: int,
@@ -205,6 +332,7 @@ def _basis_product_signs(
     q: int,
     r: int,
     dtype: torch.dtype,
+    popcount: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """Return basis-product signs for equal-shaped bitmask index tensors.
 
@@ -214,7 +342,8 @@ def _basis_product_signs(
     annihilate products that repeat the same null basis vector.
     """
     n = p + q + r
-    popcount = _grade_index(n, indices_a.device)
+    if popcount is None:
+        popcount = _grade_index(n, indices_a.device)
 
     # Reordering ``A`` basis vectors past lower-numbered ``B`` basis vectors
     # gives the anticommutation sign.
@@ -231,21 +360,185 @@ def _basis_product_signs(
     )
 
     # Repeated negative basis vectors square to -1.
-    negative_mask = 0
-    for bit in range(p, p + q):
-        negative_mask |= 1 << bit
+    negative_mask = _bit_range_mask(p, p + q)
     negative_intersection = indices_a & indices_b & negative_mask
     negative_count = popcount[negative_intersection]
     sign = torch.where(negative_count % 2 == 0, sign, -sign)
 
     if r > 0:
         # Repeated null basis vectors square to 0, annihilating the term.
-        null_mask = 0
-        for bit in range(p + q, n):
-            null_mask |= 1 << bit
+        null_mask = _bit_range_mask(p + q, n)
         sign = torch.where((indices_a & indices_b & null_mask) == 0, sign, torch.zeros_like(sign))
 
     return sign
+
+
+def _involution_buffers(
+    grade_index: torch.Tensor,
+    dtype: torch.dtype,
+    device,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return reversion, grade-involution, and Clifford-conjugation signs."""
+    rev_signs = ((-1.0) ** (grade_index * (grade_index - 1) // 2)).to(dtype=dtype)
+    involution_signs = torch.where(
+        grade_index % 2 == 0,
+        torch.ones((), dtype=dtype, device=device),
+        -torch.ones((), dtype=dtype, device=device),
+    )
+    conj_signs = (involution_signs * rev_signs).to(dtype=dtype)
+    return rev_signs, involution_signs, conj_signs
+
+
+def _basis_square_metric_signs(
+    basis_indices: torch.Tensor,
+    grade_index: torch.Tensor,
+    p: int,
+    q: int,
+    r: int,
+    dtype: torch.dtype,
+    device,
+) -> torch.Tensor:
+    """Return the metric-only part of ``e_I * e_I`` for every basis blade."""
+    negative_mask = _bit_range_mask(p, p + q)
+    negative_count = grade_index[basis_indices & negative_mask]
+    metric_signs = torch.where(
+        negative_count % 2 == 0,
+        torch.ones((), dtype=dtype, device=device),
+        -torch.ones((), dtype=dtype, device=device),
+    )
+
+    if r > 0:
+        null_mask = _bit_range_mask(p + q, p + q + r)
+        metric_signs = torch.where(
+            (basis_indices & null_mask) == 0,
+            metric_signs,
+            torch.zeros_like(metric_signs),
+        )
+
+    return metric_signs
+
+
+def _pseudoscalar_buffers(
+    basis_indices: torch.Tensor,
+    p: int,
+    q: int,
+    r: int,
+    dtype: torch.dtype,
+    popcount: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return source permutation and signs for right multiplication by ``I``."""
+    pseudoscalar_index = basis_indices.numel() - 1
+    ps_source = basis_indices ^ pseudoscalar_index
+    ps_target = torch.full_like(ps_source, pseudoscalar_index)
+    ps_signs = _basis_product_signs(ps_source, ps_target, p, q, r, dtype, popcount=popcount)
+    return ps_source, ps_signs
+
+
+def _bivector_buffers(
+    n: int,
+    p: int,
+    q: int,
+    grade_index: torch.Tensor,
+    dtype: torch.dtype,
+    device,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return bivector indices, squared scalars, and right-contraction action."""
+    if n < 2:
+        return (
+            torch.zeros(0, dtype=torch.long, device=device),
+            torch.zeros(0, dtype=dtype, device=device),
+            torch.zeros(0, n, n, dtype=dtype, device=device),
+        )
+
+    bivector_indices = [blade_index for blade_index in range(1 << n) if blade_index.bit_count() == 2]
+    bv_indices = torch.tensor(bivector_indices, dtype=torch.long, device=device)
+    bv_sq_scalar = torch.zeros(len(bv_indices), dtype=dtype, device=device)
+    rc_action = torch.zeros(len(bv_indices), n, n, dtype=dtype, device=device)
+
+    for bivector_position, blade_index in enumerate(bv_indices.tolist()):
+        active_bits = [bit for bit in range(n) if blade_index & (1 << bit)]
+        if len(active_bits) != 2:
+            continue
+        first_bit, second_bit = active_bits
+        first_square = _vector_square(first_bit, p, q)
+        second_square = _vector_square(second_bit, p, q)
+        bv_sq_scalar[bivector_position] = -first_square * second_square
+        rc_action[bivector_position, first_bit, second_bit] = second_square
+        rc_action[bivector_position, second_bit, first_bit] = -first_square
+
+    return bv_indices, bv_sq_scalar, rc_action
+
+
+def _left_contraction_grade_buffers(n: int, device) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return compact grade-pair dispatch vectors for left contraction."""
+    grade_pairs = [
+        (grade_a, grade_b, grade_b - grade_a)
+        for grade_a in range(n + 1)
+        for grade_b in range(grade_a, n + 1)
+    ]
+    lc_grade_a, lc_grade_b, lc_grade_result = zip(*grade_pairs)
+    return (
+        torch.tensor(lc_grade_a, dtype=torch.long, device=device),
+        torch.tensor(lc_grade_b, dtype=torch.long, device=device),
+        torch.tensor(lc_grade_result, dtype=torch.long, device=device),
+    )
+
+
+def _product_pair_weights(dtype: torch.dtype, device) -> torch.Tensor:
+    """Return AB/BA linear-combination weights for common binary products."""
+    return torch.tensor(
+        [
+            [0.5, -0.5],
+            [0.5, 0.5],
+            [1.0, -1.0],
+            [1.0, 1.0],
+        ],
+        dtype=dtype,
+        device=device,
+    )
+
+
+def _structural_buffers(p: int, q: int, r: int, device, dtype: torch.dtype) -> _StructuralBuffers:
+    """Build all linear-size structural tensors without mutating a module."""
+    n = p + q + r
+    dim = 2**n
+    basis_indices = torch.arange(dim, dtype=torch.long, device=device)
+    grade_index = _grade_index(n, device)
+    grade_values = torch.arange(n + 1, dtype=torch.long, device=device)
+
+    rev_signs, involution_signs, conj_signs = _involution_buffers(grade_index, dtype, device)
+    metric_signs = _basis_square_metric_signs(basis_indices, grade_index, p, q, r, dtype, device)
+    cayley_diag = rev_signs * metric_signs
+    ps_source, ps_signs = _pseudoscalar_buffers(basis_indices, p, q, r, dtype, grade_index)
+    bv_indices, bv_sq_scalar, rc_action = _bivector_buffers(n, p, q, grade_index, dtype, device)
+    lc_grade_a, lc_grade_b, lc_grade_result = _left_contraction_grade_buffers(n, device)
+    g1_indices = (1 << torch.arange(n, device=device)).long()
+
+    finfo = torch.finfo(dtype)
+    return _StructuralBuffers(
+        buffers=(
+            ("grade_index", grade_index),
+            ("_grade_values", grade_values),
+            ("rev_signs", rev_signs),
+            ("_involution_signs", involution_signs),
+            ("conj_signs", conj_signs),
+            ("_cayley_diag", cayley_diag),
+            ("_norm_sq_signs", (rev_signs * cayley_diag).clone()),
+            ("_hermitian_signs", (conj_signs * cayley_diag).clone()),
+            ("_ps_source", ps_source),
+            ("_ps_signs", ps_signs),
+            ("_bv_indices", bv_indices),
+            ("bv_sq_scalar", bv_sq_scalar),
+            ("rc_action", rc_action),
+            ("_g1_indices", g1_indices),
+            ("_lc_grade_a", lc_grade_a),
+            ("_lc_grade_b", lc_grade_b),
+            ("_lc_grade_result", lc_grade_result),
+            ("_product_pair_weights", _product_pair_weights(dtype, device)),
+        ),
+        eps=float(finfo.eps),
+        eps_sq=float(finfo.eps**2),
+    )
 
 
 class _BasisPermutation(nn.Module):
@@ -361,8 +654,10 @@ class PartitionedCliffordAlgebra(nn.Module):
         device (str or torch.device, optional): Device for generated buffers.
         dtype (torch.dtype, optional): Floating-point dtype for sign buffers and
             dense leaf algebras.
-        leaf_n (int, optional): Maximum dimension handled by dense
-            ``CliffordAlgebra`` leaves.
+        leaf_n (int, optional): Maximum basis-vector count handled by local
+            leaves. The default targets ``2**leaf_n == 16`` coefficients so
+            deep-learning products use small dense kernels and indexed global
+            merge routing.
         product_chunk_size (int, optional): Number of right-basis product pairs
             processed per recursive chunk. ``None`` chooses a memory-conscious
             default from the node shape.
@@ -380,7 +675,7 @@ class PartitionedCliffordAlgebra(nn.Module):
         r: int = 0,
         device="cuda",
         dtype: torch.dtype = torch.float32,
-        leaf_n: int = 6,
+        leaf_n: int = _LOCAL_DENSE_LEAF_N,
         product_chunk_size: Optional[int] = None,
         exp_policy: str = "balanced",
         fixed_iterations: Optional[int] = None,
@@ -394,6 +689,27 @@ class PartitionedCliffordAlgebra(nn.Module):
         assert r >= 0, f"r must be non-negative, got {r}"
         assert leaf_n >= 1, f"leaf_n must be >= 1, got {leaf_n}"
 
+        self._init_signature(p, q, r, leaf_n, product_chunk_size, accumulation_dtype)
+        self._init_exp_settings(dtype, exp_policy, fixed_iterations)
+        self._init_structural_buffers(device, dtype)
+
+        if self.n <= leaf_n:
+            self._init_leaf_node(device, dtype)
+            return
+
+        subalgebra_cache = {} if _subalgebra_cache is None else _subalgebra_cache
+        self._init_recursive_node(device, dtype, subalgebra_cache)
+
+    def _init_signature(
+        self,
+        p: int,
+        q: int,
+        r: int,
+        leaf_n: int,
+        product_chunk_size: Optional[int],
+        accumulation_dtype: Optional[torch.dtype],
+    ) -> None:
+        """Store constructor inputs that define this algebra node."""
         self.p, self.q, self.r = p, q, r
         self.n = p + q + r
         self.dim = 2**self.n
@@ -401,157 +717,84 @@ class PartitionedCliffordAlgebra(nn.Module):
         self.product_chunk_size = product_chunk_size
         self.accumulation_dtype = accumulation_dtype
 
-        # Exp regime: dispatch at init. The branch is signature-wide, so it can
-        # remain a Python branch without causing data-dependent graph breaks.
-        if p == 0 or q == 0:
-            self._exp_regime = "elliptic"
-        elif p == 1 and q == 1 and r == 0:
-            self._exp_regime = "hyperbolic"
-        else:
-            self._exp_regime = "mixed"
-
-        # Exp policy: controls the decomposition iteration budget used by
-        # compiled-safe bivector exponentials.
-        from core.decomposition import ExpPolicy, resolve_fixed_iterations
-
-        self._exp_policy = exp_policy if isinstance(exp_policy, ExpPolicy) else ExpPolicy(exp_policy)
-
-        self._exp_fixed_iterations: int = (
-            int(fixed_iterations)
-            if fixed_iterations is not None
-            else resolve_fixed_iterations(self._exp_policy, dtype, self.n)
+    def _init_exp_settings(self, dtype: torch.dtype, exp_policy, fixed_iterations: Optional[int]) -> None:
+        """Attach resolved exponential settings to this node."""
+        settings = _resolve_exp_settings(
+            self.p,
+            self.q,
+            self.r,
+            dtype,
+            exp_policy,
+            fixed_iterations,
         )
+        self._exp_regime = settings.regime
+        self._exp_policy = settings.policy
+        self._exp_fixed_iterations = settings.fixed_iterations
 
-        if _subalgebra_cache is None:
-            _subalgebra_cache = {}
-
-        grade_index = _grade_index(self.n, device)
-        self.register_buffer("grade_index", grade_index, persistent=False)
-        self.register_buffer(
-            "_grade_values",
-            torch.arange(self.n + 1, dtype=torch.long, device=device),
-            persistent=False,
+    def _init_leaf_node(self, device, dtype: torch.dtype) -> None:
+        """Configure a leaf node backed by the dense local Clifford kernel."""
+        self.basis_permutation = _BasisPermutation(tuple(range(self.n)), device)
+        self.core = CliffordAlgebra(
+            self.p,
+            self.q,
+            self.r,
+            device=device,
+            dtype=dtype,
+            exp_policy=self._exp_policy,
+            fixed_iterations=self._exp_fixed_iterations,
         )
+        self.left_sub = None
+        self.right_sub = None
+        self.left_n = 0
+        self.right_n = 0
+        self.left_dim = 0
+        self.right_dim = 0
+        self._right_pair_count = 0
+        self._product_chunk_size = 0
+        self._right_dims = ()
+        self._left_dims = ()
 
-        self._init_structural_buffers(device, dtype)
+    def _init_recursive_node(self, device, dtype: torch.dtype, subalgebra_cache: dict) -> None:
+        """Configure split layout, child modules, and runtime product planning."""
+        split = _partition_split(self.p, self.q, self.r)
+        self._init_split_layout(split, device)
+        self.core = None
+        self.left_sub, self.right_sub = self._create_child_subalgebras(split, device, dtype, subalgebra_cache)
+        self._init_product_plan()
 
-        # Leaf nodes delegate to the existing dense Cayley-table engine.
-        if self.n <= leaf_n:
-            # Leaves operate in public order and therefore use the identity
-            # permutation. Keeping ``basis_permutation`` present on every node
-            # lets product code treat leaves and recursive nodes uniformly.
-            self.basis_permutation = _BasisPermutation(tuple(range(self.n)), device)
-            self.core = CliffordAlgebra(
-                p,
-                q,
-                r,
-                device=device,
-                dtype=dtype,
-                exp_policy=self._exp_policy,
-                fixed_iterations=self._exp_fixed_iterations,
-            )
-            self._init_leaf_product_buffers(device, dtype)
-            self.left_sub = None
-            self.right_sub = None
-            self.left_n = 0
-            self.right_n = 0
-            self.left_dim = 0
-            self.right_dim = 0
-            self._right_pair_count = 0
-            self._product_chunk_size = 0
-            self._right_pair_full = False
-            self._has_sparse_right_interaction = False
-            self._right_dims = ()
-            self._left_dims = ()
-            return
+    def _init_split_layout(self, split: _PartitionSplit, device) -> None:
+        """Store recursive split shape and basis permutation."""
+        assert sorted(split.split_dims) == list(range(self.n))
 
-        split = _partition_split(p, q, r)
-        right_signature = split.right_signature
-        left_signature = split.left_signature
-
-        # The split order keeps right-child public coordinates in the low
-        # internal bits and left-child public coordinates in the high bits:
-        # split_index = (left_index << right_n) | right_index.
-        split_order_dims = split.split_dims
-        assert sorted(split_order_dims) == list(range(self.n))
-
-        right_n = len(split.right_dims)
-        left_n = len(split.left_dims)
-        self.left_n = left_n
-        self.right_n = right_n
-        self.left_dim = 2**left_n
-        self.right_dim = 2**right_n
+        self.left_n = len(split.left_dims)
+        self.right_n = len(split.right_dims)
+        self.left_dim = 2**self.left_n
+        self.right_dim = 2**self.right_n
         self._right_dims = split.right_dims
         self._left_dims = split.left_dims
-        self.basis_permutation = _BasisPermutation(split_order_dims, device)
+        self.basis_permutation = _BasisPermutation(split.split_dims, device)
 
-        self.core = None
-        self.left_sub = self._get_or_create_subalgebra(
-            *left_signature,
-            device=device,
-            dtype=dtype,
-            leaf_n=leaf_n,
-            product_chunk_size=product_chunk_size,
-            exp_policy=self._exp_policy,
-            fixed_iterations=self._exp_fixed_iterations,
-            accumulation_dtype=accumulation_dtype,
-            subalgebra_cache=_subalgebra_cache,
-        )
-        self.right_sub = self._get_or_create_subalgebra(
-            *right_signature,
-            device=device,
-            dtype=dtype,
-            leaf_n=leaf_n,
-            product_chunk_size=product_chunk_size,
-            exp_policy=self._exp_policy,
-            fixed_iterations=self._exp_fixed_iterations,
-            accumulation_dtype=accumulation_dtype,
-            subalgebra_cache=_subalgebra_cache,
-        )
-
-        # A left factor from A must cross a right factor from B:
-        # (L_A R_A)(L_B R_B) = (-1)^(grade(L_A) grade(R_B)) (L_A L_B)(R_A R_B).
-        left_grade_by_index = _grade_index(left_n, device)
-        right_grade_by_index = _grade_index(right_n, device)
-        bridge_signs = torch.where(
-            (right_grade_by_index.unsqueeze(1) * left_grade_by_index.unsqueeze(0)) % 2 == 0,
-            torch.ones((), device=device, dtype=torch.int8),
-            -torch.ones((), device=device, dtype=torch.int8),
-        )
-        self.register_buffer("bridge_signs", bridge_signs, persistent=False)
-
-        self._init_product_buffers()
-
-    def _init_leaf_product_buffers(self, device, dtype: torch.dtype) -> None:
-        """Precompute a small left-multiplication tensor for dense leaf GP.
-
-        ``CliffordAlgebra.geometric_product`` gathers ``B[..., cayley_indices]``.
-        In partitioned products, leaves receive large leading dimensions from
-        right-pair batching, so that gather became the dominant allocation in
-        profiles. For small leaves we instead build
-        ``left_gp_mats[i, j, k]`` such that:
-
-        ``(basis_i * basis_j)`` contributes ``left_gp_mats[i, j, k]`` to
-        output basis ``k``.
-
-        Runtime then contracts ``A`` into a left-multiplication matrix and
-        applies it to ``B``. The tensor is ``O(dim^3)``, so large user-forced
-        leaves fall back to the dense core kernel rather than allocating an
-        unreasonable table.
-        """
-        if self.n > _MAX_LEFT_MATRIX_LEAF_N:
-            self.register_buffer("_leaf_left_gp_mats", torch.empty(0, dtype=dtype, device=device), persistent=False)
-            return
-
-        left_gp_mats = torch.zeros(self.dim, self.dim, self.dim, dtype=dtype, device=device)
-        for left_index in range(self.dim):
-            for output_index in range(self.dim):
-                right_index = int(self.core.cayley_indices[left_index, output_index].item())
-                left_gp_mats[left_index, right_index, output_index] = self.core.gp_signs[
-                    left_index,
-                    output_index,
-                ]
-        self.register_buffer("_leaf_left_gp_mats", left_gp_mats, persistent=False)
+    def _create_child_subalgebras(
+        self,
+        split: _PartitionSplit,
+        device,
+        dtype: torch.dtype,
+        subalgebra_cache: dict,
+    ) -> tuple["PartitionedCliffordAlgebra", "PartitionedCliffordAlgebra"]:
+        """Return cached left and right child modules for a recursive node."""
+        child_kwargs = {
+            "device": device,
+            "dtype": dtype,
+            "leaf_n": self.leaf_n,
+            "product_chunk_size": self.product_chunk_size,
+            "exp_policy": self._exp_policy,
+            "fixed_iterations": self._exp_fixed_iterations,
+            "accumulation_dtype": self.accumulation_dtype,
+            "subalgebra_cache": subalgebra_cache,
+        }
+        left_sub = self._get_or_create_subalgebra(*split.left_signature, **child_kwargs)
+        right_sub = self._get_or_create_subalgebra(*split.right_signature, **child_kwargs)
+        return left_sub, right_sub
 
     @classmethod
     def _get_or_create_subalgebra(
@@ -607,238 +850,27 @@ class PartitionedCliffordAlgebra(nn.Module):
         return subalgebra
 
     def _init_structural_buffers(self, device, dtype: torch.dtype) -> None:
-        """Precompute static tables that scale linearly in basis dimension.
+        """Register linear-size structural tensors generated by pure builders."""
+        structural = _structural_buffers(self.p, self.q, self.r, device, dtype)
+        self._register_structural_buffers(structural.buffers)
+        self.eps = structural.eps
+        self.eps_sq = structural.eps_sq
 
-        Recursive nodes intentionally avoid full ``[dim, dim]`` Cayley tables,
-        but many unary operations need only a per-basis sign or index vector.
-        These buffers mirror the dense ``CliffordAlgebra`` public contract while
-        keeping memory usage ``O(dim)``.
+    def _register_structural_buffers(self, buffers: tuple[tuple[str, torch.Tensor], ...]) -> None:
+        """Attach generated tensors as non-persistent buffers."""
+        for name, tensor in buffers:
+            self.register_buffer(name, tensor, persistent=False)
+
+    def _init_product_plan(self) -> None:
+        """Initialize recursive product shape planning without baked routing.
+
+        Right-pair indices, metric signs, and bridge signs are derived per
+        product range at runtime. This keeps the
+        recursive kernel from carrying signature-specific pair tables.
         """
-        # Reversion sign: reverse a grade-k blade by k(k-1)/2 swaps.
-        rev_signs = ((-1.0) ** (self.grade_index * (self.grade_index - 1) // 2)).to(
-            dtype=dtype,
-        )
-
-        # Main involution and Clifford conjugation are diagonal operations in
-        # the canonical basis.
-        involution_signs = torch.where(
-            self.grade_index % 2 == 0,
-            torch.ones((), dtype=dtype, device=device),
-            -torch.ones((), dtype=dtype, device=device),
-        )
-        conj_signs = (involution_signs * rev_signs).to(dtype=dtype)
-
-        self.register_buffer("rev_signs", rev_signs, persistent=False)
-        self.register_buffer("_involution_signs", involution_signs, persistent=False)
-        self.register_buffer("conj_signs", conj_signs, persistent=False)
-
-        # ``cayley_diag[i]`` is the scalar sign of basis_i * reverse(basis_i).
-        # It is enough to implement norm and Hermitian forms without a full
-        # Cayley table.
-        basis_indices = torch.arange(self.dim, dtype=torch.long, device=device)
-        negative_mask = 0
-        for bit in range(self.p, self.p + self.q):
-            negative_mask |= 1 << bit
-        negative_count = self.grade_index[basis_indices & negative_mask]
-        metric_signs = torch.where(
-            negative_count % 2 == 0,
-            torch.ones((), dtype=dtype, device=device),
-            -torch.ones((), dtype=dtype, device=device),
-        )
-        if self.r > 0:
-            null_mask = 0
-            for bit in range(self.p + self.q, self.n):
-                null_mask |= 1 << bit
-            metric_signs = torch.where(
-                (basis_indices & null_mask) == 0,
-                metric_signs,
-                torch.zeros_like(metric_signs),
-            )
-
-        cayley_diag = rev_signs * metric_signs
-        self.register_buffer("_cayley_diag", cayley_diag, persistent=False)
-        self.register_buffer("_norm_sq_signs", (rev_signs * cayley_diag).clone(), persistent=False)
-        self.register_buffer("_hermitian_signs", (conj_signs * cayley_diag).clone(), persistent=False)
-
-        # Multiplication by the pseudoscalar is also a fixed permutation/sign
-        # vector: x * I maps source basis ``i ^ I`` into target basis ``i``.
-        pseudoscalar_index = self.dim - 1
-        ps_source = basis_indices ^ pseudoscalar_index
-        ps_target = torch.full_like(ps_source, pseudoscalar_index)
-        ps_signs = _basis_product_signs(ps_source, ps_target, self.p, self.q, self.r, dtype)
-        self.register_buffer("_ps_source", ps_source, persistent=False)
-        self.register_buffer("_ps_signs", ps_signs, persistent=False)
-
-        if self.n >= 2:
-            bv_indices = (self.grade_index == 2).nonzero(as_tuple=False).squeeze(-1)
-            bv_sq_scalar = torch.zeros(len(bv_indices), dtype=dtype, device=device)
-            rc_action = torch.zeros(len(bv_indices), self.n, self.n, dtype=dtype, device=device)
-            for bivector_position, blade_index in enumerate(bv_indices.tolist()):
-                active_bits = [bit for bit in range(self.n) if blade_index & (1 << bit)]
-                if len(active_bits) != 2:
-                    continue
-                first_bit, second_bit = active_bits
-                first_square = self._vector_square(first_bit)
-                second_square = self._vector_square(second_bit)
-                bv_sq_scalar[bivector_position] = -first_square * second_square
-                rc_action[bivector_position, first_bit, second_bit] = second_square
-                rc_action[bivector_position, second_bit, first_bit] = -first_square
-        else:
-            bv_indices = torch.zeros(0, dtype=torch.long, device=device)
-            bv_sq_scalar = torch.zeros(0, dtype=dtype, device=device)
-            rc_action = torch.zeros(0, self.n, self.n, dtype=dtype, device=device)
-
-        self.register_buffer("_bv_indices", bv_indices, persistent=False)
-        self.register_buffer("bv_sq_scalar", bv_sq_scalar, persistent=False)
-        self.register_buffer("rc_action", rc_action, persistent=False)
-
-        g1_idx = (1 << torch.arange(self.n, device=device)).long()
-        self.register_buffer("_g1_indices", g1_idx, persistent=False)
-
-        # Left contraction keeps grade pairs (a, b) where a <= b and then
-        # projects the product to grade b-a.
-        lc_grade_a = []
-        lc_grade_b = []
-        lc_grade_result = []
-        for grade_a in range(self.n + 1):
-            for grade_b in range(grade_a, self.n + 1):
-                lc_grade_a.append(grade_a)
-                lc_grade_b.append(grade_b)
-                lc_grade_result.append(grade_b - grade_a)
-
-        self.register_buffer(
-            "_lc_grade_a",
-            torch.tensor(lc_grade_a, dtype=torch.long, device=device),
-            persistent=False,
-        )
-        self.register_buffer(
-            "_lc_grade_b",
-            torch.tensor(lc_grade_b, dtype=torch.long, device=device),
-            persistent=False,
-        )
-        self.register_buffer(
-            "_lc_grade_result",
-            torch.tensor(lc_grade_result, dtype=torch.long, device=device),
-            persistent=False,
-        )
-
-        # Common products are linear combinations of AB and BA. Rows encode:
-        # wedge, inner, commutator, anti-commutator.
-        product_weights = torch.tensor(
-            [
-                [0.5, -0.5],
-                [0.5, 0.5],
-                [1.0, -1.0],
-                [1.0, 1.0],
-            ],
-            dtype=dtype,
-            device=device,
-        )
-        self.register_buffer("_product_pair_weights", product_weights, persistent=False)
-
-        _finfo = torch.finfo(dtype)
-        self.eps: float = float(_finfo.eps)
-        self.eps_sq: float = float(_finfo.eps**2)
-
-    def _init_product_buffers(self) -> None:
-        """Precompute right-block product routing for recursive GP.
-
-        A recursive product sums over all right-child basis products:
-
-        ``(A_l,a * B_l,b)`` contributes to right result ``a ^ b`` with the
-        right-subalgebra metric sign and the bridge sign. The left products are
-        still computed recursively at runtime; these buffers only describe how
-        to select right blocks and merge them back.
-        """
-        right_indices = torch.arange(self.right_dim, device=self.device)
-        right_a_indices, right_b_indices = torch.meshgrid(right_indices, right_indices, indexing="ij")
-        right_a_indices = right_a_indices.reshape(-1)
-        right_b_indices = right_b_indices.reshape(-1)
-        right_result_indices = (right_a_indices ^ right_b_indices).long()
-
-        right_product_signs = _basis_product_signs(
-            right_a_indices,
-            right_b_indices,
-            self.right_sub.p,
-            self.right_sub.q,
-            self.right_sub.r,
-            torch.int8,
-        )
-
-        if self.right_sub.r == 0:
-            # Non-degenerate right algebras have no zero products, so
-            # pair_a/pair_b can be reconstructed from a linear range instead
-            # of stored as two extra ``right_dim ** 2`` buffers.
-            pair_count = self.right_dim * self.right_dim
-            right_product_signs = right_product_signs.reshape(-1)
-            self._right_pair_full = True
-            self.register_buffer("_right_pair_signs", right_product_signs, persistent=False)
-        else:
-            # Degenerate signatures have repeated null factors that produce
-            # zero. Store only nonzero right interactions so runtime never
-            # computes left products that will be discarded.
-            nonzero = right_product_signs != 0
-            right_a_pair_indices = right_a_indices[nonzero].long()
-            right_b_pair_indices = right_b_indices[nonzero].long()
-            right_result_indices = right_result_indices[nonzero].long()
-            right_product_signs = right_product_signs[nonzero]
-            pair_count = int(right_a_pair_indices.numel())
-
-            self._right_pair_full = False
-            self.register_buffer("_right_pair_a", right_a_pair_indices, persistent=False)
-            self.register_buffer("_right_pair_b", right_b_pair_indices, persistent=False)
-            self.register_buffer("_right_pair_result", right_result_indices, persistent=False)
-            self.register_buffer("_right_pair_signs", right_product_signs, persistent=False)
-
-        self._right_pair_count = pair_count
-        if self.product_chunk_size is None:
-            # Full-vectorize shallow nodes. Deeper nodes default to chunks so a
-            # high-dimensional product does not materialize all right-pair left
-            # products at once.
-            default_chunk = pair_count if self.left_n <= self.leaf_n else min(pair_count, 64)
-            self._product_chunk_size = max(1, default_chunk)
-        else:
-            self._product_chunk_size = max(1, int(self.product_chunk_size))
-
-        self._has_sparse_right_interaction = self._product_chunk_size >= self._right_pair_count
-        if self._has_sparse_right_interaction:
-            self._init_right_interaction_buffers(right_result_indices, right_product_signs)
-
-    def _init_right_interaction_buffers(
-        self,
-        right_result_indices: torch.Tensor,
-        right_product_signs: torch.Tensor,
-    ) -> None:
-        """Precompute sparse right-product routing from pair terms to result blocks."""
-        pair_columns = torch.arange(self._right_pair_count, dtype=torch.long, device=self.device)
-        interaction_indices = torch.stack((right_result_indices.long(), pair_columns))
-        interaction = torch.sparse_coo_tensor(
-            interaction_indices,
-            right_product_signs.to(dtype=self.dtype),
-            (self.right_dim, self._right_pair_count),
-            device=self.device,
-        ).coalesce()
-        self.register_buffer("_right_interaction", interaction, persistent=False)
-
-    @property
-    def _uses_basis_permutation(self) -> bool:
-        """Whether this node needs public/split basis conversion."""
-        return self.basis_permutation.uses_permutation
-
-    @property
-    def _to_split_basis(self) -> torch.Tensor:
-        """Public source indices for split-order coefficients."""
-        return self.basis_permutation.split_to_public
-
-    @property
-    def _to_public_basis(self) -> torch.Tensor:
-        """Split source indices for public-order coefficients."""
-        return self.basis_permutation.public_to_split
-
-    @property
-    def _split_basis_signs(self) -> torch.Tensor:
-        """Orientation signs indexed by split-order basis index."""
-        return self.basis_permutation.split_signs
+        plan = _product_plan(self.right_n, self.right_sub.r, self.product_chunk_size)
+        self._right_pair_count = plan.right_pair_count
+        self._product_chunk_size = plan.chunk_size
 
     def _to_split_order(self, mv: torch.Tensor) -> torch.Tensor:
         """Convert public canonical coefficients to this node's split order."""
@@ -848,13 +880,33 @@ class PartitionedCliffordAlgebra(nn.Module):
         """Convert split-order coefficients back to public canonical order."""
         return self.basis_permutation.to_public_order(mv)
 
-    def _vector_square(self, bit: int) -> float:
-        """Return ``e_bit ** 2`` from the global signature."""
-        if bit < self.p:
-            return 1.0
-        if bit < self.p + self.q:
-            return -1.0
-        return 0.0
+    def _bridge_signs_for_right_b(self, right_b_indices: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+        """Compute ``(-1) ** (grade(left_A) * grade(right_B))`` for a pair slice."""
+        right_grades = torch.index_select(self.right_sub.grade_index, 0, right_b_indices).unsqueeze(1)
+        left_grades = self.left_sub.grade_index.unsqueeze(0)
+        signs = torch.where(
+            (right_grades * left_grades) % 2 == 0,
+            torch.ones((), dtype=dtype, device=right_b_indices.device),
+            -torch.ones((), dtype=dtype, device=right_b_indices.device),
+        )
+        return signs
+
+    def _right_product_signs(
+        self,
+        right_a_indices: torch.Tensor,
+        right_b_indices: torch.Tensor,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        """Compute right-child basis-product signs for one runtime pair slice."""
+        return _basis_product_signs(
+            right_a_indices,
+            right_b_indices,
+            self.right_sub.p,
+            self.right_sub.q,
+            self.right_sub.r,
+            dtype,
+            popcount=self.right_sub.grade_index,
+        )
 
     @property
     def device(self):
@@ -1047,21 +1099,11 @@ class PartitionedCliffordAlgebra(nn.Module):
         output_dtype: torch.dtype,
         compute_dtype: torch.dtype,
     ) -> torch.Tensor:
-        """Compute a dense leaf product with the profiled small-leaf kernel."""
+        """Compute a dense leaf product with the local dense kernel."""
         A_compute = A.to(dtype=compute_dtype)
         B_compute = B.to(dtype=compute_dtype)
 
-        if self._leaf_left_gp_mats.numel() == 0:
-            result = self.core.geometric_product(A_compute, B_compute)
-        else:
-            left_gp_mats = self._leaf_left_gp_mats
-            if left_gp_mats.dtype != compute_dtype:
-                left_gp_mats = left_gp_mats.to(dtype=compute_dtype)
-
-            # left_matrices[..., j, k] = sum_i A[..., i] * sign(i,j,k).
-            # Multiplying B as a row vector then gives result[..., k].
-            left_matrices = torch.einsum("...i,ijk->...jk", A_compute, left_gp_mats)
-            result = torch.matmul(B_compute.unsqueeze(-2), left_matrices).squeeze(-2)
+        result = self.core.geometric_product(A_compute, B_compute)
 
         if result.dtype != output_dtype:
             result = result.to(dtype=output_dtype)
@@ -1099,19 +1141,8 @@ class PartitionedCliffordAlgebra(nn.Module):
             self.left_dim,
             self.right_dim,
         )
-        A_by_right_blade = A_by_left_then_right.transpose(-1, -2).contiguous()
-        B_by_right_blade = B_by_left_then_right.transpose(-1, -2).contiguous()
-
-        if self._product_chunk_size >= self._right_pair_count:
-            result_blocks = self._geometric_product_pair_range(
-                A_by_right_blade,
-                B_by_right_blade,
-                0,
-                self._right_pair_count,
-            )
-            output_shape = result_blocks.shape[:-2]
-            result = result_blocks.reshape(*output_shape, self.dim)
-            return self._to_public_order(result).to(dtype=output_dtype)
+        A_by_right_blade = A_by_left_then_right.transpose(-1, -2)
+        B_by_right_blade = B_by_left_then_right.transpose(-1, -2)
 
         result_blocks = None
         for start in range(0, self._right_pair_count, self._product_chunk_size):
@@ -1141,60 +1172,40 @@ class PartitionedCliffordAlgebra(nn.Module):
             right_product_signs,
         ) = self._right_product_slice(start, end)
 
+        if right_product_signs.numel() == 0:
+            batch_shape = torch.broadcast_shapes(A_by_right_blade.shape[:-2], B_by_right_blade.shape[:-2])
+            return A_by_right_blade.new_zeros(*batch_shape, self.left_dim, self.right_dim)
+
         A_terms = torch.index_select(A_by_right_blade, -2, right_a_indices)
         B_terms = torch.index_select(B_by_right_blade, -2, right_b_indices)
 
         # ``bridge_signs[right_b, left_a]`` depends on the left basis index of
         # each selected A term, so broadcasting over the final left_dim axis
         # attaches the sign before the recursive left product.
-        bridge_signs = torch.index_select(self.bridge_signs, 0, right_b_indices)
+        bridge_signs = self._bridge_signs_for_right_b(right_b_indices, A_terms.dtype)
         if bridge_signs.dtype != A_terms.dtype:
             bridge_signs = bridge_signs.to(dtype=A_terms.dtype)
         A_terms = A_terms * bridge_signs
 
         left_products = self.left_sub.geometric_product(A_terms, B_terms)
 
-        return self._merge_right_interactions(left_products, start, end, right_result_indices, right_product_signs)
+        return self._merge_right_interactions(left_products, right_result_indices, right_product_signs)
 
     def _merge_right_interactions(
         self,
         left_products: torch.Tensor,
-        start: int,
-        end: int,
         right_result_indices: torch.Tensor,
         right_product_signs: torch.Tensor,
     ) -> torch.Tensor:
         """Merge left products into ``[..., left_dim, right_dim]`` result blocks."""
-        if not self._use_sparse_right_interaction(start, end):
-            return self._merge_right_interactions_index_add(left_products, right_result_indices, right_product_signs)
+        if right_product_signs.numel() == 0:
+            return left_products.new_zeros(
+                *left_products.shape[:-2],
+                self.left_dim,
+                self.right_dim,
+            )
 
-        return self._merge_right_interactions_sparse(left_products)
-
-    def _use_sparse_right_interaction(self, start: int, end: int) -> bool:
-        """Return whether the static sparse interaction should handle this range."""
-        return (
-            self._has_sparse_right_interaction
-            and self.device.type == "cuda"
-            and start == 0
-            and end == self._right_pair_count
-        )
-
-    def _merge_right_interactions_sparse(self, left_products: torch.Tensor) -> torch.Tensor:
-        """Merge a full right-pair range with the baked sparse interaction matrix."""
-        if not self._has_sparse_right_interaction:
-            raise RuntimeError("sparse right interaction is only available for full-pair product nodes")
-        pair_count = self._right_pair_count
-        interaction = self._right_interaction_tensor(left_products.dtype)
-        batch_shape = left_products.shape[:-2]
-        # sparse.mm expects [right_dim, pair_count] @ [pair_count, batch*left_dim].
-        flat_terms = left_products.transpose(-1, -2).reshape(-1, pair_count)
-        merged = torch.sparse.mm(interaction, flat_terms.transpose(0, 1))
-        return merged.transpose(0, 1).reshape(*batch_shape, self.left_dim, self.right_dim)
-
-    def _right_interaction_tensor(self, dtype: torch.dtype) -> torch.Tensor:
-        """Return the full sparse interaction tensor in the requested dtype."""
-        interaction = self._right_interaction
-        return interaction if interaction.dtype == dtype else interaction.to(dtype=dtype)
+        return self._merge_right_interactions_index_add(left_products, right_result_indices, right_product_signs)
 
     def _merge_right_interactions_index_add(
         self,
@@ -1202,7 +1213,7 @@ class PartitionedCliffordAlgebra(nn.Module):
         right_result_indices: torch.Tensor,
         right_product_signs: torch.Tensor,
     ) -> torch.Tensor:
-        """Fallback merge for devices without sparse COO matmul support."""
+        """Merge right-pair contributions with direct indexed accumulation."""
         signed_products = left_products.transpose(-1, -2) * right_product_signs.to(dtype=left_products.dtype)
         result_blocks = left_products.new_zeros(
             *left_products.shape[:-2],
@@ -1230,27 +1241,30 @@ class PartitionedCliffordAlgebra(nn.Module):
         start: int,
         end: int,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Return right-block routing tensors for pair range ``[start, end)``.
+        """Derive right-block routing tensors for pair range ``[start, end)``.
 
         Returns:
             tuple: ``(right_a_indices, right_b_indices, right_result_indices,
             right_product_signs)``. Each position describes one right basis-pair
             contribution in the recursive product.
         """
-        if self._right_pair_full:
-            linear_pair_indices = torch.arange(start, end, dtype=torch.long, device=self.device)
-            right_a_indices = torch.div(linear_pair_indices, self.right_dim, rounding_mode="floor")
-            right_b_indices = linear_pair_indices.remainder(self.right_dim)
-            right_result_indices = right_a_indices ^ right_b_indices
-            right_product_signs = self._right_pair_signs.reshape(-1)[start:end]
-            return right_a_indices, right_b_indices, right_result_indices, right_product_signs
+        pair_indices = torch.arange(start, end, dtype=torch.long, device=self.device)
+        if self.right_sub.r == 0:
+            right_a_indices = torch.div(pair_indices, self.right_dim, rounding_mode="floor")
+            right_b_indices = pair_indices.remainder(self.right_dim)
+        else:
+            right_a_indices, right_b_indices = _compact_surviving_basis_pairs(
+                pair_indices,
+                self.right_n,
+                self.right_sub.p,
+                self.right_sub.q,
+                self.right_sub.r,
+            )
 
-        return (
-            self._right_pair_a[start:end],
-            self._right_pair_b[start:end],
-            self._right_pair_result[start:end],
-            self._right_pair_signs[start:end],
-        )
+        right_result_indices = right_a_indices ^ right_b_indices
+        right_product_signs = self._right_product_signs(right_a_indices, right_b_indices, torch.int8)
+
+        return right_a_indices, right_b_indices, right_result_indices, right_product_signs
 
     def grade_projection(self, mv: torch.Tensor, grade: int) -> torch.Tensor:
         """Project a multivector onto a grade using the same mask contract as the core algebra."""
