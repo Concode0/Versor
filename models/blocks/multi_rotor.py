@@ -9,9 +9,9 @@ import torch
 import torch.nn as nn
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 from functional.activation import GeometricGELU
 from layers import CliffordLinear, MultiRotorLayer
-from layers.primitives.base import CliffordModule
 
 
 class MultiRotorModel(CliffordModule):

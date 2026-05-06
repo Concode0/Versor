@@ -57,6 +57,7 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 from core.metric import hermitian_grade_spectrum, hermitian_inner_product
+from core.module import CliffordModule
 from experiments._lib import (
     build_visualization_metadata,
     count_parameters,
@@ -72,7 +73,6 @@ from experiments._lib import (
 )
 from functional.activation import GeometricGELU
 from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, RotorLayer
-from layers.primitives.base import CliffordModule
 from optimizers.riemannian import RiemannianAdam
 
 # ---------------------------------------------------------------------------

@@ -36,6 +36,32 @@ _LOCAL_DENSE_LEAF_N = 4
 _DEFAULT_PRODUCT_CHUNK_SIZE = 64
 
 
+@dataclass(frozen=True)
+class _Signature:
+    """Small immutable signature value used by split planning helpers."""
+
+    p: int
+    q: int
+    r: int
+
+    @property
+    def n(self) -> int:
+        return self.p + self.q + self.r
+
+    def as_tuple(self) -> tuple[int, int, int]:
+        return self.p, self.q, self.r
+
+    def subtract(self, other: "_Signature") -> "_Signature":
+        return _Signature(self.p - other.p, self.q - other.q, self.r - other.r)
+
+    def scaled_tile(self, tile_count: int, selected_tiles: int) -> "_Signature":
+        return _Signature(
+            self.p // tile_count * selected_tiles,
+            self.q // tile_count * selected_tiles,
+            self.r // tile_count * selected_tiles,
+        )
+
+
 def _signature_for_range(p: int, q: int, r: int, start: int, width: int) -> tuple[int, int, int]:
     """Return ``(p, q, r)`` counts covered by a contiguous public bit range."""
     end = start + width
@@ -61,6 +87,22 @@ def _signature_gcd(p: int, q: int, r: int) -> int:
     for count in counts[1:]:
         result = gcd(result, count)
     return result
+
+
+def _signature_prefix_dims_for_split(
+    signature: _Signature,
+    right_signature: _Signature,
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """Return right/left public bit positions for a prefix-by-signature split."""
+    right_dims, left_dims = _signature_prefix_dims(
+        signature.p,
+        signature.q,
+        signature.r,
+        right_signature.p,
+        right_signature.q,
+        right_signature.r,
+    )
+    return tuple(right_dims), tuple(left_dims)
 
 
 def _signature_prefix_dims(
@@ -134,6 +176,23 @@ class _ProductPlan:
     chunk_size: int
 
 
+@dataclass(frozen=True)
+class _RightProductSlice:
+    """Runtime routing tensors for one range of right-basis products."""
+
+    right_a_indices: torch.Tensor
+    right_b_indices: torch.Tensor
+    right_result_indices: torch.Tensor
+    right_product_signs: torch.Tensor
+
+    def __iter__(self):
+        """Preserve tuple-unpack compatibility for older private tests."""
+        yield self.right_a_indices
+        yield self.right_b_indices
+        yield self.right_result_indices
+        yield self.right_product_signs
+
+
 def _partition_split(p: int, q: int, r: int) -> _PartitionSplit:
     """Return the single recursive split used by the partitioned algebra.
 
@@ -141,47 +200,63 @@ def _partition_split(p: int, q: int, r: int) -> _PartitionSplit:
     same local signature and can share one module instance. Signatures without
     repeatable tiles fall back to a balanced contiguous split.
     """
-    n = p + q + r
+    signature = _Signature(p, q, r)
+    tiled_split = _tiled_signature_split(signature)
+    if tiled_split is not None:
+        return tiled_split
 
-    tile_count = _signature_gcd(p, q, r)
-    if tile_count > 1:
-        tile_p = p // tile_count
-        tile_q = q // tile_count
-        tile_r = r // tile_count
-        right_tile_count = tile_count // 2
+    return _balanced_contiguous_split(signature)
 
-        right_p = tile_p * right_tile_count
-        right_q = tile_q * right_tile_count
-        right_r = tile_r * right_tile_count
 
-        right_dims, left_dims = _signature_prefix_dims(
-            p,
-            q,
-            r,
-            right_p,
-            right_q,
-            right_r,
-        )
-        left_p = p - right_p
-        left_q = q - right_q
-        left_r = r - right_r
-        return _PartitionSplit(
-            right_signature=(right_p, right_q, right_r),
-            left_signature=(left_p, left_q, left_r),
-            right_dims=tuple(right_dims),
-            left_dims=tuple(left_dims),
-        )
+def _tiled_signature_split(signature: _Signature) -> Optional[_PartitionSplit]:
+    """Split repeated signature tiles so identical child trees can be shared."""
+    tile_count = _signature_gcd(*signature.as_tuple())
+    if tile_count <= 1:
+        return None
 
-    right_width = n // 2
-    left_width = n - right_width
-    right_p, right_q, right_r = _signature_for_range(p, q, r, 0, right_width)
-    left_p, left_q, left_r = _signature_for_range(p, q, r, right_width, left_width)
+    right_tile_count = tile_count // 2
+    right_signature = signature.scaled_tile(tile_count, right_tile_count)
+    left_signature = signature.subtract(right_signature)
+    right_dims, left_dims = _signature_prefix_dims_for_split(signature, right_signature)
+
+    return _build_partition_split(
+        right_signature=right_signature,
+        left_signature=left_signature,
+        right_dims=right_dims,
+        left_dims=left_dims,
+    )
+
+
+def _balanced_contiguous_split(signature: _Signature) -> _PartitionSplit:
+    """Split a signature into balanced contiguous public bit ranges."""
+    right_width = signature.n // 2
+    left_width = signature.n - right_width
+    right_signature = _Signature(*_signature_for_range(*signature.as_tuple(), 0, right_width))
+    left_signature = _Signature(*_signature_for_range(*signature.as_tuple(), right_width, left_width))
     right_dims = tuple(range(right_width))
-    left_dims = tuple(range(right_width, n))
+    left_dims = tuple(range(right_width, signature.n))
 
+    return _build_partition_split(
+        right_signature=right_signature,
+        left_signature=left_signature,
+        right_dims=right_dims,
+        left_dims=left_dims,
+    )
+
+
+def _build_partition_split(
+    *,
+    right_signature: _Signature,
+    left_signature: _Signature,
+    right_dims: tuple[int, ...],
+    left_dims: tuple[int, ...],
+) -> _PartitionSplit:
+    """Create a validated split plan."""
+    assert right_signature.n == len(right_dims)
+    assert left_signature.n == len(left_dims)
     return _PartitionSplit(
-        right_signature=(right_p, right_q, right_r),
-        left_signature=(left_p, left_q, left_r),
+        right_signature=right_signature.as_tuple(),
+        left_signature=left_signature.as_tuple(),
         right_dims=right_dims,
         left_dims=left_dims,
     )
@@ -235,9 +310,7 @@ def _resolve_exp_settings(
 
     policy = exp_policy if isinstance(exp_policy, ExpPolicy) else ExpPolicy(exp_policy)
     iterations = (
-        int(fixed_iterations)
-        if fixed_iterations is not None
-        else resolve_fixed_iterations(policy, dtype, p + q + r)
+        int(fixed_iterations) if fixed_iterations is not None else resolve_fixed_iterations(policy, dtype, p + q + r)
     )
     return _ExpSettings(regime=regime, policy=policy, fixed_iterations=iterations)
 
@@ -262,6 +335,12 @@ def _product_plan(right_n: int, right_r: int, requested_chunk_size: Optional[int
         else max(1, int(requested_chunk_size))
     )
     return _ProductPlan(right_pair_count=right_pair_count, chunk_size=chunk_size)
+
+
+def _product_pair_ranges(pair_count: int, chunk_size: int):
+    """Yield static right-pair ranges for recursive product chunks."""
+    for start in range(0, pair_count, chunk_size):
+        yield start, min(start + chunk_size, pair_count)
 
 
 def _compact_surviving_basis_pairs(
@@ -472,9 +551,7 @@ def _bivector_buffers(
 def _left_contraction_grade_buffers(n: int, device) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Return compact grade-pair dispatch vectors for left contraction."""
     grade_pairs = [
-        (grade_a, grade_b, grade_b - grade_a)
-        for grade_a in range(n + 1)
-        for grade_b in range(grade_a, n + 1)
+        (grade_a, grade_b, grade_b - grade_a) for grade_a in range(n + 1) for grade_b in range(grade_a, n + 1)
     ]
     lc_grade_a, lc_grade_b, lc_grade_result = zip(*grade_pairs)
     return (
@@ -1109,6 +1186,12 @@ class PartitionedCliffordAlgebra(nn.Module):
             result = result.to(dtype=output_dtype)
         return result
 
+    def _right_blade_blocks(self, mv: torch.Tensor, compute_dtype: torch.dtype) -> torch.Tensor:
+        """Return split-order coefficients grouped as right-indexed left multivectors."""
+        split_order = self._to_split_order(mv.to(dtype=compute_dtype))
+        by_left_then_right = split_order.reshape(*mv.shape[:-1], self.left_dim, self.right_dim)
+        return by_left_then_right.transpose(-1, -2)
+
     def geometric_product(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         """Compute ``A * B`` through recursive tensor-product partitioning.
 
@@ -1126,36 +1209,39 @@ class PartitionedCliffordAlgebra(nn.Module):
         if self.core is not None:
             return self._leaf_geometric_product(A, B, output_dtype, compute_dtype)
 
-        # Store each right-block coefficient as a contiguous left-subalgebra
-        # multivector, so recursive products receive cache-local dense leaves.
-        A_split = self._to_split_order(A.to(dtype=compute_dtype))
-        B_split = self._to_split_order(B.to(dtype=compute_dtype))
+        return self._recursive_geometric_product(A, B, output_dtype, compute_dtype)
 
-        A_by_left_then_right = A_split.reshape(
-            *A.shape[:-1],
-            self.left_dim,
-            self.right_dim,
-        )
-        B_by_left_then_right = B_split.reshape(
-            *B.shape[:-1],
-            self.left_dim,
-            self.right_dim,
-        )
-        A_by_right_blade = A_by_left_then_right.transpose(-1, -2)
-        B_by_right_blade = B_by_left_then_right.transpose(-1, -2)
+    def _recursive_geometric_product(
+        self,
+        A: torch.Tensor,
+        B: torch.Tensor,
+        output_dtype: torch.dtype,
+        compute_dtype: torch.dtype,
+    ) -> torch.Tensor:
+        """Compute a recursive node product after validation and dtype resolution."""
+        A_by_right_blade = self._right_blade_blocks(A, compute_dtype)
+        B_by_right_blade = self._right_blade_blocks(B, compute_dtype)
+        result_blocks = self._accumulate_right_pair_chunks(A_by_right_blade, B_by_right_blade)
+        output_shape = result_blocks.shape[:-2]
+        result = result_blocks.reshape(*output_shape, self.dim)
+        return self._to_public_order(result).to(dtype=output_dtype)
 
+    def _accumulate_right_pair_chunks(
+        self,
+        A_by_right_blade: torch.Tensor,
+        B_by_right_blade: torch.Tensor,
+    ) -> torch.Tensor:
+        """Accumulate sparse right-block interactions over static product chunks."""
         result_blocks = None
-        for start in range(0, self._right_pair_count, self._product_chunk_size):
-            end = min(start + self._product_chunk_size, self._right_pair_count)
+        for start, end in _product_pair_ranges(self._right_pair_count, self._product_chunk_size):
             chunk_blocks = self._geometric_product_pair_range(A_by_right_blade, B_by_right_blade, start, end)
             if result_blocks is None:
                 result_blocks = chunk_blocks
             else:
-                result_blocks.add_(chunk_blocks)
+                result_blocks = result_blocks + chunk_blocks
 
-        output_shape = result_blocks.shape[:-2]
-        result = result_blocks.reshape(*output_shape, self.dim)
-        return self._to_public_order(result).to(dtype=output_dtype)
+        assert result_blocks is not None
+        return result_blocks
 
     def _geometric_product_pair_range(
         self,
@@ -1165,31 +1251,30 @@ class PartitionedCliffordAlgebra(nn.Module):
         end: int,
     ) -> torch.Tensor:
         """Compute all contributions from a contiguous right-pair range."""
-        (
-            right_a_indices,
-            right_b_indices,
-            right_result_indices,
-            right_product_signs,
-        ) = self._right_product_slice(start, end)
+        product_slice = self._right_product_slice(start, end)
 
-        if right_product_signs.numel() == 0:
+        if product_slice.right_product_signs.numel() == 0:
             batch_shape = torch.broadcast_shapes(A_by_right_blade.shape[:-2], B_by_right_blade.shape[:-2])
             return A_by_right_blade.new_zeros(*batch_shape, self.left_dim, self.right_dim)
 
-        A_terms = torch.index_select(A_by_right_blade, -2, right_a_indices)
-        B_terms = torch.index_select(B_by_right_blade, -2, right_b_indices)
+        A_terms = torch.index_select(A_by_right_blade, -2, product_slice.right_a_indices)
+        B_terms = torch.index_select(B_by_right_blade, -2, product_slice.right_b_indices)
 
         # ``bridge_signs[right_b, left_a]`` depends on the left basis index of
         # each selected A term, so broadcasting over the final left_dim axis
         # attaches the sign before the recursive left product.
-        bridge_signs = self._bridge_signs_for_right_b(right_b_indices, A_terms.dtype)
+        bridge_signs = self._bridge_signs_for_right_b(product_slice.right_b_indices, A_terms.dtype)
         if bridge_signs.dtype != A_terms.dtype:
             bridge_signs = bridge_signs.to(dtype=A_terms.dtype)
         A_terms = A_terms * bridge_signs
 
         left_products = self.left_sub.geometric_product(A_terms, B_terms)
 
-        return self._merge_right_interactions(left_products, right_result_indices, right_product_signs)
+        return self._merge_right_interactions(
+            left_products,
+            product_slice.right_result_indices,
+            product_slice.right_product_signs,
+        )
 
     def _merge_right_interactions(
         self,
@@ -1240,13 +1325,13 @@ class PartitionedCliffordAlgebra(nn.Module):
         self,
         start: int,
         end: int,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> _RightProductSlice:
         """Derive right-block routing tensors for pair range ``[start, end)``.
 
         Returns:
-            tuple: ``(right_a_indices, right_b_indices, right_result_indices,
-            right_product_signs)``. Each position describes one right basis-pair
-            contribution in the recursive product.
+            _RightProductSlice: Each position describes one right basis-pair
+            contribution in the recursive product. The result still supports
+            tuple unpacking for older private tests.
         """
         pair_indices = torch.arange(start, end, dtype=torch.long, device=self.device)
         if self.right_sub.r == 0:
@@ -1264,7 +1349,12 @@ class PartitionedCliffordAlgebra(nn.Module):
         right_result_indices = right_a_indices ^ right_b_indices
         right_product_signs = self._right_product_signs(right_a_indices, right_b_indices, torch.int8)
 
-        return right_a_indices, right_b_indices, right_result_indices, right_product_signs
+        return _RightProductSlice(
+            right_a_indices=right_a_indices,
+            right_b_indices=right_b_indices,
+            right_result_indices=right_result_indices,
+            right_product_signs=right_product_signs,
+        )
 
     def grade_projection(self, mv: torch.Tensor, grade: int) -> torch.Tensor:
         """Project a multivector onto a grade using the same mask contract as the core algebra."""

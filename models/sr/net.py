@@ -18,8 +18,9 @@ import torch
 import torch.nn as nn
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 from functional.activation import GeometricGELU, GeometricSquare
-from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, CliffordModule, RotorLayer
+from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, RotorLayer
 
 
 def _blade_name(idx: int, n: int) -> str:

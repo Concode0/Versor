@@ -9,9 +9,8 @@ import torch
 import torch.nn as nn
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 from utils.compat import safe_linalg_solve
-
-from .base import CliffordModule
 
 
 class BladeSelector(CliffordModule):

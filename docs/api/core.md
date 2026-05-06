@@ -5,6 +5,9 @@ The mathematical kernel of Versor.
 ## Algebra
 ::: core.algebra.CliffordAlgebra
 
+## Module
+::: core.module.CliffordModule
+
 ## Multivector
 ::: core.multivector.Multivector
 

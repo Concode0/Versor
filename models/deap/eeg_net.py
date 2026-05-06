@@ -22,13 +22,13 @@ import torch
 import torch.nn as nn
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 from layers import (
     CliffordLayerNorm,
     GeometricNeutralizer,
     GeometricTransformerBlock,
     MotherEmbedding,
 )
-from layers.primitives.base import CliffordModule
 
 
 class MultiTargetPhaseShiftHead(CliffordModule):

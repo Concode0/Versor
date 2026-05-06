@@ -65,6 +65,7 @@ from core.algebra import CliffordAlgebra
 from core.analysis._types import DimensionResult
 from core.analysis.dimension import DimensionLifter, EffectiveDimensionAnalyzer
 from core.analysis.spectral import SpectralAnalyzer
+from core.module import CliffordModule
 from experiments._lib import (
     build_visualization_metadata,
     ensure_output_dir,
@@ -79,7 +80,6 @@ from layers import (
     BladeSelector,
     CliffordLayerNorm,
     CliffordLinear,
-    CliffordModule,
     RotorLayer,
 )
 from optimizers.riemannian import RiemannianAdam

@@ -9,9 +9,8 @@ import torch
 import torch.nn as nn
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 from core.validation import check_channels, check_multivector
-
-from .base import CliffordModule
 
 
 class ReflectionLayer(CliffordModule):

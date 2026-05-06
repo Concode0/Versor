@@ -9,8 +9,8 @@ import torch
 import torch.nn as nn
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 
-from ..primitives.base import CliffordModule
 from ..primitives.linear import CliffordLinear
 
 

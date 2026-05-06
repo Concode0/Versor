@@ -61,6 +61,7 @@ from core.metric import (
     signature_norm_squared,
     signature_trace_form,
 )
+from core.module import CliffordModule
 from experiments._lib import (
     build_visualization_metadata,
     ensure_output_dir,
@@ -75,7 +76,6 @@ from experiments._lib import (
 )
 from functional.activation import GeometricGELU
 from layers import BladeSelector, CliffordLayerNorm, CliffordLinear, RotorLayer
-from layers.primitives.base import CliffordModule
 from optimizers.riemannian import RiemannianAdam
 
 # ---------------------------------------------------------------------------

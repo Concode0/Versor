@@ -9,9 +9,10 @@ import torch
 import torch.nn as nn
 
 from core.algebra import CliffordAlgebra
+from core.module import CliffordModule
 from core.visualizer import GeneralVisualizer
 from functional.loss import GeometricMSELoss
-from layers import CliffordModule, RotorLayer
+from layers import RotorLayer
 from tasks.base import BaseTask
 
 
