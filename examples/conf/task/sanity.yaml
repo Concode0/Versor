@@ -1,9 +1,10 @@
 # @package _global_
 name: "sanity"
+
 algebra:
   p: 3
   q: 0
-  device: "cpu"
+
 dataset:
   name: "random_noise"
   samples: 1000

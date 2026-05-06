@@ -9,6 +9,8 @@ algebra:
   kernel: "auto"            # auto: dense for n<=partition_threshold, partitioned above it
   partition_threshold: 8
   device: "auto"  # Auto-detect: cuda > mps > cpu
+  dtype: "float32"
+  exp_policy: "balanced"
   partition:
     leaf_n: 4
     product_chunk_size: null
@@ -24,11 +26,15 @@ training:
   momentum: 0.9
   betas: [0.9, 0.999]
   max_bivector_norm: 10.0
+  scheduler:
+    factor: 0.5
+    patience: 10
   num_workers: 2  # DataLoader workers (0 to disable multiprocessing)
   pin_memory: null        # null = auto (true for CUDA)
   compile: false          # torch.compile() wrapper
   compile_backend: null   # null=auto (aot_eager on MPS, inductor on CUDA/CPU)
   amp: false              # Automatic mixed precision (CUDA only)
+  amp_dtype: null         # null=PyTorch autocast default; or "float16"/"bfloat16"
   cudnn_benchmark: null   # null = auto (true for CUDA)
 
 checkpoint: null

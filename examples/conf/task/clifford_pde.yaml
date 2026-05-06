@@ -4,7 +4,6 @@ name: "clifford_pde"
 algebra:
   p: 2
   q: 0
-  device: "cpu"
 
 dataset:
   name: "taylor_green"

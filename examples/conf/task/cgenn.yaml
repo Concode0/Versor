@@ -4,7 +4,6 @@ name: "cgenn"
 algebra:
   p: 3
   q: 0
-  device: "cpu"
 
 dataset:
   name: "point_cloud_invariant"

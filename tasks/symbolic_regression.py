@@ -48,7 +48,7 @@ class SRTask(BaseTask):
         model.hidden_channels   : channel count C
         model.num_layers        : residual block count
         model.num_rotors        : K rotors per MultiRotorLayer
-        model.exp_policy        : exp policy ('balanced', 'precise')
+        algebra.exp_policy      : exp policy ('balanced', 'precise')
         iterative.max_stages    : maximum unbending iterations
         iterative.stage_epochs  : epochs per stage
         iterative.r2_target     : R2 threshold to stop
@@ -72,13 +72,11 @@ class SRTask(BaseTask):
 
         # Optional automatic signature discovery
         self._searched_signature = None
-        if cfg.algebra.get("auto", False):
+        if cfg.algebra.get("metric_search", False):
             self._searched_signature = self._run_metric_search(cfg)
 
         # Iterative unbending config
         self.iterative_cfg = dict(cfg.get("iterative", {}))
-        # Remove 'enabled' key if present (legacy compat)
-        self.iterative_cfg.pop("enabled", None)
         # Merge new pipeline config sections
         self.iterative_cfg.update(
             {
@@ -98,13 +96,13 @@ class SRTask(BaseTask):
 
         super().__init__(cfg)
 
-        # Override scheduler patience (BaseTask defaults to 3)
-        sched_patience = cfg.training.get("scheduler_patience", 10)
+        # Override scheduler after SR-specific setup.
+        sched_cfg = cfg.training.get("scheduler", {})
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer,
             mode="min",
-            factor=0.5,
-            patience=sched_patience,
+            factor=sched_cfg.get("factor", 0.5),
+            patience=sched_cfg.get("patience", 10),
         )
 
     def _probe_n_vars(self, cfg):
@@ -164,14 +162,12 @@ class SRTask(BaseTask):
             p = self.cfg.algebra.p
             q = self.cfg.algebra.get("q", 0)
             r = self.cfg.algebra.get("r", 0)
-        exp_policy = self.cfg.model.get("exp_policy", "balanced")
         return make_algebra_from_config(
             self.cfg.algebra,
             p=p,
             q=q,
             r=r,
             device=self.device,
-            exp_policy=exp_policy,
         )
 
     def setup_model(self) -> SRGBN:

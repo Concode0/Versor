@@ -5,7 +5,6 @@ algebra:
   p: 3
   q: 0
   r: 1
-  device: "cpu"
 
 dataset:
   name: "nbody_spring"

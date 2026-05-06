@@ -1,9 +1,10 @@
 # @package _global_
 name: "manifold"
+
 algebra:
   p: 3
   q: 0
-  device: "cpu"
+
 dataset:
   name: "figure8"
   samples: 1000

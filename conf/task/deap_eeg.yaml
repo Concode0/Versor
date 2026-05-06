@@ -5,14 +5,6 @@ algebra:
   p: 3
   q: 1
   r: 0
-  kernel: "auto"
-  partition_threshold: 8
-  device: "auto"
-  partition:
-    leaf_n: 4
-    product_chunk_size: null
-    tree: null
-    accumulation_dtype: null
 
 dataset:
   name: "deap"
@@ -36,5 +28,3 @@ training:
   epochs: 100
   lr: 0.0005
   batch_size: 32
-  optimizer_type: "riemannian_adam"
-  max_bivector_norm: 10.0

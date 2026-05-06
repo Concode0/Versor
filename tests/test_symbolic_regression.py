@@ -41,11 +41,27 @@ _TEST_DATASET = "192_vineyard"
 _TEST_CACHE = "./data/pmlb_cache"
 
 
-def _make_cfg(dataset_name=_TEST_DATASET, hidden_channels=4, num_layers=1, n_samples=200, auto=False):
+def _make_cfg(dataset_name=_TEST_DATASET, hidden_channels=4, num_layers=1, n_samples=200, metric_search=False):
     return OmegaConf.create(
         {
             "name": "sr",
-            "algebra": {"p": 4, "q": 0, "r": 0, "device": "cpu", "auto": auto},
+            "algebra": {
+                "p": 4,
+                "q": 0,
+                "r": 0,
+                "device": "cpu",
+                "dtype": "float32",
+                "exp_policy": "balanced",
+                "kernel": "auto",
+                "metric_search": metric_search,
+                "partition_threshold": 8,
+                "partition": {
+                    "leaf_n": 4,
+                    "product_chunk_size": None,
+                    "tree": None,
+                    "accumulation_dtype": None,
+                },
+            },
             "dataset": {
                 "dataset_name": dataset_name,
                 "category": "blackbox",
@@ -56,7 +72,6 @@ def _make_cfg(dataset_name=_TEST_DATASET, hidden_channels=4, num_layers=1, n_sam
             "model": {
                 "hidden_channels": hidden_channels,
                 "num_layers": num_layers,
-                "exp_policy": "balanced",
             },
             "training": {
                 "epochs": 1,
@@ -66,6 +81,7 @@ def _make_cfg(dataset_name=_TEST_DATASET, hidden_channels=4, num_layers=1, n_sam
                 "max_bivector_norm": 10.0,
                 "sparsity_weight": 0.01,
                 "seed": 0,
+                "scheduler": {"factor": 0.5, "patience": 10},
             },
             "checkpoint": None,
         }
