@@ -24,7 +24,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from core.algebra import CliffordAlgebra
 from core.analysis import (
     CommutatorAnalyzer as CoreCommutatorAnalyzer,
 )
@@ -43,6 +42,8 @@ from core.analysis._types import (
     SpectralResult,
     SymmetryResult,
 )
+from core.module import AlgebraLike
+from experiments._lib import setup_algebra
 
 from .config import GDOConfig
 from .parameter_groups import GeometricParameterController
@@ -124,7 +125,7 @@ class PreExplorationAnalyzer:
 
     def __init__(
         self,
-        algebra: Optional[CliffordAlgebra] = None,
+        algebra: Optional[AlgebraLike] = None,
         n_samples: int = 200,
         sample_radius: float = 0.5,
         device: str = "cpu",
@@ -520,7 +521,7 @@ class PreExplorationAnalyzer:
         if dim_result is not None and dim_result.intrinsic_dim >= 2:
             try:
                 land_dim = min(dim_result.intrinsic_dim, 6)
-                temp_algebra = CliffordAlgebra(land_dim, 0, device=self.device)
+                temp_algebra = setup_algebra(land_dim, 0, device=self.device)
                 reduced = eda.reduce(sampled, land_dim)
                 mv_land = temp_algebra.embed_vector(reduced)
                 k = min(8, mv_land.shape[0] - 1)

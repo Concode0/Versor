@@ -18,11 +18,13 @@ artifacts before pooling, then MultiTargetPhaseShiftHead mixes Grade-0
 (immediate) and Grade-4 (long-range) for VADL prediction.
 """
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
 
-from core.algebra import CliffordAlgebra
-from core.module import CliffordModule
+from core.config import make_algebra, make_algebra_from_config
+from core.module import AlgebraLike, CliffordModule
 from layers import (
     CliffordLayerNorm,
     GeometricNeutralizer,
@@ -39,7 +41,7 @@ class MultiTargetPhaseShiftHead(CliffordModule):
     each target can independently shift its prediction range.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, channels: int, num_targets: int = 4):
+    def __init__(self, algebra: AlgebraLike, channels: int, num_targets: int = 4):
         super().__init__(algebra)
         self.channels = channels
         self.num_targets = num_targets
@@ -66,7 +68,7 @@ class EEGNet(CliffordModule):
     brain region's Grade-0 is cleaned of its own Grade-2 artifacts independently.
     """
 
-    def __init__(self, group_sizes, profiles=None, device=None, config=None):
+    def __init__(self, group_sizes, profiles=None, device=None, config=None, algebra: Optional[AlgebraLike] = None):
         """Initialize EEGNet.
 
         Args:
@@ -77,16 +79,21 @@ class EEGNet(CliffordModule):
             device: Torch device.
             config: Hydra DictConfig or plain dict with model hyperparameters.
         """
-        p, q = 3, 1
-        if config is not None:
-            if hasattr(config, "algebra"):
-                p = config.algebra.get("p", 3)
-                q = config.algebra.get("q", 1)
-            elif isinstance(config, dict):
-                p = config.get("p", 3)
-                q = config.get("q", 1)
+        if algebra is None:
+            algebra_config = None
+            if config is not None:
+                if hasattr(config, "algebra"):
+                    algebra_config = config.algebra
+                elif isinstance(config, dict):
+                    algebra_config = config.get("algebra", config)
 
-        algebra = CliffordAlgebra(p, q, device=device)
+            p = algebra_config.get("p", 3) if algebra_config is not None else 3
+            q = algebra_config.get("q", 1) if algebra_config is not None else 1
+            r = algebra_config.get("r", 0) if algebra_config is not None else 0
+            if algebra_config is not None:
+                algebra = make_algebra_from_config(algebra_config, p=p, q=q, r=r, device=device)
+            else:
+                algebra = make_algebra(p=p, q=q, r=r, device=device or "cpu")
         super().__init__(algebra)
 
         if config is not None and hasattr(config, "model"):

@@ -31,8 +31,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from core.algebra import CliffordAlgebra
 from core.module import CliffordModule
+from experiments._lib import setup_algebra
 from functional.activation import GeometricGELU
 from layers import (
     BladeSelector,
@@ -57,7 +57,7 @@ class SmallGBNModel(CliffordModule):
     """
 
     def __init__(self, p: int = 3, q: int = 0, channels: int = 4, device: str = "cpu"):
-        algebra = CliffordAlgebra(p, q, device=device)
+        algebra = setup_algebra(p, q, device=device)
         super().__init__(algebra)
         self.norm = CliffordLayerNorm(self.algebra, channels)
         self.rotor = RotorLayer(self.algebra, channels)
@@ -87,7 +87,7 @@ class MultiRotorRegistrationModel(CliffordModule):
     """
 
     def __init__(self, n_clusters: int = 3, points_per_cluster: int = 20, device: str = "cpu"):
-        algebra = CliffordAlgebra(3, 0, device=device)
+        algebra = setup_algebra(3, 0, device=device)
         super().__init__(algebra)
         dim = self.algebra.dim
 
@@ -158,7 +158,7 @@ class GeometricTransformerToyModel(CliffordModule):
         batch_size: int = 4,
         device: str = "cpu",
     ):
-        algebra = CliffordAlgebra(p, q, device=device)
+        algebra = setup_algebra(p, q, device=device)
         super().__init__(algebra)
         self.vocab_size = vocab_size
         self.seq_len = seq_len

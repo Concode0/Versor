@@ -65,6 +65,7 @@ class DEAPEEGTask(BaseTask):
             profiles=profiles,
             device=self.device,
             config=self.cfg,
+            algebra=self.algebra,
         )
 
     def _compute_profiles(self, group_sizes):

@@ -12,10 +12,54 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import ContextManager
+from typing import Any, ContextManager, Optional
 
 import torch
 import torch.nn as nn
+
+FLOAT_DTYPES: dict[str, torch.dtype] = {
+    "float64": torch.float64,
+    "float32": torch.float32,
+    "bfloat16": torch.bfloat16,
+    "float16": torch.float16,
+}
+
+_DTYPE_ALIASES: dict[str, torch.dtype] = {
+    **FLOAT_DTYPES,
+    "fp64": torch.float64,
+    "double": torch.float64,
+    "fp32": torch.float32,
+    "float": torch.float32,
+    "bf16": torch.bfloat16,
+    "fp16": torch.float16,
+    "half": torch.float16,
+}
+
+
+def optional_dtype(value: Any) -> Optional[torch.dtype]:
+    """Parse a torch dtype declaration, preserving ``None`` as unset."""
+    if value is None or isinstance(value, torch.dtype):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if not normalized:
+            return None
+        if normalized in _DTYPE_ALIASES:
+            return _DTYPE_ALIASES[normalized]
+    raise ValueError(f"Unsupported torch dtype declaration: {value!r}")
+
+
+def resolve_dtype(value: Any, default: torch.dtype = torch.float32) -> torch.dtype:
+    """Parse a torch dtype declaration and fall back to ``default`` when unset."""
+    return optional_dtype(value) or default
+
+
+def dtype_name(dtype: torch.dtype) -> str:
+    """Return the canonical short name for a torch dtype."""
+    for name, candidate in FLOAT_DTYPES.items():
+        if candidate == dtype:
+            return name
+    return str(dtype).replace("torch.", "")
 
 
 def resolve_device(device: str = "auto") -> str:
@@ -47,6 +91,8 @@ class DeviceConfig:
             (``aot_eager`` for MPS, ``inductor`` for CUDA/CPU).
             MPS does not fully support the inductor backend.
         amp: Enable automatic mixed precision (CUDA only).
+        amp_dtype: Optional autocast dtype.  ``None`` uses PyTorch's autocast
+            default; explicit values should be ``float16`` or ``bfloat16``.
         cudnn_benchmark: Set :attr:`torch.backends.cudnn.benchmark`.
             ``None`` -> auto (``True`` for CUDA).
     """
@@ -57,10 +103,12 @@ class DeviceConfig:
     compile_model: bool = False
     compile_backend: str | None = None
     amp: bool = False
+    amp_dtype: torch.dtype | str | None = None
     cudnn_benchmark: bool | None = None
 
     def __post_init__(self) -> None:
         self.device = resolve_device(self.device)
+        self.amp_dtype = optional_dtype(self.amp_dtype)
 
         is_cuda = self.device.startswith("cuda")
 
@@ -74,6 +122,8 @@ class DeviceConfig:
         # AMP only makes sense on CUDA
         if self.amp and not is_cuda:
             self.amp = False
+        if self.amp_dtype is not None and self.amp_dtype not in {torch.float16, torch.bfloat16}:
+            raise ValueError("amp_dtype must be 'float16', 'bfloat16', or null")
 
     # Public helpers
 
@@ -115,23 +165,6 @@ class DeviceConfig:
             )
             return model
 
-    @property
-    def dtype(self) -> torch.dtype:
-        """Working dtype for algebra tables and model parameters.
-
-        Returns ``torch.bfloat16`` when AMP is active on CUDA (bfloat16 is
-        native on Ampere+ GPUs and avoids fp16 overflow).  All other
-        backends keep ``torch.float32``.
-
-        Pass this to :class:`~core.algebra.CliffordAlgebra` as ``dtype`` and
-        to :meth:`~tasks.base.BaseTask` model setup so that tables and
-        parameters are created in the correct precision from the start
-        rather than requiring a post-hoc ``.to()`` cast.
-        """
-        if self.amp and self.device.startswith("cuda"):
-            return torch.bfloat16
-        return torch.float32
-
     def get_scaler(self) -> torch.amp.GradScaler | None:
         """Return a :class:`GradScaler` when AMP is active, else ``None``."""
         if not self.amp:
@@ -142,4 +175,6 @@ class DeviceConfig:
         """Return an ``autocast`` context manager or :func:`nullcontext`."""
         if not self.amp:
             return nullcontext()
-        return torch.amp.autocast("cuda")
+        if self.amp_dtype is None:
+            return torch.amp.autocast("cuda")
+        return torch.amp.autocast("cuda", dtype=self.amp_dtype)

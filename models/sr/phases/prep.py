@@ -17,7 +17,7 @@ import numpy as np
 import sympy
 import torch
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra
 from models.sr.translator import RotorTerm
 from models.sr.utils import (
     make_lambdify_fn,
@@ -130,7 +130,7 @@ class PrepMixin:
             max_p=max(n_vars, 2),
         )
 
-        algebra = CliffordAlgebra(p, q, r, device=self.device)
+        algebra = make_algebra(p, q, r, device=self.device)
         return VariableGroup(
             var_indices=list(range(n_vars)),
             var_names=var_names or [f"x{i + 1}" for i in range(n_vars)],

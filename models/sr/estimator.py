@@ -16,7 +16,7 @@ import numpy as np
 import torch
 from sklearn.base import BaseEstimator, RegressorMixin
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra
 from core.decomposition import ExpPolicy
 from models.sr.net import SRGBN
 from models.sr.utils import make_lambdify_fn
@@ -93,7 +93,7 @@ class VersorSR(BaseEstimator, RegressorMixin):
         y_t = torch.from_numpy(y_norm).unsqueeze(-1)
 
         n_vars = X.shape[1]
-        algebra = CliffordAlgebra(p=self.p, q=self.q, r=self.r, device="cpu", exp_policy=self.exp_policy)
+        algebra = make_algebra(p=self.p, q=self.q, r=self.r, device="cpu", exp_policy=self.exp_policy)
 
         self.model_ = SRGBN(
             algebra=algebra,

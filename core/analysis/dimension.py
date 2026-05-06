@@ -17,7 +17,8 @@ from typing import Dict, Optional
 
 import torch
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra
+from core.module import AlgebraLike
 
 from ._types import CONSTANTS, DimensionResult
 
@@ -196,7 +197,7 @@ class DimensionLifter:
     def lift(
         self,
         data: torch.Tensor,
-        target_algebra: CliffordAlgebra,
+        target_algebra: AlgebraLike,
         fill: float = 1.0,
     ) -> torch.Tensor:
         """Lifts data into the grade-1 subspace of a higher-dimensional algebra.
@@ -260,7 +261,7 @@ class DimensionLifter:
         data = data.to(self.device)
         results: Dict = {}
 
-        def _measure(alg: CliffordAlgebra, mv: torch.Tensor) -> Dict:
+        def _measure(alg: AlgebraLike, mv: torch.Tensor) -> Dict:
             gf = GeodesicFlow(alg, k=k)
             coh = gf.coherence(mv)
             curv = gf.curvature(mv)
@@ -273,15 +274,15 @@ class DimensionLifter:
                 "causal": (coh > coh_threshold) and (curv < CONSTANTS.curvature_causal_threshold),
             }
 
-        alg_orig = CliffordAlgebra(p, q, device=self.device)
+        alg_orig = make_algebra(p, q, device=self.device)
         mv_orig = alg_orig.embed_vector(data[..., : alg_orig.n])
         results["original"] = _measure(alg_orig, mv_orig)
 
-        alg_pos = CliffordAlgebra(p + 1, q, device=self.device)
+        alg_pos = make_algebra(p + 1, q, device=self.device)
         mv_pos = self.lift(data, alg_pos, fill=1.0)
         results["lift_positive"] = _measure(alg_pos, mv_pos)
 
-        alg_null = CliffordAlgebra(p, q + 1, device=self.device)
+        alg_null = make_algebra(p, q + 1, device=self.device)
         mv_null = self.lift(data, alg_null, fill=0.0)
         results["lift_null"] = _measure(alg_null, mv_null)
 

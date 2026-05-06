@@ -48,10 +48,9 @@ import torch.nn as nn
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
-from core.algebra import CliffordAlgebra
 from core.decomposition import ExpPolicy
 from core.metric import induced_norm
-from core.module import CliffordModule
+from core.module import AlgebraLike, CliffordModule
 from experiments._lib import (
     build_visualization_metadata,
     ensure_output_dir,
@@ -59,6 +58,7 @@ from experiments._lib import (
     save_experiment_figure,
     section_header,
     set_seed,
+    setup_algebra,
     signature_metadata,
 )
 from optimizers.riemannian import RiemannianAdam
@@ -118,7 +118,7 @@ class MorphMode(str, Enum):
 class StructureTracker:
     """Computes lattice geometric invariants from basis multivectors."""
 
-    def __init__(self, algebra: CliffordAlgebra):
+    def __init__(self, algebra: AlgebraLike):
         self.algebra = algebra
 
     def compute_volume(self, basis_mvs: torch.Tensor) -> torch.Tensor:
@@ -215,7 +215,7 @@ class MorphStage(CliffordModule):
     :class:`~core.decomposition.ExpPolicy`.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, n: int, compound_blades: int = 1):
+    def __init__(self, algebra: AlgebraLike, n: int, compound_blades: int = 1):
         """
         Args:
             algebra: Clifford algebra instance.
@@ -386,7 +386,7 @@ class MorphStage(CliffordModule):
 class MorphPipeline(nn.Module):
     """Sequential composition of MorphStages with intermediate tracking."""
 
-    def __init__(self, algebra: CliffordAlgebra, n: int, num_stages: int = 3, compound_blades: int = 1):
+    def __init__(self, algebra: AlgebraLike, n: int, num_stages: int = 3, compound_blades: int = 1):
         super().__init__()
         self.compound_blades = compound_blades
         self.stages = nn.ModuleList(
@@ -456,8 +456,7 @@ class LatticeMorpher:
             p, q = n - 1, 1
         else:
             p, q = n, 0
-        self.algebra = CliffordAlgebra(p=p, q=q, device=device, dtype=dtype).to(device)
-        self.algebra.exp_policy = ExpPolicy.PRECISE
+        self.algebra = setup_algebra(p=p, q=q, device=device, dtype=dtype, exp_policy=ExpPolicy.PRECISE)
         self.signature_q = q
         self.tracker = StructureTracker(self.algebra)
         self.pipeline = MorphPipeline(
@@ -711,7 +710,7 @@ class LatticeMorpher:
 class MorphVisualizer:
     """Visualization for lattice morphing."""
 
-    def __init__(self, algebra: CliffordAlgebra, n: int, output_dir: str, metadata: str, args: argparse.Namespace):
+    def __init__(self, algebra: AlgebraLike, n: int, output_dir: str, metadata: str, args: argparse.Namespace):
         self.algebra = algebra
         self.n = n
         self.output_dir = ensure_output_dir(output_dir)

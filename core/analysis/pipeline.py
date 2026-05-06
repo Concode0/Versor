@@ -13,7 +13,8 @@ from typing import Optional
 
 import torch
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra
+from core.module import AlgebraLike
 
 from ._types import AnalysisConfig, AnalysisReport, SamplingConfig
 from .commutator import CommutatorAnalyzer
@@ -50,7 +51,7 @@ class GeometricAnalyzer:
     def analyze(
         self,
         data: torch.Tensor,
-        algebra: Optional[CliffordAlgebra] = None,
+        algebra: Optional[AlgebraLike] = None,
     ) -> AnalysisReport:
         """Run the full geometric analysis pipeline.
 
@@ -124,7 +125,7 @@ class GeometricAnalyzer:
         if p + q + r < 2:
             p = max(p, 2 - q - r)
 
-        algebra = CliffordAlgebra(p, q, r, device=cfg.device)
+        algebra = make_algebra(p, q, r, device=cfg.device)
         mv_data = self._embed_raw(sampled, algebra)
 
         # 5. GA analyses (parallel)
@@ -135,7 +136,7 @@ class GeometricAnalyzer:
     def _run_ga_analyses(
         self,
         mv_data: torch.Tensor,
-        algebra: CliffordAlgebra,
+        algebra: AlgebraLike,
         report: AnalysisReport,
     ) -> AnalysisReport:
         cfg = self.config
@@ -173,7 +174,7 @@ class GeometricAnalyzer:
         return report
 
     @staticmethod
-    def _embed_raw(data: torch.Tensor, algebra: CliffordAlgebra) -> torch.Tensor:
+    def _embed_raw(data: torch.Tensor, algebra: AlgebraLike) -> torch.Tensor:
         """Embed raw ``[N, D]`` data as grade-1 multivectors ``[N, 1, dim]``."""
         n = algebra.n
         D = data.shape[1]

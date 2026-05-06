@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra_from_config
 from core.module import CliffordModule
 from core.visualizer import GeneralVisualizer
 from examples.datasets.synthetic import Figure8Dataset
@@ -47,7 +47,13 @@ class ManifoldTask(BaseTask):
 
     def setup_algebra(self):
         """3D Euclidean."""
-        return CliffordAlgebra(p=self.cfg.algebra.p, q=self.cfg.algebra.q, device=self.device)
+        return make_algebra_from_config(
+            self.cfg.algebra,
+            p=self.cfg.algebra.p,
+            q=self.cfg.algebra.q,
+            r=self.cfg.algebra.get("r", 0),
+            device=self.device,
+        )
 
     def setup_model(self):
         """The Unbender."""

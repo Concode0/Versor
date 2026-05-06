@@ -8,7 +8,7 @@
 import torch
 import torch.nn as nn
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra_from_config
 from core.module import CliffordModule
 from core.visualizer import GeneralVisualizer
 from functional.loss import GeometricMSELoss
@@ -40,7 +40,7 @@ class SanityCheckTask(BaseTask):
 
     def setup_algebra(self):
         """Standard 3D Euclidean."""
-        return CliffordAlgebra(p=3, q=0, device=self.device)
+        return make_algebra_from_config(self.cfg.algebra, p=3, q=0, r=0, device=self.device)
 
     def setup_model(self):
         """Identity Net."""

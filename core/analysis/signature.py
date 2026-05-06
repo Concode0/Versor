@@ -21,7 +21,8 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra
+from core.module import AlgebraLike
 from layers import BladeSelector, CliffordLinear, RotorLayer
 
 from ._types import CONSTANTS, DimensionResult, SamplingConfig, SignatureResult
@@ -36,7 +37,7 @@ class _SignatureProbe(nn.Module):
     is the primary signal for signature discovery.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, channels: int = 4):
+    def __init__(self, algebra: AlgebraLike, channels: int = 4):
         super().__init__()
         self.algebra = algebra
         self.linear_in = CliffordLinear(algebra, 1, channels)
@@ -57,7 +58,7 @@ class _SignatureProbe(nn.Module):
 
 def _apply_biased_init(
     probe: _SignatureProbe,
-    algebra: CliffordAlgebra,
+    algebra: AlgebraLike,
     bias_type: str = "random",
 ) -> None:
     """Biases RotorLayer bivector weights based on signature type.
@@ -129,7 +130,7 @@ class MetricSearch:
         self.micro_batch_size = micro_batch_size
         self.early_stop_patience = early_stop_patience
 
-    def _lift_data(self, data: torch.Tensor) -> Tuple[torch.Tensor, CliffordAlgebra]:
+    def _lift_data(self, data: torch.Tensor) -> Tuple[torch.Tensor, AlgebraLike]:
         """Lifts [N, X] data into Cl(X+1, 1, 0) via CGA-style embedding."""
         data = data.to(self.device)
         N, X = data.shape
@@ -144,7 +145,7 @@ class MetricSearch:
         ones = torch.ones(N, 1, device=self.device, dtype=data.dtype)
         lifted = torch.cat([data, norm_sq, ones], dim=-1)
 
-        algebra = CliffordAlgebra(X + 1, 1, 0, device=self.device)
+        algebra = make_algebra(X + 1, 1, 0, device=self.device)
         mv = algebra.embed_vector(lifted)
         mv = mv.unsqueeze(1)
         return mv, algebra
@@ -152,7 +153,7 @@ class MetricSearch:
     def _train_probe(
         self,
         mv_data: torch.Tensor,
-        algebra: CliffordAlgebra,
+        algebra: AlgebraLike,
         bias_type: str = "random",
     ) -> Dict:
         """Trains a single probe and returns results."""
@@ -217,7 +218,7 @@ class MetricSearch:
     def _analyze_bivector_energy(
         self,
         probe: _SignatureProbe,
-        algebra: CliffordAlgebra,
+        algebra: AlgebraLike,
         original_dim: int,
     ) -> Tuple[Tuple[int, int, int], Dict]:
         """Maps learned bivector energy to (p, q, r) signature."""

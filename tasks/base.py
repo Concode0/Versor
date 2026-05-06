@@ -50,6 +50,7 @@ class BaseTask(ABC):
             compile_model=cfg.training.get("compile", False),
             compile_backend=cfg.training.get("compile_backend", None),
             amp=cfg.training.get("amp", False),
+            amp_dtype=cfg.training.get("amp_dtype", None),
             cudnn_benchmark=cfg.training.get("cudnn_benchmark", None),
         )
         self.device = self.device_config.device

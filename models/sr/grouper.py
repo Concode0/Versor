@@ -20,7 +20,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import torch
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra
+from core.module import AlgebraLike
 from models.sr.utils import safe_svd, standardize, subsample
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ class VariableGroup:
         var_indices: Indices into original X columns.
         var_names: Human-readable variable names.
         signature: (p, q, r) from MetricSearch.
-        algebra: CliffordAlgebra for this group.
+        algebra: Shared dense or partitioned algebra for this group.
         svd_Vt: SVD right-singular vectors for this group (or None).
         mother_offset: Bit offset in mother algebra basis.
         internal_edges: VariableEdge list within this group.
@@ -45,7 +46,7 @@ class VariableGroup:
     var_indices: list
     var_names: list
     signature: tuple
-    algebra: CliffordAlgebra
+    algebra: AlgebraLike
     svd_Vt: np.ndarray = None
     mother_offset: int = 0
     internal_edges: list = field(default_factory=list)
@@ -223,7 +224,7 @@ class VariableGrouper:
             n_analysis,
         )
 
-        algebra = CliffordAlgebra(p, q, r, device=self.device)
+        algebra = make_algebra(p, q, r, device=self.device)
 
         # 5. Embed as grade-1 multivectors
         alg_n = algebra.n
@@ -469,13 +470,13 @@ class VariableGrouper:
         Q = sum(g.signature[1] for g in groups)
         R = sum(g.signature[2] for g in groups)
 
-        if P + Q + R > 12:
-            self._reduce_groups(groups, target_n=12)
+        if P + Q + R > 16:
+            self._reduce_groups(groups, target_n=16)
             P = sum(g.signature[0] for g in groups)
             Q = sum(g.signature[1] for g in groups)
             R = sum(g.signature[2] for g in groups)
 
-        mother = CliffordAlgebra(P, Q, R, device=self.device)
+        mother = make_algebra(P, Q, R, device=self.device)
 
         p_offset = 0
         q_offset = P
@@ -570,7 +571,7 @@ class VariableGrouper:
 
         p, q, r = safe_metric_search(data, self.device, n_vars)
 
-        algebra = CliffordAlgebra(p, q, r, device=self.device)
+        algebra = make_algebra(p, q, r, device=self.device)
         return VariableGroup(
             var_indices=indices,
             var_names=[var_names[i] for i in indices],
@@ -612,7 +613,7 @@ class VariableGrouper:
             probe_epochs=20,
         )
 
-        algebra = CliffordAlgebra(p, q, r, device=self.device)
+        algebra = make_algebra(p, q, r, device=self.device)
         return VariableGroup(
             var_indices=indices,
             var_names=names_sub,
@@ -692,7 +693,7 @@ class VariableGrouper:
             new_r = 0
             reduction = (p + q + r) - (new_p + new_q + new_r)
             g.signature = (new_p, new_q, new_r)
-            g.algebra = CliffordAlgebra(new_p, new_q, new_r, device=self.device)
+            g.algebra = make_algebra(new_p, new_q, new_r, device=self.device)
             total -= reduction
 
             if reduction == 0:

@@ -25,7 +25,7 @@ import streamlit as st
 import torch
 import torch.optim as optim
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra
 from layers import BladeSelector, RotorLayer
 
 # Setup Page
@@ -102,7 +102,7 @@ def plot_3d_manifold(data, title, color_data=None):
 # Main app logic
 
 # 1. Generate Data
-algebra = CliffordAlgebra(3, 0, device="cpu")
+algebra = make_algebra(3, 0, device="cpu")
 t = torch.linspace(0, 2 * np.pi, samples)
 x = torch.sin(t)
 y = torch.sin(t) * torch.cos(t)

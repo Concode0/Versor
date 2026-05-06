@@ -66,7 +66,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra_from_config
 from core.module import CliffordModule
 from functional.activation import GeometricGELU
 from layers import (
@@ -276,9 +276,11 @@ class CliffordPDETask(BaseTask):
     def setup_algebra(self):
         # Cl(2,0): dim = 2^2 = 4 components
         # grade-0: 1 scalar, grade-1: 2 vectors, grade-2: 1 bivector
-        return CliffordAlgebra(
+        return make_algebra_from_config(
+            self.cfg.algebra,
             p=self.cfg.algebra.p,
             q=self.cfg.algebra.q,
+            r=self.cfg.algebra.get("r", 0),
             device=self.device,
         )
 

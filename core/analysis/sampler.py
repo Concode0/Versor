@@ -91,7 +91,7 @@ class StatisticalSampler:
         coherence) and unstructured (low coherence) regions of the data
         without assuming a specific metric signature.
         """
-        from core.algebra import CliffordAlgebra
+        from core.config import make_algebra
 
         from .geodesic import GeodesicFlow
 
@@ -102,7 +102,7 @@ class StatisticalSampler:
 
         # Cap algebra dimension for tractability
         alg_dim = min(D, 6)
-        algebra = CliffordAlgebra(alg_dim, 0, device=data.device)
+        algebra = make_algebra(alg_dim, 0, device=data.device)
 
         # Embed into algebra (truncate to alg_dim if needed)
         raw = data[:, :alg_dim].float()

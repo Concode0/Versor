@@ -63,7 +63,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra_from_config
 from layers import CliffordLinear, GeometricTransformerBlock
 from layers.adapters.projective import ProjectiveEmbedding
 from tasks.base import BaseTask
@@ -220,7 +220,8 @@ class GATrTask(BaseTask):
         # Cl(3,0,1): 3 Euclidean + 1 degenerate = Projective Geometric Algebra
         # dim = 2^4 = 16 multivector components
         r = self.cfg.algebra.get("r", 1)
-        return CliffordAlgebra(
+        return make_algebra_from_config(
+            self.cfg.algebra,
             p=self.cfg.algebra.p,
             q=self.cfg.algebra.q,
             r=r,

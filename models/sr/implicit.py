@@ -24,7 +24,7 @@ import sympy
 import torch
 import torch.nn.functional as F
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra
 from models.sr.net import SRGBN
 from models.sr.utils import safe_sympy_solve
 from optimizers.riemannian import RiemannianAdam
@@ -111,7 +111,7 @@ class ImplicitSolver:
 
         # Build implicit algebra: add 1 to p for the y variable
         p, q, r = algebra.p, algebra.q, algebra.r
-        impl_algebra = CliffordAlgebra(p + 1, q, r, device=self.device)
+        impl_algebra = make_algebra(p + 1, q, r, device=self.device)
 
         implicit_loss = self._probe_implicit(impl_algebra, Z)
 

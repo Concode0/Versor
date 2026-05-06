@@ -15,7 +15,7 @@ from typing import Any, Literal, Mapping, Optional
 import torch
 
 from core.algebra import CliffordAlgebra
-from core.device import resolve_device
+from core.device import optional_dtype, resolve_device, resolve_dtype
 from core.module import AlgebraLike
 from core.partitioned_algebra import PartitionedCliffordAlgebra
 
@@ -31,6 +31,9 @@ class PartitionConfig:
     tree: Optional[str] = None
     accumulation_dtype: Optional[torch.dtype] = None
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "accumulation_dtype", optional_dtype(self.accumulation_dtype))
+
     @classmethod
     def from_mapping(cls, config: Optional[Mapping[str, Any]]) -> "PartitionConfig":
         """Build partition options from a Hydra/OmegaConf-compatible mapping."""
@@ -40,7 +43,7 @@ class PartitionConfig:
             leaf_n=int(_mapping_get(config, "leaf_n", 4)),
             product_chunk_size=_optional_int(_mapping_get(config, "product_chunk_size", None)),
             tree=_optional_str(_mapping_get(config, "tree", None)),
-            accumulation_dtype=_optional_dtype(_mapping_get(config, "accumulation_dtype", None)),
+            accumulation_dtype=optional_dtype(_mapping_get(config, "accumulation_dtype", None)),
         )
 
 
@@ -73,7 +76,7 @@ class AlgebraConfig:
             "kernel": _mapping_get(config, "kernel", "auto"),
             "partition_threshold": int(_mapping_get(config, "partition_threshold", 8)),
             "device": _mapping_get(config, "device", "cuda"),
-            "dtype": _optional_dtype(_mapping_get(config, "dtype", torch.float32)) or torch.float32,
+            "dtype": resolve_dtype(_mapping_get(config, "dtype", torch.float32)),
             "exp_policy": _mapping_get(config, "exp_policy", "balanced"),
             "fixed_iterations": _optional_int(_mapping_get(config, "fixed_iterations", None)),
             "partition": PartitionConfig.from_mapping(partition_mapping),
@@ -81,7 +84,7 @@ class AlgebraConfig:
         values.update({key: value for key, value in overrides.items() if value is not None})
         if not isinstance(values["partition"], PartitionConfig):
             values["partition"] = PartitionConfig.from_mapping(values["partition"])
-        values["dtype"] = _optional_dtype(values["dtype"]) or torch.float32
+        values["dtype"] = resolve_dtype(values["dtype"])
         return cls(**values)
 
 
@@ -106,7 +109,7 @@ def make_algebra(
         selected_kernel = "dense"
 
     resolved_device = resolve_device(device) if str(device) == "auto" else device
-    resolved_dtype = _optional_dtype(dtype) or torch.float32
+    resolved_dtype = resolve_dtype(dtype)
 
     if selected_kernel == "dense":
         return CliffordAlgebra(
@@ -188,28 +191,3 @@ def _optional_str(value) -> Optional[str]:
         return None
     text = str(value).strip()
     return text or None
-
-
-def _optional_dtype(value) -> Optional[torch.dtype]:
-    if value is None or isinstance(value, torch.dtype):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if not normalized:
-            return None
-        aliases = {
-            "float16": torch.float16,
-            "fp16": torch.float16,
-            "half": torch.float16,
-            "bfloat16": torch.bfloat16,
-            "bf16": torch.bfloat16,
-            "float32": torch.float32,
-            "fp32": torch.float32,
-            "float": torch.float32,
-            "float64": torch.float64,
-            "fp64": torch.float64,
-            "double": torch.float64,
-        }
-        if normalized in aliases:
-            return aliases[normalized]
-    raise ValueError(f"Unsupported torch dtype declaration: {value!r}")

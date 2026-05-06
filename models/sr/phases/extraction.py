@@ -18,8 +18,8 @@ import sympy
 import torch
 import torch.nn.functional as F
 
-from core.algebra import CliffordAlgebra
 from core.analysis import GeodesicFlow, MetricSearch
+from core.config import make_algebra
 from models.sr.net import SRGBN
 from models.sr.translator import RotorTerm, RotorTranslator
 from models.sr.utils import (
@@ -83,7 +83,7 @@ class ExtractionMixin:
 
         # Build augmented algebra (k+1 variables)
         p, q, r = group.signature
-        impl_algebra = CliffordAlgebra(p + 1, q, r, device=self.device)
+        impl_algebra = make_algebra(p + 1, q, r, device=self.device)
 
         # Augmented data Z = [X_group_norm, y_norm]
         X_group_norm = standardize(torch.tensor(X_orig[:, var_indices], dtype=torch.float32, device=self.device))

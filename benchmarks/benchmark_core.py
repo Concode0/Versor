@@ -55,16 +55,12 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from core.algebra import CliffordAlgebra
+from core.config import PartitionConfig, make_algebra
 from core.decomposition import ExpPolicy, compiled_safe_decomposed_exp  # noqa: E402
-from core.device import resolve_device
+from core.device import FLOAT_DTYPES, dtype_name as _format_dtype_name, optional_dtype, resolve_device
+from core.module import AlgebraLike
 
-DTYPES: dict[str, torch.dtype] = {
-    "float64": torch.float64,
-    "float32": torch.float32,
-    "bfloat16": torch.bfloat16,
-    "float16": torch.float16,
-}
+DTYPES: dict[str, torch.dtype] = FLOAT_DTYPES
 
 
 @dataclass(frozen=True)
@@ -97,7 +93,7 @@ class SignatureSpec:
 class CoreOpModule(nn.Module):
     """Small wrapper so core operators can be passed to torch.compile."""
 
-    def __init__(self, algebra: CliffordAlgebra, op: str):
+    def __init__(self, algebra: AlgebraLike, op: str):
         super().__init__()
         self.algebra = algebra
         self.op = op
@@ -160,20 +156,49 @@ def _parse_signature_csv(value: str) -> list[SignatureSpec]:
             raise ValueError(
                 f"invalid signature {raw!r}; use n, p:q, or p:q:r entries"
             )
-        if p < 0 or q < 0 or r < 0 or p + q + r < 1 or p + q + r > 12:
+        if p < 0 or q < 0 or r < 0 or p + q + r < 1 or p + q + r > 16:
             raise ValueError(
                 f"invalid signature {raw!r}; dimensions must be non-negative "
-                "and sum to 1..12"
+                "and sum to 1..16"
             )
         specs.append(SignatureSpec(p, q, r))
     return specs
 
 
 def _dtype_name(dtype: torch.dtype) -> str:
-    for name, candidate in DTYPES.items():
-        if candidate == dtype:
-            return name
-    return str(dtype).replace("torch.", "")
+    return _format_dtype_name(dtype)
+
+
+def setup_algebra(
+    p: int,
+    q: int = 0,
+    r: int = 0,
+    *,
+    device: str,
+    dtype: torch.dtype,
+    exp_policy: str | ExpPolicy = "balanced",
+    fixed_iterations: int | None = None,
+    args: argparse.Namespace | None = None,
+) -> AlgebraLike:
+    """Construct benchmark algebras through the shared core factory."""
+    partition = PartitionConfig(
+        leaf_n=getattr(args, "partition_leaf_n", 4),
+        product_chunk_size=getattr(args, "partition_product_chunk_size", None),
+        tree=getattr(args, "partition_tree", None),
+        accumulation_dtype=optional_dtype(getattr(args, "partition_accumulation_dtype", None)),
+    )
+    return make_algebra(
+        p=p,
+        q=q,
+        r=r,
+        kernel=getattr(args, "algebra_kernel", "auto"),
+        partition_threshold=getattr(args, "partition_threshold", 8),
+        partition=partition,
+        device=device,
+        dtype=dtype,
+        exp_policy=exp_policy,
+        fixed_iterations=fixed_iterations,
+    )
 
 
 def _ordered_modes(value: str) -> list[str]:
@@ -364,7 +389,7 @@ def _seed_all(seed: int, device: str) -> None:
 
 
 def _supported_dtypes(
-    device: str,
+    args: argparse.Namespace,
     requested: str,
     probe_n_values: Iterable[int],
 ) -> list[torch.dtype]:
@@ -383,15 +408,15 @@ def _supported_dtypes(
         if name not in DTYPES:
             raise ValueError(f"unknown dtype {name!r}; valid: {sorted(DTYPES)}")
         dtype = DTYPES[name]
-        algebra: CliffordAlgebra | None = None
+        algebra: AlgebraLike | None = None
         x: torch.Tensor | None = None
         y: torch.Tensor | None = None
         try:
             for n in probe_ns:
-                algebra = CliffordAlgebra(n, 0, device=device, dtype=dtype)
-                x = torch.randn(2, algebra.dim, device=device, dtype=dtype)
+                algebra = setup_algebra(n, 0, device=args.device, dtype=dtype, args=args)
+                x = torch.randn(2, algebra.dim, device=args.device, dtype=dtype)
                 y = algebra.geometric_product(x, x)
-                _sync(device)
+                _sync(args.device)
                 if not torch.isfinite(y.float()).all().item():
                     raise RuntimeError(f"n={n} probe produced non-finite values")
                 algebra = None
@@ -399,14 +424,14 @@ def _supported_dtypes(
                 y = None
             supported.append(dtype)
         except Exception as exc:
-            print(f"Skipping dtype {name} on {device}: {exc}")
+            print(f"Skipping dtype {name} on {args.device}: {exc}")
         finally:
             algebra = None
             x = None
             y = None
-            _release_memory(device)
+            _release_memory(args.device)
     if not supported:
-        raise SystemExit(f"No requested dtypes are usable on {device}.")
+        raise SystemExit(f"No requested dtypes are usable on {args.device}.")
     return supported
 
 
@@ -532,7 +557,7 @@ def _nonzero_terms(tensor: torch.Tensor) -> int:
 
 
 def _analytic_forward_metrics(
-    algebra: CliffordAlgebra,
+    algebra: AlgebraLike,
     op: str,
     batch: int,
     channels: int,
@@ -544,16 +569,20 @@ def _analytic_forward_metrics(
     io_elements = 0
 
     if op == "gp":
-        flops = 2.0 * batch * _nonzero_terms(algebra.gp_signs)
+        signs = getattr(algebra, "gp_signs", None)
+        flops = 2.0 * batch * _nonzero_terms(signs) if signs is not None else float("nan")
         io_elements = 3 * batch * dim
     elif op == "wedge":
-        flops = 2.0 * batch * _nonzero_terms(algebra.wedge_gp_signs)
+        signs = getattr(algebra, "wedge_gp_signs", None)
+        flops = 2.0 * batch * _nonzero_terms(signs) if signs is not None else float("nan")
         io_elements = 3 * batch * dim
     elif op == "inner":
-        flops = 2.0 * batch * _nonzero_terms(algebra.inner_gp_signs)
+        signs = getattr(algebra, "inner_gp_signs", None)
+        flops = 2.0 * batch * _nonzero_terms(signs) if signs is not None else float("nan")
         io_elements = 3 * batch * dim
     elif op == "commutator":
-        flops = 2.0 * batch * _nonzero_terms(algebra.comm_gp_signs)
+        signs = getattr(algebra, "comm_gp_signs", None)
+        flops = 2.0 * batch * _nonzero_terms(signs) if signs is not None else float("nan")
         io_elements = 3 * batch * dim
     elif op in {"grade2", "reverse"}:
         flops = float(batch * dim)
@@ -1044,7 +1073,7 @@ def _commuting_pairs(n: int) -> list[tuple[int, int]]:
 
 
 def _make_commuting_nonsimple_bivector(
-    algebra: CliffordAlgebra,
+    algebra: AlgebraLike,
     batch: int,
     scale: float,
 ) -> torch.Tensor:
@@ -1065,7 +1094,7 @@ def _make_commuting_nonsimple_bivector(
     return b
 
 
-def _exact_commuting_exp(algebra: CliffordAlgebra, b: torch.Tensor) -> torch.Tensor:
+def _exact_commuting_exp(algebra: AlgebraLike, b: torch.Tensor) -> torch.Tensor:
     """Exact exp for the controlled non-simple bivector used here.
 
     The bivector is a sum of disjoint coordinate-plane bivectors. Those
@@ -1081,7 +1110,7 @@ def _exact_commuting_exp(algebra: CliffordAlgebra, b: torch.Tensor) -> torch.Ten
     return result
 
 
-def _grade_leak(algebra: CliffordAlgebra, x: torch.Tensor, grade: int) -> float:
+def _grade_leak(algebra: AlgebraLike, x: torch.Tensor, grade: int) -> float:
     mask = algebra.grade_masks_float[grade]
     if mask.dtype != x.dtype:
         mask = mask.to(dtype=x.dtype)
@@ -1090,7 +1119,7 @@ def _grade_leak(algebra: CliffordAlgebra, x: torch.Tensor, grade: int) -> float:
 
 
 def _make_speed_inputs(
-    algebra: CliffordAlgebra,
+    algebra: AlgebraLike,
     op: str,
     batch: int,
     channels: int,
@@ -1120,7 +1149,7 @@ def _make_speed_inputs(
 
 
 def _random_multivector(
-    algebra: CliffordAlgebra,
+    algebra: AlgebraLike,
     shape: tuple[int, ...],
     scale: float,
 ) -> torch.Tensor:
@@ -1131,7 +1160,7 @@ def _random_multivector(
 
 
 def _random_grade(
-    algebra: CliffordAlgebra,
+    algebra: AlgebraLike,
     shape: tuple[int, ...],
     grade: int,
     scale: float,
@@ -1164,13 +1193,14 @@ def run_stability_suite(args: argparse.Namespace, dtypes: list[torch.dtype]) -> 
         for sig_index, signature in enumerate(signatures):
             _release_memory(args.device)
             try:
-                algebra = CliffordAlgebra(
+                algebra = setup_algebra(
                     signature.p,
                     signature.q,
                     signature.r,
                     device=args.device,
                     dtype=dtype,
                     exp_policy=ExpPolicy.PRECISE,
+                    args=args,
                 )
             except Exception as exc:
                 _record_stability_failure(rows, args, dtype_name, signature, "setup", exc)
@@ -1368,13 +1398,14 @@ def run_stability_suite(args: argparse.Namespace, dtypes: list[torch.dtype]) -> 
             def exp_policy_consistency() -> tuple[float, float, str]:
                 if algebra.n < 2:
                     return 0.0, 0.0, "skipped: no bivectors"
-                balanced = CliffordAlgebra(
+                balanced = setup_algebra(
                     signature.p,
                     signature.q,
                     signature.r,
                     device=args.device,
                     dtype=dtype,
                     exp_policy=ExpPolicy.BALANCED,
+                    args=args,
                 )
                 with torch.no_grad():
                     b = torch.zeros(
@@ -1569,12 +1600,13 @@ def run_speed_suite(args: argparse.Namespace, dtypes: list[torch.dtype]) -> list
                                 try:
                                     with _tf32_context(args.device, tf32_mode):
                                         row.update(_current_tf32_flags(args.device, tf32_mode))
-                                        algebra = CliffordAlgebra(
+                                        algebra = setup_algebra(
                                             n,
                                             0,
                                             device=args.device,
                                             dtype=dtype,
                                             exp_policy=_op_exp_policy(op),
+                                            args=args,
                                         )
                                         row.update(
                                             _analytic_forward_metrics(
@@ -1740,12 +1772,13 @@ def run_backward_suite(args: argparse.Namespace, dtypes: list[torch.dtype]) -> l
                                 try:
                                     with _tf32_context(args.device, tf32_mode):
                                         row.update(_current_tf32_flags(args.device, tf32_mode))
-                                        algebra = CliffordAlgebra(
+                                        algebra = setup_algebra(
                                             n,
                                             0,
                                             device=args.device,
                                             dtype=dtype,
                                             exp_policy=_op_exp_policy(op),
+                                            args=args,
                                         )
                                         row.update(
                                             _analytic_forward_metrics(
@@ -1920,12 +1953,13 @@ def run_fusion_suite(
                                 try:
                                     with _tf32_context(args.device, tf32_mode):
                                         row.update(_current_tf32_flags(args.device, tf32_mode))
-                                        algebra = CliffordAlgebra(
+                                        algebra = setup_algebra(
                                             n,
                                             0,
                                             device=args.device,
                                             dtype=dtype,
                                             exp_policy=_op_exp_policy(op),
+                                            args=args,
                                         )
                                         row.update(
                                             _analytic_forward_metrics(
@@ -2070,7 +2104,7 @@ def run_nonsimple_suite(args: argparse.Namespace, dtypes: list[torch.dtype]) -> 
     for n in args.nonsimple_n_values:
         if n < 4:
             continue
-        ref_alg = CliffordAlgebra(n, 0, device="cpu", dtype=torch.float64, exp_policy="precise")
+        ref_alg = setup_algebra(n, 0, device="cpu", dtype=torch.float64, exp_policy="precise", args=args)
         b_ref = _make_commuting_nonsimple_bivector(ref_alg, args.error_batch, args.bivector_scale)
         r_ref = _exact_commuting_exp(ref_alg, b_ref)
         bb_ref = ref_alg.geometric_product(b_ref, b_ref)
@@ -2094,12 +2128,13 @@ def run_nonsimple_suite(args: argparse.Namespace, dtypes: list[torch.dtype]) -> 
                     "nonscalar_BB_norm": nonscalar_norm,
                 }
                 try:
-                    algebra = CliffordAlgebra(
+                    algebra = setup_algebra(
                         n,
                         0,
                         device=args.device,
                         dtype=dtype,
                         exp_policy=policy,
+                        args=args,
                     )
                     b = _make_commuting_nonsimple_bivector(
                         algebra,
@@ -2169,7 +2204,7 @@ def run_cumulative_suite(args: argparse.Namespace, dtypes: list[torch.dtype]) ->
         if n < 4:
             continue
         for batch in args.cumulative_batch_sizes:
-            ref_alg = CliffordAlgebra(n, 0, device="cpu", dtype=torch.float64, exp_policy="precise")
+            ref_alg = setup_algebra(n, 0, device="cpu", dtype=torch.float64, exp_policy="precise", args=args)
             b_ref = _make_commuting_nonsimple_bivector(
                 ref_alg,
                 batch,
@@ -2182,7 +2217,14 @@ def run_cumulative_suite(args: argparse.Namespace, dtypes: list[torch.dtype]) ->
                 dtype_name = _dtype_name(dtype)
                 _release_memory(args.device)
                 try:
-                    algebra = CliffordAlgebra(n, 0, device=args.device, dtype=dtype, exp_policy="balanced")
+                    algebra = setup_algebra(
+                        n,
+                        0,
+                        device=args.device,
+                        dtype=dtype,
+                        exp_policy="balanced",
+                        args=args,
+                    )
                     b = _make_commuting_nonsimple_bivector(
                         algebra,
                         batch,
@@ -2276,7 +2318,7 @@ def run_convergence_suite(args: argparse.Namespace, dtypes: list[torch.dtype]) -
     for n in args.convergence_n_values:
         if n < 4:
             continue
-        ref_alg = CliffordAlgebra(n, 0, device="cpu", dtype=torch.float64, exp_policy="precise")
+        ref_alg = setup_algebra(n, 0, device="cpu", dtype=torch.float64, exp_policy="precise", args=args)
         b_ref = _make_commuting_nonsimple_bivector(ref_alg, args.error_batch, args.bivector_scale)
         r_ref = _exact_commuting_exp(ref_alg, b_ref)
 
@@ -2296,7 +2338,14 @@ def run_convergence_suite(args: argparse.Namespace, dtypes: list[torch.dtype]) -
                     "error": "",
                 }
                 try:
-                    algebra = CliffordAlgebra(n, 0, device=args.device, dtype=dtype, exp_policy="precise")
+                    algebra = setup_algebra(
+                        n,
+                        0,
+                        device=args.device,
+                        dtype=dtype,
+                        exp_policy="precise",
+                        args=args,
+                    )
                     b = _make_commuting_nonsimple_bivector(
                         algebra,
                         args.error_batch,
@@ -2307,7 +2356,7 @@ def run_convergence_suite(args: argparse.Namespace, dtypes: list[torch.dtype]) -
 
                     def exp_fixed(
                         inp: torch.Tensor,
-                        alg: CliffordAlgebra = algebra,
+                        alg: AlgebraLike = algebra,
                         iterations: int = fixed_iterations,
                     ) -> torch.Tensor:
                         return compiled_safe_decomposed_exp(
@@ -3441,6 +3490,12 @@ def _collect_runtime_metadata(device: str) -> dict[str, Any]:
 def make_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Benchmark the Versor core package.")
     parser.add_argument("--device", default="auto", help="cpu, cuda, mps, or auto")
+    parser.add_argument("--algebra-kernel", default="auto", choices=("auto", "dense", "partitioned"))
+    parser.add_argument("--partition-threshold", type=int, default=8)
+    parser.add_argument("--partition-leaf-n", type=int, default=4)
+    parser.add_argument("--partition-product-chunk-size", type=int, default=None)
+    parser.add_argument("--partition-tree", default=None)
+    parser.add_argument("--partition-accumulation-dtype", default=None)
     parser.add_argument("--out", default="benchmarks/results", help="artifact root")
     parser.add_argument("--sections", default="speed,backward,fusion,nonsimple,cumulative,convergence,stability")
     parser.add_argument("--n-values", type=_parse_int_csv, default=_parse_int_csv("2,3,4,5,6"))
@@ -3594,7 +3649,7 @@ def main() -> None:
     else:
         args.dtype_probe_n_values = sorted(set(args.dtype_probe_n_values))
 
-    dtypes = _supported_dtypes(args.device, args.dtypes, args.dtype_probe_n_values)
+    dtypes = _supported_dtypes(args, args.dtypes, args.dtype_probe_n_values)
     args.dtypes_resolved = dtypes
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

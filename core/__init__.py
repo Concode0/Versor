@@ -20,7 +20,7 @@ from .decomposition import (
     exp_simple_bivector,
     ga_power_iteration,
 )
-from .device import DeviceConfig, resolve_device
+from .device import DeviceConfig, dtype_name, optional_dtype, resolve_device, resolve_dtype
 from .metric import (
     clifford_conjugate,
     geometric_distance,
@@ -55,7 +55,10 @@ __all__ = [
     "make_algebra_from_config",
     # device / validation
     "DeviceConfig",
+    "dtype_name",
+    "optional_dtype",
     "resolve_device",
+    "resolve_dtype",
     "check_multivector",
     "check_channels",
     # metric

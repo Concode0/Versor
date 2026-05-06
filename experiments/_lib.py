@@ -40,8 +40,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from core.algebra import CliffordAlgebra
+from core.config import PartitionConfig, make_algebra
 from core.metric import hermitian_grade_spectrum
+from core.module import AlgebraLike
 from functional.activation import GeometricGELU
 from layers import CliffordLayerNorm, CliffordLinear, RotorLayer
 
@@ -67,9 +68,41 @@ def set_seed(seed: int, deterministic: bool = False) -> None:
 # ---------------------------------------------------------------------------
 
 
-def setup_algebra(p: int, q: int = 0, r: int = 0, device: str = "cpu") -> CliffordAlgebra:
-    """One-line ``CliffordAlgebra(p, q, r, device=device).to(device)`` wrapper."""
-    return CliffordAlgebra(p=p, q=q, r=r, device=device).to(device)
+def setup_algebra(
+    p: int,
+    q: int = 0,
+    r: int = 0,
+    device: str = "cpu",
+    *,
+    dtype: torch.dtype | str = torch.float32,
+    kernel: str = "auto",
+    partition_threshold: int = 8,
+    leaf_n: int = 4,
+    product_chunk_size: Optional[int] = None,
+    partition_tree: Optional[str] = None,
+    accumulation_dtype: torch.dtype | str | None = None,
+    exp_policy: str = "balanced",
+    fixed_iterations: Optional[int] = None,
+) -> AlgebraLike:
+    """Construct the shared experiment algebra through the core factory."""
+    partition = PartitionConfig(
+        leaf_n=leaf_n,
+        product_chunk_size=product_chunk_size,
+        tree=partition_tree,
+        accumulation_dtype=accumulation_dtype,
+    )
+    return make_algebra(
+        p=p,
+        q=q,
+        r=r,
+        kernel=kernel,
+        partition_threshold=partition_threshold,
+        partition=partition,
+        device=device,
+        dtype=dtype,
+        exp_policy=exp_policy,
+        fixed_iterations=fixed_iterations,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -208,12 +241,12 @@ def count_parameters(model: nn.Module) -> int:
 # ---------------------------------------------------------------------------
 
 
-def grade1_indices(algebra: CliffordAlgebra) -> List[int]:
+def grade1_indices(algebra: AlgebraLike) -> List[int]:
     """Multivector indices of grade-1 basis elements ``[e1, e2, ..., e_n]``."""
     return [1 << i for i in range(algebra.n)]
 
 
-def extract_grade1(mv: torch.Tensor, algebra: CliffordAlgebra, n: Optional[int] = None) -> torch.Tensor:
+def extract_grade1(mv: torch.Tensor, algebra: AlgebraLike, n: Optional[int] = None) -> torch.Tensor:
     """Slice grade-1 components from a multivector ``[..., dim] → [..., n]``.
 
     ``n`` defaults to ``algebra.n`` (all grade-1 slots). Inverse of
@@ -228,7 +261,7 @@ def extract_grade1(mv: torch.Tensor, algebra: CliffordAlgebra, n: Optional[int] 
 # ---------------------------------------------------------------------------
 
 
-def gbn_residual_block(algebra: CliffordAlgebra, channels: int) -> nn.ModuleDict:
+def gbn_residual_block(algebra: AlgebraLike, channels: int) -> nn.ModuleDict:
     """The four-step block every GBN experiment shares.
 
     Returns ``{'norm', 'rotor', 'act', 'linear'}`` — no skip, no outer module
@@ -262,7 +295,7 @@ def apply_residual_block(block: nn.ModuleDict, h: torch.Tensor) -> torch.Tensor:
 
 
 @torch.no_grad()
-def mean_grade_spectrum(mv_iter: Iterable[torch.Tensor], algebra: CliffordAlgebra) -> np.ndarray:
+def mean_grade_spectrum(mv_iter: Iterable[torch.Tensor], algebra: AlgebraLike) -> np.ndarray:
     """Mean Hermitian grade spectrum across an iterable of multivectors.
 
     Each element may be any shape ending in ``algebra.dim``; it is flattened
