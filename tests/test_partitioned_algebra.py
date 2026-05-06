@@ -45,6 +45,49 @@ def test_partitioned_algebra_rejects_above_supported_dimension():
         PartitionedCliffordAlgebra(MAX_PARTITIONED_DIMENSIONS + 1, 0, 0, device=DEVICE)
 
 
+@pytest.mark.parametrize("n", range(8, MAX_PARTITIONED_DIMENSIONS + 1))
+def test_default_partitioned_structure_covers_8_to_16_dimensions(n):
+    # This is a lightweight structural sweep across the intended operating
+    # range. It does not multiply full multivectors; it checks that construction
+    # stays recursive, bounded by leaf_n, and free of global Cayley tables.
+    algebra = PartitionedCliffordAlgebra(n, 0, 0, device=DEVICE, dtype=torch.float32)
+
+    assert algebra.dim == 2**n
+    assert algebra.core is None
+    assert not hasattr(algebra, "cayley_indices")
+    assert not hasattr(algebra, "cayley_signs")
+
+    for node in _walk_unique_partition_nodes(algebra):
+        if node.core is None:
+            assert node.left_n + node.right_n == node.n
+            assert node.left_sub.n == node.left_n
+            assert node.right_sub.n == node.right_n
+            assert node.left_sub.n > 0
+            assert node.right_sub.n > 0
+            assert not hasattr(node, "cayley_indices")
+            assert not hasattr(node, "cayley_signs")
+        else:
+            assert node.n <= DEFAULT_PARTITION_LEAF_N
+
+
+@pytest.mark.parametrize(
+    ("partition_tree", "match"),
+    [
+        pytest.param("R=0-3; L=4-6", "cover every dimension", id="missing-dimension"),
+        pytest.param("R=0-3; L=3-7", "appears in both", id="overlapping-dimension"),
+        pytest.param("R=0-3; X=4-7", "Invalid partition path", id="invalid-path"),
+        pytest.param("R=0-3; L=8", "outside", id="out-of-range"),
+        pytest.param("R=3-0; L=4-7", "descending", id="descending-range"),
+        pytest.param("R=0,0; L=1-7", "duplicates", id="duplicate-within-node"),
+    ],
+)
+def test_partition_tree_expression_rejects_invalid_edge_cases(partition_tree, match):
+    # Explicit tree declarations are user-facing, so parser failures should be
+    # caught before construction reaches recursive internals.
+    with pytest.raises(ValueError, match=match):
+        PartitionedCliffordAlgebra(8, 0, 0, device=DEVICE, partition_tree=partition_tree)
+
+
 def _dtype_tolerance(dtype: torch.dtype) -> float:
     if dtype == torch.float16:
         return 5e-3
@@ -84,6 +127,20 @@ def _assert_matches_monolithic(p, q=0, r=0, *, leaf_n=6, shape=(3,), dtype=torch
     actual = algebra.geometric_product(A, B)
 
     assert torch.allclose(actual, expected, atol=1e-9, rtol=1e-9)
+
+
+def _walk_unique_partition_nodes(algebra: PartitionedCliffordAlgebra):
+    """Yield every unique node in a partition tree, handling shared children."""
+    stack = [algebra]
+    seen = set()
+    while stack:
+        node = stack.pop()
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
+        yield node
+        if node.core is None:
+            stack.extend([node.left_sub, node.right_sub])
 
 
 class _PartitionedProductLayer(nn.Module):

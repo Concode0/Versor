@@ -392,6 +392,45 @@ class TestPartitionedHighDimensionalVerification:
 
         assert torch.allclose(actual, expected, atol=atol, rtol=atol)
 
+    @pytest.mark.parametrize(
+        ("p", "q", "r", "dtype", "atol"),
+        [
+            pytest.param(8, 0, 0, torch.float64, 1e-12, id="n8-positive"),
+            pytest.param(0, 9, 0, torch.float64, 1e-12, id="n9-negative"),
+            pytest.param(0, 0, 10, torch.float64, 1e-12, id="n10-null"),
+            pytest.param(6, 3, 2, torch.float64, 1e-12, id="n11-mixed-null"),
+            pytest.param(8, 3, 1, torch.float64, 1e-12, id="n12-mixed-null"),
+            pytest.param(7, 4, 2, torch.float64, 1e-12, id="n13-mixed-null"),
+            pytest.param(8, 4, 2, torch.float32, 1e-6, id="n14-mixed-null"),
+            pytest.param(9, 4, 2, torch.float32, 1e-6, id="n15-mixed-null"),
+            pytest.param(10, 4, 2, torch.float32, 1e-6, id="n16-mixed-null"),
+        ],
+    )
+    def test_sparse_multivector_products_cover_every_dimension_from_8_to_16(self, p, q, r, dtype, atol):
+        # This is the main 8D-16D product sweep. It deliberately uses one
+        # signature per dimension so changes in split depth, odd/even splits,
+        # null compaction, and the 16D cap are all exercised by a single test
+        # family. The bitmask oracle makes this independent from dense support.
+        n = p + q + r
+        algebra = PartitionedCliffordAlgebra(
+            p,
+            q,
+            r,
+            device=DEVICE,
+            dtype=dtype,
+            leaf_n=6,
+            product_chunk_size=8 if n >= 14 else 16,
+        )
+        entries_a, entries_b = _signature_sweep_entries(p, q, r)
+        A = _make_sparse_multivector(algebra, entries_a, dtype)
+        B = _make_sparse_multivector(algebra, entries_b, dtype)
+
+        actual = algebra.geometric_product(A, B)
+        expected_sparse = _sparse_product_reference(entries_a, entries_b, p, q, r)
+        expected = _make_expected_multivector(algebra, expected_sparse, dtype)
+
+        assert torch.allclose(actual, expected, atol=atol, rtol=atol)
+
     def test_automatic_tiled_cl12_product_matches_bitmask_reference(self):
         # Cl(6,3,3) has signature gcd 3, so the automatic planner can reorder
         # dimensions into repeated Cl(2,1,1) tiles and share child modules. The
@@ -681,6 +720,38 @@ class TestPartitionedHighDimensionalVerification:
             expected = _basis_product_reference(index_a, index_b, p, q, r)
             actual = _partitioned_basis_product(algebra, index_a, index_b)
             assert actual == expected
+
+    def test_cl16_forced_unbalanced_tree_matches_bitmask_reference(self):
+        # Explicit tree expressions are how callers force a non-default split.
+        # This tree peels off four low dimensions, then recursively splits the
+        # remaining high dimensions. It crosses positive, negative, and null
+        # signature blocks, so both public-basis permutation and bridge signs
+        # must be correct.
+        p, q, r = 10, 4, 2
+        dtype = torch.float32
+        partition_tree = "R=0-3; L.R=4-7; L.L.R=8-11; L.L.L=12-15"
+        algebra = PartitionedCliffordAlgebra(
+            p,
+            q,
+            r,
+            device=DEVICE,
+            dtype=dtype,
+            leaf_n=6,
+            product_chunk_size=4,
+            partition_tree=partition_tree,
+        )
+        entries_a, entries_b = _signature_sweep_entries(p, q, r)
+        A = _make_sparse_multivector(algebra, entries_a, dtype)
+        B = _make_sparse_multivector(algebra, entries_b, dtype)
+
+        actual = algebra.geometric_product(A, B)
+        expected_sparse = _sparse_product_reference(entries_a, entries_b, p, q, r)
+        expected = _make_expected_multivector(algebra, expected_sparse, dtype)
+
+        tree = algebra.describe_tree()
+        assert "root: Cl(10,4,2)" in tree
+        assert "root.L.L" in tree
+        assert torch.allclose(actual, expected, atol=1e-6, rtol=1e-6)
 
     def test_cl16_basis_products_satisfy_algebraic_identities(self):
         # Tuple-valued basis products make exact identity checks possible at the
