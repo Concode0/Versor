@@ -10,6 +10,11 @@
 Dense-reference sweeps for the Cl8-Cl12 overlap region live in
 ``test_partitioned_dense_reference.py``. Slow non-monolithic verification for
 Cl12+ lives in ``test_partitioned_highdim.py``.
+
+This file is for small enough algebras where a dense ``CliffordAlgebra`` oracle
+is cheap. It intentionally forces shallow recursive trees with small ``leaf_n``
+values so tests can inspect internal split structure, chunking, dtype handling,
+and compile behavior without relying on large high-dimensional fixtures.
 """
 
 import pytest
@@ -26,11 +31,16 @@ DEVICE = "cpu"
 
 
 def test_partition_config_leaf_default_matches_kernel_default():
+    # ``None`` is the Hydra/YAML spelling for "use the partitioned kernel
+    # default." Keep this tied to the constructor default so config and direct
+    # Python construction cannot silently diverge.
     assert PartitionConfig().leaf_n == DEFAULT_PARTITION_LEAF_N
     assert PartitionConfig.from_mapping({"leaf_n": None}).leaf_n == DEFAULT_PARTITION_LEAF_N
 
 
 def test_partitioned_algebra_rejects_above_supported_dimension():
+    # The partitioned kernel has an explicit physical memory limit. This test
+    # guards the public error boundary rather than a particular internal split.
     with pytest.raises(AssertionError, match=f"p \\+ q \\+ r must be <= {MAX_PARTITIONED_DIMENSIONS}"):
         PartitionedCliffordAlgebra(MAX_PARTITIONED_DIMENSIONS + 1, 0, 0, device=DEVICE)
 
@@ -46,6 +56,7 @@ def _dtype_tolerance(dtype: torch.dtype) -> float:
 
 
 def _make_pair(p=3, q=1, r=0, *, leaf_n=2, product_chunk_size=None, dtype=torch.float64):
+    """Build matched dense and partitioned algebras for core-kernel comparisons."""
     reference = CliffordAlgebra(p, q, r, device=DEVICE, dtype=dtype)
     algebra = PartitionedCliffordAlgebra(
         p,
@@ -60,6 +71,7 @@ def _make_pair(p=3, q=1, r=0, *, leaf_n=2, product_chunk_size=None, dtype=torch.
 
 
 def _assert_matches_monolithic(p, q=0, r=0, *, leaf_n=6, shape=(3,), dtype=torch.float64):
+    """Compare a partitioned product against the dense monolithic Cayley kernel."""
     torch.manual_seed(17)
     reference = CliffordAlgebra(p, q, r, device=DEVICE, dtype=dtype)
     algebra = PartitionedCliffordAlgebra(p, q, r, device=DEVICE, dtype=dtype, leaf_n=leaf_n)
@@ -75,6 +87,8 @@ def _assert_matches_monolithic(p, q=0, r=0, *, leaf_n=6, shape=(3,), dtype=torch
 
 
 class _PartitionedProductLayer(nn.Module):
+    """Tiny module used to check ``torch.compile`` forward and backward paths."""
+
     def __init__(self, p, q=0, r=0):
         super().__init__()
         self.algebra = PartitionedCliffordAlgebra(
@@ -94,16 +108,29 @@ class _PartitionedProductLayer(nn.Module):
 
 
 class TestPartitionedCliffordAlgebra:
+    """Small-dimensional regression tests grouped by partitioned-kernel region."""
+
     def test_leaf_matches_core_kernel(self):
+        # With n <= leaf_n, the partitioned algebra delegates to the dense leaf
+        # kernel. This test makes sure the leaf path has no wrapper-level dtype
+        # or shape differences.
         _assert_matches_monolithic(3, 1, 0, leaf_n=6, shape=(2,))
 
     def test_forced_recursive_euclidean_matches_core_kernel(self):
+        # ``leaf_n=2`` forces Cl(4,0) to split recursively even though the dense
+        # kernel could handle it directly. This is the smallest recursive
+        # product check with a Euclidean reference.
         _assert_matches_monolithic(4, 0, 0, leaf_n=2, shape=(4,))
 
     def test_default_recursive_cl8_matches_core_kernel(self):
+        # Cl8 is the first default-recursive Euclidean case now that the default
+        # leaf size is six dimensions.
         _assert_matches_monolithic(8, 0, 0, leaf_n=6, shape=(2,))
 
     def test_recursive_tree_uses_balanced_binary_splits(self):
+        # Balanced splits keep internal tensors bounded. Cl16 with leaf_n=6
+        # should split 16 -> 8 + 8 -> 4 + 4 leaves instead of making one large
+        # dense child.
         algebra = PartitionedCliffordAlgebra(16, 0, 0, device=DEVICE, leaf_n=6)
 
         assert algebra.left_n == 8
@@ -117,6 +144,9 @@ class TestPartitionedCliffordAlgebra:
         assert not hasattr(algebra.right_sub, "cayley_indices")
 
     def test_describe_tree_reports_split_layout_and_shared_nodes(self, capsys):
+        # ``describe_tree`` is the debugging view used when constructing custom
+        # partition trees. The exact root text documents public bit ranges,
+        # child sizes, pair count, chunk size, and shared-node annotations.
         algebra = PartitionedCliffordAlgebra(8, 0, 0, device=DEVICE, leaf_n=2)
 
         tree = algebra.describe_tree()
@@ -134,6 +164,9 @@ class TestPartitionedCliffordAlgebra:
         assert capsys.readouterr().out.strip() == tree
 
     def test_repeated_signature_tiles_share_subalgebras_automatically(self):
+        # Cl(8,4,4) can be tiled as repeated Cl(2,1,1) blocks. The planner is
+        # allowed to permute internal bit order to share identical child modules,
+        # but it must retain public canonical basis order at the API boundary.
         algebra = PartitionedCliffordAlgebra(
             8,
             4,
@@ -157,6 +190,10 @@ class TestPartitionedCliffordAlgebra:
         assert "shared_with=root.L.L" in tree
 
     def test_repeated_signature_tile_product_matches_core_kernel_with_basis_permutation(self):
+        # This catches sign mistakes introduced by the repeated-tile basis
+        # permutation. The dense reference uses public bitmask order, so any
+        # missing input or output permutation sign appears directly in the
+        # product comparison.
         torch.manual_seed(107)
         reference = CliffordAlgebra(4, 2, 2, device=DEVICE, dtype=torch.float64)
         algebra = PartitionedCliffordAlgebra(
@@ -176,6 +213,9 @@ class TestPartitionedCliffordAlgebra:
         )
 
     def test_repeated_signature_tile_product_gradients_match_core_kernel(self):
+        # The same repeated-tile permutation must also be transparent to
+        # autograd. Compare gradients against the dense kernel with cloned inputs
+        # so both graphs receive identical values.
         torch.manual_seed(109)
         reference = CliffordAlgebra(4, 2, 2, device=DEVICE, dtype=torch.float64)
         algebra = PartitionedCliffordAlgebra(
@@ -199,12 +239,18 @@ class TestPartitionedCliffordAlgebra:
         assert torch.allclose(B_partitioned.grad, B_ref.grad, atol=1e-9, rtol=1e-9)
 
     def test_identical_recursive_subalgebras_are_shared(self):
+        # Pure Euclidean repeated halves should reuse child objects. This reduces
+        # memory and ensures recursive caches key by structural signature rather
+        # than by object construction path.
         algebra = PartitionedCliffordAlgebra(8, 0, 0, device=DEVICE, leaf_n=2)
 
         assert algebra.left_sub is algebra.right_sub
         assert algebra.left_sub.left_sub is algebra.left_sub.right_sub
 
     def test_recursive_node_uses_compact_memory_layout(self):
+        # Recursive nodes should not store dense global Cayley-like routing
+        # tables. They keep structural sign vectors and derive right-pair slices
+        # lazily so memory scales with child size and chunk size.
         algebra = PartitionedCliffordAlgebra(4, 0, 0, device=DEVICE, leaf_n=2)
 
         assert "_grade_masks_float" not in algebra._buffers
@@ -233,12 +279,17 @@ class TestPartitionedCliffordAlgebra:
         assert algebra.basis_permutation.split_signs.numel() == 0
 
     def test_default_recursive_mixed_signature_matches_core_kernel(self):
+        # Mixed signatures stress metric signs across the split boundary.
         _assert_matches_monolithic(5, 2, 1, leaf_n=6, shape=(2,))
 
     def test_recursive_product_supports_extra_batch_axes(self):
+        # Recursive products must obey PyTorch broadcasting semantics on all
+        # leading dimensions, matching the dense kernel.
         _assert_matches_monolithic(4, 1, 0, leaf_n=3, shape=(2, 3))
 
     def test_recursive_product_gradients_match_core_kernel(self):
+        # Basic backward check for the recursive product path without repeated
+        # signature permutations.
         torch.manual_seed(23)
         reference = CliffordAlgebra(4, 0, 0, device=DEVICE, dtype=torch.float64)
         algebra = PartitionedCliffordAlgebra(4, 0, 0, device=DEVICE, dtype=torch.float64, leaf_n=2)
@@ -256,6 +307,9 @@ class TestPartitionedCliffordAlgebra:
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     def test_recursive_operations_support_generic_floating_dtypes(self, dtype):
+        # The partitioned kernel owns sign buffers in the algebra dtype but must
+        # still preserve the requested floating dtype for product, norm, and exp
+        # outputs. Tolerances widen for reduced precision.
         torch.manual_seed(67)
         reference = CliffordAlgebra(4, 0, 0, device=DEVICE, dtype=dtype)
         algebra = PartitionedCliffordAlgebra(4, 0, 0, device=DEVICE, dtype=dtype, leaf_n=2)
@@ -305,6 +359,8 @@ class TestPartitionedCliffordAlgebra:
         expected_dtype,
         leaf_n,
     ):
+        # Mixed input dtypes should promote with the algebra's sign-buffer dtype.
+        # The test runs both a forced-recursive and leaf-backed path via leaf_n.
         torch.manual_seed(71)
         algebra = PartitionedCliffordAlgebra(4, 0, 0, device=DEVICE, dtype=algebra_dtype, leaf_n=leaf_n)
         reference = CliffordAlgebra(4, 0, 0, device=DEVICE, dtype=expected_dtype)
@@ -328,6 +384,9 @@ class TestPartitionedCliffordAlgebra:
         assert torch.allclose(actual_exp.float(), expected_exp.float(), atol=atol, rtol=atol)
 
     def test_stable_accumulation_reduces_cumulative_forward_error(self):
+        # A long product chain amplifies fp32 accumulation error. Promoting only
+        # recursive accumulation to fp64 should improve agreement with a dense
+        # fp64 reference while returning fp32 outputs.
         torch.manual_seed(73)
         reference = CliffordAlgebra(8, 0, 0, device=DEVICE, dtype=torch.float64)
         standard = PartitionedCliffordAlgebra(
@@ -361,6 +420,9 @@ class TestPartitionedCliffordAlgebra:
         assert stable_error < standard_error * 0.5
 
     def test_stable_accumulation_reduces_cumulative_backward_error(self):
+        # Backward accumulation can drift for repeated products as well. This
+        # mirrors the forward stability test but compares input gradients against
+        # a dense fp64 reference graph.
         torch.manual_seed(79)
         reference = CliffordAlgebra(8, 0, 0, device=DEVICE, dtype=torch.float64)
         standard = PartitionedCliffordAlgebra(
@@ -400,6 +462,9 @@ class TestPartitionedCliffordAlgebra:
         assert stable_error < standard_error * 0.7
 
     def test_recursive_product_chunked_pair_merge_matches_core_kernel(self):
+        # Chunking processes only a slice of right-basis pairs at a time. This
+        # product-level check ensures chunk boundaries do not change the merged
+        # result or batch broadcasting behavior.
         torch.manual_seed(29)
         reference, algebra = _make_pair(5, 1, 0, leaf_n=2, product_chunk_size=3)
         A = torch.randn(2, 1, algebra.dim, dtype=torch.float64)
@@ -412,6 +477,10 @@ class TestPartitionedCliffordAlgebra:
 
     @pytest.mark.parametrize("pair_range", ["full", "chunk"])
     def test_indexed_right_interaction_merge_matches_reference(self, pair_range):
+        # Private merge helpers are tested directly because they are the critical
+        # memory-saving replacement for materialized right-interaction tensors.
+        # Both full-range and chunk-range calls must produce identical values and
+        # gradients.
         torch.manual_seed(31)
         product_chunk_size = None if pair_range == "full" else 3
         algebra = PartitionedCliffordAlgebra(
@@ -447,6 +516,9 @@ class TestPartitionedCliffordAlgebra:
 
     @pytest.mark.parametrize(("p", "q", "r"), [(5, 1, 0), (1, 1, 4)])
     def test_vectorized_full_pair_product_matches_chunked_with_gradients(self, p, q, r):
+        # Vectorized and chunked pair accumulation should be algebraically
+        # identical. The degenerate signature case verifies that compact
+        # surviving-pair routing for null dimensions also matches.
         torch.manual_seed(83 + p * 13 + q * 7 + r)
         reference = CliffordAlgebra(p, q, r, device=DEVICE, dtype=torch.float64)
         vectorized = PartitionedCliffordAlgebra(p, q, r, device=DEVICE, dtype=torch.float64, leaf_n=3)
@@ -490,6 +562,9 @@ class TestPartitionedCliffordAlgebra:
         assert torch.allclose(B_chunked.grad, B_ref.grad, atol=1e-10, rtol=1e-10)
 
     def test_unit_rotor_chain_maintains_normalization_beyond_depth_threshold(self):
+        # Rotor chains are a realistic high-depth workload. The small bivector
+        # step should preserve unit norm over many recursive products when
+        # accumulation is promoted.
         algebra = PartitionedCliffordAlgebra(
             8,
             0,
@@ -518,6 +593,9 @@ class TestPartitionedCliffordAlgebra:
         assert max_error < 5e-5
 
     def test_bridge_sign_for_high_times_low_vector(self):
+        # The bridge sign is easiest to see with one vector from the high child
+        # multiplied by one vector from the low child. e5 * e1 must be -e15
+        # because the high vector crosses one low vector.
         reference = CliffordAlgebra(5, 0, 0, device=DEVICE, dtype=torch.float64)
         algebra = PartitionedCliffordAlgebra(5, 0, 0, device=DEVICE, dtype=torch.float64, leaf_n=4)
 
@@ -533,12 +611,18 @@ class TestPartitionedCliffordAlgebra:
         assert torch.equal(actual, expected)
 
     def test_null_cross_split_matches_core_kernel(self):
+        # Degenerate dimensions can live on either side of a split. This covers
+        # null-annihilation behavior when null bits cross child boundaries.
         _assert_matches_monolithic(4, 2, 2, leaf_n=4, shape=(2,))
 
     def test_minkowski_signature_matches_core_kernel(self):
+        # Lorentzian signs are a common model target and should match the dense
+        # kernel under forced recursion.
         _assert_matches_monolithic(1, 3, 0, leaf_n=2, shape=(3,))
 
     def test_degenerate_signature_matches_core_kernel(self):
+        # Small degenerate mixed signature used as a dense-reference smoke test
+        # before the broader parameterized sweep.
         _assert_matches_monolithic(2, 1, 2, leaf_n=2, shape=(2,))
 
     @pytest.mark.parametrize(
@@ -552,6 +636,10 @@ class TestPartitionedCliffordAlgebra:
         ],
     )
     def test_general_signature_sweep_matches_core_kernel(self, p, q, r):
+        # Compact sweep over pure negative, pure null, mixed positive/null,
+        # negative/null, and fully mixed signatures. Binary and unary operations
+        # are checked together so structural sign buffers stay aligned with the
+        # product implementation.
         torch.manual_seed(19 + p * 11 + q * 7 + r)
         reference, algebra = _make_pair(p, q, r, leaf_n=2, product_chunk_size=3)
         A = torch.randn(2, algebra.dim, dtype=torch.float64)
@@ -582,6 +670,9 @@ class TestPartitionedCliffordAlgebra:
             assert torch.allclose(actual, expected, atol=1e-10, rtol=1e-10), method_name
 
     def test_recursive_node_does_not_allocate_global_cayley_table(self):
+        # A recursive root must not expose dense Cayley buffers. If this fails,
+        # high-dimensional partitioned construction has likely regressed toward
+        # dense memory behavior.
         algebra = PartitionedCliffordAlgebra(8, 0, 0, device=DEVICE, leaf_n=6)
 
         assert not hasattr(algebra, "cayley_indices")
@@ -590,6 +681,9 @@ class TestPartitionedCliffordAlgebra:
         assert algebra.right_sub.dim == 16
 
     def test_static_structural_sign_buffers_match_core_kernel(self):
+        # These buffers are derived analytically in the partitioned kernel but
+        # should match the dense core on small signatures. They feed unary
+        # operations, norms, pseudoscalar products, exp, and right contraction.
         reference, algebra = _make_pair(3, 1, 1, leaf_n=2)
 
         for name in [
@@ -614,6 +708,8 @@ class TestPartitionedCliffordAlgebra:
                 assert torch.equal(actual, expected)
 
     def test_unary_operations_match_core_kernel(self):
+        # Public unary APIs should not reveal whether the algebra is dense,
+        # leaf-backed, or recursively partitioned.
         torch.manual_seed(31)
         reference, algebra = _make_pair(3, 1, 0, leaf_n=2)
         mv = torch.randn(2, algebra.dim, dtype=torch.float64)
@@ -637,6 +733,8 @@ class TestPartitionedCliffordAlgebra:
             assert torch.allclose(actual, expected, atol=1e-12, rtol=1e-12)
 
     def test_binary_operations_match_core_kernel(self):
+        # Non-product binary APIs use combinations of geometric products and
+        # grade masks. Broadcasting across different leading axes is included.
         torch.manual_seed(37)
         reference, algebra = _make_pair(3, 1, 0, leaf_n=2, product_chunk_size=3)
         A = torch.randn(2, 1, algebra.dim, dtype=torch.float64)
@@ -654,6 +752,8 @@ class TestPartitionedCliffordAlgebra:
             assert torch.allclose(actual, expected, atol=1e-12, rtol=1e-12)
 
     def test_bivector_vector_right_contraction_matches_core_kernel(self):
+        # Right contraction has a specialized bivector-vector path. Projecting
+        # random inputs to grades 2 and 1 keeps the test focused on that path.
         torch.manual_seed(41)
         reference, algebra = _make_pair(4, 0, 0, leaf_n=2)
         A = reference.grade_projection(torch.randn(3, algebra.dim, dtype=torch.float64), 2)
@@ -665,6 +765,9 @@ class TestPartitionedCliffordAlgebra:
         assert torch.allclose(actual, expected, atol=1e-12, rtol=1e-12)
 
     def test_blade_and_versor_operations_match_core_kernel(self):
+        # Higher-level blade and versor helpers compose several primitive
+        # operations. A dense reference here catches shape and promotion mistakes
+        # without needing large dimensions.
         torch.manual_seed(43)
         reference, algebra = _make_pair(3, 1, 0, leaf_n=2)
         mv = torch.randn(2, algebra.dim, dtype=torch.float64)
@@ -688,6 +791,9 @@ class TestPartitionedCliffordAlgebra:
             assert torch.allclose(actual, expected, atol=1e-12, rtol=1e-12)
 
     def test_sandwich_variants_match_core_kernel(self):
+        # Sandwich variants have different broadcasting contracts:
+        # per-channel, same-batch multi-channel, and multi-rotor. All should use
+        # recursive products transparently.
         torch.manual_seed(47)
         reference, algebra = _make_pair(3, 0, 0, leaf_n=2)
         bivector = torch.zeros(4, algebra.dim, dtype=torch.float64)
@@ -711,6 +817,9 @@ class TestPartitionedCliffordAlgebra:
         assert torch.allclose(actual, expected, atol=1e-12, rtol=1e-12)
 
     def test_exp_paths_match_core_kernel(self):
+        # Exp has separate simple-bivector, compiled-safe, and Taylor helper
+        # paths. Small Cl4 keeps the dense reference cheap while still exercising
+        # the nontrivial bivector decomposition path.
         reference, algebra = _make_pair(4, 0, 0, leaf_n=2)
         B = torch.zeros(2, algebra.dim, dtype=torch.float64)
         B[:, 3] = torch.tensor([0.125, -0.25], dtype=torch.float64)
@@ -730,6 +839,8 @@ class TestPartitionedCliffordAlgebra:
 
     @pytest.mark.skipif(not hasattr(torch, "compile"), reason="torch.compile not available")
     def test_compile_geometric_product_matches_eager(self):
+        # ``aot_eager`` is used as a lightweight compile backend to ensure the
+        # recursive product graph avoids obvious compile breaks.
         torch.manual_seed(53)
         algebra = PartitionedCliffordAlgebra(4, 1, 0, device=DEVICE, dtype=torch.float32, leaf_n=2)
         A = torch.randn(3, algebra.dim)
@@ -744,6 +855,8 @@ class TestPartitionedCliffordAlgebra:
 
     @pytest.mark.skipif(not hasattr(torch, "compile"), reason="torch.compile not available")
     def test_compile_training_backward_matches_eager(self):
+        # Compilation must preserve both parameter and input gradients. The tiny
+        # layer keeps the graph small but includes an nn.Parameter broadcast.
         torch.manual_seed(59)
         eager_layer = _PartitionedProductLayer(4, 0, 0)
         compiled_layer = _PartitionedProductLayer(4, 0, 0)

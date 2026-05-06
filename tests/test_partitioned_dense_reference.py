@@ -11,6 +11,10 @@ This file covers the region where both kernels are valid, so regressions show
 up as direct numerical error instead of only algebraic identity failures. The
 slow Cl12 case is intentionally separated from the regular unit sweep because
 the dense reference allocates a monolithic Cayley table.
+
+Use this file when a future partitioned operation can still be compared against
+``CliffordAlgebra``. Use ``test_partitioned_highdim.py`` when the dimension is
+above the dense table limit or when the reference should be purely axiomatic.
 """
 
 import pytest
@@ -24,6 +28,7 @@ DEVICE = "cpu"
 
 
 def _make_dense_reference_pair(p: int, q: int, r: int, leaf_n: int, product_chunk_size: int = 32):
+    """Create dense and partitioned algebras with matched signature and dtype."""
     reference = make_algebra(p, q, r, kernel="dense", device=DEVICE, dtype=torch.float64)
     partitioned = make_algebra(
         p,
@@ -38,6 +43,7 @@ def _make_dense_reference_pair(p: int, q: int, r: int, leaf_n: int, product_chun
 
 
 def _dense_inputs(dim: int, seed: int, batch_shape=(1,)):
+    """Build deterministic small-magnitude dense inputs for error checks."""
     generator = torch.Generator(device=DEVICE).manual_seed(seed)
     scale = 0.125
     A = torch.randn(*batch_shape, dim, dtype=torch.float64, generator=generator) * scale
@@ -46,6 +52,7 @@ def _dense_inputs(dim: int, seed: int, batch_shape=(1,)):
 
 
 def _assert_bounded_error(actual: torch.Tensor, expected: torch.Tensor, label: str, *, atol=2e-9, rtol=2e-9):
+    """Assert both absolute and relative agreement with a diagnostic message."""
     diff = actual - expected
     max_abs = diff.abs().max().item()
     denominator = expected.norm().clamp_min(torch.finfo(expected.dtype).eps)
@@ -69,6 +76,9 @@ def _assert_bounded_error(actual: torch.Tensor, expected: torch.Tensor, label: s
     ],
 )
 def test_dense_comparable_binary_operations_have_bounded_error(p, q, r, leaf_n):
+    # This is the fast dense-overlap sweep. Keep dimensions at or below Cl10 so
+    # the regular non-slow suite does not spend most of its time building dense
+    # Cayley tables. The separate slow test below covers Cl12 explicitly.
     reference, partitioned = _make_dense_reference_pair(p, q, r, leaf_n)
     A, B = _dense_inputs(partitioned.dim, seed=503 + p * 17 + q * 11 + r)
 
@@ -93,6 +103,9 @@ def test_dense_comparable_binary_operations_have_bounded_error(p, q, r, leaf_n):
     ],
 )
 def test_dense_comparable_unary_operations_have_bounded_error(p, q, r, leaf_n):
+    # Unary operations are mostly structural sign or mask operations. Comparing
+    # them against the dense kernel here catches public-basis permutation
+    # mistakes separately from the recursive product path.
     reference, partitioned = _make_dense_reference_pair(p, q, r, leaf_n)
     mv, _ = _dense_inputs(partitioned.dim, seed=719 + p * 17 + q * 11 + r, batch_shape=(2,))
 
@@ -118,6 +131,8 @@ def test_dense_comparable_unary_operations_have_bounded_error(p, q, r, leaf_n):
 
 
 def test_partitioned_8d_fixture_matches_dense_reference(partitioned_algebra_8d):
+    # Fixture-level coverage ensures conftest's shared high-dimensional algebra
+    # declarations stay aligned with the dense-overlap verification method.
     reference = make_algebra(8, 0, 0, kernel="dense", device=DEVICE, dtype=torch.float64)
     A, B = _dense_inputs(partitioned_algebra_8d.dim, seed=1013, batch_shape=(2,))
 
@@ -129,6 +144,10 @@ def test_partitioned_8d_fixture_matches_dense_reference(partitioned_algebra_8d):
 
 @pytest.mark.slow
 def test_partitioned_12d_fixture_dense_reference_error_is_bounded(partitioned_algebra_12d):
+    # Cl12 is the highest dimension supported by the dense kernel. This test is
+    # slow because it allocates the monolithic dense Cayley table, but it is the
+    # strongest direct check that partitioned accumulation does not introduce
+    # excessive numerical error before we leave dense-reference territory.
     reference = make_algebra(12, 0, 0, kernel="dense", device=DEVICE, dtype=torch.float64)
     A, B = _dense_inputs(partitioned_algebra_12d.dim, seed=1207)
 
@@ -140,6 +159,9 @@ def test_partitioned_12d_fixture_dense_reference_error_is_bounded(partitioned_al
 
 @pytest.mark.slow
 def test_partitioned_12d_mixed_fixture_matches_bitmask_reference(partitioned_algebra_12d_mixed):
+    # Mixed signature Cl(8,3,1) checks negative metric signs and null
+    # annihilation with an axiomatic sparse reference. This complements the
+    # dense Cl12 test without requiring another dense mixed-signature table.
     entries_a = [(0, 0.25), (3, -1.5), (257, 0.75), (2049, 2.0)]
     entries_b = [(1, -0.5), (384, 1.25), (1025, -2.0), (4095, 0.5)]
     A = _make_sparse_multivector(partitioned_algebra_12d_mixed, entries_a, torch.float64)
@@ -157,6 +179,9 @@ def test_partitioned_12d_mixed_fixture_matches_bitmask_reference(partitioned_alg
 
 @pytest.mark.slow
 def test_partitioned_16d_fixture_basis_product_matches_bitmask_reference(partitioned_algebra_16d):
+    # The 16D fixture is above the dense kernel limit, so the reference is a
+    # single basis product computed from bitmask rules. The binary literals make
+    # the active public dimensions visible when adding nearby cases.
     p, q, r = 10, 4, 2
     index_a = 0b1001_0010_0110_1011
     index_b = 0b0110_1101_1000_1110
@@ -175,6 +200,7 @@ def test_partitioned_16d_fixture_basis_product_matches_bitmask_reference(partiti
 
 
 def _make_sparse_multivector(algebra, entries, dtype: torch.dtype) -> torch.Tensor:
+    """Materialize sparse ``(bitmask_index, coefficient)`` entries."""
     mv = torch.zeros(1, algebra.dim, dtype=dtype)
     for index, value in entries:
         mv[0, index] += value
@@ -188,6 +214,7 @@ def _sparse_product_reference(
     q: int,
     r: int,
 ) -> dict[int, float]:
+    """Sparse multivector product using only bitmask basis rules."""
     result = {}
     for index_a, value_a in entries_a:
         for index_b, value_b in entries_b:
@@ -199,18 +226,29 @@ def _sparse_product_reference(
 
 
 def _basis_product_reference(index_a: int, index_b: int, p: int, q: int, r: int) -> tuple[int, float]:
+    """Reference basis product for ``e_index_a * e_index_b``.
+
+    The result blade index is XOR. The sign is the parity of swaps between set
+    bits, adjusted for repeated negative basis vectors. A repeated null basis
+    vector makes the coefficient exactly zero.
+    """
     n = p + q + r
     swap_count = 0
     for bit in range(n):
         if index_a & (1 << bit):
+            # Count right-operand vectors that must move left across this
+            # left-operand vector to restore canonical increasing bit order.
             swap_count += (index_b & ((1 << bit) - 1)).bit_count()
 
     sign = -1.0 if swap_count % 2 else 1.0
 
+    # Negative metric dimensions occupy [p, p + q). Repeating one contributes
+    # e_i^2 = -1.
     negative_mask = sum(1 << bit for bit in range(p, p + q))
     if ((index_a & index_b & negative_mask).bit_count() % 2) == 1:
         sign = -sign
 
+    # Null dimensions occupy [p + q, n). Repeating any one contributes e_i^2 = 0.
     null_mask = sum(1 << bit for bit in range(p + q, n))
     if (index_a & index_b & null_mask) != 0:
         sign = 0.0

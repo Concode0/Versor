@@ -10,6 +10,22 @@
 These tests avoid monolithic Cayley-table references. For n >= 12, the
 reference is computed from axiomatic bitmask rules, sub-algebraic isomorphisms,
 algebraic identities, or closed forms inside known two-dimensional subalgebras.
+
+Bitmask convention used throughout this file:
+
+* Basis blade ``e_I`` is stored at integer index ``I``.
+* Bit ``i`` in ``I`` means vector basis element ``e_i`` participates in the
+  blade. For example, ``0b0101`` represents ``e_0 e_2``.
+* The geometric product result blade is ``index_a ^ index_b`` unless a repeated
+  null basis vector annihilates the term.
+* The product sign is the parity of swaps needed to move the right blade's
+  vectors past the left blade's vectors, followed by metric signs from repeated
+  negative basis vectors.
+
+When adding high-dimensional tests, prefer constructing sparse multivectors as
+``[(bitmask_index, coefficient), ...]`` and comparing against
+``_sparse_product_reference``. This keeps the reference independent from both
+the dense Cayley table and the partitioned implementation.
 """
 
 import math
@@ -26,6 +42,13 @@ DEVICE = "cpu"
 
 
 def _signature_for_range_reference(p: int, q: int, r: int, start: int, width: int) -> tuple[int, int, int]:
+    """Return the local signature for a contiguous range of public dimensions.
+
+    Dimensions are ordered by signature block: positive ``[0, p)``, negative
+    ``[p, p + q)``, then null ``[p + q, p + q + r)``. This helper is used when a
+    test embeds a lower-dimensional algebra inside a contiguous slice of a
+    larger algebra and needs to build the matching local reference algebra.
+    """
     end = start + width
     p_count = max(0, min(end, p) - start)
     q_count = max(0, min(end, p + q) - max(start, p))
@@ -35,6 +58,12 @@ def _signature_for_range_reference(p: int, q: int, r: int, start: int, width: in
 
 
 def _shift_index(index: int, offset: int) -> int:
+    """Shift every set basis bit in ``index`` by ``offset`` public dimensions.
+
+    Example: local blade ``0b101`` at offset 3 becomes global blade
+    ``0b101000``. This is the bitmask equivalent of embedding a local blade
+    into a higher-dimensional subspace without changing the local blade order.
+    """
     shifted = 0
     bit = 0
     while index:
@@ -49,7 +78,14 @@ def _make_orthonormal_subspace_basis(
     algebra: PartitionedCliffordAlgebra,
     frame: torch.Tensor,
 ) -> torch.Tensor:
-    """Return embedded basis blades for an orthonormal frame."""
+    """Return embedded basis blades for an orthonormal frame.
+
+    ``frame`` contains ``width`` orthonormal vectors in the ambient algebra's
+    vector space. The returned matrix has one row for every local bitmask
+    ``0..2**width-1``. Row ``basis_index`` is built by multiplying the selected
+    frame vectors in increasing bit order, matching the canonical bitmask basis
+    order used by ``CliffordAlgebra``.
+    """
     width = frame.shape[-1]
     vector_indices = (1 << torch.arange(algebra.n, dtype=torch.long, device=frame.device)).long()
     vectors = torch.zeros(width, algebra.dim, dtype=frame.dtype, device=frame.device)
@@ -68,18 +104,38 @@ def _make_orthonormal_subspace_basis(
 
 
 def _basis_product_reference(index_a: int, index_b: int, p: int, q: int, r: int) -> tuple[int, float]:
+    """Reference product for two canonical basis blades using bit operations.
+
+    This is the smallest trusted oracle in the partitioned tests. It intentionally
+    does not call either dense or partitioned algebra code.
+
+    The algorithm mirrors the Clifford product rules:
+
+    1. The result blade contains basis vectors that appear in exactly one input,
+       so its index is ``index_a ^ index_b``.
+    2. Every vector in ``index_a`` must move past lower-numbered vectors in
+       ``index_b``. The parity of those swaps gives the exterior sign.
+    3. Repeated negative basis vectors contribute an extra ``-1`` metric sign.
+    4. Repeated null basis vectors make the entire product zero.
+    """
     n = p + q + r
     swap_count = 0
     for bit in range(n):
         if index_a & (1 << bit):
+            # Count vectors from B with lower public index than the current A
+            # vector. Each such pair must be swapped once.
             swap_count += (index_b & ((1 << bit) - 1)).bit_count()
 
     sign = -1.0 if swap_count % 2 else 1.0
 
+    # Negative dimensions occupy [p, p + q). Repeating one of those vectors
+    # squares it to -1, so an odd number of repeated negative bits flips sign.
     negative_mask = sum(1 << bit for bit in range(p, p + q))
     if ((index_a & index_b & negative_mask).bit_count() % 2) == 1:
         sign = -sign
 
+    # Null dimensions occupy [p + q, n). Repeating a null basis vector squares
+    # it to zero, annihilating that basis-pair contribution.
     null_mask = sum(1 << bit for bit in range(p + q, n))
     if (index_a & index_b & null_mask) != 0:
         sign = 0.0
@@ -88,13 +144,28 @@ def _basis_product_reference(index_a: int, index_b: int, p: int, q: int, r: int)
 
 
 def _partitioned_basis_product(algebra, index_a: int, index_b: int) -> tuple[int, float]:
+    """Evaluate a basis product by walking the partition tree directly.
+
+    This helper verifies the recursive routing logic without constructing full
+    multivectors. At each internal node, public indices are first converted into
+    split-local order if the node uses a repeated-tile permutation. The low
+    ``right_n`` bits are handled by the right child, the remaining high bits by
+    the left child, and the bridge sign accounts for commuting right-child
+    factors across left-child factors.
+    """
     if algebra.core is not None:
+        # Leaves are intentionally backed by the dense local kernel. Reading the
+        # leaf Cayley table here checks the partition traversal and merge signs,
+        # not the local dense product itself.
         result_index = int(algebra.core.cayley_indices[index_a, index_b].item())
         sign = float(algebra.core.cayley_signs[index_a, index_b].item())
         return result_index, sign
 
     input_sign = 1.0
     if algebra.basis_permutation.uses_permutation:
+        # Some signatures are internally reordered to share identical child
+        # subalgebras. The permutation carries signs because changing vector
+        # order changes canonical blade orientation.
         split_a = int(algebra.basis_permutation.public_to_split[index_a].item())
         split_b = int(algebra.basis_permutation.public_to_split[index_b].item())
         input_sign *= float(algebra.basis_permutation.split_signs[split_a].item())
@@ -106,14 +177,19 @@ def _partitioned_basis_product(algebra, index_a: int, index_b: int) -> tuple[int
     left_a, right_a = index_a >> algebra.right_n, index_a & right_mask
     left_b, right_b = index_b >> algebra.right_n, index_b & right_mask
 
+    # Recurse independently in the child algebras. The child result indices are
+    # then packed back into the split-local index layout.
     left_result, left_sign = _partitioned_basis_product(algebra.left_sub, left_a, left_b)
     right_result, right_sign = _partitioned_basis_product(algebra.right_sub, right_a, right_b)
     right_b_index = torch.tensor([right_b], dtype=torch.long, device=algebra.device)
+    # Bridge sign = (-1) ** (grade(left_A) * grade(right_B)). It is the only
+    # sign that couples the two child products at an internal node.
     bridge_sign = float(algebra._bridge_signs_for_right_b(right_b_index, torch.float64)[0, left_a].item())
     result_index = (left_result << algebra.right_n) | right_result
     sign = input_sign * left_sign * right_sign * bridge_sign
 
     if algebra.basis_permutation.uses_permutation:
+        # Convert split-local result orientation back to public canonical order.
         sign *= float(algebra.basis_permutation.split_signs[result_index].item())
         result_index = int(algebra.basis_permutation.split_to_public[result_index].item())
 
@@ -127,6 +203,7 @@ def _sparse_product_reference(
     q: int,
     r: int,
 ) -> dict[int, float]:
+    """Sparse multivector product using only the bitmask basis oracle."""
     result = {}
     for index_a, value_a in entries_a:
         for index_b, value_b in entries_b:
@@ -138,11 +215,24 @@ def _sparse_product_reference(
 
 
 def _signature_sweep_entries(p: int, q: int, r: int) -> tuple[list[tuple[int, float]], list[tuple[int, float]]]:
+    """Build sparse inputs that exercise low, middle, high, and null bits.
+
+    The exact coefficients are arbitrary but non-symmetric. The bit positions
+    are chosen to cross split boundaries for balanced trees and to hit positive,
+    negative, and null signature blocks when present. Reuse this helper for
+    broad signature sweeps; add explicit hand-picked entries when a test needs a
+    very specific blade interaction.
+    """
     n = p + q + r
     entries_a = [
+        # Scalar term: verifies scalar multiplication and accumulation into an
+        # already-populated output blade.
         (0, 0.375),
+        # Low plus middle bit: likely crosses left/right children in Cl12+.
         ((1 << 0) | (1 << (n // 2)), -0.5),
+        # Two high bits: catches sign handling away from the low-order block.
         ((1 << (n - 3)) | (1 << (n - 1)), 0.875),
+        # Low plus high bit: exercises bridge signs across the partition split.
         ((1 << 1) | (1 << (n - 2)), -1.125),
     ]
     entries_b = [
@@ -153,6 +243,8 @@ def _signature_sweep_entries(p: int, q: int, r: int) -> tuple[list[tuple[int, fl
     ]
 
     if r > 0:
+        # Include repeated null-bit products. Any pair that repeats ``null_bit``
+        # should vanish in the reference and in the partitioned kernel.
         null_bit = p + q
         entries_a.append(((1 << null_bit) | (1 << 1), 0.25))
         entries_b.append(((1 << null_bit) | (1 << 2), -1.5))
@@ -161,6 +253,7 @@ def _signature_sweep_entries(p: int, q: int, r: int) -> tuple[list[tuple[int, fl
 
 
 def _make_sparse_multivector(algebra: PartitionedCliffordAlgebra, entries, dtype: torch.dtype) -> torch.Tensor:
+    """Materialize ``[(bitmask, coeff), ...]`` entries into a dense tensor."""
     mv = torch.zeros(1, algebra.dim, dtype=dtype)
     for index, value in entries:
         mv[0, index] += value
@@ -168,6 +261,7 @@ def _make_sparse_multivector(algebra: PartitionedCliffordAlgebra, entries, dtype
 
 
 def _make_expected_multivector(algebra: PartitionedCliffordAlgebra, entries, dtype: torch.dtype) -> torch.Tensor:
+    """Materialize a sparse dictionary reference into a dense output tensor."""
     expected = torch.zeros(1, algebra.dim, dtype=dtype)
     for index, value in entries.items():
         expected[0, index] = value
@@ -175,6 +269,7 @@ def _make_expected_multivector(algebra: PartitionedCliffordAlgebra, entries, dty
 
 
 def _long_taylor_simple_bivector(theta: float, square: float, order: int = 80) -> tuple[float, float]:
+    """Reference exp(theta B) for a simple bivector with known ``B**2`` scalar."""
     scalar = 0.0
     bivector = 0.0
     power = 1.0
@@ -189,6 +284,7 @@ def _long_taylor_simple_bivector(theta: float, square: float, order: int = 80) -
 
 
 def _canonical_basis_term(index: int, coefficient: float) -> tuple[int, float]:
+    """Normalize zero coefficients so identity checks compare exact tuples."""
     if coefficient == 0.0:
         return 0, 0.0
     return index, coefficient
@@ -199,6 +295,7 @@ def _multiply_signed_basis(
     left: tuple[int, float],
     right: tuple[int, float],
 ) -> tuple[int, float]:
+    """Multiply two signed basis terms through the partition-tree basis oracle."""
     left_index, left_coeff = left
     right_index, right_coeff = right
     if left_coeff == 0.0 or right_coeff == 0.0:
@@ -208,16 +305,22 @@ def _multiply_signed_basis(
 
 
 def _reverse_sign(index: int) -> float:
+    """Sign applied by reversion to a basis blade of grade ``popcount(index)``."""
     grade = index.bit_count()
     return -1.0 if (grade * (grade - 1) // 2) % 2 else 1.0
 
 
 def _grade_involution_sign(index: int) -> float:
+    """Sign applied by grade involution to a basis blade."""
     return -1.0 if index.bit_count() % 2 else 1.0
 
 
 class TestPartitionedHighDimensionalVerification:
     def test_cl12_sparse_multivector_product_matches_direct_bitmask_reference(self):
+        # Cl(8,3,1) is dense enough to exercise recursive routing, includes a
+        # negative block and a null block, and still keeps the sparse reference
+        # human-readable. The selected indices include low, middle, high, and
+        # all-bits-set blades so sign and null handling are both visible.
         p, q, r = 8, 3, 1
         algebra = PartitionedCliffordAlgebra(
             p,
@@ -266,6 +369,10 @@ class TestPartitionedHighDimensionalVerification:
         dtype,
         atol,
     ):
+        # This sweep is the broad regression surface for metric signatures:
+        # pure positive, pure negative, mixed nondegenerate, mixed degenerate,
+        # and the current 16D ceiling. Each case uses the same sparse pattern so
+        # differences come from signature signs and null annihilation only.
         algebra = PartitionedCliffordAlgebra(
             p,
             q,
@@ -286,6 +393,10 @@ class TestPartitionedHighDimensionalVerification:
         assert torch.allclose(actual, expected, atol=atol, rtol=atol)
 
     def test_automatic_tiled_cl12_product_matches_bitmask_reference(self):
+        # Cl(6,3,3) has signature gcd 3, so the automatic planner can reorder
+        # dimensions into repeated Cl(2,1,1) tiles and share child modules. The
+        # bitmask reference stays in public canonical order, making this a direct
+        # check that permutation signs are restored correctly at the boundary.
         p, q, r = 6, 3, 3
         dtype = torch.float64
         algebra = PartitionedCliffordAlgebra(
@@ -310,6 +421,11 @@ class TestPartitionedHighDimensionalVerification:
         assert torch.allclose(actual, expected, atol=1e-12, rtol=1e-12)
 
     def test_cl12_sparse_multivectors_satisfy_numerical_identities(self):
+        # This test avoids any dense reference. Instead, it checks identities
+        # that must hold for the product regardless of partition shape:
+        # distributivity, associativity, reverse anti-automorphism, grade
+        # involution automorphism, scalar multiplication, and vector
+        # anticommutation.
         p, q, r = 7, 3, 2
         dtype = torch.float64
         algebra = PartitionedCliffordAlgebra(
@@ -378,6 +494,10 @@ class TestPartitionedHighDimensionalVerification:
         assert not torch.allclose(e0e2, e2e0, atol=1e-12, rtol=1e-12)
 
     def test_cl12_backward_matches_finite_difference_directional_derivative(self):
+        # Autograd is checked against a directional finite difference using
+        # sparse perturbations. Keeping A, B, dA, dB, and the loss weight sparse
+        # makes the reference direction easy to inspect while still exercising
+        # the recursive product backward path.
         p, q, r = 7, 3, 2
         dtype = torch.float64
         algebra = PartitionedCliffordAlgebra(
@@ -414,6 +534,9 @@ class TestPartitionedHighDimensionalVerification:
         assert torch.allclose(directional_grad, finite_difference, atol=1e-9, rtol=1e-9)
 
     def test_cl16_dense_basis_product_matches_direct_bitmask_reference(self):
+        # A single basis-product case at the 16D cap catches indexing mistakes
+        # that are invisible in smaller dimensions. The binary literals make it
+        # easy to see which public bits are active in each operand.
         p, q, r = 10, 4, 2
         algebra = PartitionedCliffordAlgebra(
             p,
@@ -440,6 +563,10 @@ class TestPartitionedHighDimensionalVerification:
         assert torch.allclose(actual, expected, atol=1e-6, rtol=1e-6)
 
     def test_cl12_embedded_subalgebra_product_matches_local_isomorphism(self):
+        # A contiguous 6D public slice should behave exactly like a standalone
+        # local algebra with the induced signature. ``_shift_index`` embeds each
+        # local basis blade into the global bit positions, then the global output
+        # is compared against the shifted local product.
         p, q, r = 6, 4, 2
         offset, width = 3, 6
         local_p, local_q, local_r = _signature_for_range_reference(p, q, r, offset, width)
@@ -490,6 +617,10 @@ class TestPartitionedHighDimensionalVerification:
         assert torch.allclose(actual, expected, atol=1e-12, rtol=1e-12)
 
     def test_cl12_random_three_dimensional_subspace_projects_to_n3_engine(self):
+        # This is a basis-independent isomorphism check. A random orthonormal
+        # 3-frame defines an embedded Cl(3,0) subalgebra inside Cl(12,0). After
+        # multiplying embedded multivectors globally, projecting back onto the
+        # constructed basis must recover the local Cl(3,0) product.
         dtype = torch.float64
         global_algebra = PartitionedCliffordAlgebra(
             12,
@@ -523,6 +654,9 @@ class TestPartitionedHighDimensionalVerification:
         assert torch.allclose(global_product, embedded_expected, atol=1e-10, rtol=1e-10)
 
     def test_cl16_recursive_sign_merge_matches_direct_bitmask_reference(self):
+        # This helper-level test walks the partition tree one basis product at a
+        # time. It is faster than materializing full multivectors and directly
+        # targets the recursive split/bridge/permutation sign merge.
         p, q, r = 10, 4, 2
         algebra = PartitionedCliffordAlgebra(
             p,
@@ -549,6 +683,10 @@ class TestPartitionedHighDimensionalVerification:
             assert actual == expected
 
     def test_cl16_basis_products_satisfy_algebraic_identities(self):
+        # Tuple-valued basis products make exact identity checks possible at the
+        # 16D cap. Associativity validates recursive merge consistency; reverse
+        # and grade-involution identities validate the sign formulas used by the
+        # structural buffers.
         p, q, r = 10, 4, 2
         algebra = PartitionedCliffordAlgebra(
             p,
@@ -604,6 +742,10 @@ class TestPartitionedHighDimensionalVerification:
             assert involution_ab == involution_product
 
     def test_cl16_simple_bivector_exp_matches_long_taylor_reference(self):
+        # Simple bivector exponentials have a closed two-term form. The long
+        # Taylor reference is intentionally scalar-only and independent of the
+        # algebra implementation, so it catches coefficient/sign regressions in
+        # the high-dimensional closed-form path.
         p, q, r = 16, 0, 0
         algebra = PartitionedCliffordAlgebra(
             p,
@@ -651,6 +793,10 @@ class TestPartitionedHighDimensionalVerification:
         scalar_ref,
         bivector_ref,
     ):
+        # Parameterized closed-form cases cover the three regimes:
+        # Euclidean-like elliptic, Lorentzian hyperbolic, and degenerate
+        # parabolic. The selected bivector index always contains exactly two
+        # bits so the expected output has only scalar and bivector components.
         algebra = PartitionedCliffordAlgebra(
             p,
             q,
@@ -675,6 +821,9 @@ class TestPartitionedHighDimensionalVerification:
         assert torch.count_nonzero(actual).item() == 2
 
     def test_cl16_lorentzian_bivector_exp_matches_long_taylor_reference(self):
+        # Separate long-Taylor check for the hyperbolic sign regime. In
+        # Cl(1,15), e0 has positive square and e1 has negative square, so
+        # (e0e1)^2 = +1 and exp(theta e0e1) uses cosh/sinh.
         p, q, r = 1, 15, 0
         algebra = PartitionedCliffordAlgebra(
             p,
@@ -705,6 +854,10 @@ class TestPartitionedHighDimensionalVerification:
         assert torch.count_nonzero(actual).item() == 2
 
     def test_cl16_degenerate_repeated_null_factor_annihilates_product(self):
+        # In a degenerate signature, any product that repeats the same null
+        # basis vector must vanish. These cases keep additional non-null bits in
+        # each operand to ensure the annihilation is detected before other sign
+        # details can mask the bug.
         p, q, r = 10, 4, 2
         algebra = PartitionedCliffordAlgebra(
             p,
