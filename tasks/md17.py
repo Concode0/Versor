@@ -8,7 +8,7 @@
 import torch
 import torch.nn as nn
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra_from_config
 from core.metric import hermitian_grade_spectrum, hermitian_norm
 from datalib.md17 import get_md17_loaders
 from functional.loss import ConservativeLoss, HermitianGradeRegularization
@@ -50,7 +50,14 @@ class MD17Task(BaseTask):
     def setup_algebra(self):
         """Use Cl(3,0,1) PGA for SE(3) rigid-body motions."""
         exp_policy = self.cfg.model.get("exp_policy", "balanced")
-        return CliffordAlgebra(p=3, q=0, r=self.cfg.algebra.get("r", 1), device=self.device, exp_policy=exp_policy)
+        return make_algebra_from_config(
+            self.cfg.algebra,
+            p=3,
+            q=0,
+            r=self.cfg.algebra.get("r", 1),
+            device=self.device,
+            exp_policy=exp_policy,
+        )
 
     def setup_model(self):
         """Build MD17ForceNet model with PGA motors, dynamic rotors, and RBF."""

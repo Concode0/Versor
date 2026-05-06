@@ -21,7 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from omegaconf import DictConfig
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra_from_config
 from datalib.lqa import get_lqa_loaders
 from functional.loss import AsymmetryLoss, InvolutionConsistencyLoss
 from log import get_logger
@@ -57,7 +57,7 @@ class LQATask(BaseTask):
         p = self.cfg.algebra.get("p", 4)
         q = self.cfg.algebra.get("q", 1)
         r = self.cfg.algebra.get("r", 0)
-        return CliffordAlgebra(p, q, r, device=self.device)
+        return make_algebra_from_config(self.cfg.algebra, p=p, q=q, r=r, device=self.device)
 
     def setup_model(self):
         """GLRNet with probe-specific head."""

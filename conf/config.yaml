@@ -6,7 +6,14 @@ algebra:
   p: 3
   q: 0
   r: 0
+  kernel: "auto"            # auto: dense for n<=partition_threshold, partitioned above it
+  partition_threshold: 8
   device: "auto"  # Auto-detect: cuda > mps > cpu
+  partition:
+    leaf_n: 4
+    product_chunk_size: null
+    tree: null              # Example: "R=0-3; L.R=4-7; L.L=8-11"
+    accumulation_dtype: null
 
 training:
   epochs: 100

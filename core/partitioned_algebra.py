@@ -193,6 +193,29 @@ class _RightProductSlice:
         yield self.right_product_signs
 
 
+@dataclass(frozen=True)
+class _PartitionTreeSpec:
+    """Validated relative split tree for one partitioned node."""
+
+    right_dims: tuple[int, ...]
+    left_dims: tuple[int, ...]
+    right: Optional["_PartitionTreeSpec"] = None
+    left: Optional["_PartitionTreeSpec"] = None
+
+    @property
+    def split_dims(self) -> tuple[int, ...]:
+        return self.right_dims + self.left_dims
+
+    def fingerprint(self) -> tuple:
+        """Return a relative structural fingerprint for safe subalgebra reuse."""
+        return (
+            self.right_dims,
+            None if self.right is None else self.right.fingerprint(),
+            self.left_dims,
+            None if self.left is None else self.left.fingerprint(),
+        )
+
+
 def _partition_split(p: int, q: int, r: int) -> _PartitionSplit:
     """Return the single recursive split used by the partitioned algebra.
 
@@ -260,6 +283,224 @@ def _build_partition_split(
         right_dims=right_dims,
         left_dims=left_dims,
     )
+
+
+def _partition_tree_fingerprint(partition_tree: Optional[_PartitionTreeSpec]) -> object:
+    """Return the cache fingerprint for a child partition tree."""
+    return "auto" if partition_tree is None else partition_tree.fingerprint()
+
+
+def _split_from_tree_spec(p: int, q: int, r: int, tree: _PartitionTreeSpec) -> _PartitionSplit:
+    """Create a concrete split from an explicit relative tree node."""
+    assert sorted(tree.split_dims) == list(range(p + q + r))
+    right_signature = _signature_for_dims(p, q, r, tree.right_dims)
+    left_signature = _signature_for_dims(p, q, r, tree.left_dims)
+    return _PartitionSplit(
+        right_signature=right_signature,
+        left_signature=left_signature,
+        right_dims=tree.right_dims,
+        left_dims=tree.left_dims,
+    )
+
+
+def _signature_for_dims(p: int, q: int, r: int, dims: Sequence[int]) -> tuple[int, int, int]:
+    """Return child signature counts for selected local basis-vector dims."""
+    n = p + q + r
+    p_count = 0
+    q_count = 0
+    r_count = 0
+    for dim in dims:
+        if dim < 0 or dim >= n:
+            raise ValueError(f"Partition dim {dim} is outside [0, {n})")
+        if dim < p:
+            p_count += 1
+        elif dim < p + q:
+            q_count += 1
+        else:
+            r_count += 1
+    return p_count, q_count, r_count
+
+
+def _normalize_partition_tree(
+    partition_tree,
+    p: int,
+    q: int,
+    r: int,
+) -> Optional[_PartitionTreeSpec]:
+    """Resolve a public partition tree expression into a relative tree spec."""
+    if partition_tree is None:
+        return None
+    if isinstance(partition_tree, _PartitionTreeSpec):
+        return partition_tree
+    if isinstance(partition_tree, str):
+        expression = partition_tree.strip()
+        if not expression or expression.lower() in {"auto", "none", "null"}:
+            return None
+        assignments = _parse_partition_tree_expression(expression, p + q + r)
+        root_dims = _canonical_global_dims(tuple(range(p + q + r)), p, q, r)
+        return _build_partition_tree_from_assignments(assignments, (), root_dims, p, q, r)
+    raise TypeError(
+        "partition_tree must be None, 'auto', a path expression string, "
+        f"or an internal _PartitionTreeSpec, got {type(partition_tree).__name__}"
+    )
+
+
+def _parse_partition_tree_expression(expression: str, n: int) -> dict[tuple[str, ...], tuple[int, ...]]:
+    """Parse ``R=0-3; L.R=4-7`` style partition expressions."""
+    assignments: dict[tuple[str, ...], tuple[int, ...]] = {}
+    used_dims: dict[int, tuple[str, ...]] = {}
+
+    for raw_entry in expression.split(";"):
+        entry = raw_entry.strip()
+        if not entry:
+            continue
+        if "=" not in entry:
+            raise ValueError(f"Invalid partition tree entry {entry!r}; expected PATH=DIMS")
+        raw_path, raw_dims = entry.split("=", 1)
+        path = _parse_partition_path(raw_path)
+        dims = _parse_dim_expression(raw_dims, n)
+        if path in assignments:
+            raise ValueError(f"Duplicate partition path {'.'.join(path)}")
+        for dim in dims:
+            if dim in used_dims:
+                previous = ".".join(used_dims[dim])
+                current = ".".join(path)
+                raise ValueError(f"Partition dim {dim} appears in both {previous} and {current}")
+            used_dims[dim] = path
+        assignments[path] = dims
+
+    if not assignments:
+        raise ValueError("Partition tree expression did not contain any PATH=DIMS entries")
+
+    expected_dims = set(range(n))
+    actual_dims = set(used_dims)
+    if actual_dims != expected_dims:
+        missing = sorted(expected_dims - actual_dims)
+        extra = sorted(actual_dims - expected_dims)
+        raise ValueError(f"Partition tree must cover every dimension exactly once; missing={missing}, extra={extra}")
+
+    return assignments
+
+
+def _parse_partition_path(raw_path: str) -> tuple[str, ...]:
+    """Parse a tree path made of ``L`` and ``R`` segments."""
+    path = tuple(segment.strip().upper() for segment in raw_path.strip().split(".") if segment.strip())
+    if not path:
+        raise ValueError("Partition path cannot be empty")
+    invalid = [segment for segment in path if segment not in {"L", "R"}]
+    if invalid:
+        raise ValueError(f"Invalid partition path segment(s): {invalid}; use only L and R")
+    return path
+
+
+def _parse_dim_expression(raw_dims: str, n: int) -> tuple[int, ...]:
+    """Parse comma-separated dimensions and inclusive ranges."""
+    dims: list[int] = []
+    for raw_token in raw_dims.split(","):
+        token = raw_token.strip()
+        if not token:
+            continue
+        if "-" in token:
+            raw_start, raw_end = token.split("-", 1)
+            start = int(raw_start.strip())
+            end = int(raw_end.strip())
+            if end < start:
+                raise ValueError(f"Invalid descending partition range {token!r}")
+            dims.extend(range(start, end + 1))
+        else:
+            dims.append(int(token))
+
+    if not dims:
+        raise ValueError("Partition dimension expression cannot be empty")
+
+    unique_dims = tuple(dict.fromkeys(dims))
+    if len(unique_dims) != len(dims):
+        raise ValueError(f"Partition dimension expression contains duplicates: {raw_dims!r}")
+    for dim in unique_dims:
+        if dim < 0 or dim >= n:
+            raise ValueError(f"Partition dim {dim} is outside [0, {n})")
+    return unique_dims
+
+
+def _build_partition_tree_from_assignments(
+    assignments: dict[tuple[str, ...], tuple[int, ...]],
+    path: tuple[str, ...],
+    node_global_dims: tuple[int, ...],
+    p: int,
+    q: int,
+    r: int,
+) -> _PartitionTreeSpec:
+    """Build a relative tree spec for one node from global path assignments."""
+    right_global_dims = _assigned_dims_under(assignments, path + ("R",))
+    left_global_dims = _assigned_dims_under(assignments, path + ("L",))
+
+    if not right_global_dims or not left_global_dims:
+        label = "root" if not path else ".".join(path)
+        raise ValueError(f"Partition node {label} must define both L and R children")
+
+    node_dim_set = set(node_global_dims)
+    if set(right_global_dims) | set(left_global_dims) != node_dim_set:
+        label = "root" if not path else ".".join(path)
+        raise ValueError(f"Partition node {label} children must cover exactly its parent dimensions")
+    if set(right_global_dims) & set(left_global_dims):
+        label = "root" if not path else ".".join(path)
+        raise ValueError(f"Partition node {label} has overlapping L/R dimensions")
+
+    right_child_global_dims = _canonical_global_dims(right_global_dims, p, q, r)
+    left_child_global_dims = _canonical_global_dims(left_global_dims, p, q, r)
+    local_index = {dim: index for index, dim in enumerate(node_global_dims)}
+    right_dims = tuple(local_index[dim] for dim in right_child_global_dims)
+    left_dims = tuple(local_index[dim] for dim in left_child_global_dims)
+
+    right_tree = None
+    left_tree = None
+    if _has_descendant_assignment(assignments, path + ("R",)):
+        right_tree = _build_partition_tree_from_assignments(
+            assignments,
+            path + ("R",),
+            right_child_global_dims,
+            p,
+            q,
+            r,
+        )
+    if _has_descendant_assignment(assignments, path + ("L",)):
+        left_tree = _build_partition_tree_from_assignments(
+            assignments,
+            path + ("L",),
+            left_child_global_dims,
+            p,
+            q,
+            r,
+        )
+
+    return _PartitionTreeSpec(right_dims=right_dims, left_dims=left_dims, right=right_tree, left=left_tree)
+
+
+def _assigned_dims_under(
+    assignments: dict[tuple[str, ...], tuple[int, ...]],
+    path: tuple[str, ...],
+) -> tuple[int, ...]:
+    """Return all globally assigned dims under a path."""
+    dims: list[int] = []
+    for assigned_path, assigned_dims in assignments.items():
+        if assigned_path[: len(path)] == path:
+            dims.extend(assigned_dims)
+    return tuple(dims)
+
+
+def _has_descendant_assignment(
+    assignments: dict[tuple[str, ...], tuple[int, ...]],
+    path: tuple[str, ...],
+) -> bool:
+    """Whether a path has deeper assignments than itself."""
+    return any(len(assigned_path) > len(path) and assigned_path[: len(path)] == path for assigned_path in assignments)
+
+
+def _canonical_global_dims(dims: Sequence[int], p: int, q: int, r: int) -> tuple[int, ...]:
+    """Order global dimensions by local Clifford signature convention."""
+    n = p + q + r
+    dim_set = set(dims)
+    return tuple(dim for dim in range(n) if dim in dim_set)
 
 
 def _grade_index(n: int, device) -> torch.Tensor:
@@ -388,6 +629,7 @@ def _subalgebra_cache_key(
     exp_policy,
     fixed_iterations: int,
     accumulation_dtype: Optional[torch.dtype],
+    partition_tree: Optional[_PartitionTreeSpec],
 ) -> tuple:
     """Return the per-tree cache key for structurally identical sub-algebras."""
     return (
@@ -401,6 +643,7 @@ def _subalgebra_cache_key(
         getattr(exp_policy, "value", str(exp_policy)),
         fixed_iterations,
         str(accumulation_dtype),
+        _partition_tree_fingerprint(partition_tree),
     )
 
 
@@ -743,6 +986,9 @@ class PartitionedCliffordAlgebra(nn.Module):
             exponential paths. ``None`` derives it from policy, dtype, and n.
         accumulation_dtype (torch.dtype, optional): Optional promoted dtype for
             recursive product accumulation.
+        partition_tree (str, optional): Explicit split expression such as
+            ``"R=0-3; L.R=4-7; L.L=8-11"``. ``None`` or ``"auto"`` uses the
+            automatic repeated-tile/balanced splitter.
     """
 
     def __init__(
@@ -757,6 +1003,7 @@ class PartitionedCliffordAlgebra(nn.Module):
         exp_policy: str = "balanced",
         fixed_iterations: Optional[int] = None,
         accumulation_dtype: Optional[torch.dtype] = None,
+        partition_tree=None,
         _subalgebra_cache: Optional[dict] = None,
     ):
         super().__init__()
@@ -769,8 +1016,9 @@ class PartitionedCliffordAlgebra(nn.Module):
         self._init_signature(p, q, r, leaf_n, product_chunk_size, accumulation_dtype)
         self._init_exp_settings(dtype, exp_policy, fixed_iterations)
         self._init_structural_buffers(device, dtype)
+        self._partition_tree = _normalize_partition_tree(partition_tree, self.p, self.q, self.r)
 
-        if self.n <= leaf_n:
+        if self.n <= leaf_n and self._partition_tree is None:
             self._init_leaf_node(device, dtype)
             return
 
@@ -833,7 +1081,11 @@ class PartitionedCliffordAlgebra(nn.Module):
 
     def _init_recursive_node(self, device, dtype: torch.dtype, subalgebra_cache: dict) -> None:
         """Configure split layout, child modules, and runtime product planning."""
-        split = _partition_split(self.p, self.q, self.r)
+        split = (
+            _partition_split(self.p, self.q, self.r)
+            if self._partition_tree is None
+            else _split_from_tree_spec(self.p, self.q, self.r, self._partition_tree)
+        )
         self._init_split_layout(split, device)
         self.core = None
         self.left_sub, self.right_sub = self._create_child_subalgebras(split, device, dtype, subalgebra_cache)
@@ -869,8 +1121,10 @@ class PartitionedCliffordAlgebra(nn.Module):
             "accumulation_dtype": self.accumulation_dtype,
             "subalgebra_cache": subalgebra_cache,
         }
-        left_sub = self._get_or_create_subalgebra(*split.left_signature, **child_kwargs)
-        right_sub = self._get_or_create_subalgebra(*split.right_signature, **child_kwargs)
+        left_tree = None if self._partition_tree is None else self._partition_tree.left
+        right_tree = None if self._partition_tree is None else self._partition_tree.right
+        left_sub = self._get_or_create_subalgebra(*split.left_signature, partition_tree=left_tree, **child_kwargs)
+        right_sub = self._get_or_create_subalgebra(*split.right_signature, partition_tree=right_tree, **child_kwargs)
         return left_sub, right_sub
 
     @classmethod
@@ -887,6 +1141,7 @@ class PartitionedCliffordAlgebra(nn.Module):
         exp_policy,
         fixed_iterations: int,
         accumulation_dtype: Optional[torch.dtype],
+        partition_tree: Optional[_PartitionTreeSpec],
         subalgebra_cache: dict,
     ) -> "PartitionedCliffordAlgebra":
         """Create or reuse a child with the same algebraic structure.
@@ -907,6 +1162,7 @@ class PartitionedCliffordAlgebra(nn.Module):
             exp_policy,
             fixed_iterations,
             accumulation_dtype,
+            partition_tree,
         )
         subalgebra = subalgebra_cache.get(cache_key)
         if subalgebra is None:
@@ -921,6 +1177,7 @@ class PartitionedCliffordAlgebra(nn.Module):
                 exp_policy=exp_policy,
                 fixed_iterations=fixed_iterations,
                 accumulation_dtype=accumulation_dtype,
+                partition_tree=partition_tree,
                 _subalgebra_cache=subalgebra_cache,
             )
             subalgebra_cache[cache_key] = subalgebra

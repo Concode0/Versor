@@ -7,9 +7,37 @@
 
 """Base PyTorch module for components that share a Clifford algebra."""
 
+from typing import Protocol, runtime_checkable
+
+import torch
 import torch.nn as nn
 
-from .algebra import CliffordAlgebra
+
+@runtime_checkable
+class AlgebraLike(Protocol):
+    """Protocol implemented by dense and partitioned Clifford kernels."""
+
+    p: int
+    q: int
+    r: int
+    n: int
+    dim: int
+    eps: float
+    eps_sq: float
+
+    @property
+    def device(self):
+        """Return the device of algebra-owned buffers."""
+        ...
+
+    @property
+    def dtype(self) -> torch.dtype:
+        """Return the dtype of algebra-owned floating-point buffers."""
+        ...
+
+    def _apply(self, fn):
+        """Move/cast algebra-owned buffers."""
+        ...
 
 
 class CliffordModule(nn.Module):
@@ -20,19 +48,19 @@ class CliffordModule(nn.Module):
     out of :mod:`layers` prevents functional code from importing the eager layer
     package just to subclass this base type.
 
-    The module stores a shared :class:`CliffordAlgebra` reference without
-    registering it as a PyTorch submodule. In Versor, one algebra instance often
-    owns the precomputed geometric tensors used by many modules.
+    The module stores a shared algebra reference without registering it as a
+    PyTorch submodule. In Versor, one algebra instance often owns the
+    precomputed geometric tensors used by many modules.
     """
 
-    def __init__(self, algebra: CliffordAlgebra):
+    def __init__(self, algebra: AlgebraLike):
         """Set up the module with a shared algebra instance."""
         super().__init__()
         # Bypass nn.Module.__setattr__ to avoid registering algebra as a child.
         object.__setattr__(self, "_algebra", algebra)
 
     @property
-    def algebra(self) -> CliffordAlgebra:
+    def algebra(self) -> AlgebraLike:
         """Return the shared algebra instance."""
         return self._algebra
 

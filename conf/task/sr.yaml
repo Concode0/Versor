@@ -5,8 +5,15 @@ algebra:
   p: 4
   q: 0
   r: 0
+  kernel: "auto"
+  partition_threshold: 8
   device: "cpu"
   auto: true
+  partition:
+    leaf_n: 4
+    product_chunk_size: null
+    tree: null
+    accumulation_dtype: null
 
 dataset:
   name: "sr"

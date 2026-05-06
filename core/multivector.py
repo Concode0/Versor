@@ -11,34 +11,34 @@ from __future__ import annotations
 
 import torch
 
-from core.algebra import CliffordAlgebra
+from core.module import AlgebraLike
 
 
 class Multivector:
     """Object-oriented multivector wrapper with operator overloading.
 
-    Wraps a raw coefficient tensor and its parent ``CliffordAlgebra``,
+    Wraps a raw coefficient tensor and its parent algebra kernel,
     exposing every core algebra operation as a method or Python operator.
 
     Attributes:
-        algebra (CliffordAlgebra): The backend.
+        algebra (AlgebraLike): The backend.
         tensor (torch.Tensor): The raw data [..., Dim].
     """
 
     __slots__ = ("algebra", "tensor")
 
-    def __init__(self, algebra: CliffordAlgebra, tensor: torch.Tensor):
+    def __init__(self, algebra: AlgebraLike, tensor: torch.Tensor):
         self.algebra = algebra
         self.tensor = tensor
 
     @classmethod
-    def from_vectors(cls, algebra: CliffordAlgebra, vectors: torch.Tensor) -> Multivector:
+    def from_vectors(cls, algebra: AlgebraLike, vectors: torch.Tensor) -> Multivector:
         """Promotes vectors to multivectors (Grade 1)."""
         return cls(algebra, algebra.embed_vector(vectors))
 
     @classmethod
     def scalar(
-        cls, algebra: CliffordAlgebra, value: float | torch.Tensor, batch_shape: tuple[int, ...] = ()
+        cls, algebra: AlgebraLike, value: float | torch.Tensor, batch_shape: tuple[int, ...] = ()
     ) -> Multivector:
         """Creates a scalar multivector (grade 0 only)."""
         dim = 2**algebra.n

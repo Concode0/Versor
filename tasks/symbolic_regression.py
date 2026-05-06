@@ -20,7 +20,8 @@ import torch.nn as nn
 import torch.optim as optim
 from omegaconf import DictConfig
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra_from_config
+from core.module import AlgebraLike
 from datalib.symbolic_regression import _fetch_pmlb_data, get_dataset_ids, get_sr_loaders, get_sr_raw_splits
 from log import get_logger
 from models.sr import SRGBN
@@ -155,7 +156,7 @@ class SRTask(BaseTask):
         logger.info(f"MetricSearch: Cl({p},{q},{r}) for {self.dataset_name}")
         return (p, q, r)
 
-    def setup_algebra(self) -> CliffordAlgebra:
+    def setup_algebra(self) -> AlgebraLike:
         """Use searched signature or configured Cl(p,q,r)."""
         if self._searched_signature is not None:
             p, q, r = self._searched_signature
@@ -164,7 +165,14 @@ class SRTask(BaseTask):
             q = self.cfg.algebra.get("q", 0)
             r = self.cfg.algebra.get("r", 0)
         exp_policy = self.cfg.model.get("exp_policy", "balanced")
-        return CliffordAlgebra(p=p, q=q, r=r, device=self.device, exp_policy=exp_policy)
+        return make_algebra_from_config(
+            self.cfg.algebra,
+            p=p,
+            q=q,
+            r=r,
+            device=self.device,
+            exp_policy=exp_policy,
+        )
 
     def setup_model(self) -> SRGBN:
         """Build SRGBN with config parameters, optionally auto-sizing."""

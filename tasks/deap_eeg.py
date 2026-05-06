@@ -16,7 +16,7 @@ Key: emotional states are pushed into Grade-0 (rotor-invariant scalars).
 import torch
 import torch.nn as nn
 
-from core.algebra import CliffordAlgebra
+from core.config import make_algebra_from_config
 from datalib.deap import get_deap_loaders, get_group_sizes
 from log import get_logger
 from models.deap import EEGNet
@@ -45,7 +45,8 @@ class DEAPEEGTask(BaseTask):
         super().__init__(cfg)
 
     def setup_algebra(self):
-        return CliffordAlgebra(
+        return make_algebra_from_config(
+            self.cfg.algebra,
             p=self.cfg.algebra.get("p", 3),
             q=self.cfg.algebra.get("q", 1),
             r=self.cfg.algebra.get("r", 0),
