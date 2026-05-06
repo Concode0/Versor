@@ -17,7 +17,7 @@ import torch
 from core.algebra import CliffordAlgebra
 from core.device import optional_dtype, resolve_device, resolve_dtype
 from core.module import AlgebraLike
-from core.partitioned_algebra import PartitionedCliffordAlgebra
+from core.partitioned_algebra import DEFAULT_PARTITION_LEAF_N, PartitionedCliffordAlgebra
 
 AlgebraKernel = Literal["auto", "dense", "partitioned"]
 
@@ -26,7 +26,7 @@ AlgebraKernel = Literal["auto", "dense", "partitioned"]
 class PartitionConfig:
     """Options specific to :class:`PartitionedCliffordAlgebra`."""
 
-    leaf_n: int = 4
+    leaf_n: int = DEFAULT_PARTITION_LEAF_N
     product_chunk_size: Optional[int] = None
     tree: Optional[str] = None
     accumulation_dtype: Optional[torch.dtype] = None
@@ -39,8 +39,9 @@ class PartitionConfig:
         """Build partition options from a Hydra/OmegaConf-compatible mapping."""
         if config is None:
             return cls()
+        leaf_n = _mapping_get(config, "leaf_n", DEFAULT_PARTITION_LEAF_N)
         return cls(
-            leaf_n=int(_mapping_get(config, "leaf_n", 4)),
+            leaf_n=_int_or_default(leaf_n, DEFAULT_PARTITION_LEAF_N),
             product_chunk_size=_optional_int(_mapping_get(config, "product_chunk_size", None)),
             tree=_optional_str(_mapping_get(config, "tree", None)),
             accumulation_dtype=optional_dtype(_mapping_get(config, "accumulation_dtype", None)),
@@ -165,7 +166,7 @@ def _mapping_get(config: Mapping[str, Any], key: str, default):
 def _flat_partition_mapping(config: Mapping[str, Any]) -> dict[str, Any]:
     """Return partition options from flat ``algebra.*`` aliases."""
     return {
-        "leaf_n": _mapping_get(config, "leaf_n", 4),
+        "leaf_n": _mapping_get(config, "leaf_n", DEFAULT_PARTITION_LEAF_N),
         "product_chunk_size": _mapping_get(config, "product_chunk_size", None),
         "tree": _mapping_get(config, "partition_tree", _mapping_get(config, "tree", None)),
         "accumulation_dtype": _mapping_get(config, "accumulation_dtype", None),
@@ -183,6 +184,12 @@ def _normalize_kernel(kernel: str) -> AlgebraKernel:
 def _optional_int(value) -> Optional[int]:
     if value is None:
         return None
+    return int(value)
+
+
+def _int_or_default(value, default: int) -> int:
+    if value is None:
+        return default
     return int(value)
 
 

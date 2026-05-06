@@ -12,7 +12,7 @@ until first access, keeping ``import core`` lightweight.
 """
 
 from .algebra import CliffordAlgebra
-from .config import AlgebraConfig, PartitionConfig, make_algebra, make_algebra_from_config
+from .config import DEFAULT_PARTITION_LEAF_N, AlgebraConfig, PartitionConfig, make_algebra, make_algebra_from_config
 from .decomposition import (
     ExpPolicy,
     compiled_safe_decomposed_exp,
@@ -39,7 +39,7 @@ from .metric import (
 )
 from .module import AlgebraLike, CliffordModule
 from .multivector import Multivector
-from .partitioned_algebra import PartitionedCliffordAlgebra
+from .partitioned_algebra import MAX_PARTITIONED_DIMENSIONS, PartitionedCliffordAlgebra
 from .validation import check_channels, check_multivector
 
 __all__ = [
@@ -49,6 +49,8 @@ __all__ = [
     "AlgebraLike",
     "CliffordModule",
     "Multivector",
+    "DEFAULT_PARTITION_LEAF_N",
+    "MAX_PARTITIONED_DIMENSIONS",
     "PartitionConfig",
     "PartitionedCliffordAlgebra",
     "make_algebra",

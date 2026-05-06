@@ -5,16 +5,34 @@
 # you may not use this file except in compliance with the License.
 #
 
+"""Low-dimensional and structural unit coverage for partitioned Clifford algebra.
+
+Dense-reference sweeps for the Cl8-Cl12 overlap region live in
+``test_partitioned_dense_reference.py``. Slow non-monolithic verification for
+Cl12+ lives in ``test_partitioned_highdim.py``.
+"""
+
 import pytest
 import torch
 import torch.nn as nn
 
 from core.algebra import CliffordAlgebra
-from core.partitioned_algebra import PartitionedCliffordAlgebra
+from core.config import PartitionConfig
+from core.partitioned_algebra import DEFAULT_PARTITION_LEAF_N, MAX_PARTITIONED_DIMENSIONS, PartitionedCliffordAlgebra
 
 pytestmark = pytest.mark.unit
 
 DEVICE = "cpu"
+
+
+def test_partition_config_leaf_default_matches_kernel_default():
+    assert PartitionConfig().leaf_n == DEFAULT_PARTITION_LEAF_N
+    assert PartitionConfig.from_mapping({"leaf_n": None}).leaf_n == DEFAULT_PARTITION_LEAF_N
+
+
+def test_partitioned_algebra_rejects_above_supported_dimension():
+    with pytest.raises(AssertionError, match=f"p \\+ q \\+ r must be <= {MAX_PARTITIONED_DIMENSIONS}"):
+        PartitionedCliffordAlgebra(MAX_PARTITIONED_DIMENSIONS + 1, 0, 0, device=DEVICE)
 
 
 def _dtype_tolerance(dtype: torch.dtype) -> float:
@@ -86,14 +104,14 @@ class TestPartitionedCliffordAlgebra:
         _assert_matches_monolithic(8, 0, 0, leaf_n=6, shape=(2,))
 
     def test_recursive_tree_uses_balanced_binary_splits(self):
-        algebra = PartitionedCliffordAlgebra(20, 0, 0, device=DEVICE, leaf_n=6)
+        algebra = PartitionedCliffordAlgebra(16, 0, 0, device=DEVICE, leaf_n=6)
 
-        assert algebra.left_n == 10
-        assert algebra.right_n == 10
-        assert algebra.left_sub.left_n == 5
-        assert algebra.left_sub.right_n == 5
-        assert algebra.right_sub.left_n == 5
-        assert algebra.right_sub.right_n == 5
+        assert algebra.left_n == 8
+        assert algebra.right_n == 8
+        assert algebra.left_sub.left_n == 4
+        assert algebra.left_sub.right_n == 4
+        assert algebra.right_sub.left_n == 4
+        assert algebra.right_sub.right_n == 4
 
         assert not hasattr(algebra.left_sub, "cayley_indices")
         assert not hasattr(algebra.right_sub, "cayley_indices")

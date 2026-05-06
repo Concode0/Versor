@@ -12,7 +12,7 @@ algebra:
   dtype: "float32"
   exp_policy: "balanced"
   partition:
-    leaf_n: 4
+    leaf_n: null             # null = partitioned kernel default
     product_chunk_size: null
     tree: null              # Example: "R=0-3; L.R=4-7; L.L=8-11"
     accumulation_dtype: null

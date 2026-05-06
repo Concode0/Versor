@@ -40,7 +40,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from core.config import PartitionConfig, make_algebra
+from core.config import DEFAULT_PARTITION_LEAF_N, PartitionConfig, make_algebra
 from core.metric import hermitian_grade_spectrum
 from core.module import AlgebraLike
 from functional.activation import GeometricGELU
@@ -77,7 +77,7 @@ def setup_algebra(
     dtype: torch.dtype | str = torch.float32,
     kernel: str = "auto",
     partition_threshold: int = 8,
-    leaf_n: int = 4,
+    leaf_n: int = DEFAULT_PARTITION_LEAF_N,
     product_chunk_size: Optional[int] = None,
     partition_tree: Optional[str] = None,
     accumulation_dtype: torch.dtype | str | None = None,

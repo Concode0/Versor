@@ -55,9 +55,10 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from core.config import PartitionConfig, make_algebra
+from core.config import DEFAULT_PARTITION_LEAF_N, PartitionConfig, make_algebra
 from core.decomposition import ExpPolicy, compiled_safe_decomposed_exp  # noqa: E402
-from core.device import FLOAT_DTYPES, dtype_name as _format_dtype_name, optional_dtype, resolve_device
+from core.device import FLOAT_DTYPES, optional_dtype, resolve_device
+from core.device import dtype_name as _format_dtype_name
 from core.module import AlgebraLike
 
 DTYPES: dict[str, torch.dtype] = FLOAT_DTYPES
@@ -182,7 +183,7 @@ def setup_algebra(
 ) -> AlgebraLike:
     """Construct benchmark algebras through the shared core factory."""
     partition = PartitionConfig(
-        leaf_n=getattr(args, "partition_leaf_n", 4),
+        leaf_n=getattr(args, "partition_leaf_n", DEFAULT_PARTITION_LEAF_N),
         product_chunk_size=getattr(args, "partition_product_chunk_size", None),
         tree=getattr(args, "partition_tree", None),
         accumulation_dtype=optional_dtype(getattr(args, "partition_accumulation_dtype", None)),
@@ -395,7 +396,7 @@ def _supported_dtypes(
 ) -> list[torch.dtype]:
     if requested == "auto":
         candidates = ["float64", "float32"]
-        if device.startswith("cuda") or device == "mps":
+        if args.device.startswith("cuda") or args.device == "mps":
             candidates += ["bfloat16", "float16"]
     else:
         candidates = _parse_csv(requested)
@@ -3492,7 +3493,7 @@ def make_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--device", default="auto", help="cpu, cuda, mps, or auto")
     parser.add_argument("--algebra-kernel", default="auto", choices=("auto", "dense", "partitioned"))
     parser.add_argument("--partition-threshold", type=int, default=8)
-    parser.add_argument("--partition-leaf-n", type=int, default=4)
+    parser.add_argument("--partition-leaf-n", type=int, default=DEFAULT_PARTITION_LEAF_N)
     parser.add_argument("--partition-product-chunk-size", type=int, default=None)
     parser.add_argument("--partition-tree", default=None)
     parser.add_argument("--partition-accumulation-dtype", default=None)

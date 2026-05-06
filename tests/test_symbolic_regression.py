@@ -56,7 +56,7 @@ def _make_cfg(dataset_name=_TEST_DATASET, hidden_channels=4, num_layers=1, n_sam
                 "metric_search": metric_search,
                 "partition_threshold": 8,
                 "partition": {
-                    "leaf_n": 4,
+                    "leaf_n": None,
                     "product_chunk_size": None,
                     "tree": None,
                     "accumulation_dtype": None,

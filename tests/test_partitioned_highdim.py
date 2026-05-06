@@ -522,8 +522,8 @@ class TestPartitionedHighDimensionalVerification:
         assert torch.allclose(projected, local_expected, atol=1e-10, rtol=1e-10)
         assert torch.allclose(global_product, embedded_expected, atol=1e-10, rtol=1e-10)
 
-    def test_cl20_recursive_sign_merge_matches_direct_bitmask_reference(self):
-        p, q, r = 12, 6, 2
+    def test_cl16_recursive_sign_merge_matches_direct_bitmask_reference(self):
+        p, q, r = 10, 4, 2
         algebra = PartitionedCliffordAlgebra(
             p,
             q,
@@ -535,12 +535,12 @@ class TestPartitionedHighDimensionalVerification:
         )
         pairs = [
             (0, 0),
-            (1, 1 << 19),
-            (0xABCDE, 0x13579),
-            (0xFFFFF, 0x00011),
-            (0x22222, 0xDDDDD),
-            (0x7A5C3, 0xC3A57),
-            ((1 << 18) | 7, (1 << 18) | 3),
+            (1, 1 << 15),
+            (0xABCD, 0x1357),
+            (0xFFFF, 0x0011),
+            (0x2222, 0xDDDD),
+            (0x7A5C, 0xC3A5),
+            ((1 << 14) | 7, (1 << 14) | 3),
         ]
 
         for index_a, index_b in pairs:
@@ -548,8 +548,8 @@ class TestPartitionedHighDimensionalVerification:
             actual = _partitioned_basis_product(algebra, index_a, index_b)
             assert actual == expected
 
-    def test_cl20_basis_products_satisfy_algebraic_identities(self):
-        p, q, r = 12, 6, 2
+    def test_cl16_basis_products_satisfy_algebraic_identities(self):
+        p, q, r = 10, 4, 2
         algebra = PartitionedCliffordAlgebra(
             p,
             q,
@@ -560,10 +560,10 @@ class TestPartitionedHighDimensionalVerification:
             product_chunk_size=4,
         )
         triples = [
-            (0x12345, 0x00F0F, 0xABCDE),
-            (0x70001, 0x02A80, 0x11111),
-            ((1 << 18) | 0x35, 0x04440, 0x21001),
-            (0x7A5C3, (1 << 19) | 0x81, 0x00013),
+            (0x1234, 0x00F0, 0xABCD),
+            (0x7001, 0x02A8, 0x1111),
+            ((1 << 14) | 0x35, 0x4440, 0x2101),
+            (0x7A5C, (1 << 15) | 0x81, 0x0013),
         ]
 
         for index_a, index_b, index_c in triples:
@@ -580,10 +580,10 @@ class TestPartitionedHighDimensionalVerification:
             assert left == right
 
         pairs = [
-            (0x12345, 0x00F0F),
-            (0x7A5C3, 0xC3A57),
-            ((1 << 18) | 0x101, (1 << 18) | 0x077),
-            ((1 << 19) | 0x222, 0x13579),
+            (0x1234, 0x00F0),
+            (0x7A5C, 0xC3A5),
+            ((1 << 14) | 0x101, (1 << 14) | 0x077),
+            ((1 << 15) | 0x222, 0x1357),
         ]
         for index_a, index_b in pairs:
             ab = _multiply_signed_basis(algebra, (index_a, 1.0), (index_b, 1.0))
@@ -603,8 +603,8 @@ class TestPartitionedHighDimensionalVerification:
             )
             assert involution_ab == involution_product
 
-    def test_cl20_simple_bivector_exp_matches_long_taylor_reference(self):
-        p, q, r = 20, 0, 0
+    def test_cl16_simple_bivector_exp_matches_long_taylor_reference(self):
+        p, q, r = 16, 0, 0
         algebra = PartitionedCliffordAlgebra(
             p,
             q,
@@ -614,7 +614,7 @@ class TestPartitionedHighDimensionalVerification:
             leaf_n=6,
             product_chunk_size=4,
         )
-        bivector_index = (1 << 0) | (1 << 17)
+        bivector_index = (1 << 0) | (1 << 13)
         theta = 0.375
         square = -1.0
 
@@ -636,12 +636,12 @@ class TestPartitionedHighDimensionalVerification:
     @pytest.mark.parametrize(
         ("p", "q", "r", "bivector_index", "theta", "scalar_ref", "bivector_ref"),
         [
-            (20, 0, 0, (1 << 0) | (1 << 17), 0.375, math.cos(0.375), math.sin(0.375)),
-            (1, 19, 0, (1 << 0) | (1 << 1), 0.25, math.cosh(0.25), math.sinh(0.25)),
-            (18, 0, 2, (1 << 0) | (1 << 18), 0.5, 1.0, 0.5),
+            (16, 0, 0, (1 << 0) | (1 << 13), 0.375, math.cos(0.375), math.sin(0.375)),
+            (1, 15, 0, (1 << 0) | (1 << 1), 0.25, math.cosh(0.25), math.sinh(0.25)),
+            (14, 0, 2, (1 << 0) | (1 << 14), 0.5, 1.0, 0.5),
         ],
     )
-    def test_cl20_simple_bivector_exp_matches_closed_form(
+    def test_cl16_simple_bivector_exp_matches_closed_form(
         self,
         p,
         q,
@@ -674,8 +674,8 @@ class TestPartitionedHighDimensionalVerification:
         )
         assert torch.count_nonzero(actual).item() == 2
 
-    def test_cl20_lorentzian_bivector_exp_matches_long_taylor_reference(self):
-        p, q, r = 1, 19, 0
+    def test_cl16_lorentzian_bivector_exp_matches_long_taylor_reference(self):
+        p, q, r = 1, 15, 0
         algebra = PartitionedCliffordAlgebra(
             p,
             q,
@@ -704,8 +704,8 @@ class TestPartitionedHighDimensionalVerification:
         )
         assert torch.count_nonzero(actual).item() == 2
 
-    def test_cl20_degenerate_repeated_null_factor_annihilates_product(self):
-        p, q, r = 12, 6, 2
+    def test_cl16_degenerate_repeated_null_factor_annihilates_product(self):
+        p, q, r = 10, 4, 2
         algebra = PartitionedCliffordAlgebra(
             p,
             q,

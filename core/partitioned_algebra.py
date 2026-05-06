@@ -32,7 +32,8 @@ import torch.nn as nn
 from core.algebra import CliffordAlgebra
 from core.validation import check_multivector
 
-_LOCAL_DENSE_LEAF_N = 4
+DEFAULT_PARTITION_LEAF_N = 6
+MAX_PARTITIONED_DIMENSIONS = 16
 _DEFAULT_PRODUCT_CHUNK_SIZE = 64
 
 
@@ -975,7 +976,7 @@ class PartitionedCliffordAlgebra(nn.Module):
         dtype (torch.dtype, optional): Floating-point dtype for sign buffers and
             dense leaf algebras.
         leaf_n (int, optional): Maximum basis-vector count handled by local
-            leaves. The default targets ``2**leaf_n == 16`` coefficients so
+            leaves. The default targets ``2**leaf_n == 64`` coefficients so
             deep-learning products use small dense kernels and indexed global
             merge routing.
         product_chunk_size (int, optional): Number of right-basis product pairs
@@ -998,7 +999,7 @@ class PartitionedCliffordAlgebra(nn.Module):
         r: int = 0,
         device="cuda",
         dtype: torch.dtype = torch.float32,
-        leaf_n: int = _LOCAL_DENSE_LEAF_N,
+        leaf_n: int = DEFAULT_PARTITION_LEAF_N,
         product_chunk_size: Optional[int] = None,
         exp_policy: str = "balanced",
         fixed_iterations: Optional[int] = None,
@@ -1011,6 +1012,9 @@ class PartitionedCliffordAlgebra(nn.Module):
         assert p >= 0, f"p must be non-negative, got {p}"
         assert q >= 0, f"q must be non-negative, got {q}"
         assert r >= 0, f"r must be non-negative, got {r}"
+        assert p + q + r <= MAX_PARTITIONED_DIMENSIONS, (
+            f"p + q + r must be <= {MAX_PARTITIONED_DIMENSIONS}, got {p + q + r}"
+        )
         assert leaf_n >= 1, f"leaf_n must be >= 1, got {leaf_n}"
 
         self._init_signature(p, q, r, leaf_n, product_chunk_size, accumulation_dtype)
