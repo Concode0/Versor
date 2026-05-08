@@ -18,6 +18,7 @@ import torch
 from core.algebra import CliffordAlgebra
 from core.decomposition import differentiable_invariant_decomposition
 from core.metric import hermitian_grade_spectrum
+from utils.compat import safe_linalg_eigvals
 
 from ._types import CONSTANTS, SpectralResult
 
@@ -186,6 +187,6 @@ class SpectralAnalyzer:
         # Result[j, :] = gp(mean_x, e_j) = L[:, j], so transpose
         L = self.algebra.geometric_product(mean_x.unsqueeze(0).expand(dim, -1), basis).T
 
-        eigvals = torch.linalg.eigvals(L)  # complex
+        eigvals = safe_linalg_eigvals(L)  # complex
         magnitudes = eigvals.abs()
         return magnitudes.sort(descending=True).values

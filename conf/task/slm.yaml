@@ -1,0 +1,91 @@
+# @package _global_
+name: slm  # task key registered in main.py
+
+algebra:
+  p: 4  # Cl(p,q,r) positive basis dimensions
+  q: 1  # Cl(p,q,r) negative basis dimensions
+  r: 1  # Cl(p,q,r) null basis dimensions
+  device: cuda:0  # auto | cpu | cuda | cuda:0 | mps
+
+model:
+  channels: 16  # multivector channels; must divide num_heads
+  num_layers: 4  # model-local geometric SLM blocks
+  num_heads: 4  # causal geometric attention heads
+  num_rotors: 8  # rotors inside MultiRotorFFN
+  ffn_mult: 4  # FFN expansion multiplier
+  dropout: 0.1  # dropout in attention/block paths
+  bivector_weight: 0.5  # grade-2 orientation contribution to attention scores
+  max_seq_len: 256  # token context length for CUDA throughput runs
+  attn_block_size: 128  # 64 | 128 | 256; larger is faster when VRAM allows
+  tie_embeddings: true  # true | false; tied token embedding decoder vs untied linear head
+  use_neutralizer: true  # true | false; final grade-0/grade-2 neutralization
+
+tokenizer:
+  mode: subword  # subword | word; subword uses WordPiece when tokenizers is installed
+  vocab_size: 8192  # vocabulary size including special tokens
+  min_frequency: 2  # minimum frequency for tokenizer training
+  lowercase: true  # true | false
+
+dataset:
+  name: HuggingFaceTB/cosmopedia  # HuggingFace dataset path
+  config: stories  # Cosmopedia config, e.g. stories | web_samples_v1 | web_samples_v2 | stanford
+  split: train  # HuggingFace split name
+  text_field: text  # row field to train on; null falls back through common text field names
+  sample_size: 8192  # sampled documents for the first CUDA-scale run; null streams all
+  streaming: true  # true | false; streaming avoids full local materialization
+  shuffle: true  # true | false; shuffle corpus before sampling
+  shuffle_train: true  # true | false; shuffle DataLoader batches
+  seed: 0  # dataset shuffle seed
+  shuffle_buffer: 20000  # streaming shuffle buffer
+  max_chars_per_sample: 12000  # truncate long documents before tokenizer training
+  eval_fraction: 0.05  # held-out fraction from sampled texts
+  chunk_long_texts: true  # true | false; split long documents into multiple training chunks
+  stride: 256  # chunk stride; null defaults to max_seq_len
+  num_workers: null  # null uses training.num_workers
+  pin_memory: null  # null uses training.pin_memory
+
+analysis:
+  enabled: true  # true | false; run core.analysis on hidden multivector states
+  run_on: final  # final | eval | both; when to run analysis
+  max_batches: 1  # loader batches inspected by analysis
+  max_samples: 256  # valid token states passed to analyzers
+  sampling_strategy: passthrough  # passthrough | random | stratified | bootstrap
+  run_spectral: true  # true | false; grade energy, bivector spectrum, GP operator spectrum
+  run_symmetry: true  # true | false; null directions, involution/reflection symmetries
+  run_commutator: true  # true | false; commutativity and Lie-bracket closure summaries
+  run_dimension: false  # true | false; ignored for pre-embedded hidden states
+  run_signature: false  # true | false; ignored for pre-embedded hidden states
+  energy_threshold: 0.05  # active-energy/null/symmetry threshold
+  k_neighbors: 8  # reserved for raw-data analysis tools
+  save_summary: true  # true | false; write analysis_summary.txt when checkpointing is enabled
+
+inference:
+  enabled: false  # true | false; sample text after training/evaluation
+  prompt: "The"  # string; prompt used for optional generation
+  max_new_tokens: 32  # generated tokens for preview
+  temperature: 1.0  # lower is sharper
+  top_k: 50  # top-k sampling cutoff; null disables
+  sample: true  # true | false; multinomial sampling vs greedy argmax
+
+checkpointing:
+  enabled: true  # true | false; automatic model saving
+  dir: checkpoints/slm  # output directory, relative to the Hydra run dir unless absolute
+  save_final: true  # true | false; save final checkpoint at end of training
+  save_best: true  # true | false; save best checkpoint according to monitor/mode
+  monitor: EvalPPL  # EvalPPL | EvalAcc | Loss; metric used for save_best
+  mode: min  # min | max
+  filename: slm_final.pt  # final checkpoint filename
+  best_filename: slm_best.pt  # best checkpoint filename
+
+training:
+  epochs: 10  # training epochs
+  lr: 0.001  # optimizer learning rate
+  batch_size: 16  # batch size
+  optimizer_type: riemannian_adam  # riemannian_adam | exponential_sgd | adamw
+  eval_interval: 1  # evaluate every N epochs when eval split exists
+  num_workers: 4  # DataLoader workers for CUDA training
+  pin_memory: true  # true | false | null; true speeds CPU-to-CUDA transfer
+  compile: true  # true | false; torch.compile wrapper
+  compile_backend: inductor  # null | inductor | aot_eager; inductor for CUDA
+  amp: true  # true | false; CUDA autocast plus GradScaler
+  cudnn_benchmark: true  # true | false | null; tune kernels for stable shapes

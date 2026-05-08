@@ -10,7 +10,7 @@ __all__ = [
     "BaseTask",
     "SRTask",
     "MD17Task",
-    "LQATask",
+    "SLMTask",
     "DEAPEEGTask",
 ]
 
@@ -24,10 +24,10 @@ def __getattr__(name):
         from .md17 import MD17Task
 
         return MD17Task
-    if name == "LQATask":
-        from .lqa import LQATask
+    if name == "SLMTask":
+        from .slm import SLMTask
 
-        return LQATask
+        return SLMTask
     if name == "DEAPEEGTask":
         from .deap_eeg import DEAPEEGTask
 

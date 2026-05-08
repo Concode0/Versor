@@ -49,9 +49,9 @@ sr = [
 md17 = [
     "torch-geometric>=2.6.1",
 ]
-lqa = [
-    "sentence-transformers>=5.1.2",
+slm = [
     "datasets>=2.16.0,<4.0",
+    "tokenizers>=0.22.0",
 ]
 viz = [
     "matplotlib>=3.8.0",
@@ -67,10 +67,10 @@ dev = [
     "ruff>=0.8.0",
 ]
 all_tasks = [
-    "versor[sr,md17,lqa]",
+    "versor[sr,md17,slm]",
 ]
 all = [
-    "versor[sr,md17,lqa,viz,demo,dev]",
+    "versor[sr,md17,slm,viz,demo,dev]",
 ]
 
 [tool.setuptools.packages.find]
