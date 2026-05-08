@@ -8,7 +8,7 @@ relevant submodule rather than from this package:
 
     from models.md17 import MD17ForceNet          # requires --extra md17
     from models.sr import SRGBN                   # requires --extra sr
-    from models.lqa import GLRNet                 # requires --extra lqa
+    from models.slm import GeometricSLM           # required --extra slm
     from models.deap import EEGNet
     from models.blocks import GeometricBladeNetwork
 """

@@ -8,6 +8,6 @@ relevant submodule rather than from this package:
 
     from datalib.md17 import get_md17_loaders
     from datalib.symbolic_regression import get_sr_loaders
-    from datalib.lqa import get_lqa_loaders
+    from datalib.slm import build_causal_lm_loaders
     from datalib.deap import get_deap_loaders
 """

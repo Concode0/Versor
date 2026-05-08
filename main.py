@@ -18,7 +18,7 @@ EXAMPLE_TASKS = {"manifold", "hyperbolic", "sanity"}
 _TASK_MODULES = {
     "md17": ("tasks.md17", "MD17Task"),
     "sr": ("tasks.symbolic_regression", "SRTask"),
-    "lqa": ("tasks.lqa", "LQATask"),
+    "slm": ("tasks.slm", "SLMTask"),
     "deap_eeg": ("tasks.deap_eeg", "DEAPEEGTask"),
 }
 
