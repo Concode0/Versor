@@ -17,6 +17,7 @@ from typing import Dict
 import torch
 
 from core.algebra import CliffordAlgebra
+from utils.compat import safe_linalg_eigvals
 
 from ._types import CONSTANTS, CommutatorResult
 
@@ -143,7 +144,7 @@ class CommutatorAnalyzer:
         # Batched commutator: [dim, dim] x [dim, dim] -> [dim, dim], transpose
         ad_mu = self.algebra.commutator(mu.unsqueeze(0).expand(dim, -1), basis).T
 
-        eigvals = torch.linalg.eigvals(ad_mu)  # complex
+        eigvals = safe_linalg_eigvals(ad_mu)  # complex
         magnitudes = eigvals.abs()
         return magnitudes.sort(descending=True).values
 
