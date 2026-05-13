@@ -16,6 +16,7 @@ import torch
 
 from core.foundation.device import resolve_device, resolve_dtype
 from core.foundation.module import AlgebraLike
+from core.planning.policy import PlanningLimits
 from core.runtime.algebra import CliffordAlgebra
 from core.runtime.context import AlgebraContext
 
@@ -37,6 +38,7 @@ class AlgebraConfig:
     fixed_iterations: Optional[int] = None
     default_grades: Optional[tuple[int, ...]] = None
     allow_full_layout_products: Optional[bool] = None
+    planning_limits: Optional[PlanningLimits] = None
 
     @classmethod
     def from_mapping(cls, config: Mapping[str, Any], **overrides) -> "AlgebraConfig":
@@ -72,6 +74,7 @@ def make_algebra(
     fixed_iterations: Optional[int] = None,
     default_grades: Optional[Iterable[int]] = None,
     allow_full_layout_products: Optional[bool] = None,
+    planning_limits: Optional[PlanningLimits] = None,
     **deprecated_options,
 ) -> AlgebraLike:
     """Construct a dense low-dimensional algebra or high-dimensional planning context."""
@@ -98,6 +101,7 @@ def make_algebra(
             exp_policy=exp_policy,
             fixed_iterations=fixed_iterations,
             allow_large_dense=kernel == "dense",
+            planning_limits=planning_limits,
         )
 
     return AlgebraContext(
@@ -108,6 +112,7 @@ def make_algebra(
         dtype=resolved_dtype,
         default_grades=default_grades,
         allow_full_layout_products=allow_full_layout_products,
+        planning_limits=planning_limits,
     )
 
 
@@ -126,6 +131,7 @@ def make_algebra_from_config(config: Mapping[str, Any], **overrides) -> AlgebraL
         fixed_iterations=algebra_config.fixed_iterations,
         default_grades=algebra_config.default_grades,
         allow_full_layout_products=algebra_config.allow_full_layout_products,
+        planning_limits=algebra_config.planning_limits,
     )
 
 

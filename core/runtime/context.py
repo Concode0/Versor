@@ -17,15 +17,11 @@ from core.foundation.basis import normalize_grades
 from core.foundation.device import resolve_device, resolve_dtype
 from core.foundation.layout import AlgebraSpec, GradeLayout
 from core.planning.planner import GradePlanner
-from core.runtime.accessors import FULL_LAYOUT_MAX_N
-from core.runtime.accessors import default_layout as _default_layout
-from core.runtime.accessors import grade_indices as _grade_indices
-from core.runtime.accessors import hermitian_signs as _hermitian_signs
-from core.runtime.accessors import resolve_layout as _resolve_layout
-from core.runtime.projected import ProjectedProductMixin
+from core.planning.policy import DEFAULT_PLANNING_LIMITS, FULL_LAYOUT_MAX_N, PlanningLimits
+from core.runtime.projected import AlgebraRuntimeMixin
 
 
-class AlgebraContext(ProjectedProductMixin):
+class AlgebraContext(AlgebraRuntimeMixin):
     """Signature and planning host without dense Cayley-table materialization."""
 
     def __init__(
@@ -38,6 +34,7 @@ class AlgebraContext(ProjectedProductMixin):
         dtype: torch.dtype = torch.float32,
         default_grades: Optional[Iterable[int]] = None,
         allow_full_layout_products: Optional[bool] = None,
+        planning_limits: Optional[PlanningLimits] = None,
     ):
         if p < 0 or q < 0 or r < 0:
             raise ValueError(f"signature counts must be non-negative, got Cl({p},{q},{r})")
@@ -51,10 +48,9 @@ class AlgebraContext(ProjectedProductMixin):
         self.spec = AlgebraSpec(self.p, self.q, self.r)
         self._device = torch.device(resolve_device(device) if str(device) == "auto" else device)
         self._dtype = resolve_dtype(dtype)
-        requested_full_layout = self.n <= FULL_LAYOUT_MAX_N if allow_full_layout_products is None else bool(
-            allow_full_layout_products
-        )
+        requested_full_layout = False if allow_full_layout_products is None else bool(allow_full_layout_products)
         self.allow_full_layout_products = requested_full_layout and self.n <= FULL_LAYOUT_MAX_N
+        self.planning_limits = DEFAULT_PLANNING_LIMITS if planning_limits is None else planning_limits
         self._default_grades = None if default_grades is None else normalize_grades(default_grades, self.n)
         self._default_layout: Optional[GradeLayout] = None
         self.planner = GradePlanner(self)
@@ -69,50 +65,6 @@ class AlgebraContext(ProjectedProductMixin):
     def dtype(self) -> torch.dtype:
         """Return the context floating-point dtype."""
         return self._dtype
-
-    def layout(self, grades: Optional[Iterable[int]] = None) -> GradeLayout:
-        """Return a compact layout, or the full default layout when omitted."""
-        if grades is None:
-            return self.default_layout()
-        return self.planner.layout(grades)
-
-    def default_layout(self) -> GradeLayout:
-        """Return the default layout using the central full-layout fallback policy."""
-        return _default_layout(self)
-
-    def resolve_layout(
-        self,
-        *,
-        layout: Optional[GradeLayout] = None,
-        grades: Optional[Iterable[int]] = None,
-        mv=None,
-        allow_full: bool = True,
-        warn_full: bool = True,
-    ) -> GradeLayout:
-        """Resolve static layout metadata for tensors or multivectors."""
-        return _resolve_layout(
-            self,
-            layout=layout,
-            grades=grades,
-            mv=mv,
-            allow_full=allow_full,
-            warn_full=warn_full,
-        )
-
-    def grade_indices(self, grades: Iterable[int], *, device=None) -> torch.Tensor:
-        """Return canonical dense basis indices for ``grades`` without dense tables."""
-        return _grade_indices(self, grades, device=self.device if device is None else device)
-
-    def hermitian_signs(
-        self,
-        layout: Optional[GradeLayout] = None,
-        *,
-        grades: Optional[Iterable[int]] = None,
-        device=None,
-        dtype: Optional[torch.dtype] = None,
-    ) -> torch.Tensor:
-        """Return Hermitian signs for a dense or compact layout."""
-        return _hermitian_signs(self, layout=layout, grades=grades, device=device, dtype=dtype)
 
     def bivector_squared_signs(self, *, device=None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
         """Return ``(e_ab)^2`` signs in canonical grade-2 layout order."""
@@ -161,9 +113,10 @@ class AlgebraContext(ProjectedProductMixin):
         """Plan and execute an anti-commutator product."""
         return self.projected_product(A, B, op="anti_commutator", **kwargs)
 
-    def grade_projection(self, mv: torch.Tensor, grade: int) -> torch.Tensor:
+    def grade_projection(self, mv: torch.Tensor, grade: int, **kwargs) -> torch.Tensor:
         """Project a dense multivector tensor to one grade."""
-        return self.planned_unary(mv, op="grade_projection", output_grades=(int(grade),))
+        kwargs.setdefault("output_grades", (int(grade),))
+        return self.planned_unary(mv, op="grade_projection", **kwargs)
 
     def embed_vector(self, vectors: torch.Tensor) -> torch.Tensor:
         """Embed grade-1 vector coordinates into dense multivector coefficients."""
@@ -184,38 +137,6 @@ class AlgebraContext(ProjectedProductMixin):
     def clifford_conjugation(self, mv: torch.Tensor, **kwargs) -> torch.Tensor:
         """Apply Clifford conjugation to dense or compact multivector coefficients."""
         return self.planned_unary(mv, op="clifford_conjugation", **kwargs)
-
-    def planned_unary(
-        self,
-        values: torch.Tensor,
-        *,
-        op: str,
-        input_grades=None,
-        output_grades=None,
-        input_layout: Optional[GradeLayout] = None,
-        output_layout: Optional[GradeLayout] = None,
-        input_compact: bool = False,
-        compact_output: bool = False,
-        return_layout: bool = False,
-    ):
-        """Execute a unary planned operation."""
-        request = self.planner.unary_request(
-            values,
-            op=op,
-            input_grades=input_grades,
-            output_grades=output_grades,
-            input_layout=input_layout,
-            output_layout=output_layout,
-            input_compact=input_compact,
-        )
-        executor = self.planner.unary_executor_for_request(request)
-        output = executor.forward_compact(values) if request.input_compact else executor(values)
-
-        if return_layout:
-            return output, executor.output_layout
-        if compact_output:
-            return output
-        return executor.output_layout.dense(output)
 
     def _sync_eps(self) -> None:
         finfo = torch.finfo(self.dtype)

@@ -29,6 +29,7 @@ from .foundation.validation import check_channels, check_multivector
 from .planning.flow import GradeFlow
 from .planning.layouts import ProductRequest, build_product_request
 from .planning.planner import GradePlanner
+from .planning.policy import DEFAULT_PLANNING_LIMITS, PlanCost, PlanningLimits
 from .planning.product import GradeProductExecutor, GradeProductPlan, build_grade_product_plan
 from .planning.routes import (
     ModuleOptimizationIssue,
@@ -86,6 +87,9 @@ __all__ = [
     "AlgebraSpec",
     "GradeLayout",
     "GradePlanner",
+    "PlanningLimits",
+    "PlanCost",
+    "DEFAULT_PLANNING_LIMITS",
     "make_algebra",
     "make_algebra_from_config",
     # device / validation

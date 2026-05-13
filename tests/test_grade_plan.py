@@ -7,6 +7,7 @@ from core.foundation.layout import AlgebraSpec
 from core.planning.flow import GradeFlow
 from core.planning.layouts import build_product_request
 from core.planning.planner import GradePlanner
+from core.planning.policy import PlanningLimits
 from core.planning.product import (
     GradeProductExecutor,
     build_grade_product_plan,
@@ -373,17 +374,17 @@ def test_context_planned_unary_projection_and_reverse_avoid_full_layout():
     mv[0, 1] = 2.0
     mv[0, 3] = 5.0
 
-    projected = algebra.grade_projection(mv, 1)
+    projected, projected_layout = algebra.grade_projection(mv, 1, compact_output=True, return_layout=True)
     reversed_bivector = algebra.reverse(
         mv,
         input_grades=(2,),
         compact_output=True,
     )
+    vector_pos = projected_layout.basis_indices.index(1)
     bivector_layout = algebra.layout((2,))
     bivector_pos = bivector_layout.basis_indices.index(3)
 
-    assert torch.allclose(projected[0, 1], torch.tensor(2.0))
-    assert torch.allclose(projected[0, 3], torch.tensor(0.0))
+    assert torch.allclose(projected[0, vector_pos], torch.tensor(2.0))
     assert torch.allclose(reversed_bivector[0, bivector_pos], torch.tensor(-5.0))
 
 
@@ -498,6 +499,21 @@ def test_context_declared_grades_infer_compact_operand_shapes():
     assert torch.allclose(values[0, output_layout.basis_indices.index(0)], torch.tensor(1.0))
 
 
+def test_context_declared_product_requires_compact_output_without_dense_materialization():
+    algebra = make_algebra(10, 4, 2, device=DEVICE, dtype=torch.float32)
+    vector_layout = algebra.layout((1,))
+    left = torch.zeros(1, vector_layout.dim)
+    right = torch.zeros(1, vector_layout.dim)
+
+    with pytest.raises(ValueError, match="Dense materialization is disabled"):
+        algebra.projected_geometric_product(
+            left,
+            right,
+            left_layout=vector_layout,
+            right_layout=vector_layout,
+        )
+
+
 def test_high_dim_context_requires_declared_layout_for_products():
     algebra = make_algebra(13, 0, 0, device=DEVICE, dtype=torch.float32)
     A = torch.zeros(1, algebra.dim)
@@ -510,8 +526,23 @@ def test_high_dim_context_requires_declared_layout_for_products():
         algebra.reverse(A)
 
 
-def test_context_warns_for_implicit_full_layout_fallback_between_eight_and_twelve():
-    context = make_algebra(9, 0, 0, kernel="context", device=DEVICE, dtype=torch.float32)
+def test_context_requires_declared_grades_by_default_even_low_dimensional():
+    context = make_algebra(4, 0, 0, kernel="context", device=DEVICE, dtype=torch.float64)
+
+    with pytest.raises(ValueError, match="Declare active grades"):
+        context.layout()
+
+
+def test_context_warns_for_explicit_implicit_full_layout_fallback_between_eight_and_twelve():
+    context = make_algebra(
+        9,
+        0,
+        0,
+        kernel="context",
+        device=DEVICE,
+        dtype=torch.float32,
+        allow_full_layout_products=True,
+    )
 
     with pytest.warns(RuntimeWarning, match="implicit full Cl\\(9,0,0\\) layout"):
         layout = context.layout()
@@ -521,7 +552,15 @@ def test_context_warns_for_implicit_full_layout_fallback_between_eight_and_twelv
 
 
 def test_low_dim_context_can_use_full_layout_fallback():
-    context = make_algebra(4, 0, 0, kernel="context", device=DEVICE, dtype=torch.float64)
+    context = make_algebra(
+        4,
+        0,
+        0,
+        kernel="context",
+        device=DEVICE,
+        dtype=torch.float64,
+        allow_full_layout_products=True,
+    )
     dense = CliffordAlgebra(4, 0, 0, device=DEVICE, dtype=torch.float64)
     A = _grade_only_input(dense, 2, (1,), seed=163)
     B = _grade_only_input(dense, 2, (1,), seed=167)
@@ -531,6 +570,42 @@ def test_low_dim_context_can_use_full_layout_fallback():
 
     assert context.allow_full_layout_products
     assert torch.allclose(actual, expected, atol=1e-12, rtol=1e-12)
+
+
+def test_context_static_product_cost_limits_raise_before_executor_build():
+    limits = PlanningLimits(warn_lanes=512, max_lanes=512, warn_pairs=512, max_pairs=64)
+    algebra = make_algebra(10, 4, 2, device=DEVICE, dtype=torch.float32, planning_limits=limits)
+    layout = algebra.layout((1,))
+    left = torch.zeros(1, layout.dim)
+    right = torch.zeros(1, layout.dim)
+
+    with pytest.raises(ValueError, match="basis interactions"):
+        algebra.projected_geometric_product(
+            left,
+            right,
+            left_layout=layout,
+            right_layout=layout,
+            compact_output=True,
+        )
+
+
+def test_context_static_product_cost_warns_near_configured_limits():
+    limits = PlanningLimits(warn_lanes=512, max_lanes=512, warn_pairs=128, max_pairs=512)
+    algebra = make_algebra(10, 4, 2, device=DEVICE, dtype=torch.float32, planning_limits=limits)
+    layout = algebra.layout((1,))
+    left = torch.zeros(1, layout.dim)
+    right = torch.zeros(1, layout.dim)
+
+    with pytest.warns(RuntimeWarning, match="basis interactions"):
+        values = algebra.projected_geometric_product(
+            left,
+            right,
+            left_layout=layout,
+            right_layout=layout,
+            compact_output=True,
+        )
+
+    assert values.shape[-1] == algebra.layout((0, 2)).dim
 
 
 @pytest.mark.skipif(not hasattr(torch, "compile"), reason="torch.compile not available")

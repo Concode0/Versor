@@ -28,6 +28,8 @@ class AlgebraLike(Protocol):
     eps: float
     eps_sq: float
     planner: object
+    planning_limits: object
+    allow_full_layout_products: bool
 
     @property
     def device(self):

@@ -9,13 +9,65 @@
 
 from __future__ import annotations
 
+from typing import Iterable, Optional
+
 import torch
 
+from core.foundation.layout import GradeLayout
 from core.foundation.validation import check_multivector
+from core.runtime.accessors import default_layout as _default_layout
+from core.runtime.accessors import grade_indices as _grade_indices
+from core.runtime.accessors import hermitian_signs as _hermitian_signs
+from core.runtime.accessors import materialize_dense
+from core.runtime.accessors import resolve_layout as _resolve_layout
 
 
-class ProjectedProductMixin:
-    """Execute declared grade products through an algebra's static planner."""
+class AlgebraRuntimeMixin:
+    """Shared runtime protocol for dense kernels and planned contexts."""
+
+    def layout(self, grades: Optional[Iterable[int]] = None) -> GradeLayout:
+        """Return a compact grade layout or the algebra's default layout."""
+        if grades is None:
+            return self.default_layout()
+        return self.planner.layout(grades)
+
+    def default_layout(self) -> GradeLayout:
+        """Return the default layout using the central fallback policy."""
+        return _default_layout(self)
+
+    def resolve_layout(
+        self,
+        *,
+        layout: Optional[GradeLayout] = None,
+        grades: Optional[Iterable[int]] = None,
+        mv=None,
+        allow_full: bool = True,
+        warn_full: bool = True,
+    ) -> GradeLayout:
+        """Resolve static layout metadata for tensors or multivectors."""
+        return _resolve_layout(
+            self,
+            layout=layout,
+            grades=grades,
+            mv=mv,
+            allow_full=allow_full,
+            warn_full=warn_full,
+        )
+
+    def grade_indices(self, grades: Iterable[int], *, device=None) -> torch.Tensor:
+        """Return canonical dense basis indices for ``grades``."""
+        return _grade_indices(self, grades, device=self.device if device is None else device)
+
+    def hermitian_signs(
+        self,
+        layout: Optional[GradeLayout] = None,
+        *,
+        grades: Optional[Iterable[int]] = None,
+        device=None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> torch.Tensor:
+        """Return Hermitian signs for a dense or compact layout."""
+        return _hermitian_signs(self, layout=layout, grades=grades, device=device, dtype=dtype)
 
     def projected_product(
         self,
@@ -72,7 +124,7 @@ class ProjectedProductMixin:
             return values, executor.output_layout
         if compact_output:
             return values
-        return executor.output_layout.dense(values)
+        return materialize_dense(self, values, layout=executor.output_layout)
 
     def projected_geometric_product(self, A: torch.Tensor, B: torch.Tensor, **kwargs):
         """Projected geometric product convenience wrapper."""
@@ -93,6 +145,38 @@ class ProjectedProductMixin:
     def projected_anti_commutator(self, A: torch.Tensor, B: torch.Tensor, **kwargs):
         """Projected anti-commutator convenience wrapper."""
         return self.projected_product(A, B, op="anti_commutator", **kwargs)
+
+    def planned_unary(
+        self,
+        values: torch.Tensor,
+        *,
+        op: str,
+        input_grades=None,
+        output_grades=None,
+        input_layout: Optional[GradeLayout] = None,
+        output_layout: Optional[GradeLayout] = None,
+        input_compact: bool = False,
+        compact_output: bool = False,
+        return_layout: bool = False,
+    ):
+        """Execute a unary operation through the shared static grade planner."""
+        request = self.planner.unary_request(
+            values,
+            op=op,
+            input_grades=input_grades,
+            output_grades=output_grades,
+            input_layout=input_layout,
+            output_layout=output_layout,
+            input_compact=input_compact,
+        )
+        executor = self.planner.unary_executor_for_request(request)
+        output = executor.forward_compact(values) if request.input_compact else executor(values)
+
+        if return_layout:
+            return output, executor.output_layout
+        if compact_output:
+            return output
+        return materialize_dense(self, output, layout=executor.output_layout)
 
     def _declared_layout(self, grades, layout):
         if layout is not None:

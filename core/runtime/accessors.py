@@ -9,19 +9,13 @@
 
 from __future__ import annotations
 
-import warnings
 from typing import Iterable, Optional
 
 import torch
 
 from core.foundation.basis import normalize_grades, operation_coefficient, reverse_sign
 from core.foundation.layout import AlgebraSpec, GradeLayout
-
-FULL_LAYOUT_WARN_N = 8
-FULL_LAYOUT_MAX_N = 12
-_FULL_LAYOUT_WARN_N = FULL_LAYOUT_WARN_N
-_FULL_LAYOUT_MAX_N = FULL_LAYOUT_MAX_N
-_WARNED_FULL_LAYOUT_SIGNATURES: set[tuple[int, int, int]] = set()
+from core.planning.policy import FULL_LAYOUT_MAX_N, validate_layout_cost, warn_full_layout_fallback
 
 
 def resolve_layout(
@@ -39,37 +33,37 @@ def resolve_layout(
         _check_layout_spec(spec, layout, "layout")
         if grades is not None and layout.grades != normalize_grades(grades, spec.n, name="grades"):
             raise ValueError("layout and grades disagree")
-        return layout
+        return validate_layout_cost(algebra, layout)
 
     if grades is not None:
-        return spec.layout(grades)
+        return validate_layout_cost(algebra, spec.layout(grades))
 
     if _is_multivector(mv) and getattr(mv, "layout", None) is not None:
         mv_layout = mv.layout
         _check_layout_spec(spec, mv_layout, "mv.layout")
-        return mv_layout
+        return validate_layout_cost(algebra, mv_layout)
 
     default_grades = getattr(algebra, "_default_grades", None)
     if default_grades is not None:
         cached = getattr(algebra, "_default_layout", None)
         if cached is not None:
             _check_layout_spec(spec, cached, "default_layout")
-            return cached
+            return validate_layout_cost(algebra, cached, role="default_layout")
         resolved = spec.layout(default_grades)
         if hasattr(algebra, "_default_layout"):
             algebra._default_layout = resolved
-        return resolved
+        return validate_layout_cost(algebra, resolved, role="default_layout")
 
     if not allow_full or not bool(getattr(algebra, "allow_full_layout_products", True)):
         raise ValueError("No grade layout is available. Declare active grades or configure default_grades.")
-    if spec.n > _FULL_LAYOUT_MAX_N:
+    if spec.n > FULL_LAYOUT_MAX_N:
         raise ValueError(
-            f"Implicit full Cl({spec.p},{spec.q},{spec.r}) layout is disabled for n>{_FULL_LAYOUT_MAX_N}. "
+            f"Implicit full Cl({spec.p},{spec.q},{spec.r}) layout is disabled for n>{FULL_LAYOUT_MAX_N}. "
             "Declare active grades or configure default_grades."
         )
     if warn_full:
         warn_full_layout_fallback(algebra)
-    return spec.layout(range(spec.n + 1))
+    return validate_layout_cost(algebra, spec.layout(range(spec.n + 1)), role="full_layout")
 
 
 def default_layout(algebra) -> GradeLayout:
@@ -187,22 +181,6 @@ def as_multivector(
     return Multivector(algebra, tensor=value, layout=resolved)
 
 
-def warn_full_layout_fallback(algebra) -> None:
-    """Warn once per signature when implicit full layout is used at n>=8."""
-    if getattr(algebra, "n", 0) < _FULL_LAYOUT_WARN_N:
-        return
-    signature = (int(algebra.p), int(algebra.q), int(algebra.r))
-    if signature in _WARNED_FULL_LAYOUT_SIGNATURES:
-        return
-    _WARNED_FULL_LAYOUT_SIGNATURES.add(signature)
-    warnings.warn(
-        f"Using implicit full Cl({algebra.p},{algebra.q},{algebra.r}) layout at n={algebra.n}. "
-        "Declare active grades or default_grades to avoid full-layout planning.",
-        RuntimeWarning,
-        stacklevel=3,
-    )
-
-
 def _hermitian_sign_for_index(algebra, index: int) -> float:
     grade = int(index).bit_count()
     grade_sign = -1.0 if grade % 2 else 1.0
@@ -225,9 +203,9 @@ def _check_algebra(expected, actual) -> None:
 def _check_dense_materialization_allowed(algebra) -> None:
     if not bool(getattr(algebra, "allow_full_layout_products", True)):
         raise ValueError("Dense materialization is disabled for this algebra. Keep compact values.")
-    if getattr(algebra, "n", 0) > _FULL_LAYOUT_MAX_N:
+    if getattr(algebra, "n", 0) > FULL_LAYOUT_MAX_N:
         raise ValueError(
-            f"Dense materialization is disabled for n>{_FULL_LAYOUT_MAX_N}. "
+            f"Dense materialization is disabled for n>{FULL_LAYOUT_MAX_N}. "
             "Keep compact values or declare a smaller active layout."
         )
     warn_full_layout_fallback(algebra)

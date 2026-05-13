@@ -12,21 +12,17 @@ for arbitrary signatures Cl(p, q, r).
 """
 
 import math
-from typing import Iterable, Optional
+from typing import Optional
 
 import torch
 import torch.nn as nn
 
-from core.foundation.layout import GradeLayout
 from core.foundation.validation import check_multivector
-from core.runtime.accessors import default_layout as _default_layout
-from core.runtime.accessors import grade_indices as _grade_indices
-from core.runtime.accessors import hermitian_signs as _hermitian_signs
-from core.runtime.accessors import resolve_layout as _resolve_layout
-from core.runtime.projected import ProjectedProductMixin
+from core.planning.policy import DEFAULT_PLANNING_LIMITS, PlanningLimits
+from core.runtime.projected import AlgebraRuntimeMixin
 
 
-class CliffordAlgebra(ProjectedProductMixin, nn.Module):
+class CliffordAlgebra(AlgebraRuntimeMixin, nn.Module):
     """Differentiable Clifford algebra kernel with memory-optimized blocked accumulation.
 
     Extends ``nn.Module`` so that all Cayley tables are registered as
@@ -57,6 +53,7 @@ class CliffordAlgebra(ProjectedProductMixin, nn.Module):
         exp_policy: str = "balanced",
         fixed_iterations: Optional[int] = None,
         allow_large_dense: bool = False,
+        planning_limits: Optional[PlanningLimits] = None,
     ):
         """Initialize the algebra and cache the Cayley table.
 
@@ -93,6 +90,7 @@ class CliffordAlgebra(ProjectedProductMixin, nn.Module):
         self.n = p + q + r
         self.dim = 2**self.n
         self.allow_full_layout_products = True
+        self.planning_limits = DEFAULT_PLANNING_LIMITS if planning_limits is None else planning_limits
 
         # Exp regime: dispatch at init
         if p == 0 or q == 0:
@@ -192,50 +190,6 @@ class CliffordAlgebra(ProjectedProductMixin, nn.Module):
         is moved via ``.to(dtype=...)``.
         """
         return self.cayley_signs.dtype
-
-    def layout(self, grades: Optional[Iterable[int]] = None) -> GradeLayout:
-        """Return a compact grade layout, or the full dense layout when omitted."""
-        if grades is None:
-            return self.default_layout()
-        return self.planner.layout(grades)
-
-    def default_layout(self) -> GradeLayout:
-        """Return the default layout using the central full-layout fallback policy."""
-        return _default_layout(self)
-
-    def resolve_layout(
-        self,
-        *,
-        layout: Optional[GradeLayout] = None,
-        grades: Optional[Iterable[int]] = None,
-        mv=None,
-        allow_full: bool = True,
-        warn_full: bool = True,
-    ) -> GradeLayout:
-        """Resolve static layout metadata for tensors or multivectors."""
-        return _resolve_layout(
-            self,
-            layout=layout,
-            grades=grades,
-            mv=mv,
-            allow_full=allow_full,
-            warn_full=warn_full,
-        )
-
-    def grade_indices(self, grades: Iterable[int], *, device=None) -> torch.Tensor:
-        """Return canonical dense basis indices for ``grades``."""
-        return _grade_indices(self, grades, device=self.device if device is None else device)
-
-    def hermitian_signs(
-        self,
-        layout: Optional[GradeLayout] = None,
-        *,
-        grades: Optional[Iterable[int]] = None,
-        device=None,
-        dtype: Optional[torch.dtype] = None,
-    ) -> torch.Tensor:
-        """Return Hermitian signs for a dense or compact layout."""
-        return _hermitian_signs(self, layout=layout, grades=grades, device=device, dtype=dtype)
 
     def bivector_squared_signs(self, *, device=None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
         """Return ``(e_ab)^2`` signs in canonical grade-2 layout order."""
@@ -713,38 +667,6 @@ class CliffordAlgebra(ProjectedProductMixin, nn.Module):
             return self.projected_product(A, B, op="anti_commutator", **kwargs)
         B_gathered = B[..., self.cayley_indices]
         return torch.matmul(A.unsqueeze(-2), B_gathered * self.anti_comm_gp_signs).squeeze(-2)
-
-    def planned_unary(
-        self,
-        values: torch.Tensor,
-        *,
-        op: str,
-        input_grades=None,
-        output_grades=None,
-        input_layout: Optional[GradeLayout] = None,
-        output_layout: Optional[GradeLayout] = None,
-        input_compact: bool = False,
-        compact_output: bool = False,
-        return_layout: bool = False,
-    ):
-        """Execute a unary operation through the shared static grade planner."""
-        request = self.planner.unary_request(
-            values,
-            op=op,
-            input_grades=input_grades,
-            output_grades=output_grades,
-            input_layout=input_layout,
-            output_layout=output_layout,
-            input_compact=input_compact,
-        )
-        executor = self.planner.unary_executor_for_request(request)
-        output = executor.forward_compact(values) if request.input_compact else executor(values)
-
-        if return_layout:
-            return output, executor.output_layout
-        if compact_output:
-            return output
-        return executor.output_layout.dense(output)
 
     def blade_inverse(self, blade: torch.Tensor) -> torch.Tensor:
         """Compute the inverse of a blade: B^{-1} = B_rev / <B * B_rev>_0.

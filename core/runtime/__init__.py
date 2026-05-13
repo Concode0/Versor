@@ -11,13 +11,13 @@ from .accessors import as_multivector, compact_values, grade_indices, hermitian_
 from .algebra import CliffordAlgebra
 from .context import AlgebraContext
 from .multivector import Multivector
-from .projected import ProjectedProductMixin
+from .projected import AlgebraRuntimeMixin
 
 __all__ = [
     "AlgebraContext",
+    "AlgebraRuntimeMixin",
     "CliffordAlgebra",
     "Multivector",
-    "ProjectedProductMixin",
     "as_multivector",
     "compact_values",
     "grade_indices",

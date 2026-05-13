@@ -14,6 +14,13 @@ import torch
 from core.foundation.basis import operation_coefficient
 from core.foundation.layout import AlgebraSpec, GradeLayout
 from core.planning.layouts import ProductRequest, build_product_request, normalize_product_op
+from core.planning.policy import (
+    full_layout_allowed,
+    validate_layout_cost,
+    validate_product_request,
+    validate_unary_request,
+    warn_full_layout_fallback,
+)
 from core.planning.product import GradeProductExecutor, build_grade_product_plan_from_request
 from core.planning.tree import build_grade_plan_tree
 from core.planning.unary import (
@@ -23,7 +30,6 @@ from core.planning.unary import (
     build_unary_request,
     normalize_unary_op,
 )
-from core.runtime.accessors import FULL_LAYOUT_MAX_N, warn_full_layout_fallback
 
 
 class GradePlanner:
@@ -42,7 +48,7 @@ class GradePlanner:
 
     def layout(self, grades):
         """Return the compact layout for ``grades``."""
-        return self.spec.layout(grades)
+        return validate_layout_cost(self.algebra, self.spec.layout(grades))
 
     def full_layout(self) -> GradeLayout:
         """Return the full dense basis layout."""
@@ -138,7 +144,7 @@ class GradePlanner:
             self._implicit_full_operand(right, grades=right_grades, layout=right_layout, compact=right_compact)
         ):
             warn_full_layout_fallback(self.algebra)
-        return build_product_request(
+        request = build_product_request(
             self.spec,
             left,
             right,
@@ -153,6 +159,8 @@ class GradePlanner:
             right_compact=right_compact,
             full_layout_allowed=self._full_layout_allowed(),
         )
+        validate_product_request(self.algebra, request)
+        return request
 
     def product_executor_for_request(self, request: ProductRequest, *, cache: bool = True) -> GradeProductExecutor:
         """Return an executor for an already normalized product request."""
@@ -191,7 +199,7 @@ class GradePlanner:
             input_grades = self._default_operand_grades(input_grades, input_layout)
         if self._implicit_full_operand(values, grades=input_grades, layout=input_layout, compact=input_compact):
             warn_full_layout_fallback(self.algebra)
-        return build_unary_request(
+        request = build_unary_request(
             self.spec,
             values,
             op=op,
@@ -202,6 +210,8 @@ class GradePlanner:
             input_compact=input_compact,
             full_layout_allowed=self._full_layout_allowed(),
         )
+        validate_unary_request(self.algebra, request)
+        return request
 
     def unary_executor(
         self,
@@ -263,7 +273,7 @@ class GradePlanner:
         )
 
     def _full_layout_allowed(self) -> bool:
-        return bool(getattr(self.algebra, "allow_full_layout_products", True)) and self.spec.n <= FULL_LAYOUT_MAX_N
+        return full_layout_allowed(self.algebra, self.spec)
 
     def _implicit_full_operand(self, tensor: torch.Tensor, *, grades, layout, compact: bool) -> bool:
         return (
