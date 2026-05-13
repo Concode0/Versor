@@ -87,6 +87,8 @@ class Multivector:
         """
         if self._tensor is not None:
             return self._tensor
+        # Dense materialization is a compatibility fallback. New Multivector
+        # operations should preserve compact ``values`` and ``layout`` instead.
         return self.layout.dense(self.values)
 
     @tensor.setter

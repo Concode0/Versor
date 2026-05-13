@@ -10,14 +10,15 @@
 Supports traditional matrix-based mixing and parameter-efficient rotor-based backends.
 """
 
-from typing import Literal, Optional
+from typing import Iterable, Literal, Optional
 
 import torch
 import torch.nn as nn
 
 from core.foundation.module import CliffordModule
-from core.foundation.validation import check_channels, check_multivector
-from core.runtime.algebra import CliffordAlgebra
+from core.foundation.validation import check_channels
+
+from ..grade import check_multivector_lanes, lane_count, resolve_layer_layout
 
 
 class CliffordLinear(CliffordModule):
@@ -42,13 +43,14 @@ class CliffordLinear(CliffordModule):
 
     def __init__(
         self,
-        algebra: CliffordAlgebra,
+        algebra,
         in_channels: int,
         out_channels: int,
         backend: Literal["traditional", "rotor"] = "traditional",
         num_rotor_pairs: int = 4,
         aggregation: Literal["mean", "sum", "learned"] = "mean",
         shuffle: Literal["none", "fixed", "random"] = "none",
+        grades: Optional[Iterable[int]] = None,
     ):
         """Initialize Clifford Linear.
 
@@ -64,19 +66,26 @@ class CliffordLinear(CliffordModule):
                 - 'none': No shuffle (default)
                 - 'fixed': Fixed random permutation
                 - 'random': Random permutation each forward pass
+            grades: Optional layer-owned active grades. When set, the traditional
+                backend operates on compact lanes for those grades instead of
+                requiring a full dense multivector width.
         """
         super().__init__(algebra)
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.backend = backend
+        self.layout = resolve_layer_layout(algebra, grades)
+        self.basis_dim = lane_count(algebra, self.layout)
 
         if backend == "traditional":
             self.weight = nn.Parameter(torch.Tensor(out_channels, in_channels))
-            self.bias = nn.Parameter(torch.Tensor(out_channels, algebra.dim))
+            self.bias = nn.Parameter(torch.Tensor(out_channels, self.basis_dim))
             self.reset_parameters()
             self.gadget = None
 
         elif backend == "rotor":
+            if self.layout is not None:
+                raise ValueError("CliffordLinear rotor backend does not yet support compact grade declarations")
             from .rotor_gadget import RotorGadget
 
             self.gadget = RotorGadget(
@@ -109,7 +118,7 @@ class CliffordLinear(CliffordModule):
         Returns:
             torch.Tensor: Output [Batch, Out, Dim].
         """
-        check_multivector(x, self.algebra, "CliffordLinear input")
+        check_multivector_lanes(x, self.algebra, self.layout, "CliffordLinear input")
         check_channels(x, self.in_channels, "CliffordLinear input")
 
         if self.backend == "traditional":
@@ -131,6 +140,7 @@ class CliffordLinear(CliffordModule):
             str: Layer parameters description
         """
         if self.backend == "traditional":
-            return f"in_channels={self.in_channels}, out_channels={self.out_channels}, backend=traditional"
+            grades = "" if self.layout is None else f", grades={self.layout.grades}"
+            return f"in_channels={self.in_channels}, out_channels={self.out_channels}, backend=traditional{grades}"
         else:
             return f"in_channels={self.in_channels}, out_channels={self.out_channels}, backend=rotor"
