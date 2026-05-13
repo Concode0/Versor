@@ -11,7 +11,7 @@ import torch
 from core.config import make_algebra
 from core.runtime.algebra import CliffordAlgebra
 from core.runtime.decomposition import ExpPolicy
-from layers import CliffordLinear, MultiRotorLayer, RotorLayer
+from layers import CliffordLayerNorm, CliffordLinear, MultiRotorLayer, RotorLayer
 from layers.primitives.reflection import ReflectionLayer
 
 pytestmark = pytest.mark.unit
@@ -41,6 +41,20 @@ class TestLayers:
     def test_linear_declared_grades_reject_rotor_backend_until_compact_sandwich_exists(self, algebra_3d):
         with pytest.raises(ValueError, match="compact grade declarations"):
             CliffordLinear(algebra_3d, 2, 3, backend="rotor", grades=(1,))
+
+    def test_layer_norm_declared_grades_use_compact_lanes_in_high_dimensions(self):
+        algebra = make_algebra(10, 4, 2, device="cpu", dtype=torch.float32)
+        layer = CliffordLayerNorm(algebra, channels=2, grades=(0, 1))
+        layout = algebra.layout((0, 1))
+        x = torch.randn(3, 2, layout.dim)
+
+        y = layer(x)
+
+        scalar_pos = layout.basis_indices.index(0)
+        assert layer.layout == layout
+        assert y.shape == x.shape
+        assert layer._scalar_lane_mask.shape[-1] == layout.dim
+        assert layer._scalar_lane_mask[scalar_pos].item() == 1.0
 
     def test_rotor_shape(self, algebra_3d):
         # Batch=4, Channels=5
