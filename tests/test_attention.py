@@ -3,6 +3,7 @@ import math
 import pytest
 import torch
 
+from core.config import make_algebra
 from core.runtime.algebra import CliffordAlgebra
 from layers.blocks.attention import GeometricProductAttention
 
@@ -82,6 +83,33 @@ def test_attention_forward_shape_after_score_refactor():
     y = attn(x)
 
     assert y.shape == x.shape
+
+
+def test_attention_declared_feature_grades_run_compact_high_dim_context():
+    algebra = make_algebra(10, 4, 2, device=DEVICE, dtype=torch.float32)
+    attn = GeometricProductAttention(algebra, channels=4, num_heads=2, causal=False, feature_grades=(1,))
+    x = torch.randn(2, 5, 4, algebra.n)
+
+    y = attn(x)
+
+    assert attn.feature_layout.grades == (1,)
+    assert attn._score_layout.grades == (1,)
+    assert attn.q_proj.basis_dim == algebra.n
+    assert y.shape == x.shape
+
+
+def test_attention_rejects_score_grades_outside_compact_feature_grades():
+    algebra = make_algebra(10, 4, 2, device=DEVICE, dtype=torch.float32)
+
+    with pytest.raises(ValueError, match="score_grades must be contained"):
+        GeometricProductAttention(
+            algebra,
+            channels=4,
+            num_heads=2,
+            causal=False,
+            feature_grades=(1,),
+            score_grades=(2,),
+        )
 
 
 @pytest.mark.skipif(not hasattr(torch, "compile"), reason="torch.compile not available")
