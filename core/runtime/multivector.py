@@ -13,6 +13,8 @@ import torch
 
 from core.foundation.layout import GradeLayout
 from core.foundation.module import AlgebraLike
+from core.runtime.accessors import as_multivector as _as_multivector
+from core.runtime.accessors import materialize_dense
 
 
 class Multivector:
@@ -57,19 +59,62 @@ class Multivector:
             self.values = values
 
     @classmethod
+    def from_tensor(
+        cls,
+        algebra: AlgebraLike,
+        tensor: torch.Tensor,
+        *,
+        grades=None,
+        layout: GradeLayout = None,
+    ) -> Multivector:
+        """Wrap dense coefficients or compact coefficients with declared layout metadata."""
+        if layout is None and grades is None:
+            return cls(algebra, tensor)
+        return _as_multivector(algebra, tensor, layout=layout, grades=grades)
+
+    @classmethod
+    def from_compact(
+        cls,
+        algebra: AlgebraLike,
+        values: torch.Tensor,
+        *,
+        grades=None,
+        layout: GradeLayout = None,
+    ) -> Multivector:
+        """Create a compact multivector from active lane values."""
+        if layout is None and grades is None:
+            raise ValueError("layout or grades is required for compact multivectors")
+        resolved = algebra.resolve_layout(layout=layout, grades=grades, warn_full=False)
+        return cls(algebra, values=values, layout=resolved)
+
+    @classmethod
     def from_vectors(cls, algebra: AlgebraLike, vectors: torch.Tensor) -> Multivector:
-        """Promotes vectors to multivectors (Grade 1)."""
-        return cls(algebra, algebra.embed_vector(vectors))
+        """Promote vectors to compact grade-1 multivectors."""
+        layout = algebra.layout((1,))
+        if vectors.shape[-1] != layout.dim:
+            raise ValueError(f"vectors last dimension must be {layout.dim}, got {vectors.shape[-1]}")
+        return cls(algebra, values=vectors, layout=layout)
 
     @classmethod
     def scalar(
         cls, algebra: AlgebraLike, value: float | torch.Tensor, batch_shape: tuple[int, ...] = ()
     ) -> Multivector:
         """Creates a scalar multivector (grade 0 only)."""
-        dim = 2**algebra.n
-        t = torch.zeros(*batch_shape, dim, device=algebra.device, dtype=algebra.dtype)
-        t[..., 0] = value
-        return cls(algebra, t)
+        layout = algebra.layout((0,))
+        values = torch.as_tensor(value, device=algebra.device, dtype=algebra.dtype)
+        if batch_shape:
+            target_shape = torch.Size(batch_shape)
+            if values.ndim == 0:
+                values = values.expand(*batch_shape).clone()
+            elif values.shape == torch.Size((*batch_shape, 1)):
+                return cls(algebra, values=values, layout=layout)
+            elif values.shape != target_shape:
+                values = values.expand(*batch_shape).clone()
+        if values.ndim == 0:
+            values = values.reshape(1)
+        elif values.shape[-1] != 1:
+            values = values.unsqueeze(-1)
+        return cls(algebra, values=values, layout=layout)
 
     def __repr__(self):
         storage = "compact" if self.is_compact else "dense"
@@ -89,7 +134,7 @@ class Multivector:
             return self._tensor
         # Do not call this inside core operations that can preserve compact
         # ``values`` and ``layout``; materialization belongs at API boundaries.
-        return self.layout.dense(self.values)
+        return materialize_dense(self.algebra, self)
 
     @tensor.setter
     def tensor(self, value: torch.Tensor) -> None:
@@ -103,6 +148,26 @@ class Multivector:
         return self.layout is not None
 
     @property
+    def is_dense(self) -> bool:
+        """Whether this multivector stores dense coefficients."""
+        return not self.is_compact
+
+    @property
+    def grades(self) -> tuple[int, ...] | None:
+        """Active grades when compact metadata is available."""
+        return None if self.layout is None else self.layout.grades
+
+    @property
+    def lane_count(self) -> int:
+        """Number of stored coefficient lanes."""
+        return self.coefficients.shape[-1]
+
+    @property
+    def storage(self) -> str:
+        """Storage mode name."""
+        return "compact" if self.is_compact else "dense"
+
+    @property
     def coefficients(self) -> torch.Tensor:
         """Return the active storage tensor without dense materialization."""
         return self.values if self.is_compact else self._tensor
@@ -113,7 +178,7 @@ class Multivector:
 
     def compact(self, grades) -> Multivector:
         """Return a compact-storage multivector containing ``grades``."""
-        layout = self.algebra.planner.layout(grades)
+        layout = self.algebra.layout(grades)
         return self.with_layout(layout)
 
     def with_layout(self, layout: GradeLayout) -> Multivector:
@@ -312,6 +377,8 @@ class Multivector:
 
     def dual(self) -> Multivector:
         """Hodge dual: maps grade-k to grade-(n-k)."""
+        # Dense-only algebra APIs below intentionally cross the dense boundary.
+        # Planned high-dimensional paths should use grade-declared primitives.
         return self._wrap(self.algebra.dual(self.tensor))
 
     def inverse(self) -> Multivector:

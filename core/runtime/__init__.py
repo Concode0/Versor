@@ -7,6 +7,7 @@
 
 """Runtime algebra hosts and dense reference operations."""
 
+from .accessors import as_multivector, compact_values, grade_indices, hermitian_signs, materialize_dense, resolve_layout
 from .algebra import CliffordAlgebra
 from .context import AlgebraContext
 from .multivector import Multivector
@@ -17,4 +18,10 @@ __all__ = [
     "CliffordAlgebra",
     "Multivector",
     "ProjectedProductMixin",
+    "as_multivector",
+    "compact_values",
+    "grade_indices",
+    "hermitian_signs",
+    "materialize_dense",
+    "resolve_layout",
 ]

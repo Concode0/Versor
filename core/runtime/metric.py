@@ -11,13 +11,25 @@ Provides distances, norms, and inner products that respect
 the metric signature.
 """
 
+from typing import Iterable, Optional
+
 import torch
 
+from core.foundation.layout import GradeLayout
 from core.foundation.module import AlgebraLike
+from core.runtime.accessors import compact_values
+from core.runtime.accessors import hermitian_signs as _layout_hermitian_signs
 
 
-def _hermitian_signs(algebra: AlgebraLike) -> torch.Tensor:
-    """Return the precomputed Hermitian sign tensor from the algebra.
+def _hermitian_signs(
+    algebra: AlgebraLike,
+    layout: Optional[GradeLayout] = None,
+    *,
+    grades: Optional[Iterable[int]] = None,
+    device=None,
+    dtype: Optional[torch.dtype] = None,
+) -> torch.Tensor:
+    """Return Hermitian sign tensor for a dense or compact layout.
 
     The Hermitian inner product on Cl(p,q) is:
         <A, B>_H = sum_I (conj_sign_I * metric_sign_I) * a_I * b_I
@@ -28,9 +40,7 @@ def _hermitian_signs(algebra: AlgebraLike) -> torch.Tensor:
     Returns:
         Sign tensor [Dim] with values +1, -1, or 0 (null blades).
     """
-    if not hasattr(algebra, "_hermitian_signs"):
-        raise ValueError("Hermitian dense metrics require a dense algebra kernel.")
-    return algebra._hermitian_signs
+    return _layout_hermitian_signs(algebra, layout=layout, grades=grades, device=device, dtype=dtype)
 
 
 def inner_product(algebra: AlgebraLike, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
@@ -171,7 +181,18 @@ def clifford_conjugate(algebra: AlgebraLike, mv: torch.Tensor) -> torch.Tensor:
     return algebra.clifford_conjugation(mv)
 
 
-def hermitian_inner_product(algebra: AlgebraLike, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+def hermitian_inner_product(
+    algebra: AlgebraLike,
+    A: torch.Tensor,
+    B: torch.Tensor,
+    *,
+    layout: Optional[GradeLayout] = None,
+    left_layout: Optional[GradeLayout] = None,
+    right_layout: Optional[GradeLayout] = None,
+    grades: Optional[Iterable[int]] = None,
+    left_grades: Optional[Iterable[int]] = None,
+    right_grades: Optional[Iterable[int]] = None,
+) -> torch.Tensor:
     """Hermitian inner product on Cl(p,q): <bar{A} B>_0.
 
     <A, B>_H = Sum_I (conj_sign_I * metric_sign_I) * a_I * b_I
@@ -189,13 +210,27 @@ def hermitian_inner_product(algebra: AlgebraLike, A: torch.Tensor, B: torch.Tens
     Returns:
         Scalar inner product [..., 1].
     """
-    signs = _hermitian_signs(algebra)
-    if signs.dtype != A.dtype:
-        signs = signs.to(dtype=A.dtype)
-    return (signs * A * B).sum(dim=-1, keepdim=True)
+    A_values, B_values, resolved = _aligned_pair_values(
+        algebra,
+        A,
+        B,
+        layout=layout,
+        left_layout=left_layout,
+        right_layout=right_layout,
+        grades=grades,
+        left_grades=left_grades,
+        right_grades=right_grades,
+    )
+    return _hermitian_inner_values(algebra, A_values, B_values, resolved)
 
 
-def hermitian_norm(algebra: AlgebraLike, A: torch.Tensor) -> torch.Tensor:
+def hermitian_norm(
+    algebra: AlgebraLike,
+    A: torch.Tensor,
+    *,
+    layout: Optional[GradeLayout] = None,
+    grades: Optional[Iterable[int]] = None,
+) -> torch.Tensor:
     """Hermitian norm: ||A||_H = sqrt(|<A, A>_H|).
 
     Always real and non-negative for any signature.
@@ -209,11 +244,23 @@ def hermitian_norm(algebra: AlgebraLike, A: torch.Tensor) -> torch.Tensor:
     Returns:
         Norm [..., 1]. Always >= 0.
     """
-    sq = hermitian_inner_product(algebra, A, A)
+    values, resolved = compact_values(algebra, A, layout=layout, grades=grades)
+    sq = _hermitian_inner_values(algebra, values, values, resolved)
     return torch.sqrt(torch.abs(sq))
 
 
-def hermitian_distance(algebra: AlgebraLike, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+def hermitian_distance(
+    algebra: AlgebraLike,
+    A: torch.Tensor,
+    B: torch.Tensor,
+    *,
+    layout: Optional[GradeLayout] = None,
+    left_layout: Optional[GradeLayout] = None,
+    right_layout: Optional[GradeLayout] = None,
+    grades: Optional[Iterable[int]] = None,
+    left_grades: Optional[Iterable[int]] = None,
+    right_grades: Optional[Iterable[int]] = None,
+) -> torch.Tensor:
     """Hermitian distance: d_H(A, B) = ||A - B||_H.
 
     Positive-definite metric distance for any signature.
@@ -227,10 +274,34 @@ def hermitian_distance(algebra: AlgebraLike, A: torch.Tensor, B: torch.Tensor) -
     Returns:
         Distance [..., 1]. Always >= 0.
     """
-    return hermitian_norm(algebra, A - B)
+    A_values, B_values, resolved = _aligned_pair_values(
+        algebra,
+        A,
+        B,
+        layout=layout,
+        left_layout=left_layout,
+        right_layout=right_layout,
+        grades=grades,
+        left_grades=left_grades,
+        right_grades=right_grades,
+    )
+    diff = A_values - B_values
+    sq = _hermitian_inner_values(algebra, diff, diff, resolved)
+    return torch.sqrt(torch.abs(sq))
 
 
-def hermitian_angle(algebra: AlgebraLike, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+def hermitian_angle(
+    algebra: AlgebraLike,
+    A: torch.Tensor,
+    B: torch.Tensor,
+    *,
+    layout: Optional[GradeLayout] = None,
+    left_layout: Optional[GradeLayout] = None,
+    right_layout: Optional[GradeLayout] = None,
+    grades: Optional[Iterable[int]] = None,
+    left_grades: Optional[Iterable[int]] = None,
+    right_grades: Optional[Iterable[int]] = None,
+) -> torch.Tensor:
     """Hermitian angle between multivectors.
 
     cos(theta) = <A, B>_H / (||A||_H * ||B||_H)
@@ -243,12 +314,21 @@ def hermitian_angle(algebra: AlgebraLike, A: torch.Tensor, B: torch.Tensor) -> t
     Returns:
         Angle in radians [..., 1].
     """
-    signs = _hermitian_signs(algebra)
-    if signs.dtype != A.dtype:
-        signs = signs.to(dtype=A.dtype)
-    ip = (signs * A * B).sum(dim=-1, keepdim=True)
-    sq_a = (signs * A * A).sum(dim=-1, keepdim=True)
-    sq_b = (signs * B * B).sum(dim=-1, keepdim=True)
+    A_values, B_values, resolved = _aligned_pair_values(
+        algebra,
+        A,
+        B,
+        layout=layout,
+        left_layout=left_layout,
+        right_layout=right_layout,
+        grades=grades,
+        left_grades=left_grades,
+        right_grades=right_grades,
+    )
+    signs = _signs_like(algebra, resolved, A_values, B_values)
+    ip = (signs * A_values * B_values).sum(dim=-1, keepdim=True)
+    sq_a = (signs * A_values * A_values).sum(dim=-1, keepdim=True)
+    sq_b = (signs * B_values * B_values).sum(dim=-1, keepdim=True)
     # Use sqrt(sq_a * sq_b) instead of sqrt(sq_a)*sqrt(sq_b) to avoid
     # float32 precision loss from two separate sqrt operations.
     denom = torch.sqrt(torch.abs(sq_a) * torch.abs(sq_b)).clamp(min=algebra.eps)
@@ -257,7 +337,14 @@ def hermitian_angle(algebra: AlgebraLike, A: torch.Tensor, B: torch.Tensor) -> t
     return torch.acos(cos_theta)
 
 
-def grade_hermitian_norm(algebra: AlgebraLike, A: torch.Tensor, grade: int) -> torch.Tensor:
+def grade_hermitian_norm(
+    algebra: AlgebraLike,
+    A: torch.Tensor,
+    grade: int,
+    *,
+    layout: Optional[GradeLayout] = None,
+    grades: Optional[Iterable[int]] = None,
+) -> torch.Tensor:
     """Hermitian norm restricted to a single grade.
 
     ||<A>_k||_H = sqrt(Sum_{I: |I|=k} a_I**2)
@@ -273,11 +360,20 @@ def grade_hermitian_norm(algebra: AlgebraLike, A: torch.Tensor, grade: int) -> t
     Returns:
         Grade-specific norm [..., 1].
     """
-    A_k = algebra.grade_projection(A, grade)
-    return hermitian_norm(algebra, A_k)
+    values, source_layout = compact_values(algebra, A, layout=layout, grades=grades)
+    grade_layout = algebra.layout((int(grade),))
+    grade_values = grade_layout.convert(values, source_layout)
+    sq = _hermitian_inner_values(algebra, grade_values, grade_values, grade_layout)
+    return torch.sqrt(torch.abs(sq))
 
 
-def hermitian_grade_spectrum(algebra: AlgebraLike, A: torch.Tensor) -> torch.Tensor:
+def hermitian_grade_spectrum(
+    algebra: AlgebraLike,
+    A: torch.Tensor,
+    *,
+    layout: Optional[GradeLayout] = None,
+    grades: Optional[Iterable[int]] = None,
+) -> torch.Tensor:
     """Full Hermitian grade spectrum.
 
     Returns |<A_k, A_k>_H| for each grade k = 0, ..., n.
@@ -290,15 +386,68 @@ def hermitian_grade_spectrum(algebra: AlgebraLike, A: torch.Tensor) -> torch.Ten
     Returns:
         Grade energies [..., n+1]. Each entry >= 0.
     """
-    signs = _hermitian_signs(algebra)
-    if signs.dtype != A.dtype:
-        signs = signs.to(dtype=A.dtype)
+    values, source_layout = compact_values(algebra, A, layout=layout, grades=grades)
     spectrum = []
     for k in range(algebra.n + 1):
-        A_k = algebra.grade_projection(A, k)
-        sq = (signs * A_k * A_k).sum(dim=-1, keepdim=True)
+        grade_layout = algebra.layout((k,))
+        grade_values = grade_layout.convert(values, source_layout)
+        sq = _hermitian_inner_values(algebra, grade_values, grade_values, grade_layout)
         spectrum.append(torch.abs(sq))
     return torch.cat(spectrum, dim=-1)
+
+
+def _aligned_pair_values(
+    algebra: AlgebraLike,
+    A,
+    B,
+    *,
+    layout: Optional[GradeLayout] = None,
+    left_layout: Optional[GradeLayout] = None,
+    right_layout: Optional[GradeLayout] = None,
+    grades: Optional[Iterable[int]] = None,
+    left_grades: Optional[Iterable[int]] = None,
+    right_grades: Optional[Iterable[int]] = None,
+) -> tuple[torch.Tensor, torch.Tensor, GradeLayout]:
+    """Compact two values into one static layout without dense materialization."""
+    shared_left_layout = left_layout if left_layout is not None else layout
+    shared_right_layout = right_layout if right_layout is not None else layout
+    shared_left_grades = left_grades if left_grades is not None else grades
+    shared_right_grades = right_grades if right_grades is not None else grades
+
+    A_values, A_layout = compact_values(algebra, A, layout=shared_left_layout, grades=shared_left_grades)
+    B_values, B_layout = compact_values(algebra, B, layout=shared_right_layout, grades=shared_right_grades)
+    resolved = A_layout if A_layout == B_layout else _union_layout(algebra, A_layout, B_layout)
+    if A_layout != resolved:
+        A_values = resolved.convert(A_values, A_layout)
+    if B_layout != resolved:
+        B_values = resolved.convert(B_values, B_layout)
+    return A_values, B_values, resolved
+
+
+def _union_layout(algebra: AlgebraLike, left: GradeLayout, right: GradeLayout) -> GradeLayout:
+    basis = set(left.basis_indices).union(right.basis_indices)
+    grades = sorted({index.bit_count() for index in basis})
+    return algebra.layout(grades)
+
+
+def _hermitian_inner_values(
+    algebra: AlgebraLike,
+    A_values: torch.Tensor,
+    B_values: torch.Tensor,
+    layout: GradeLayout,
+) -> torch.Tensor:
+    signs = _signs_like(algebra, layout, A_values, B_values)
+    return (signs * A_values * B_values).sum(dim=-1, keepdim=True)
+
+
+def _signs_like(
+    algebra: AlgebraLike,
+    layout: GradeLayout,
+    A_values: torch.Tensor,
+    B_values: torch.Tensor,
+) -> torch.Tensor:
+    dtype = torch.promote_types(A_values.dtype, B_values.dtype)
+    return _hermitian_signs(algebra, layout=layout, device=A_values.device, dtype=dtype)
 
 
 def signature_trace_form(algebra: AlgebraLike, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:

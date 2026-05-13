@@ -19,6 +19,10 @@ import torch.nn as nn
 
 from core.foundation.layout import GradeLayout
 from core.foundation.validation import check_multivector
+from core.runtime.accessors import default_layout as _default_layout
+from core.runtime.accessors import grade_indices as _grade_indices
+from core.runtime.accessors import hermitian_signs as _hermitian_signs
+from core.runtime.accessors import resolve_layout as _resolve_layout
 from core.runtime.projected import ProjectedProductMixin
 
 
@@ -192,12 +196,46 @@ class CliffordAlgebra(ProjectedProductMixin, nn.Module):
     def layout(self, grades: Optional[Iterable[int]] = None) -> GradeLayout:
         """Return a compact grade layout, or the full dense layout when omitted."""
         if grades is None:
-            return self.planner.full_layout()
+            return self.default_layout()
         return self.planner.layout(grades)
+
+    def default_layout(self) -> GradeLayout:
+        """Return the default layout using the central full-layout fallback policy."""
+        return _default_layout(self)
+
+    def resolve_layout(
+        self,
+        *,
+        layout: Optional[GradeLayout] = None,
+        grades: Optional[Iterable[int]] = None,
+        mv=None,
+        allow_full: bool = True,
+        warn_full: bool = True,
+    ) -> GradeLayout:
+        """Resolve static layout metadata for tensors or multivectors."""
+        return _resolve_layout(
+            self,
+            layout=layout,
+            grades=grades,
+            mv=mv,
+            allow_full=allow_full,
+            warn_full=warn_full,
+        )
 
     def grade_indices(self, grades: Iterable[int], *, device=None) -> torch.Tensor:
         """Return canonical dense basis indices for ``grades``."""
-        return self.planner.grade_indices(grades, device=self.device if device is None else device)
+        return _grade_indices(self, grades, device=self.device if device is None else device)
+
+    def hermitian_signs(
+        self,
+        layout: Optional[GradeLayout] = None,
+        *,
+        grades: Optional[Iterable[int]] = None,
+        device=None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> torch.Tensor:
+        """Return Hermitian signs for a dense or compact layout."""
+        return _hermitian_signs(self, layout=layout, grades=grades, device=device, dtype=dtype)
 
     def bivector_squared_signs(self, *, device=None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
         """Return ``(e_ab)^2`` signs in canonical grade-2 layout order."""

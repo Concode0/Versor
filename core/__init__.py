@@ -40,6 +40,14 @@ from .planning.routes import (
 )
 from .planning.tree import GradePathNode, GradePlanTree, build_grade_plan_tree
 from .planning.unary import GradeUnaryExecutor, GradeUnaryOp, GradeUnaryPlan, UnaryRequest, build_unary_request
+from .runtime.accessors import (
+    as_multivector,
+    compact_values,
+    grade_indices,
+    hermitian_signs,
+    materialize_dense,
+    resolve_layout,
+)
 from .runtime.algebra import CliffordAlgebra
 from .runtime.context import AlgebraContext
 from .runtime.decomposition import (
@@ -103,6 +111,12 @@ __all__ = [
     "hermitian_grade_spectrum",
     "signature_trace_form",
     "signature_norm_squared",
+    "as_multivector",
+    "compact_values",
+    "grade_indices",
+    "hermitian_signs",
+    "materialize_dense",
+    "resolve_layout",
     # decomposition
     "ExpPolicy",
     "ga_power_iteration",

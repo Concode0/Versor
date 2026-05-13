@@ -457,8 +457,49 @@ def test_multivector_compact_addition_merges_layouts_without_dense_materializati
     assert torch.allclose(result.values, vector_values + bivector_values)
 
 
+def test_context_default_grades_drive_compact_product_without_callsite_metadata():
+    algebra = make_algebra(10, 4, 2, device=DEVICE, dtype=torch.float32, default_grades=(1,))
+    vector_layout = algebra.layout()
+    left = torch.zeros(1, vector_layout.dim)
+    right = torch.zeros(1, vector_layout.dim)
+    left[0, 0] = 1.0
+    right[0, 0] = 1.0
+
+    values, output_layout = algebra.geometric_product(
+        left,
+        right,
+        compact_output=True,
+        return_layout=True,
+    )
+
+    assert vector_layout.grades == (1,)
+    assert output_layout.grades == (0, 2)
+    assert torch.allclose(values[0, output_layout.basis_indices.index(0)], torch.tensor(1.0))
+
+
+def test_context_declared_grades_infer_compact_operand_shapes():
+    algebra = make_algebra(10, 4, 2, device=DEVICE, dtype=torch.float32)
+    vector_layout = algebra.layout((1,))
+    left = torch.zeros(1, vector_layout.dim)
+    right = torch.zeros(1, vector_layout.dim)
+    left[0, 0] = 1.0
+    right[0, 0] = 1.0
+
+    values, output_layout = algebra.projected_geometric_product(
+        left,
+        right,
+        left_grades=(1,),
+        right_grades=(1,),
+        compact_output=True,
+        return_layout=True,
+    )
+
+    assert output_layout.grades == (0, 2)
+    assert torch.allclose(values[0, output_layout.basis_indices.index(0)], torch.tensor(1.0))
+
+
 def test_high_dim_context_requires_declared_layout_for_products():
-    algebra = make_algebra(9, 0, 0, device=DEVICE, dtype=torch.float32)
+    algebra = make_algebra(13, 0, 0, device=DEVICE, dtype=torch.float32)
     A = torch.zeros(1, algebra.dim)
     B = torch.zeros(1, algebra.dim)
 
@@ -467,6 +508,16 @@ def test_high_dim_context_requires_declared_layout_for_products():
 
     with pytest.raises(ValueError, match="Declare active grades"):
         algebra.reverse(A)
+
+
+def test_context_warns_for_implicit_full_layout_fallback_between_eight_and_twelve():
+    context = make_algebra(9, 0, 0, kernel="context", device=DEVICE, dtype=torch.float32)
+
+    with pytest.warns(RuntimeWarning, match="implicit full Cl\\(9,0,0\\) layout"):
+        layout = context.layout()
+
+    assert layout.grades == tuple(range(context.n + 1))
+    assert context.allow_full_layout_products
 
 
 def test_low_dim_context_can_use_full_layout_fallback():

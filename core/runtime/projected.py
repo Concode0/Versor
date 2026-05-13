@@ -35,6 +35,8 @@ class ProjectedProductMixin:
         return_layout: bool = False,
     ):
         """Compute a declared grade-restricted product through a static executor."""
+        left_layout = self._declared_layout(left_grades, left_layout)
+        right_layout = self._declared_layout(right_grades, right_layout)
         if not left_compact and left_layout is not None and A.shape[-1] == left_layout.dim:
             left_compact = left_layout.dim != self.dim
         if not right_compact and right_layout is not None and B.shape[-1] == right_layout.dim:
@@ -91,3 +93,13 @@ class ProjectedProductMixin:
     def projected_anti_commutator(self, A: torch.Tensor, B: torch.Tensor, **kwargs):
         """Projected anti-commutator convenience wrapper."""
         return self.projected_product(A, B, op="anti_commutator", **kwargs)
+
+    def _declared_layout(self, grades, layout):
+        if layout is not None:
+            return layout
+        if grades is not None:
+            return self.layout(grades)
+        default_grades = getattr(self, "_default_grades", None)
+        if default_grades is None:
+            return None
+        return self.layout(default_grades)

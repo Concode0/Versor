@@ -28,7 +28,10 @@ def rand_mv(alg, rng, batch=4):
 def test_from_vectors(alg):
     v = torch.randn(4, 3)
     mv = Multivector.from_vectors(alg, v)
-    assert mv.shape[-1] == 2**alg.n
+    assert mv.is_compact
+    assert mv.grades == (1,)
+    assert mv.shape[-1] == alg.n
+    assert mv.tensor.shape[-1] == 2**alg.n
 
 
 def test_scalar(alg):

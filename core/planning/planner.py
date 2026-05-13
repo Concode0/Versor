@@ -23,6 +23,7 @@ from core.planning.unary import (
     build_unary_request,
     normalize_unary_op,
 )
+from core.runtime.accessors import FULL_LAYOUT_MAX_N, warn_full_layout_fallback
 
 
 class GradePlanner:
@@ -131,6 +132,12 @@ class GradePlanner:
         right_compact: bool = False,
     ) -> ProductRequest:
         """Normalize product intent into a static request without executing tensors."""
+        left_grades = self._default_operand_grades(left_grades, left_layout)
+        right_grades = self._default_operand_grades(right_grades, right_layout)
+        if self._implicit_full_operand(left, grades=left_grades, layout=left_layout, compact=left_compact) or (
+            self._implicit_full_operand(right, grades=right_grades, layout=right_layout, compact=right_compact)
+        ):
+            warn_full_layout_fallback(self.algebra)
         return build_product_request(
             self.spec,
             left,
@@ -180,6 +187,10 @@ class GradePlanner:
         input_compact: bool = False,
     ) -> UnaryRequest:
         """Normalize unary intent into a static request without executing tensors."""
+        if not (op == "grade_projection" and output_grades is not None):
+            input_grades = self._default_operand_grades(input_grades, input_layout)
+        if self._implicit_full_operand(values, grades=input_grades, layout=input_layout, compact=input_compact):
+            warn_full_layout_fallback(self.algebra)
         return build_unary_request(
             self.spec,
             values,
@@ -252,4 +263,18 @@ class GradePlanner:
         )
 
     def _full_layout_allowed(self) -> bool:
-        return bool(getattr(self.algebra, "allow_full_layout_products", True))
+        return bool(getattr(self.algebra, "allow_full_layout_products", True)) and self.spec.n <= FULL_LAYOUT_MAX_N
+
+    def _implicit_full_operand(self, tensor: torch.Tensor, *, grades, layout, compact: bool) -> bool:
+        return (
+            grades is None
+            and layout is None
+            and not compact
+            and self._full_layout_allowed()
+            and tensor.shape[-1] == self.spec.dim
+        )
+
+    def _default_operand_grades(self, grades, layout: GradeLayout = None):
+        if grades is not None or layout is not None:
+            return grades
+        return getattr(self.algebra, "_default_grades", None)

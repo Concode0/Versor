@@ -3,7 +3,9 @@
 import pytest
 import torch
 
+from core.config import make_algebra
 from core.runtime.algebra import CliffordAlgebra
+from core.runtime.multivector import Multivector
 
 pytestmark = pytest.mark.unit
 from core.runtime.metric import (
@@ -143,6 +145,19 @@ class TestHermitianInnerProduct:
         has_negative = (signs < 0).any()
         assert has_negative, "Cl(2,1) should have negative signs"
 
+    def test_compact_context_matches_dense_active_lanes(self):
+        dense = CliffordAlgebra(3, 1, 0, device="cpu", dtype=torch.float64)
+        context = make_algebra(3, 1, 0, kernel="context", device="cpu", dtype=torch.float64)
+        layout = context.layout((1, 2))
+        generator = torch.Generator(device="cpu").manual_seed(719)
+        A = torch.randn(5, layout.dim, dtype=torch.float64, generator=generator)
+        B = torch.randn(5, layout.dim, dtype=torch.float64, generator=generator)
+
+        actual = hermitian_inner_product(context, A, B, layout=layout)
+        expected = hermitian_inner_product(dense, layout.dense(A), layout.dense(B))
+
+        assert torch.allclose(actual, expected, atol=1e-12, rtol=1e-12)
+
 
 class TestHermitianNorm:
     def test_non_negative(self, algebra_minkowski):
@@ -278,6 +293,28 @@ class TestHermitianGradeSpectrum:
         spec = hermitian_grade_spectrum(algebra_conformal, mv)
         assert spec.shape == (algebra_conformal.n + 1,)
         assert (spec >= -1e-6).all()
+
+    def test_compact_spectrum_fills_inactive_grades(self):
+        context = make_algebra(5, 0, 0, kernel="context", device="cpu", dtype=torch.float32)
+        layout = context.layout((1,))
+        values = torch.ones(2, layout.dim)
+
+        spec = hermitian_grade_spectrum(context, values, layout=layout)
+
+        assert spec.shape == (2, context.n + 1)
+        assert torch.allclose(spec[:, 0], torch.zeros(2))
+        assert torch.allclose(spec[:, 1], torch.full((2,), float(context.n)))
+        assert torch.allclose(spec[:, 2:], torch.zeros(2, context.n - 1))
+
+    def test_compact_multivector_norm_uses_layout_without_dense_materialization(self):
+        context = make_algebra(9, 0, 0, kernel="context", device="cpu", dtype=torch.float32)
+        mv = Multivector.from_vectors(context, torch.ones(3, context.n))
+
+        norm = hermitian_norm(context, mv)
+
+        assert mv.is_compact
+        assert norm.shape == (3, 1)
+        assert torch.allclose(norm, torch.full((3, 1), context.n**0.5))
 
 
 class TestSignatureTraceForm:

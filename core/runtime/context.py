@@ -17,6 +17,11 @@ from core.foundation.basis import normalize_grades
 from core.foundation.device import resolve_device, resolve_dtype
 from core.foundation.layout import AlgebraSpec, GradeLayout
 from core.planning.planner import GradePlanner
+from core.runtime.accessors import FULL_LAYOUT_MAX_N
+from core.runtime.accessors import default_layout as _default_layout
+from core.runtime.accessors import grade_indices as _grade_indices
+from core.runtime.accessors import hermitian_signs as _hermitian_signs
+from core.runtime.accessors import resolve_layout as _resolve_layout
 from core.runtime.projected import ProjectedProductMixin
 
 
@@ -46,9 +51,10 @@ class AlgebraContext(ProjectedProductMixin):
         self.spec = AlgebraSpec(self.p, self.q, self.r)
         self._device = torch.device(resolve_device(device) if str(device) == "auto" else device)
         self._dtype = resolve_dtype(dtype)
-        self.allow_full_layout_products = (
-            self.n <= 8 if allow_full_layout_products is None else bool(allow_full_layout_products)
+        requested_full_layout = self.n <= FULL_LAYOUT_MAX_N if allow_full_layout_products is None else bool(
+            allow_full_layout_products
         )
+        self.allow_full_layout_products = requested_full_layout and self.n <= FULL_LAYOUT_MAX_N
         self._default_grades = None if default_grades is None else normalize_grades(default_grades, self.n)
         self._default_layout: Optional[GradeLayout] = None
         self.planner = GradePlanner(self)
@@ -67,22 +73,46 @@ class AlgebraContext(ProjectedProductMixin):
     def layout(self, grades: Optional[Iterable[int]] = None) -> GradeLayout:
         """Return a compact layout, or the full default layout when omitted."""
         if grades is None:
-            if self._default_layout is None:
-                if self._default_grades is None:
-                    if not self.allow_full_layout_products:
-                        raise ValueError(
-                            "AlgebraContext has no default layout. Declare active grades for high-dimensional use."
-                        )
-                    grades = range(self.num_grades)
-                else:
-                    grades = self._default_grades
-                self._default_layout = self.planner.layout(grades)
-            return self._default_layout
+            return self.default_layout()
         return self.planner.layout(grades)
+
+    def default_layout(self) -> GradeLayout:
+        """Return the default layout using the central full-layout fallback policy."""
+        return _default_layout(self)
+
+    def resolve_layout(
+        self,
+        *,
+        layout: Optional[GradeLayout] = None,
+        grades: Optional[Iterable[int]] = None,
+        mv=None,
+        allow_full: bool = True,
+        warn_full: bool = True,
+    ) -> GradeLayout:
+        """Resolve static layout metadata for tensors or multivectors."""
+        return _resolve_layout(
+            self,
+            layout=layout,
+            grades=grades,
+            mv=mv,
+            allow_full=allow_full,
+            warn_full=warn_full,
+        )
 
     def grade_indices(self, grades: Iterable[int], *, device=None) -> torch.Tensor:
         """Return canonical dense basis indices for ``grades`` without dense tables."""
-        return self.planner.grade_indices(grades, device=self.device if device is None else device)
+        return _grade_indices(self, grades, device=self.device if device is None else device)
+
+    def hermitian_signs(
+        self,
+        layout: Optional[GradeLayout] = None,
+        *,
+        grades: Optional[Iterable[int]] = None,
+        device=None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> torch.Tensor:
+        """Return Hermitian signs for a dense or compact layout."""
+        return _hermitian_signs(self, layout=layout, grades=grades, device=device, dtype=dtype)
 
     def bivector_squared_signs(self, *, device=None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
         """Return ``(e_ab)^2`` signs in canonical grade-2 layout order."""

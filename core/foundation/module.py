@@ -47,8 +47,35 @@ class AlgebraLike(Protocol):
         """Return a compact grade layout or the algebra's default layout."""
         ...
 
+    def default_layout(self) -> GradeLayout:
+        """Return the algebra default layout."""
+        ...
+
+    def resolve_layout(
+        self,
+        *,
+        layout: Optional[GradeLayout] = None,
+        grades: Optional[Iterable[int]] = None,
+        mv=None,
+        allow_full: bool = True,
+        warn_full: bool = True,
+    ) -> GradeLayout:
+        """Resolve static layout metadata for tensors or multivectors."""
+        ...
+
     def grade_indices(self, grades: Iterable[int], *, device=None) -> torch.Tensor:
         """Return canonical dense basis indices for ``grades``."""
+        ...
+
+    def hermitian_signs(
+        self,
+        layout: Optional[GradeLayout] = None,
+        *,
+        grades: Optional[Iterable[int]] = None,
+        device=None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> torch.Tensor:
+        """Return Hermitian signs for a dense or compact layout."""
         ...
 
 
