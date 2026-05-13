@@ -14,6 +14,7 @@ from omegaconf import DictConfig
 from tqdm import tqdm
 
 from core.foundation.device import DeviceConfig, resolve_device
+from core.planning import inspect_module_optimization
 from log import get_logger
 
 logger = get_logger(__name__)
@@ -58,6 +59,20 @@ class BaseTask(ABC):
 
         self.algebra = self.setup_algebra()
         self.model = self.setup_model().to(self.device)
+        self.optimization_report = inspect_module_optimization(self.model)
+        unplanned_leaves = self.optimization_report.unplanned_leaf_modules
+        logger.info(
+            "Optimization routes: %d planned (%d compact, %d dense-only), %d unplanned leaf modules",
+            len(self.optimization_report.plans),
+            len(self.optimization_report.compact_plans),
+            len(self.optimization_report.dense_only_plans),
+            len(unplanned_leaves),
+        )
+        if unplanned_leaves:
+            logger.debug(
+                "Unplanned algebra-aware leaves: %s",
+                ", ".join(f"{issue.path}:{issue.module_type}" for issue in unplanned_leaves),
+            )
         self.model = self.device_config.maybe_compile(self.model)
         self.criterion = self.setup_criterion()
         self.optimizer = self._setup_optimizer()

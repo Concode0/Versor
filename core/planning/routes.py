@@ -50,6 +50,47 @@ class ModuleOptimizationPlan:
         return any(grades is not None and grade in grades for grades in grade_sets)
 
 
+@dataclass(frozen=True)
+class ModuleOptimizationIssue:
+    """Static coverage issue for one algebra-aware module."""
+
+    path: str
+    module_type: str
+    reason: str
+    has_planned_descendants: bool
+
+
+@dataclass(frozen=True)
+class ModuleOptimizationReport:
+    """Optimization-plan coverage for a composed module tree."""
+
+    plans: tuple[ModuleOptimizationPlan, ...]
+    issues: tuple[ModuleOptimizationIssue, ...]
+
+    @property
+    def compact_plans(self) -> tuple[ModuleOptimizationPlan, ...]:
+        """Return plans that use compact basis lanes."""
+        return tuple(plan for plan in self.plans if plan.compact)
+
+    @property
+    def dense_only_plans(self) -> tuple[ModuleOptimizationPlan, ...]:
+        """Return plans that are explicitly dense-only."""
+        return tuple(plan for plan in self.plans if not plan.compact and plan.dense_only_reason is not None)
+
+    @property
+    def unplanned_leaf_modules(self) -> tuple[ModuleOptimizationIssue, ...]:
+        """Return algebra-aware modules that have no plan and no planned descendants."""
+        return tuple(issue for issue in self.issues if not issue.has_planned_descendants)
+
+    def assert_no_unplanned_leaves(self) -> None:
+        """Raise if any algebra-aware leaf module is invisible to the planner."""
+        leaves = self.unplanned_leaf_modules
+        if not leaves:
+            return
+        details = ", ".join(f"{issue.path}:{issue.module_type}" for issue in leaves)
+        raise AssertionError(f"Unplanned algebra-aware leaf modules: {details}")
+
+
 def module_optimization_plan(module: nn.Module, *, path: str = "") -> Optional[ModuleOptimizationPlan]:
     """Return static optimization metadata for one module.
 
@@ -108,6 +149,43 @@ def collect_module_optimization_plans(
             continue
         plans.append(plan)
     return tuple(plans)
+
+
+def inspect_module_optimization(module: nn.Module) -> ModuleOptimizationReport:
+    """Return static optimization plans plus coverage issues for a module tree."""
+    modules = tuple(module.named_modules())
+    plans = []
+    plan_by_path: dict[str, ModuleOptimizationPlan] = {}
+
+    for path, child in modules:
+        normalized_path = path or "<root>"
+        plan = module_optimization_plan(child, path=normalized_path)
+        if plan is None:
+            continue
+        plans.append(plan)
+        plan_by_path[normalized_path] = plan
+
+    issues = []
+    for path, child in modules:
+        normalized_path = path or "<root>"
+        if normalized_path in plan_by_path or _module_algebra(child) is None:
+            continue
+        has_planned_descendants = any(_is_descendant(plan.path, normalized_path) for plan in plans)
+        reason = (
+            "container has planned descendants but no direct route"
+            if has_planned_descendants
+            else "algebra-aware module exposes no static optimization metadata"
+        )
+        issues.append(
+            ModuleOptimizationIssue(
+                path=normalized_path,
+                module_type=child.__class__.__name__,
+                reason=reason,
+                has_planned_descendants=has_planned_descendants,
+            )
+        )
+
+    return ModuleOptimizationReport(plans=tuple(plans), issues=tuple(issues))
 
 
 def _custom_plan(module: nn.Module, path: str) -> Optional[ModuleOptimizationPlan]:
@@ -205,3 +283,9 @@ def _basis_dim(algebra: AlgebraLike, layout: Optional[GradeLayout]) -> int:
     if layout is not None:
         return int(layout.dim)
     return int(algebra.dim)
+
+
+def _is_descendant(path: str, parent_path: str) -> bool:
+    if parent_path == "<root>":
+        return path != "<root>"
+    return path.startswith(parent_path + ".")

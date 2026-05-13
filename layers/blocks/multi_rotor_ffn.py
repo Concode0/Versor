@@ -72,7 +72,7 @@ class MultiRotorFFN(CliffordModule):
         self.toolbox = (
             MultiRotorLayer(algebra, ffn_channels, num_rotors) if self.use_rotor_toolbox else nn.Identity()
         )
-        self.act = GeometricGELU(algebra, channels=ffn_channels)
+        self.act = GeometricGELU(algebra, channels=ffn_channels, grades=feature_grades)
         self.contract = CliffordLinear(algebra, ffn_channels, channels, backend=backend, grades=feature_grades)
         self.gate = BladeSelector(algebra, channels, grades=feature_grades)
 

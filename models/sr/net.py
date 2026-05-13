@@ -109,6 +109,11 @@ class SRMultiGradeEmbedding(CliffordModule):
         grade1_proj (nn.Linear): k -> C*n_g1 projection.
     """
 
+    optimization_operators = ("embed",)
+    optimization_input_grades = None
+    optimization_output_grades = (0, 1)
+    optimization_dense_only_reason = "SR embedding currently emits dense grade-0/grade-1 multivectors"
+
     def __init__(
         self,
         algebra: CliffordAlgebra,

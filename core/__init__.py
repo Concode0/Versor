@@ -30,7 +30,14 @@ from .planning.flow import GradeFlow
 from .planning.layouts import ProductRequest, build_product_request
 from .planning.planner import GradePlanner
 from .planning.product import GradeProductExecutor, GradeProductPlan, build_grade_product_plan
-from .planning.routes import ModuleOptimizationPlan, collect_module_optimization_plans, module_optimization_plan
+from .planning.routes import (
+    ModuleOptimizationIssue,
+    ModuleOptimizationPlan,
+    ModuleOptimizationReport,
+    collect_module_optimization_plans,
+    inspect_module_optimization,
+    module_optimization_plan,
+)
 from .planning.tree import GradePathNode, GradePlanTree, build_grade_plan_tree
 from .planning.unary import GradeUnaryExecutor, GradeUnaryOp, GradeUnaryPlan, UnaryRequest, build_unary_request
 from .runtime.algebra import CliffordAlgebra
@@ -109,7 +116,9 @@ __all__ = [
     "GradePathNode",
     "GradePlanTree",
     "GradeFlow",
+    "ModuleOptimizationIssue",
     "ModuleOptimizationPlan",
+    "ModuleOptimizationReport",
     "ProductRequest",
     "GradeUnaryExecutor",
     "GradeUnaryOp",
@@ -124,6 +133,7 @@ __all__ = [
     "collect_module_optimization_plans",
     "expand_output_grades",
     "geometric_product_output_grades",
+    "inspect_module_optimization",
     "module_optimization_plan",
     "normalize_grades",
     "operation_coefficient",

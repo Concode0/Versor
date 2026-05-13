@@ -47,6 +47,10 @@ class DynamicRotorGenerator(CliffordModule):
     as identity (exp(0) = 1).
     """
 
+    optimization_operators = ("dense_rotor_generation",)
+    optimization_parameter_grades = (2,)
+    optimization_dense_only_reason = "dynamic rotor generator materializes dense rotor multivectors"
+
     def __init__(self, algebra: CliffordAlgebra, input_dim: int, num_dynamic_rotors: int = 4):
         super().__init__(algebra)
         self.num_dynamic_rotors = num_dynamic_rotors
@@ -103,6 +107,9 @@ class MD17InteractionBlock(CliffordModule):
     applies static + dynamic rotors weighted by edge invariants, and
     optionally uses GeometricSquare activation for algebraic cross-terms.
     """
+
+    optimization_operators = ("gp_message", "dense_rotor_action", "scatter_message")
+    optimization_dense_only_reason = "MD17 interaction block builds dense action matrices"
 
     def __init__(
         self,

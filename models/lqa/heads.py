@@ -35,6 +35,9 @@ class ChainReasoningHead(CliffordModule):
     for relation composition, with soft gating selecting the composition.
     """
 
+    optimization_operators = ("dense_rotor_bank", "grade_readout")
+    optimization_dense_only_reason = "chain head applies a dense relation-rotor bank"
+
     def __init__(self, algebra: CliffordAlgebra, channels: int, num_relations: int = 18, hidden_dim: int = 64):
         super().__init__(algebra)
         self.channels = channels
@@ -107,6 +110,9 @@ class EntailmentHead(CliffordModule):
     Key: <P * rev(H)>_2 flips sign when P <-> H are swapped,
     giving the model asymmetry for free from the algebra.
     """
+
+    optimization_operators = ("gp", "grade_readout")
+    optimization_dense_only_reason = "entailment head computes dense product features"
 
     def __init__(self, algebra: CliffordAlgebra, channels: int, hidden_dim: int = 64):
         super().__init__(algebra)
@@ -191,6 +197,9 @@ class NegationHead(CliffordModule):
     uses GeometricNeutralizer to separate truth (grade-0) from
     relational noise (grade-2).
     """
+
+    optimization_operators = ("gp", "grade_involution", "grade_readout")
+    optimization_dense_only_reason = "negation head computes dense product and involution features"
 
     def __init__(self, algebra: CliffordAlgebra, channels: int, hidden_dim: int = 64):
         super().__init__(algebra)

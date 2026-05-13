@@ -97,6 +97,9 @@ class StrictOrthogonality(CliffordModule):
     when calling .to(device).
     """
 
+    optimization_operators = ("grade_projection", "orthogonality")
+    optimization_dense_only_reason = "strict orthogonality uses dense grade masks"
+
     def __init__(self, algebra, settings: Optional[OrthogonalitySettings] = None):
         super().__init__(algebra)
 
