@@ -313,7 +313,7 @@ def compiled_safe_decomposed_exp(
     with torch.no_grad():
         decomp = _decompose_compiled_safe(algebra, b.detach(), k=k_actual, fixed_iterations=fixed_iterations)
 
-    bv_indices = algebra.grade_indices((2,), device=b.device)
+    bv_indices = _bivector_indices(algebra, b.device)
 
     # Re-project live bivector and compose rotors
     result = identity
@@ -333,3 +333,14 @@ def compiled_safe_decomposed_exp(
         result = algebra.geometric_product(result, R_i)
 
     return result
+
+
+def _bivector_indices(algebra, device) -> torch.Tensor:
+    if hasattr(algebra, "_bivector_indices_for"):
+        return algebra._bivector_indices_for(device)
+    indices = getattr(algebra, "_bv_indices", None)
+    if indices is not None:
+        if indices.device != torch.device(device):
+            indices = indices.to(device=device)
+        return indices
+    return algebra.grade_indices((2,), device=device)

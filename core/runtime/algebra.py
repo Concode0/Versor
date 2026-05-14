@@ -615,6 +615,12 @@ class CliffordAlgebra(AlgebraRuntimeMixin, nn.Module):
             indices = indices.to(device=device)
         return indices
 
+    def _bivector_indices_for(self, device) -> torch.Tensor:
+        indices = self._bv_indices
+        if indices.device != torch.device(device):
+            indices = indices.to(device=device)
+        return indices
+
     def inner_product(self, A: torch.Tensor, B: torch.Tensor, **kwargs) -> torch.Tensor:
         """Computes the inner product: A . B = (AB + BA)/2.
 
@@ -1110,10 +1116,18 @@ class CliffordAlgebra(AlgebraRuntimeMixin, nn.Module):
         R_closed = self._exp_bivector_closed(B)
         R_decomposed = compiled_safe_decomposed_exp(self, B, fixed_iterations=self._exp_fixed_iterations)
 
-        BB = self.geometric_product(B, B)
-        # Subtract scalar part, check if residual is negligible
-        scalar_part = self.grade_projection(BB, 0)
-        non_scalar_energy = (BB - scalar_part).norm(dim=-1, keepdim=True)
+        # For bivectors, B*B has only scalar and grade-4 components; the
+        # grade-4 energy is therefore the simplicity residual.
+        grade4 = self.projected_product(
+            B,
+            B,
+            op="gp",
+            left_grades=(2,),
+            right_grades=(2,),
+            output_grades=(4,),
+            compact_output=True,
+        )
+        non_scalar_energy = grade4.norm(dim=-1, keepdim=True)
         is_simple = non_scalar_energy < self.eps * 100
 
         return torch.where(is_simple, R_closed, R_decomposed)
