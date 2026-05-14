@@ -201,9 +201,12 @@ def build_grade_product_plan_from_tree(
     plan_coefficients: list[float] = []
 
     for path in tree.paths:
+        path_output_grades = set(path.output_grades)
         for left_index in left_basis_by_grade[path.left_grade]:
             for right_index in right_basis_by_grade[path.right_grade]:
                 output_index = left_index ^ right_index
+                if output_index.bit_count() not in path_output_grades:
+                    continue
                 output_position = output_position_by_index.get(output_index)
                 if output_position is None:
                     continue

@@ -17,6 +17,8 @@ from .basis import (
     geometric_product_output_grades,
     normalize_grades,
     operation_coefficient,
+    operation_may_be_nonzero,
+    product_output_grades,
     reverse_sign,
 )
 from .device import DeviceConfig, dtype_name, optional_dtype, resolve_device, resolve_dtype
@@ -42,7 +44,9 @@ __all__ = [
     "geometric_product_output_grades",
     "normalize_grades",
     "operation_coefficient",
+    "operation_may_be_nonzero",
     "optional_dtype",
+    "product_output_grades",
     "reverse_sign",
     "resolve_device",
     "resolve_dtype",

@@ -17,7 +17,7 @@ import math
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
-from core.foundation.basis import GradeProductOp, expand_output_grades, normalize_grades
+from core.foundation.basis import GradeProductOp, expand_output_grades, normalize_grades, product_output_grades
 from core.foundation.layout import AlgebraSpec
 
 
@@ -98,7 +98,7 @@ def build_grade_plan_tree(
     for left_grade in left:
         left_dim = _grade_dim(spec.n, left_grade)
         for right_grade in right:
-            route_outputs = expand_output_grades((left_grade,), (right_grade,), spec.n, op=op)
+            route_outputs = product_output_grades(left_grade, right_grade, spec.n, op=op)
             route_outputs = tuple(grade for grade in route_outputs if grade in output_set)
             if not route_outputs:
                 continue

@@ -354,12 +354,16 @@ class CliffordAlgebra(AlgebraRuntimeMixin, nn.Module):
         else:
             bv_sq_scalar = torch.zeros(0, dtype=cayley_signs.dtype, device=device)
 
-        # Precomputed signs for single-pass wedge and inner product
-        # wedge(A,B) = (AB - BA)/2 uses antisymmetric part of signs
+        # Precomputed signs for single-pass exterior and symmetric products.
+        # wedge(A,B) is the exterior product: the grade-sum part of AB.
+        gi = grade_index.unsqueeze(1)  # [D, 1] - left summation index grade
+        gj_for_result = grade_index[cayley_indices]  # [D, D] - right index j = i^k grade
+        gk = grade_index.unsqueeze(0)  # [1, D] - output index k grade
+        exterior_valid = gk == gi + gj_for_result
+        wedge_gp_signs = gp_signs * exterior_valid.to(dtype=gp_signs.dtype)
+
         # inner(A,B) = (AB + BA)/2 uses symmetric part of signs
-        wedge_cayley_signs = (cayley_signs - cayley_signs.T) / 2.0
         inner_cayley_signs = (cayley_signs + cayley_signs.T) / 2.0
-        wedge_gp_signs = torch.gather(wedge_cayley_signs, 1, cayley_indices)
         inner_gp_signs = torch.gather(inner_cayley_signs, 1, cayley_indices)
 
         # Precomputed signs for commutator [A,B] = AB - BA and
@@ -552,9 +556,11 @@ class CliffordAlgebra(AlgebraRuntimeMixin, nn.Module):
         return mv * rev
 
     def wedge(self, A: torch.Tensor, B: torch.Tensor, **kwargs) -> torch.Tensor:
-        """Computes the wedge (outer) product: A ^ B = (AB - BA)/2.
+        """Computes the wedge/exterior product ``A ^ B``.
 
-        Single-pass implementation using precomputed antisymmetric signs.
+        For homogeneous inputs this is the grade-sum part of the
+        geometric product, ``<AB>_{grade(A)+grade(B)}``.  For vectors this
+        coincides with ``(AB - BA) / 2``.
 
         Reference:
             Pence, T., Yamada, D., & Singh, V. (2025). "Composing Linear Layers
@@ -645,8 +651,7 @@ class CliffordAlgebra(AlgebraRuntimeMixin, nn.Module):
     def commutator(self, A: torch.Tensor, B: torch.Tensor, **kwargs) -> torch.Tensor:
         """Computes the commutator (Lie bracket): [A, B] = AB - BA.
 
-        Single-pass implementation using precomputed antisymmetric signs
-        (same structure as :meth:`wedge` but without the 1/2 factor).
+        Single-pass implementation using precomputed antisymmetric signs.
 
         Args:
             A (torch.Tensor): Left operand [..., dim].

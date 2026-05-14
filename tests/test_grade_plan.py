@@ -8,6 +8,8 @@ from core.foundation.basis import (
     basis_indices_for_grades,
     expand_output_grades,
     geometric_product_output_grades,
+    operation_coefficient,
+    product_output_grades,
 )
 from core.foundation.layout import AlgebraSpec
 from core.planning.flow import GradeFlow
@@ -47,9 +49,20 @@ def _grade_only_input(algebra, batch: int, grades: tuple[int, ...], seed: int) -
 def test_grade_expansion_for_common_high_dim_paths():
     assert geometric_product_output_grades(1, 1, 16) == (0, 2)
     assert geometric_product_output_grades(2, 1, 16) == (1, 3)
+    assert product_output_grades(2, 1, 16, op="wedge") == (3,)
+    assert product_output_grades(2, 1, 16, op="commutator") == (1,)
+    assert product_output_grades(2, 1, 16, op="anti_commutator") == (3,)
     assert expand_output_grades((0, 2), (1,), 16, op="gp") == (1, 3)
     assert expand_output_grades((1,), (1,), 16, op="wedge") == (2,)
     assert expand_output_grades((1,), (1,), 16, op="gp", project_grades=(0,)) == (0,)
+
+
+def test_operation_coefficients_keep_wedge_as_exterior_product():
+    # e12 and e3 commute, so the antisymmetric formula would vanish.  The
+    # exterior product is instead the grade-sum part of the geometric product.
+    assert operation_coefficient(3, 4, 3, 0, 0, "wedge") == 1.0
+    assert operation_coefficient(3, 4, 3, 0, 0, "commutator") == 0.0
+    assert operation_coefficient(3, 4, 3, 0, 0, "anti_commutator") == 2.0
 
 
 def test_basis_indices_for_grades_are_combinatorial_and_high_dimensional():
@@ -206,6 +219,65 @@ def test_static_grade_product_matches_dense_kernel_for_selected_grade_paths(op):
     assert product.pair_count < algebra.dim * algebra.dim
     assert actual.shape == expected.shape
     assert torch.allclose(actual, expected, atol=1e-12, rtol=1e-12)
+
+
+def test_wedge_dense_and_planned_paths_are_exterior_product_for_higher_grades():
+    algebra = CliffordAlgebra(3, 0, 0, device=DEVICE, dtype=torch.float64)
+    spec = AlgebraSpec.from_algebra(algebra)
+    layout_2 = spec.layout((2,))
+    layout_1 = spec.layout((1,))
+    layout_3 = spec.layout((3,))
+
+    e12 = torch.zeros(1, algebra.dim, dtype=torch.float64)
+    e12[0, 3] = 1.0
+    e3 = torch.zeros(1, algebra.dim, dtype=torch.float64)
+    e3[0, 4] = 1.0
+    expected = torch.zeros_like(e12)
+    expected[0, 7] = 1.0
+
+    dense = algebra.wedge(e12, e3)
+    compact = algebra.wedge(
+        layout_2.compact(e12),
+        layout_1.compact(e3),
+        left_layout=layout_2,
+        right_layout=layout_1,
+        output_grades=(3,),
+        left_compact=True,
+        right_compact=True,
+        compact_output=True,
+    )
+
+    assert torch.allclose(dense, expected, atol=1e-12, rtol=1e-12)
+    assert torch.allclose(compact, layout_3.compact(expected), atol=1e-12, rtol=1e-12)
+
+
+def test_wedge_plan_prunes_grade_route_pairs_before_coefficients():
+    algebra = CliffordAlgebra(6, 0, 0, device=DEVICE, dtype=torch.float64)
+    broad = build_grade_product_plan(
+        algebra.p,
+        algebra.q,
+        algebra.r,
+        left_grades=(2,),
+        right_grades=(1,),
+        output_grades=(1, 3),
+        op="wedge",
+        device=DEVICE,
+        dtype=torch.float64,
+    )
+    exterior_only = build_grade_product_plan(
+        algebra.p,
+        algebra.q,
+        algebra.r,
+        left_grades=(2,),
+        right_grades=(1,),
+        output_grades=(3,),
+        op="wedge",
+        device=DEVICE,
+        dtype=torch.float64,
+    )
+
+    assert broad.pair_count == exterior_only.pair_count
+    assert all(int(index).bit_count() == 3 for index in broad.output_indices.tolist())
 
 
 def test_product_plan_owns_compact_position_buffers():

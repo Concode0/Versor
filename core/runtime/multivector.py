@@ -297,7 +297,7 @@ class Multivector:
         return NotImplemented
 
     def __xor__(self, other):
-        """Wedge (outer) product ``A ^ B``."""
+        """Wedge/exterior product ``A ^ B``."""
         if isinstance(other, Multivector):
             self._check_algebra(other)
             return self.wedge(other)
@@ -424,7 +424,7 @@ class Multivector:
         return self._wrap_compact(values, layout)
 
     def wedge(self, other: Multivector) -> Multivector:
-        """Wedge (outer) product (same as ``self ^ other``)."""
+        """Wedge/exterior product (same as ``self ^ other``)."""
         self._check_algebra(other)
         if self.is_compact or other.is_compact:
             return self.projected_product(other, op="wedge")

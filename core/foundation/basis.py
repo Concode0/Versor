@@ -113,12 +113,7 @@ def expand_output_grades(
     outputs: set[int] = set()
     for left_grade in left:
         for right_grade in right:
-            if op == "wedge":
-                grade = left_grade + right_grade
-                if grade <= n:
-                    outputs.add(grade)
-            else:
-                outputs.update(geometric_product_output_grades(left_grade, right_grade, n))
+            outputs.update(product_output_grades(left_grade, right_grade, n, op=op))
 
     if project_grades is not None:
         outputs &= set(normalize_grades(project_grades, n, name="project_grades"))
@@ -128,6 +123,33 @@ def expand_output_grades(
             f"project_grades={None if project_grades is None else tuple(project_grades)}"
         )
     return tuple(sorted(outputs))
+
+
+def product_output_grades(left_grade: int, right_grade: int, n: int, *, op: GradeProductOp = "gp") -> tuple[int, ...]:
+    """Return possible output grades for one homogeneous product route."""
+    left_grade = int(left_grade)
+    right_grade = int(right_grade)
+    if op == "wedge":
+        grade = left_grade + right_grade
+        return (grade,) if grade <= n else ()
+
+    outputs = geometric_product_output_grades(left_grade, right_grade, n)
+    if op == "gp":
+        return outputs
+    if op not in {"inner", "commutator", "anti_commutator"}:
+        raise ValueError(f"Unsupported grade product op {op!r}")
+
+    filtered = []
+    for output_grade in outputs:
+        overlap = (left_grade + right_grade - output_grade) // 2
+        parity_odd = ((left_grade * right_grade - overlap) % 2) == 1
+        if op == "commutator":
+            keep = parity_odd
+        else:
+            keep = not parity_odd
+        if keep:
+            filtered.append(output_grade)
+    return tuple(filtered)
 
 
 def basis_product(index_a: int, index_b: int, p: int, q: int, r: int) -> tuple[int, float]:
@@ -159,17 +181,43 @@ def reverse_sign(index: int) -> float:
 
 def operation_coefficient(index_a: int, index_b: int, p: int, q: int, r: int, op: GradeProductOp) -> float:
     """Return the scalar coefficient multiplying ``A_i * B_j`` for ``op``."""
+    if not operation_may_be_nonzero(index_a, index_b, p, q, r, op):
+        return 0.0
+
     _, sign_ab = basis_product(index_a, index_b, p, q, r)
-    if op == "gp":
+    if op in {"gp", "wedge", "inner"}:
         return sign_ab
 
-    _, sign_ba = basis_product(index_b, index_a, p, q, r)
-    if op == "wedge":
-        return 0.5 * (sign_ab - sign_ba)
-    if op == "inner":
-        return 0.5 * (sign_ab + sign_ba)
     if op == "commutator":
-        return sign_ab - sign_ba
+        return 2.0 * sign_ab
     if op == "anti_commutator":
-        return sign_ab + sign_ba
+        return 2.0 * sign_ab
     raise ValueError(f"Unsupported grade product op {op!r}")
+
+
+def operation_may_be_nonzero(index_a: int, index_b: int, p: int, q: int, r: int, op: GradeProductOp) -> bool:
+    """Return whether an operator can have a non-zero coefficient for a basis pair."""
+    overlap_mask = int(index_a) & int(index_b)
+    if op == "wedge":
+        return overlap_mask == 0
+
+    if r > 0:
+        null_mask = ((1 << r) - 1) << (p + q)
+        if overlap_mask & null_mask:
+            return False
+    if op == "gp":
+        return True
+
+    parity_odd = _swap_parity_between_orders(index_a, index_b) == 1
+    if op == "commutator":
+        return parity_odd
+    if op in {"inner", "anti_commutator"}:
+        return not parity_odd
+    raise ValueError(f"Unsupported grade product op {op!r}")
+
+
+def _swap_parity_between_orders(index_a: int, index_b: int) -> int:
+    left_grade = int(index_a).bit_count()
+    right_grade = int(index_b).bit_count()
+    overlap = (int(index_a) & int(index_b)).bit_count()
+    return (left_grade * right_grade - overlap) % 2

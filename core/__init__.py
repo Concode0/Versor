@@ -20,6 +20,8 @@ from .foundation.basis import (
     geometric_product_output_grades,
     normalize_grades,
     operation_coefficient,
+    operation_may_be_nonzero,
+    product_output_grades,
     reverse_sign,
 )
 from .foundation.device import DeviceConfig, dtype_name, optional_dtype, resolve_device, resolve_dtype
@@ -141,6 +143,8 @@ __all__ = [
     "geometric_product_output_grades",
     "normalize_grades",
     "operation_coefficient",
+    "operation_may_be_nonzero",
+    "product_output_grades",
     "reverse_sign",
     # analysis (lazy)
     "MetricSearch",
