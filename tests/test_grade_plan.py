@@ -208,6 +208,38 @@ def test_static_grade_product_matches_dense_kernel_for_selected_grade_paths(op):
     assert torch.allclose(actual, expected, atol=1e-12, rtol=1e-12)
 
 
+def test_product_plan_owns_compact_position_buffers():
+    algebra = CliffordAlgebra(4, 1, 0, device=DEVICE, dtype=torch.float64)
+    plan = build_grade_product_plan(
+        algebra.p,
+        algebra.q,
+        algebra.r,
+        left_grades=(1,),
+        right_grades=(1,),
+        output_grades=(0, 2),
+        op="gp",
+        device=DEVICE,
+        dtype=torch.float64,
+    )
+    product = GradeProductExecutor(plan)
+    A = _grade_only_input(algebra, 2, (1,), seed=109)
+    B = _grade_only_input(algebra, 2, (1,), seed=111)
+
+    left_positions = {index: position for position, index in enumerate(plan.left_layout.basis_indices)}
+    right_positions = {index: position for position, index in enumerate(plan.right_layout.basis_indices)}
+    expected_left = torch.tensor([left_positions[int(index)] for index in plan.left_indices], dtype=torch.long)
+    expected_right = torch.tensor([right_positions[int(index)] for index in plan.right_indices], dtype=torch.long)
+
+    assert torch.equal(plan.left_compact_positions.cpu(), expected_left)
+    assert torch.equal(plan.right_compact_positions.cpu(), expected_right)
+    assert torch.allclose(
+        product.forward_compact(plan.left_layout.compact(A), plan.right_layout.compact(B)),
+        product(A, B),
+        atol=1e-12,
+        rtol=1e-12,
+    )
+
+
 def test_algebra_projected_product_matches_dense_kernel_and_compact_output():
     algebra = CliffordAlgebra(4, 1, 1, device=DEVICE, dtype=torch.float64)
     A = _grade_only_input(algebra, 2, (1,), seed=113)
@@ -256,6 +288,27 @@ def test_grade_planner_reuses_projected_product_executor():
     )
 
     assert first is second
+
+
+def test_algebra_product_executor_returns_preplanned_runtime_handle():
+    algebra = AlgebraContext(6, 0, device=DEVICE, dtype=torch.float32)
+
+    first = algebra.product_executor(
+        left_grades=(1,),
+        right_grades=(1,),
+        output_grades=(0, 2),
+    )
+    second = algebra.product_executor(
+        left_grades=(1,),
+        right_grades=(1,),
+        output_grades=(0, 2),
+    )
+
+    assert first is second
+    assert first.left_grades == (1,)
+    assert first.right_grades == (1,)
+    assert first.output_grades == (0, 2)
+    assert first.coefficients.dtype == algebra.dtype
 
 
 def test_grade_planner_rekeys_cached_executor_after_dtype_move():
@@ -763,6 +816,36 @@ def test_algebra_projected_product_compiles_fullgraph_after_cache_warm():
     compiled = torch.compile(product, backend="aot_eager", fullgraph=True)
     actual = compiled(A, B)
 
+    assert torch.allclose(actual, expected, atol=1e-6, rtol=1e-6)
+
+
+@pytest.mark.skipif(not hasattr(torch, "compile"), reason="torch.compile not available")
+def test_context_projected_product_compiles_fullgraph_from_cold_planner_cache():
+    if hasattr(torch, "_dynamo"):
+        torch._dynamo.reset()
+    algebra = AlgebraContext(6, 0, device=DEVICE, dtype=torch.float32)
+    generator = torch.Generator(device=DEVICE).manual_seed(181)
+    left = torch.randn(2, algebra.layout((1,)).dim, dtype=torch.float32, generator=generator)
+    right = torch.randn(2, algebra.layout((1,)).dim, dtype=torch.float32, generator=generator)
+
+    def product(x, y):
+        return algebra.geometric_product(
+            x,
+            y,
+            left_grades=(1,),
+            right_grades=(1,),
+            output_grades=(0, 2),
+            left_compact=True,
+            right_compact=True,
+            compact_output=True,
+        )
+
+    assert not algebra.planner._product_executors
+    compiled = torch.compile(product, backend="aot_eager", fullgraph=True)
+    actual = compiled(left, right)
+    expected = product(left, right)
+
+    assert len(algebra.planner._product_executors) == 1
     assert torch.allclose(actual, expected, atol=1e-6, rtol=1e-6)
 
 

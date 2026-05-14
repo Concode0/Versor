@@ -28,7 +28,7 @@ from core.foundation.basis import (
     normalize_grades,
     operation_coefficient,
 )
-from core.foundation.layout import AlgebraSpec, GradeLayout
+from core.foundation.layout import AlgebraSpec
 from core.planning.layouts import ProductRequest
 from core.planning.tree import GradePlanTree, build_grade_plan_tree
 
@@ -50,6 +50,8 @@ class GradeProductPlan:
         right_indices: torch.Tensor,
         output_indices: torch.Tensor,
         output_positions: torch.Tensor,
+        left_compact_positions: torch.Tensor,
+        right_compact_positions: torch.Tensor,
         coefficients: torch.Tensor,
         active_output_indices: torch.Tensor,
         tree: GradePlanTree,
@@ -63,6 +65,8 @@ class GradeProductPlan:
         self.right_indices = right_indices
         self.output_indices = output_indices
         self.output_positions = output_positions
+        self.left_compact_positions = left_compact_positions
+        self.right_compact_positions = right_compact_positions
         self.coefficients = coefficients
         self.active_output_indices = active_output_indices
         self.tree = tree
@@ -179,6 +183,12 @@ def build_grade_product_plan_from_tree(
 
     left_basis_by_grade = {grade: basis_index_tuple_for_grades(n, (grade,)) for grade in left_grade_tuple}
     right_basis_by_grade = {grade: basis_index_tuple_for_grades(n, (grade,)) for grade in right_grade_tuple}
+    left_position_by_index = {
+        index: position for position, index in enumerate(spec.layout(left_grade_tuple).basis_indices)
+    }
+    right_position_by_index = {
+        index: position for position, index in enumerate(spec.layout(right_grade_tuple).basis_indices)
+    }
     active_outputs = basis_index_tuple_for_grades(n, output_grade_tuple)
     output_position_by_index = {index: position for position, index in enumerate(active_outputs)}
 
@@ -186,6 +196,8 @@ def build_grade_product_plan_from_tree(
     plan_right: list[int] = []
     plan_output: list[int] = []
     plan_positions: list[int] = []
+    plan_left_compact_positions: list[int] = []
+    plan_right_compact_positions: list[int] = []
     plan_coefficients: list[float] = []
 
     for path in tree.paths:
@@ -202,6 +214,8 @@ def build_grade_product_plan_from_tree(
                 plan_right.append(right_index)
                 plan_output.append(output_index)
                 plan_positions.append(output_position)
+                plan_left_compact_positions.append(left_position_by_index[left_index])
+                plan_right_compact_positions.append(right_position_by_index[right_index])
                 plan_coefficients.append(coefficient)
 
     return GradeProductPlan(
@@ -216,6 +230,8 @@ def build_grade_product_plan_from_tree(
         right_indices=basis_indices_tensor(plan_right, n=n, role="right product basis indices", device=device),
         output_indices=basis_indices_tensor(plan_output, n=n, role="output product basis indices", device=device),
         output_positions=torch.tensor(plan_positions, dtype=torch.long, device=device),
+        left_compact_positions=torch.tensor(plan_left_compact_positions, dtype=torch.long, device=device),
+        right_compact_positions=torch.tensor(plan_right_compact_positions, dtype=torch.long, device=device),
         coefficients=torch.tensor(plan_coefficients, dtype=dtype, device=device),
         active_output_indices=basis_indices_tensor(active_outputs, n=n, role="active output basis indices", device=device),
         tree=tree,
@@ -244,30 +260,24 @@ class GradeProductExecutor(nn.Module):
         self.left_layout = plan.left_layout
         self.right_layout = plan.right_layout
         self.output_layout = plan.output_layout
+        self._output_dim = plan.output_dim
+        self._pair_count = plan.pair_count
         self.register_buffer("left_indices", plan.left_indices, persistent=False)
         self.register_buffer("right_indices", plan.right_indices, persistent=False)
         self.register_buffer("output_indices", plan.output_indices, persistent=False)
         self.register_buffer("output_positions", plan.output_positions, persistent=False)
         self.register_buffer("coefficients", plan.coefficients, persistent=False)
         self.register_buffer("active_output_indices", plan.active_output_indices, persistent=False)
-        self.register_buffer(
-            "left_compact_positions",
-            self._dense_to_compact_positions(plan.left_layout, plan.left_indices),
-            persistent=False,
-        )
-        self.register_buffer(
-            "right_compact_positions",
-            self._dense_to_compact_positions(plan.right_layout, plan.right_indices),
-            persistent=False,
-        )
+        self.register_buffer("left_compact_positions", plan.left_compact_positions, persistent=False)
+        self.register_buffer("right_compact_positions", plan.right_compact_positions, persistent=False)
 
     @property
     def output_dim(self) -> int:
-        return int(self.active_output_indices.numel())
+        return self._output_dim
 
     @property
     def pair_count(self) -> int:
-        return int(self.left_indices.numel())
+        return self._pair_count
 
     def forward(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
         """Return compact grade-lane output for full dense input tensors."""
@@ -330,10 +340,3 @@ class GradeProductExecutor(nn.Module):
         compact = self.forward(left, right)
         output = compact.new_zeros(*compact.shape[:-1], self.dim)
         return output.index_copy(-1, self.active_output_indices, compact)
-
-    @staticmethod
-    def _dense_to_compact_positions(layout: GradeLayout, dense_indices: torch.Tensor) -> torch.Tensor:
-        """Map dense basis indices used by a plan into compact lane positions."""
-        positions = {index: position for position, index in enumerate(layout.basis_indices)}
-        compact_positions = [positions[int(index)] for index in dense_indices.detach().cpu().tolist()]
-        return torch.tensor(compact_positions, dtype=torch.long, device=dense_indices.device)

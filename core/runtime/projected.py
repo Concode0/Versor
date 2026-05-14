@@ -35,6 +35,32 @@ class AlgebraRuntimeMixin:
         """Return the default layout using the central fallback policy."""
         return _default_layout(self)
 
+    def product_executor(
+        self,
+        *,
+        left_grades,
+        right_grades,
+        op: str = "gp",
+        output_grades=None,
+        dtype: Optional[torch.dtype] = None,
+        device=None,
+        cache: bool = True,
+    ):
+        """Return a preplanned product executor suitable for ``torch.compile``."""
+        if dtype is None:
+            dtype = getattr(self, "dtype", torch.float32)
+        if device is None:
+            device = getattr(self, "device", None)
+        return self.planner.product_executor(
+            op=op,
+            left_grades=left_grades,
+            right_grades=right_grades,
+            output_grades=output_grades,
+            dtype=dtype,
+            device=device,
+            cache=cache,
+        )
+
     def resolve_layout(
         self,
         *,
