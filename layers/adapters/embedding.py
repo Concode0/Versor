@@ -5,14 +5,11 @@
 # you may not use this file except in compliance with the License.
 #
 
-from typing import Iterable, Optional
-
 import torch
 import torch.nn as nn
 
 from core.foundation.module import CliffordModule
-
-from ..planning import lane_count, resolve_layer_layout
+from core.runtime.algebra import CliffordAlgebra
 
 
 class MultivectorEmbedding(CliffordModule):
@@ -28,45 +25,33 @@ class MultivectorEmbedding(CliffordModule):
         embedding (nn.Embedding): Underlying embedding table.
     """
 
-    optimization_operators = ("embed",)
-    optimization_input_grades = None
-
-    def __init__(
-        self,
-        algebra,
-        vocab_size: int,
-        channels: int,
-        grades: Optional[Iterable[int]] = None,
-    ):
+    def __init__(self, algebra: CliffordAlgebra, vocab_size: int, channels: int):
         """Sets up the multivector embedding.
 
         Args:
             algebra: Clifford algebra instance.
             vocab_size: Vocabulary size.
             channels: Number of multivector channels per token.
-            grades: Optional declared output grades. When set, the
-                embedding table stores compact lanes only.
         """
         super().__init__(algebra)
         self.vocab_size = vocab_size
         self.channels = channels
-        self.layout = resolve_layer_layout(algebra, grades)
-        self.basis_dim = lane_count(algebra, self.layout)
 
-        # Single flat embedding: vocab_size -> channels * active basis lanes
-        self.embedding = nn.Embedding(vocab_size, channels * self.basis_dim)
+        # Single flat embedding: vocab_size -> channels * dim
+        self.embedding = nn.Embedding(vocab_size, channels * algebra.dim)
         self._init_grade1()
 
     def _init_grade1(self):
         """Initializes only grade-1 components; zeros out all others."""
         with torch.no_grad():
+            dim = self.algebra.dim
             channels = self.channels
-            dim = self.basis_dim
 
-            if self.layout is None:
-                grade1_flat = [i for i in range(dim) if bin(i).count("1") == 1]
-            else:
-                grade1_flat = [pos for pos, index in enumerate(self.layout.basis_indices) if bin(index).count("1") == 1]
+            # Build grade-1 mask (indices with exactly 1 bit set)
+            grade1_flat = []
+            for i in range(dim):
+                if bin(i).count("1") == 1:
+                    grade1_flat.append(i)
 
             # Zero everything
             self.embedding.weight.zero_()
@@ -88,7 +73,7 @@ class MultivectorEmbedding(CliffordModule):
         """
         B, L = token_ids.shape
         flat = self.embedding(token_ids)  # [B, L, channels * dim]
-        return flat.reshape(B, L, self.channels, self.basis_dim)
+        return flat.reshape(B, L, self.channels, self.algebra.dim)
 
 
 class RotaryBivectorPE(CliffordModule):
@@ -108,13 +93,9 @@ class RotaryBivectorPE(CliffordModule):
         bivector_indices (torch.Tensor): Indices of grade-2 basis elements.
     """
 
-    optimization_operators = ("dense_sandwich",)
-    optimization_parameter_grades = (2,)
-    optimization_dense_only_reason = "positional rotor path still materializes dense multivectors"
-
     def __init__(
         self,
-        algebra,
+        algebra: CliffordAlgebra,
         channels: int,
         max_seq_len: int,
         learnable: bool = True,
@@ -131,13 +112,10 @@ class RotaryBivectorPE(CliffordModule):
         self.max_seq_len = max_seq_len
         self.learnable = learnable
 
-        # Identify grade-2 basis elements through the planner layout.
-        if algebra.n >= 2:
-            bivector_indices = algebra.planner.layout((2,)).indices_tensor(device=algebra.device)
-        else:
-            bivector_indices = torch.zeros(0, dtype=torch.long, device=algebra.device)
-        self.register_buffer("bivector_indices", bivector_indices)
-        self.num_bivectors = int(bivector_indices.numel())
+        # Identify grade-2 basis elements
+        indices = [i for i in range(algebra.dim) if bin(i).count("1") == 2]
+        self.register_buffer("bivector_indices", torch.tensor(indices, dtype=torch.long))
+        self.num_bivectors = len(indices)
 
         # Sinusoidal initialization
         init = self._sinusoidal_init(max_seq_len, self.num_bivectors)

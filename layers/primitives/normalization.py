@@ -5,14 +5,11 @@
 # you may not use this file except in compliance with the License.
 #
 
-from typing import Iterable, Optional
-
 import torch
 import torch.nn as nn
 
 from core.foundation.module import CliffordModule
-
-from ..planning import check_multivector_lanes, lane_count, resolve_layer_layout
+from core.runtime.algebra import CliffordAlgebra
 
 
 class CliffordLayerNorm(CliffordModule):
@@ -30,16 +27,7 @@ class CliffordLayerNorm(CliffordModule):
             starts identical to the old (scale-discarding) behaviour.
     """
 
-    optimization_operators = ("normalize",)
-
-    def __init__(
-        self,
-        algebra,
-        channels: int,
-        eps: float = 1e-6,
-        recover: bool = True,
-        grades: Optional[Iterable[int]] = None,
-    ):
+    def __init__(self, algebra: CliffordAlgebra, channels: int, eps: float = 1e-6, recover: bool = True):
         """Sets up normalization.
 
         Args:
@@ -47,17 +35,13 @@ class CliffordLayerNorm(CliffordModule):
             channels (int): Features.
             eps (float): Stability term.
             recover (bool): Whether to inject original scale into the scalar part.
-            grades: Optional declared grades for compact lane execution.
         """
         super().__init__(algebra)
         self.eps = eps
         self.recover = recover
-        self.layout = resolve_layer_layout(algebra, grades)
-        self.basis_dim = lane_count(algebra, self.layout)
 
         self.weight = nn.Parameter(torch.ones(channels))
         self.bias = nn.Parameter(torch.zeros(channels))
-        self.register_buffer("_scalar_lane_mask", self._build_scalar_lane_mask())
         # Learnable gate: how much of the original log-magnitude to push
         # into the scalar part.  Zero-init -> backward compatible at start.
         if recover:
@@ -74,8 +58,6 @@ class CliffordLayerNorm(CliffordModule):
         Returns:
             torch.Tensor: Normalized input.
         """
-        check_multivector_lanes(x, self.algebra, self.layout, "CliffordLayerNorm input")
-
         # Per-channel magnitude
         norm = x.norm(dim=-1, keepdim=True)  # [B, C, 1]
 
@@ -85,8 +67,8 @@ class CliffordLayerNorm(CliffordModule):
         # Affine transform on direction
         out = x_normalized * self.weight.view(1, -1, 1)
 
-        # Add bias and optional log-magnitude to the declared scalar lane.
-        g0 = self._scalar_lane_mask
+        # Add bias and optional log-magnitude to grade-0 via mask
+        g0 = self.algebra.grade_masks_float[0]  # [D], 1.0 at index 0
         if g0.dtype != x.dtype:
             g0 = g0.to(dtype=x.dtype)
         out = out + self.bias.view(1, -1, 1) * g0
@@ -98,15 +80,3 @@ class CliffordLayerNorm(CliffordModule):
             out = out + self.norm_scale.view(1, -1, 1) * log_norm * g0
 
         return out
-
-    def _build_scalar_lane_mask(self) -> torch.Tensor:
-        """Return a lane mask with 1 at scalar basis position when present."""
-        mask = torch.zeros(self.basis_dim, dtype=self.algebra.dtype, device=self.algebra.device)
-        if self.layout is None:
-            mask[0] = 1.0
-            return mask
-        try:
-            mask[self.layout.basis_indices.index(0)] = 1.0
-        except ValueError:
-            pass
-        return mask

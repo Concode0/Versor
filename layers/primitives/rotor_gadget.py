@@ -16,6 +16,7 @@ import torch.nn as nn
 
 from core.foundation.module import CliffordModule
 from core.foundation.validation import check_channels, check_multivector
+from core.runtime.algebra import CliffordAlgebra
 
 
 class RotorGadget(CliffordModule):
@@ -42,13 +43,9 @@ class RotorGadget(CliffordModule):
         aggregation: Aggregation method ('mean', 'sum', or 'learned')
     """
 
-    optimization_operators = ("dense_rotor_toolbox",)
-    optimization_parameter_grades = (2,)
-    optimization_dense_only_reason = "rotor gadget path still materializes dense multivectors"
-
     def __init__(
         self,
-        algebra,
+        algebra: CliffordAlgebra,
         in_channels: int,
         out_channels: int,
         num_rotor_pairs: int = 4,
@@ -78,9 +75,10 @@ class RotorGadget(CliffordModule):
         self.aggregation = aggregation
         self.shuffle = shuffle
 
-        # Use the algebra planner layout for static bivector indices.
+        # Use algebra's precomputed grade masks for bivector indices
         if algebra.num_grades > 2:
-            self.register_buffer("bivector_indices", algebra.planner.layout((2,)).indices_tensor(device=algebra.device))
+            bv_mask = algebra.grade_masks[2]
+            self.register_buffer("bivector_indices", bv_mask.nonzero(as_tuple=False).squeeze(-1))
         else:
             self.register_buffer("bivector_indices", torch.tensor([], dtype=torch.long, device=algebra.device))
         self.num_bivectors = len(self.bivector_indices)

@@ -41,9 +41,6 @@ class MultiTargetPhaseShiftHead(CliffordModule):
     each target can independently shift its prediction range.
     """
 
-    optimization_operators = ("dense_readout",)
-    optimization_dense_only_reason = "DEAP phase-shift head flattens dense multivectors for readout"
-
     def __init__(self, algebra: AlgebraLike, channels: int, num_targets: int = 4):
         super().__init__(algebra)
         self.channels = channels

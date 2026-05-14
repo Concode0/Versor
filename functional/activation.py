@@ -10,15 +10,11 @@
 Magnitude-scaling and grade-wise gating functions that preserve geometric structure.
 """
 
-from typing import Optional
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from core.foundation.layout import GradeLayout
 from core.foundation.module import CliffordModule
-from core.foundation.validation import VALIDATE, check_multivector
 
 
 class GeometricGELU(CliffordModule):
@@ -31,18 +27,14 @@ class GeometricGELU(CliffordModule):
         bias (torch.nn.Parameter): Learnable bias added to norm.
     """
 
-    optimization_operators = ("magnitude_gate",)
-
-    def __init__(self, algebra, channels: int = 1, grades=None):
+    def __init__(self, algebra, channels: int = 1):
         """Initialize Geometric GELU.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
             channels (int): Number of channels.
-            grades: Optional declared active grades for compact lane metadata.
         """
         super().__init__(algebra)
-        self.layout = _resolve_layout(algebra, grades)
         self.bias = nn.Parameter(torch.zeros(channels))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -54,7 +46,6 @@ class GeometricGELU(CliffordModule):
         Returns:
             torch.Tensor: Activated multivector.
         """
-        _check_multivector_lanes(x, self.algebra, self.layout, "GeometricGELU input")
         norm = x.norm(dim=-1, keepdim=True)
 
         eps = 1e-6
@@ -70,9 +61,6 @@ class GeometricSquare(CliffordModule):
     (wedge products x_i ^ x_j).  Creates algebraic cross-terms that
     rotors can then rotate into the output.
     """
-
-    optimization_operators = ("gp_self", "residual_gate")
-    optimization_dense_only_reason = "geometric square uses dense self-product; compact output-grade expansion is pending"
 
     def __init__(self, algebra, channels: int = 1):
         super().__init__(algebra)
@@ -96,9 +84,6 @@ class GradeSwish(CliffordModule):
         grade_weights (torch.nn.Parameter): Weights for each grade gate.
         grade_biases (torch.nn.Parameter): Biases for each grade gate.
     """
-
-    optimization_operators = ("grade_gate",)
-    optimization_dense_only_reason = "grade swish uses dense grade-index buffers"
 
     def __init__(self, algebra, channels: int = 1):
         """Initialize Grade Swish.
@@ -144,22 +129,3 @@ class GradeSwish(CliffordModule):
         per_component_gate = gates.gather(-1, grade_idx)  # [..., D]
 
         return x * per_component_gate
-
-
-def _resolve_layout(algebra, grades) -> Optional[GradeLayout]:
-    if grades is None:
-        return None
-    return algebra.planner.layout(grades)
-
-
-def _check_multivector_lanes(values: torch.Tensor, algebra, layout: Optional[GradeLayout], name: str) -> None:
-    if layout is None:
-        check_multivector(values, algebra, name)
-        return
-    if not VALIDATE:
-        return
-    assert values.ndim >= 1, f"{name}: expected ndim >= 1, got shape {tuple(values.shape)}"
-    assert values.shape[-1] == layout.dim, (
-        f"{name}: last dim should be {layout.dim} for grades {layout.grades}, "
-        f"got {values.shape[-1]} (shape {tuple(values.shape)})"
-    )

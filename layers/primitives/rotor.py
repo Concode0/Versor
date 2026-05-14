@@ -10,6 +10,7 @@ import torch.nn as nn
 
 from core.foundation.module import CliffordModule
 from core.foundation.validation import check_channels, check_multivector
+from core.runtime.algebra import CliffordAlgebra
 
 
 class RotorLayer(CliffordModule):
@@ -30,12 +31,9 @@ class RotorLayer(CliffordModule):
         grade_weights (nn.Parameter): Learnable grade-k coefficients [channels, num_grade_elements].
     """
 
-    optimization_operators = ("dense_sandwich",)
-    optimization_dense_only_reason = "sandwich path still materializes dense multivectors"
-
     def __init__(
         self,
-        algebra,
+        algebra: CliffordAlgebra,
         channels: int,
         grade: int = 2,
     ):
@@ -53,8 +51,8 @@ class RotorLayer(CliffordModule):
         self.channels = channels
         self.grade = grade
 
-        grade_layout = algebra.planner.layout((grade,))
-        self.register_buffer("grade_indices", grade_layout.indices_tensor(device=algebra.device))
+        grade_mask = algebra.grade_masks[grade]
+        self.register_buffer("grade_indices", grade_mask.nonzero(as_tuple=False).squeeze(-1))
         self.num_grade_elements = len(self.grade_indices)
 
         self.grade_weights = nn.Parameter(torch.Tensor(channels, self.num_grade_elements))

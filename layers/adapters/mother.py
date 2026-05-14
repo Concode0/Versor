@@ -9,9 +9,9 @@ import torch
 import torch.nn as nn
 
 from core.foundation.module import CliffordModule
+from core.runtime.algebra import CliffordAlgebra
 
 from ..blocks.attention import GeometricProductAttention
-from ..planning import lane_count, resolve_layer_layout
 from ..primitives.normalization import CliffordLayerNorm
 
 
@@ -22,18 +22,7 @@ class MotherEmbedding(CliffordModule):
     reference frame, effectively aligning disparate geometric manifolds.
     """
 
-    optimization_operators = ("embed",)
-    optimization_input_grades = None
-
-    def __init__(
-        self,
-        algebra,
-        input_dim: int,
-        channels: int,
-        U: float = 0.0,
-        V: torch.Tensor = None,
-        grades=None,
-    ):
+    def __init__(self, algebra: CliffordAlgebra, input_dim: int, channels: int, U: float = 0.0, V: torch.Tensor = None):
         """Initializes the Mother Embedding.
 
         Args:
@@ -42,12 +31,9 @@ class MotherEmbedding(CliffordModule):
             channels: Number of multivector channels.
             U: Geometric uncertainty index for manifold suppression.
             V: Fixed rotor proxy for Procrustes alignment (input_dim x input_dim).
-            grades: Optional declared output grades for compact lanes.
         """
         super().__init__(algebra)
         self.channels = channels
-        self.layout = resolve_layer_layout(algebra, grades)
-        self.basis_dim = lane_count(algebra, self.layout)
 
         # Procrustes Alignment Matrix (Fixed Rotor Proxy)
         if V is None:
@@ -55,8 +41,8 @@ class MotherEmbedding(CliffordModule):
         self.register_buffer("R_fixed", V)
 
         # Up-cast to Mother Algebra multivector channels
-        self.linear = nn.Linear(input_dim, channels * self.basis_dim)
-        self.norm = CliffordLayerNorm(algebra, channels, grades=grades)
+        self.linear = nn.Linear(input_dim, channels * algebra.dim)
+        self.norm = CliffordLayerNorm(algebra, channels)
 
         # Pre-condition LayerNorm scale with Uncertainty Index
         with torch.no_grad():
@@ -79,7 +65,7 @@ class MotherEmbedding(CliffordModule):
             x = x @ self.R_fixed.T
 
         # 2. Mother Projection
-        c = self.linear(x).view(-1, self.channels, self.basis_dim)
+        c = self.linear(x).view(-1, self.channels, self.algebra.dim)
         return self.norm(c)
 
 
@@ -90,18 +76,7 @@ class EntropyGatedAttention(CliffordModule):
     or suppressed, allowing only coherent, synchronized states to propagate.
     """
 
-    optimization_operators = ("grade_energy", "gate", "attention")
-
-    def __init__(
-        self,
-        algebra,
-        channels: int,
-        num_heads: int,
-        eta: float = 1.0,
-        H_base: float = 0.5,
-        feature_grades=None,
-        score_grades=None,
-    ):
+    def __init__(self, algebra: CliffordAlgebra, channels: int, num_heads: int, eta: float = 1.0, H_base: float = 0.5):
         """Initializes Entropy-Gated Attention.
 
         Args:
@@ -110,35 +85,17 @@ class EntropyGatedAttention(CliffordModule):
             num_heads: Number of attention heads.
             eta: Gating multiplier.
             H_base: Base entropy threshold.
-            feature_grades: Optional declared feature grades for compact lanes.
-            score_grades: Optional attention scoring grades.
         """
         super().__init__(algebra)
         self.channels = channels
         self.eta = eta
         self.H_base = H_base
-        self.feature_layout = resolve_layer_layout(algebra, feature_grades)
-        self.feature_dim = lane_count(algebra, self.feature_layout)
-        self.base_attention = GeometricProductAttention(
-            algebra,
-            channels,
-            num_heads,
-            causal=False,
-            feature_grades=feature_grades,
-            score_grades=score_grades,
-        )
+        self.base_attention = GeometricProductAttention(algebra, channels, num_heads, causal=False)
 
         # Cache bivector indices and float mask for compile-friendly gating
-        g2_idx = (
-            _grade_positions(algebra, (2,), self.feature_layout)
-            if algebra.n >= 2
-            else torch.zeros(0, dtype=torch.long, device=algebra.device)
-        )
-        g2_mask = torch.zeros(self.feature_dim, dtype=torch.float32, device=algebra.device)
-        if g2_idx.numel() > 0:
-            g2_mask.index_fill_(0, g2_idx, 1.0)
-        self.register_buffer("g2_idx", g2_idx)
-        self.register_buffer("_g2_float_mask", g2_mask)
+        mask = self.algebra.grade_masks[2]
+        self.register_buffer("g2_idx", mask.nonzero(as_tuple=True)[0])
+        self.register_buffer("_g2_float_mask", mask.float())
 
     def forward(
         self, x: torch.Tensor, key_padding_mask: torch.Tensor = None, return_gating: bool = False
@@ -193,29 +150,25 @@ class PhaseShiftHead(CliffordModule):
     high-grade component (G4) via a learned phase angle theta.
     """
 
-    optimization_operators = ("grade_readout",)
-    optimization_output_grades = None
-
-    def __init__(self, algebra, channels: int, feature_grades=None):
+    def __init__(self, algebra: CliffordAlgebra, channels: int):
         """Initializes the Phase-Shift Head.
 
         Args:
             algebra: Clifford algebra instance.
             channels: Number of channels to mix.
-            feature_grades: Optional declared feature grades for compact lanes.
         """
         super().__init__(algebra)
         self.channels = channels
-        self.feature_layout = resolve_layer_layout(algebra, feature_grades)
-        self.register_buffer("g0_idx", _grade_positions(algebra, (0,), self.feature_layout))
         # Learned phase angle theta
         self.theta = nn.Parameter(torch.randn(1, channels, 1) * 0.1)
 
         # Identify grade-4 pseudoscalar in Cl(3,1)
-        if algebra.n >= 4:
-            self.register_buffer("g4_idx", _grade_positions(algebra, (4,), self.feature_layout))
+        mask_g4 = self.algebra.grade_masks[4]
+        if mask_g4.sum() > 0:
+            self.register_buffer("g4_idx", mask_g4.nonzero(as_tuple=True)[0])
         else:
-            self.register_buffer("g4_idx", torch.zeros(0, dtype=torch.long, device=algebra.device))
+            # Fallback if algebra doesn't have grade 4
+            self.g4_idx = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Mixes grades using pseudoscalar rotation.
@@ -230,17 +183,12 @@ class PhaseShiftHead(CliffordModule):
         x_pool = x.mean(dim=1)  # [B, C, D]
 
         # Grade-0 (Scalar)
-        if len(self.g0_idx) > 0:
-            G0 = x_pool[..., self.g0_idx]
-        else:
-            G0 = x_pool.new_zeros(*x_pool.shape[:-1], 1)
+        G0 = x_pool[..., 0:1]
 
         # Grade-4 (High-grade/Pseudoscalar)
-        if len(self.g4_idx) > 0:
-            # For Cl(3,1), grade-4 has one lane. Higher-dimensional compact
-            # layouts can expose many grade-4 lanes, so reduce them to a scalar
-            # phase signal for this head.
-            G4 = x_pool[..., self.g4_idx].mean(dim=-1, keepdim=True)
+        if self.g4_idx is not None and len(self.g4_idx) > 0:
+            # For Cl(3,1), index 15 is typical
+            G4 = x_pool[..., self.g4_idx]
         else:
             G4 = torch.zeros_like(G0)
 
@@ -251,13 +199,3 @@ class PhaseShiftHead(CliffordModule):
 
         # Mean across channels for final scalar output
         return result.mean(dim=1)  # [B, 1]
-
-
-def _grade_positions(algebra, grades, source_layout) -> torch.Tensor:
-    """Return positions for ``grades`` in dense lanes or a compact source layout."""
-    target_layout = algebra.planner.layout(grades)
-    if source_layout is None:
-        return target_layout.indices_tensor(device=algebra.device)
-    position_by_basis = {index: position for position, index in enumerate(source_layout.basis_indices)}
-    positions = [position_by_basis[index] for index in target_layout.basis_indices if index in position_by_basis]
-    return torch.tensor(positions, dtype=torch.long, device=algebra.device)

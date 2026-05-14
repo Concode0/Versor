@@ -11,10 +11,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from core.foundation.basis import normalize_grades, reverse_sign
 from core.foundation.module import CliffordModule
+from core.runtime.algebra import CliffordAlgebra
 
-from ..planning import check_multivector_lanes, lane_count, resolve_layer_layout
 from ..primitives.linear import CliffordLinear
 
 # Memory-bounded block size for chunked attention computation
@@ -45,18 +44,14 @@ class GeometricProductAttention(CliffordModule):
         bivector_weight (float): lambda_ - weight of bivector score component.
     """
 
-    optimization_operators = ("linear", "gp_score", "softmax", "linear")
-
     def __init__(
         self,
-        algebra,
+        algebra: CliffordAlgebra,
         channels: int,
         num_heads: int,
         causal: bool = True,
         bivector_weight: float = 0.5,
         dropout: float = 0.0,
-        feature_grades=None,
-        score_grades=None,
         score_blade_chunk_size: int = _G2_BLADE_CHUNK_SIZE,
         score_precompute_limit: int = _SCORE_PRECOMPUTE_LIMIT,
     ):
@@ -69,12 +64,6 @@ class GeometricProductAttention(CliffordModule):
             causal: Apply causal mask for autoregressive generation.
             bivector_weight: lambda_ weight on bivector score component.
             dropout: Dropout rate on attention weights.
-            feature_grades: Optional active grades carried by this attention layer.
-                When set, projections and attention values use compact lanes.
-            score_grades: Optional declared grades for compact planned scoring.
-                ``None`` preserves exact dense scoring over all basis lanes unless
-                ``feature_grades`` is set, in which case those feature grades are
-                also used for scoring.
             score_blade_chunk_size: Grade-2 output blades processed per dense
                 chunk when exact dense scoring is used.
             score_precompute_limit: Maximum temporary ``K_g2`` elements allowed
@@ -88,19 +77,14 @@ class GeometricProductAttention(CliffordModule):
         self.head_channels = channels // num_heads
         self.causal = causal
         self.bivector_weight = bivector_weight
-        self.feature_layout = resolve_layer_layout(algebra, feature_grades)
-        self.feature_dim = lane_count(algebra, self.feature_layout)
-        if score_grades is None and feature_grades is not None:
-            score_grades = feature_grades
-        self.score_grades = None if score_grades is None else normalize_grades(score_grades, algebra.n)
         self.score_blade_chunk_size = max(1, int(score_blade_chunk_size))
         self.score_precompute_limit = max(0, int(score_precompute_limit))
 
         # Q, K, V projections operate on [B*L, channels, dim]
-        self.q_proj = CliffordLinear(algebra, channels, channels, grades=feature_grades)
-        self.k_proj = CliffordLinear(algebra, channels, channels, grades=feature_grades)
-        self.v_proj = CliffordLinear(algebra, channels, channels, grades=feature_grades)
-        self.out_proj = CliffordLinear(algebra, channels, channels, grades=feature_grades)
+        self.q_proj = CliffordLinear(algebra, channels, channels)
+        self.k_proj = CliffordLinear(algebra, channels, channels)
+        self.v_proj = CliffordLinear(algebra, channels, channels)
+        self.out_proj = CliffordLinear(algebra, channels, channels)
 
         self.attn_dropout = nn.Dropout(dropout) if dropout > 0.0 else None
 
@@ -108,53 +92,12 @@ class GeometricProductAttention(CliffordModule):
         self._precompute_score_tables()
 
     def _precompute_score_tables(self):
-        """Precompute exact dense or compact-planned attention score routes.
-
-        Dense scoring is exact for existing callers and chunks grade-2 blades
-        instead of materializing ``[B, H, L, Hc, n_g2, D]``. Compact scoring
-        uses static grade product plans when ``score_grades`` declares a layout.
-        """
+        """Precompute exact dense attention score routes."""
         alg = self.algebra
         D = alg.dim
 
-        self._score_layout = None
-        self._score_scalar_product = None
-        self._score_bivector_product = None
-        self._score_scale_dim = self.feature_dim if self.feature_layout is not None else D
-        if self.score_grades is not None:
-            self.n_g2 = alg.n * (alg.n - 1) // 2
-            self._score_layout = alg.planner.layout(self.score_grades)
-            layout_indices = self._score_input_positions(device=alg.device)
-            rev_signs = torch.tensor(
-                [reverse_sign(index) for index in self._score_layout.basis_indices],
-                dtype=torch.float32,
-                device=alg.device,
-            )
-            self.register_buffer("_score_layout_indices", layout_indices)
-            self.register_buffer("_score_rev_signs", rev_signs)
-            self._score_scalar_product = alg.planner.product_executor(
-                op="gp",
-                left_grades=self.score_grades,
-                right_grades=self.score_grades,
-                output_grades=(0,),
-                device=alg.device,
-                dtype=alg.dtype,
-                cache=False,
-            )
-            if self.n_g2 > 0:
-                self._score_bivector_product = alg.planner.product_executor(
-                    op="gp",
-                    left_grades=self.score_grades,
-                    right_grades=self.score_grades,
-                    output_grades=(2,),
-                    device=alg.device,
-                    dtype=alg.dtype,
-                    cache=False,
-                )
-            return
-
         if not hasattr(alg, "gp_signs") or not hasattr(alg, "rev_signs"):
-            raise ValueError("Dense attention scoring requires CliffordAlgebra; pass score_grades for AlgebraContext.")
+            raise ValueError("GeometricProductAttention currently requires dense CliffordAlgebra inputs.")
 
         # Grade-0 metric: metric_rev[a] = gp_signs[a, 0] * rev_signs[a]
         # gp_signs[a, 0] is the sign when A[a] * B[a] contributes to output blade 0
@@ -166,17 +109,12 @@ class GeometricProductAttention(CliffordModule):
         self.register_buffer("_g2_blades", torch.tensor(g2_blades, dtype=torch.long, device=alg.device))
         self.register_buffer("_basis_indices", torch.arange(D, dtype=torch.long, device=alg.device))
 
-        self.register_buffer("_score_layout_indices", torch.zeros(0, dtype=torch.long, device=alg.device))
-        self.register_buffer("_score_rev_signs", torch.zeros(0, device=alg.device))
-
     def _compute_score(
         self,
         q_head: torch.Tensor,
         k_head: torch.Tensor,
     ) -> torch.Tensor:
         """Compute GA attention scores for one query block."""
-        if self._score_layout is not None:
-            return self._compute_score_compact(q_head, k_head)
         return self._compute_score_dense(q_head, k_head)
 
     def _compute_score_dense(self, q_head: torch.Tensor, k_head: torch.Tensor) -> torch.Tensor:
@@ -209,7 +147,7 @@ class GeometricProductAttention(CliffordModule):
             score_g2 = torch.zeros_like(score_g0)
 
         # Combined score
-        scale = math.sqrt(self.head_channels * self._score_scale_dim)
+        scale = math.sqrt(self.head_channels * self.algebra.dim)
         return (score_g0 + self.bivector_weight * score_g2) / scale
 
     def _dense_score_g2_precomputed(self, q_2d, k_head, B, H, Hc, Lq, Lk, D, n_g2):
@@ -245,43 +183,6 @@ class GeometricProductAttention(CliffordModule):
             score_g2_sq = score_g2_sq + comp_sq.reshape(B, H, Hc, Lq, Lk).sum(2)
         return score_g2_sq
 
-    def _compute_score_compact(self, q_head: torch.Tensor, k_head: torch.Tensor) -> torch.Tensor:
-        """Declared-grade score using static compact product plans."""
-        B, H, Lq, Hc, _ = q_head.shape
-        Lk = k_head.shape[2]
-
-        q_values = torch.index_select(q_head, -1, self._score_layout_indices)
-        k_values = torch.index_select(k_head, -1, self._score_layout_indices) * self._score_rev_signs.to(
-            dtype=k_head.dtype
-        )
-
-        q_2d = q_values.permute(0, 1, 3, 2, 4).reshape(B * H * Hc, Lq, self._score_layout.dim)
-        k_2d = k_values.permute(0, 1, 3, 2, 4).reshape(B * H * Hc, Lk, self._score_layout.dim)
-
-        scalar = self._score_scalar_product.forward_pairwise_compact(q_2d, k_2d).squeeze(-1)
-        score_g0 = scalar.reshape(B, H, Hc, Lq, Lk).sum(2)
-
-        if self._score_bivector_product is not None:
-            bivectors = self._score_bivector_product.forward_pairwise_compact(q_2d, k_2d)
-            score_g2_sq = bivectors.pow(2).sum(-1).reshape(B, H, Hc, Lq, Lk).sum(2)
-            score_g2 = score_g2_sq.sqrt()
-        else:
-            score_g2 = torch.zeros_like(score_g0)
-
-        scale = math.sqrt(self.head_channels * self._score_scale_dim)
-        return (score_g0 + self.bivector_weight * score_g2) / scale
-
-    def _score_input_positions(self, *, device) -> torch.Tensor:
-        """Return score-lane positions in dense or declared feature storage."""
-        if self.feature_layout is None:
-            return self._score_layout.indices_tensor(device=device)
-        position_by_basis = {index: position for position, index in enumerate(self.feature_layout.basis_indices)}
-        missing = tuple(index for index in self._score_layout.basis_indices if index not in position_by_basis)
-        if missing:
-            raise ValueError("score_grades must be contained in feature_grades for compact attention")
-        positions = [position_by_basis[index] for index in self._score_layout.basis_indices]
-        return torch.tensor(positions, dtype=torch.long, device=device)
-
     def forward(self, x: torch.Tensor, key_padding_mask: torch.Tensor = None) -> torch.Tensor:
         """Computes geometric product attention.
 
@@ -292,7 +193,6 @@ class GeometricProductAttention(CliffordModule):
         Returns:
             Output multivectors [B, L, C, D].
         """
-        check_multivector_lanes(x, self.algebra, self.feature_layout, "GeometricProductAttention input")
         B, L, C, D = x.shape
 
         # Project Q, K, V (CliffordLinear expects [B, C, D])

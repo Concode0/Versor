@@ -5,12 +5,11 @@
 # you may not use this file except in compliance with the License.
 #
 
-from typing import Optional
-
 import torch
 import torch.nn as nn
 
 from core.foundation.module import CliffordModule
+from core.runtime.algebra import CliffordAlgebra
 
 from ..adapters.mother import EntropyGatedAttention
 from ..primitives.normalization import CliffordLayerNorm
@@ -32,7 +31,7 @@ class GeometricTransformerBlock(CliffordModule):
 
     def __init__(
         self,
-        algebra,
+        algebra: CliffordAlgebra,
         channels: int,
         num_heads: int = 4,
         num_rotors: int = 8,
@@ -40,9 +39,6 @@ class GeometricTransformerBlock(CliffordModule):
         use_entropy_gating: bool = False,
         eta: float = 1.5,
         H_base: float = 0.5,
-        feature_grades=None,
-        attention_score_grades=None,
-        use_ffn_rotor_toolbox: Optional[bool] = None,
     ):
         """Initializes the Geometric Transformer Block.
 
@@ -55,43 +51,22 @@ class GeometricTransformerBlock(CliffordModule):
             use_entropy_gating: If True, uses EntropyGatedAttention.
             eta: Gating multiplier for entropy attention.
             H_base: Base entropy threshold.
-            feature_grades: Optional declared feature grades for compact execution.
-            attention_score_grades: Optional score grades for attention; defaults to
-                ``feature_grades`` when compact execution is used.
-            use_ffn_rotor_toolbox: Whether to use the dense rotor toolbox in the
-                FFN. Defaults to disabled when ``feature_grades`` is declared.
         """
         super().__init__(algebra)
-        if use_entropy_gating and feature_grades is not None:
-            raise ValueError("Entropy-gated attention does not yet support compact feature grades")
         self.use_entropy_gating = use_entropy_gating
-        self.norm1 = CliffordLayerNorm(algebra, channels, grades=feature_grades)
+        self.norm1 = CliffordLayerNorm(algebra, channels)
 
         if use_entropy_gating:
             self.attn = EntropyGatedAttention(algebra, channels, num_heads, eta=eta, H_base=H_base)
         else:
-            self.attn = GeometricProductAttention(
-                algebra,
-                channels,
-                num_heads,
-                causal=False,
-                dropout=dropout,
-                feature_grades=feature_grades,
-                score_grades=attention_score_grades,
-            )
+            self.attn = GeometricProductAttention(algebra, channels, num_heads, causal=False, dropout=dropout)
 
-        self.norm2 = CliffordLayerNorm(algebra, channels, grades=feature_grades)
+        self.norm2 = CliffordLayerNorm(algebra, channels)
 
         # Check MultiRotorFFN class name in multi_rotor_ffn.py
         from .multi_rotor_ffn import MultiRotorFFN
 
-        self.ffn = MultiRotorFFN(
-            algebra,
-            channels,
-            num_rotors=num_rotors,
-            feature_grades=feature_grades,
-            use_rotor_toolbox=use_ffn_rotor_toolbox,
-        )
+        self.ffn = MultiRotorFFN(algebra, channels, num_rotors=num_rotors)
 
     def forward(
         self, x: torch.Tensor, key_padding_mask: torch.Tensor = None, return_state: bool = False

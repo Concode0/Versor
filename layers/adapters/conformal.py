@@ -28,11 +28,6 @@ class ConformalEmbedding(CliffordModule):
         euclidean_dim (int): Physical dimension d.
     """
 
-    optimization_operators = ("embed",)
-    optimization_input_grades = None
-    optimization_output_grades = (1,)
-    optimization_dense_only_reason = "conformal embedding currently emits dense grade-1 multivectors"
-
     def __init__(self, algebra: CliffordAlgebra, euclidean_dim: int):
         """Sets up the conformal embedding.
 

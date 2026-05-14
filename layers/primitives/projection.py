@@ -5,15 +5,12 @@
 # you may not use this file except in compliance with the License.
 #
 
-from typing import Iterable, Optional
-
 import torch
 import torch.nn as nn
 
 from core.foundation.module import CliffordModule
+from core.runtime.algebra import CliffordAlgebra
 from utils.compat import safe_linalg_solve
-
-from ..planning import check_multivector_lanes, lane_count, resolve_layer_layout
 
 
 class BladeSelector(CliffordModule):
@@ -25,21 +22,16 @@ class BladeSelector(CliffordModule):
         weights (nn.Parameter): Soft gates [Channels, Dim].
     """
 
-    optimization_operators = ("blade_gate",)
-
-    def __init__(self, algebra, channels: int, grades: Optional[Iterable[int]] = None):
+    def __init__(self, algebra: CliffordAlgebra, channels: int):
         """Sets up the selector.
 
         Args:
             algebra (CliffordAlgebra): The algebra instance.
             channels (int): Input features.
-            grades: Optional declared grades for compact lane execution.
         """
         super().__init__(algebra)
-        self.layout = resolve_layer_layout(algebra, grades)
-        self.basis_dim = lane_count(algebra, self.layout)
 
-        self.weights = nn.Parameter(torch.Tensor(channels, self.basis_dim))
+        self.weights = nn.Parameter(torch.Tensor(channels, algebra.dim))
 
         self.reset_parameters()
 
@@ -56,7 +48,6 @@ class BladeSelector(CliffordModule):
         Returns:
             torch.Tensor: Filtered input.
         """
-        check_multivector_lanes(x, self.algebra, self.layout, "BladeSelector input")
         # Sigmoid gate
         w = torch.sigmoid(self.weights).unsqueeze(0)
         return x * w
@@ -76,10 +67,7 @@ class GeometricNeutralizer(CliffordModule):
         momentum (float): EMA momentum.
     """
 
-    optimization_operators = ("grade_projection", "linear_solve")
-    optimization_dense_only_reason = "neutralizer reads fixed dense grade positions"
-
-    def __init__(self, algebra, channels: int, momentum: float = 0.1):
+    def __init__(self, algebra: CliffordAlgebra, channels: int, momentum: float = 0.1):
         """Initialize the neutralizer.
 
         Args:
@@ -91,13 +79,9 @@ class GeometricNeutralizer(CliffordModule):
         self.channels = channels
         self.momentum = momentum
 
-        # Get indices for Grade-0 and Grade-2 through planner layouts.
-        self.register_buffer("g0_idx", algebra.planner.layout((0,)).indices_tensor(device=algebra.device))
-        if algebra.n >= 2:
-            g2_idx = algebra.planner.layout((2,)).indices_tensor(device=algebra.device)
-        else:
-            g2_idx = torch.zeros(0, dtype=torch.long, device=algebra.device)
-        self.register_buffer("g2_idx", g2_idx)
+        # Get indices for Grade-0 and Grade-2
+        self.register_buffer("g0_idx", algebra.grade_masks[0].nonzero(as_tuple=False).squeeze(-1))
+        self.register_buffer("g2_idx", algebra.grade_masks[2].nonzero(as_tuple=False).squeeze(-1))
 
         # Dimensions for Cl(3,1): Grade-0 is 1, Grade-2 is 6
         self.d0 = len(self.g0_idx)

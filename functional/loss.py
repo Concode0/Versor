@@ -19,8 +19,6 @@ class GeometricMSELoss(CliffordModule):
     Standard MSE on coefficients.
     """
 
-    optimization_operators = ("mse_loss",)
-
     def __init__(self, algebra):
         """Initialize the geometric MSE loss."""
         super().__init__(algebra)
@@ -35,9 +33,6 @@ class SubspaceLoss(CliffordModule):
 
     Penalizes energy in forbidden grades.
     """
-
-    optimization_operators = ("grade_penalty",)
-    optimization_dense_only_reason = "subspace loss reads a dense coefficient mask"
 
     def __init__(self, algebra, target_indices: list = None, exclude_indices: list = None):
         """Initialize grade constraint penalties."""
@@ -66,9 +61,6 @@ class IsometryLoss(CliffordModule):
 
     Ensures transformations preserve the metric norm.
     """
-
-    optimization_operators = ("metric_norm_loss",)
-    optimization_dense_only_reason = "isometry loss uses a dense metric diagonal"
 
     def __init__(self, algebra):
         """Initialize isometry loss with metric diagonal."""
@@ -100,9 +92,6 @@ class BivectorRegularization(CliffordModule):
     Penalizes energy outside the target grade (default: grade 2).
     """
 
-    optimization_operators = ("grade_projection", "regularization")
-    optimization_dense_only_reason = "bivector regularization calls dense grade projection"
-
     def __init__(self, algebra, grade=2):
         """Initialize bivector regularization."""
         super().__init__(algebra)
@@ -122,9 +111,6 @@ class HermitianGradeRegularization(CliffordModule):
     distribution and a target spectrum. Encourages the model to distribute
     energy across grades in a physically meaningful way.
     """
-
-    optimization_operators = ("grade_spectrum", "regularization")
-    optimization_dense_only_reason = "Hermitian grade spectrum currently expects dense multivectors"
 
     def __init__(self, algebra, target_spectrum=None):
         """Initialize grade regularization.

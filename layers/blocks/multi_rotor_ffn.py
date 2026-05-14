@@ -5,12 +5,10 @@
 # you may not use this file except in compliance with the License.
 #
 
-from typing import Optional
-
 import torch
-import torch.nn as nn
 
 from core.foundation.module import CliffordModule
+from core.runtime.algebra import CliffordAlgebra
 from functional.activation import GeometricGELU
 
 from ..primitives.linear import CliffordLinear
@@ -49,32 +47,23 @@ class MultiRotorFFN(CliffordModule):
 
     def __init__(
         self,
-        algebra,
+        algebra: CliffordAlgebra,
         channels: int,
         ffn_mult: int = 4,
         num_rotors: int = 8,
         use_rotor_backend: bool = False,
-        feature_grades=None,
-        use_rotor_toolbox: Optional[bool] = None,
     ):
         super().__init__(algebra)
         self.channels = channels
         ffn_channels = channels * ffn_mult
         backend = "rotor" if use_rotor_backend else "traditional"
-        if use_rotor_toolbox is None:
-            use_rotor_toolbox = feature_grades is None
-        if feature_grades is not None and use_rotor_toolbox:
-            raise ValueError("MultiRotorFFN rotor toolbox requires dense feature lanes")
-        self.use_rotor_toolbox = bool(use_rotor_toolbox)
 
-        self.expand = CliffordLinear(algebra, channels, ffn_channels, backend=backend, grades=feature_grades)
-        self.norm = CliffordLayerNorm(algebra, ffn_channels, grades=feature_grades)
-        self.toolbox = (
-            MultiRotorLayer(algebra, ffn_channels, num_rotors) if self.use_rotor_toolbox else nn.Identity()
-        )
-        self.act = GeometricGELU(algebra, channels=ffn_channels, grades=feature_grades)
-        self.contract = CliffordLinear(algebra, ffn_channels, channels, backend=backend, grades=feature_grades)
-        self.gate = BladeSelector(algebra, channels, grades=feature_grades)
+        self.expand = CliffordLinear(algebra, channels, ffn_channels, backend=backend)
+        self.norm = CliffordLayerNorm(algebra, ffn_channels)
+        self.toolbox = MultiRotorLayer(algebra, ffn_channels, num_rotors)
+        self.act = GeometricGELU(algebra, channels=ffn_channels)
+        self.contract = CliffordLinear(algebra, ffn_channels, channels, backend=backend)
+        self.gate = BladeSelector(algebra, channels)
 
     def forward(self, x) -> torch.Tensor:
         """Applies the geometric toolbox FFN.

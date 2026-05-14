@@ -15,6 +15,7 @@ import torch.nn as nn
 
 from core.foundation.module import CliffordModule
 from core.foundation.validation import check_channels, check_multivector
+from core.runtime.algebra import CliffordAlgebra
 
 
 class MultiRotorLayer(CliffordModule):
@@ -34,12 +35,9 @@ class MultiRotorLayer(CliffordModule):
         weights (nn.Parameter): Mixing weights [channels, num_rotors].
     """
 
-    optimization_operators = ("dense_sandwich",)
-    optimization_dense_only_reason = "sandwich path still materializes dense multivectors"
-
     def __init__(
         self,
-        algebra,
+        algebra: CliffordAlgebra,
         channels: int,
         num_rotors: int = 8,
         grade: int = 2,
@@ -59,8 +57,8 @@ class MultiRotorLayer(CliffordModule):
         self.num_rotors = num_rotors
         self.grade = grade
 
-        grade_layout = algebra.planner.layout((grade,))
-        self.register_buffer("grade_indices", grade_layout.indices_tensor(device=algebra.device))
+        grade_mask = algebra.grade_masks[grade]
+        self.register_buffer("grade_indices", grade_mask.nonzero(as_tuple=False).squeeze(-1))
         self.num_grade_elements = len(self.grade_indices)
 
         self.rotor_grade_weights = nn.Parameter(torch.Tensor(num_rotors, self.num_grade_elements))
