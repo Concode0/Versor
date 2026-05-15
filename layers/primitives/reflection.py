@@ -8,10 +8,21 @@
 import torch
 import torch.nn as nn
 
+from core.foundation.layout import GradeLayout
 from core.foundation.manifold import MANIFOLD_SPHERE, tag_manifold
 from core.foundation.module import CliffordModule
-from core.foundation.validation import check_channels, check_multivector
+from core.planning.action import reflection_vector_matrix
 from core.runtime.algebra import CliffordAlgebra
+
+from ._utils import (
+    cache_matches,
+    check_multivector_storage,
+    dense_from_indices,
+    grade_indices,
+    layout_metric_signs,
+    require_positive_int,
+    resolve_layer_layout,
+)
 
 
 class ReflectionLayer(CliffordModule):
@@ -31,7 +42,17 @@ class ReflectionLayer(CliffordModule):
         vector_weights (nn.Parameter): Learnable grade-1 coefficients [C, n].
     """
 
-    def __init__(self, algebra: CliffordAlgebra, channels: int):
+    def __init__(
+        self,
+        algebra: CliffordAlgebra,
+        channels: int,
+        *,
+        input_grades=None,
+        output_grades=None,
+        input_layout: GradeLayout = None,
+        output_layout: GradeLayout = None,
+        compact_output: bool = True,
+    ):
         """Initialize the reflection layer.
 
         Args:
@@ -39,14 +60,20 @@ class ReflectionLayer(CliffordModule):
             channels (int): Number of features.
         """
         super().__init__(algebra)
-        self.channels = channels
+        self.channels = require_positive_int(channels, "channels")
+        self.input_layout = resolve_layer_layout(algebra, layout=input_layout, grades=input_grades)
+        self.output_layout = (
+            resolve_layer_layout(algebra, layout=output_layout, grades=output_grades)
+            if output_layout is not None or output_grades is not None
+            else self.input_layout
+        )
+        self.compact_output = bool(compact_output)
 
-        # Grade-1 indices: 2^0, 2^1, ..., 2^(n-1)
-        g1_mask = algebra.grade_masks[1]
-        self.register_buffer("vector_indices", g1_mask.nonzero(as_tuple=False).squeeze(-1))
-        self.num_vectors = algebra.n
+        self.register_buffer("vector_indices", grade_indices(algebra, 1, name="vector grade"))
+        self.num_vectors = self.vector_indices.numel()
+        self.vector_layout = algebra.layout((1,))
 
-        self.vector_weights = nn.Parameter(torch.Tensor(channels, self.num_vectors))
+        self.vector_weights = nn.Parameter(torch.Tensor(self.channels, self.num_vectors))
         tag_manifold(self.vector_weights, MANIFOLD_SPHERE)
 
         # Cache for eval mode
@@ -69,10 +96,8 @@ class ReflectionLayer(CliffordModule):
         Returns:
             Tuple of (n, n_inv) each [C, dim].
         """
-        C = self.channels
-        n = torch.zeros(C, self.algebra.dim, device=device, dtype=dtype)
-        indices = self.vector_indices.unsqueeze(0).expand(C, -1)
-        n.scatter_(1, indices, self.vector_weights.to(dtype=dtype))
+        weights = self.vector_weights.to(device=device, dtype=dtype)
+        n = dense_from_indices(weights, self.vector_indices, self.algebra.dim)
 
         # Normalize: n_hat = n / sqrt(|<n ~n>_0|)
         n_sq = self.algebra.norm_sq(n)  # [C, 1]
@@ -91,10 +116,27 @@ class ReflectionLayer(CliffordModule):
         Returns:
             torch.Tensor: Reflected input [Batch, Channels, Dim].
         """
-        check_multivector(x, self.algebra, "ReflectionLayer input")
-        check_channels(x, self.channels, "ReflectionLayer input")
+        is_compact = check_multivector_storage(
+            x,
+            self.algebra,
+            channels=self.channels,
+            name="ReflectionLayer input",
+            layout=self.input_layout,
+            allow_dense=self.input_layout is None or self.input_layout.dim == self.algebra.dim,
+        )
+        if is_compact:
+            return self._forward_compact(x)
+        if not hasattr(self.algebra, "per_channel_sandwich"):
+            raise ValueError(
+                "ReflectionLayer dense execution requires CliffordAlgebra; declare input_grades for compact use."
+            )
 
-        if not self.training and self._cached_n is not None:
+        cache = (
+            (self._cached_n, self._cached_n_inv)
+            if self._cached_n is not None and self._cached_n_inv is not None
+            else None
+        )
+        if not self.training and cache_matches(cache, x):
             n, n_inv = self._cached_n, self._cached_n_inv
         else:
             n, n_inv = self._build_vectors(x.device, x.dtype)
@@ -108,6 +150,27 @@ class ReflectionLayer(CliffordModule):
         # Per-channel reflection via two GPs: (-n) * x * n^{-1}
         # Use per_channel_sandwich with n_hat as "R" and n_inv as "R_rev"
         return self.algebra.per_channel_sandwich(n_hat, x, n_inv)
+
+    def _forward_compact(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply compact reflection through the induced vector action."""
+        if self.input_layout is None:
+            raise ValueError("ReflectionLayer compact input requires input_layout or input_grades")
+        output_layout = self.output_layout if self.output_layout is not None else self.input_layout
+
+        normals = self.vector_weights.to(device=x.device, dtype=x.dtype)
+        signs = layout_metric_signs(self.vector_layout, device=x.device, dtype=x.dtype)
+        norm_sq = (normals * normals * signs).sum(dim=-1, keepdim=True)
+        scale = norm_sq.abs().clamp_min(1e-12).sqrt()
+        normals = normals / scale
+        matrix = reflection_vector_matrix(normals, vector_layout=self.vector_layout, eps=self.algebra.eps_sq)
+        return self.algebra.planned_linear_action(
+            x,
+            matrix,
+            input_layout=self.input_layout,
+            output_layout=output_layout,
+            input_compact=True,
+            compact_output=self.compact_output,
+        )
 
     def train(self, mode: bool = True):
         """Override to invalidate cache when switching to train mode."""

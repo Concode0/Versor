@@ -8,10 +8,21 @@
 import torch
 import torch.nn as nn
 
+from core.foundation.layout import GradeLayout
 from core.foundation.manifold import MANIFOLD_SPIN, tag_manifold
 from core.foundation.module import CliffordModule
-from core.foundation.validation import check_channels, check_multivector
+from core.planning.action import bivector_vector_generator, reflection_vector_matrix
 from core.runtime.algebra import CliffordAlgebra
+
+from ._utils import (
+    cache_matches,
+    check_multivector_storage,
+    dense_from_indices,
+    grade_indices,
+    layout_metric_signs,
+    require_positive_int,
+    resolve_layer_layout,
+)
 
 
 class RotorLayer(CliffordModule):
@@ -37,6 +48,12 @@ class RotorLayer(CliffordModule):
         algebra: CliffordAlgebra,
         channels: int,
         grade: int = 2,
+        *,
+        input_grades=None,
+        output_grades=None,
+        input_layout: GradeLayout = None,
+        output_layout: GradeLayout = None,
+        compact_output: bool = True,
     ):
         """Initialize the versor layer.
 
@@ -49,15 +66,22 @@ class RotorLayer(CliffordModule):
                 grade=k: general grade-k versor product.
         """
         super().__init__(algebra)
-        self.channels = channels
-        self.grade = grade
+        self.channels = require_positive_int(channels, "channels")
+        self.grade = int(grade)
+        self.input_layout = resolve_layer_layout(algebra, layout=input_layout, grades=input_grades)
+        self.output_layout = (
+            resolve_layer_layout(algebra, layout=output_layout, grades=output_grades)
+            if output_layout is not None or output_grades is not None
+            else self.input_layout
+        )
+        self.compact_output = bool(compact_output)
 
-        grade_mask = algebra.grade_masks[grade]
-        self.register_buffer("grade_indices", grade_mask.nonzero(as_tuple=False).squeeze(-1))
-        self.num_grade_elements = len(self.grade_indices)
+        self.register_buffer("grade_indices", grade_indices(algebra, self.grade))
+        self.num_grade_elements = self.grade_indices.numel()
+        self.parameter_layout = algebra.layout((self.grade,))
 
-        self.grade_weights = nn.Parameter(torch.Tensor(channels, self.num_grade_elements))
-        if grade == 2:
+        self.grade_weights = nn.Parameter(torch.Tensor(self.channels, self.num_grade_elements))
+        if self.grade == 2:
             tag_manifold(self.grade_weights, MANIFOLD_SPIN)
 
         # Versor cache for eval mode
@@ -88,10 +112,8 @@ class RotorLayer(CliffordModule):
 
     def _build_grade_element(self, device, dtype):
         """Scatter grade_weights into full multivector dimension [channels, dim]."""
-        V = torch.zeros(self.channels, self.algebra.dim, device=device, dtype=dtype)
-        indices = self.grade_indices.unsqueeze(0).expand(self.channels, -1)
-        V.scatter_(1, indices, self.grade_weights)
-        return V
+        weights = self.grade_weights.to(device=device, dtype=dtype)
+        return dense_from_indices(weights, self.grade_indices, self.algebra.dim)
 
     def _compute_versors(self, device, dtype):
         """Compute left and right factors for per_channel_sandwich.
@@ -126,10 +148,27 @@ class RotorLayer(CliffordModule):
         Returns:
             torch.Tensor: Transformed input [Batch, Channels, Dim].
         """
-        check_multivector(x, self.algebra, "RotorLayer input")
-        check_channels(x, self.channels, "RotorLayer input")
+        is_compact = check_multivector_storage(
+            x,
+            self.algebra,
+            channels=self.channels,
+            name="RotorLayer input",
+            layout=self.input_layout,
+            allow_dense=self.input_layout is None or self.input_layout.dim == self.algebra.dim,
+        )
+        if is_compact:
+            return self._forward_compact(x)
+        if not hasattr(self.algebra, "per_channel_sandwich"):
+            raise ValueError(
+                "RotorLayer dense execution requires CliffordAlgebra; declare input_grades for compact use."
+            )
 
-        if not self.training and self._cached_V_left is not None:
+        cache = (
+            (self._cached_V_left, self._cached_V_right)
+            if self._cached_V_left is not None and self._cached_V_right is not None
+            else None
+        )
+        if not self.training and cache_matches(cache, x):
             V_left, V_right = self._cached_V_left, self._cached_V_right
         else:
             V_left, V_right = self._compute_versors(x.device, x.dtype)
@@ -138,6 +177,43 @@ class RotorLayer(CliffordModule):
                 self._cached_V_right = V_right
 
         return self.algebra.per_channel_sandwich(V_left, x, V_right)
+
+    def _forward_compact(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply a compact grade-preserving versor action."""
+        if self.input_layout is None:
+            raise ValueError("RotorLayer compact input requires input_layout or input_grades")
+        output_layout = self.output_layout if self.output_layout is not None else self.input_layout
+
+        if self.grade == 2:
+            weights = self.grade_weights.to(device=x.device, dtype=x.dtype)
+            generator = bivector_vector_generator(weights, bivector_layout=self.parameter_layout)
+            matrix = torch.matrix_exp(generator)
+            return self.algebra.planned_linear_action(
+                x,
+                matrix,
+                input_layout=self.input_layout,
+                output_layout=output_layout,
+                input_compact=True,
+                compact_output=self.compact_output,
+            )
+
+        if self.grade == 1:
+            weights = self.grade_weights.to(device=x.device, dtype=x.dtype)
+            signs = layout_metric_signs(self.parameter_layout, device=x.device, dtype=x.dtype)
+            norm_sq = (weights * weights * signs).sum(dim=-1, keepdim=True)
+            scale = norm_sq.abs().clamp_min(1e-12).sqrt()
+            normals = weights / scale
+            matrix = reflection_vector_matrix(normals, vector_layout=self.parameter_layout, eps=self.algebra.eps_sq)
+            return self.algebra.planned_linear_action(
+                x,
+                matrix,
+                input_layout=self.input_layout,
+                output_layout=output_layout,
+                input_compact=True,
+                compact_output=self.compact_output,
+            )
+
+        raise ValueError("RotorLayer compact execution currently supports grade=1 and grade=2 versors")
 
     def train(self, mode: bool = True):
         """Invalidate versor cache when switching to train mode."""
@@ -158,7 +234,7 @@ class RotorLayer(CliffordModule):
         with torch.no_grad():
             mask = torch.abs(self.grade_weights) >= threshold
             num_pruned = (~mask).sum().item()
-            self.grade_weights.data.mul_(mask.float())
+            self.grade_weights.data.mul_(mask.to(dtype=self.grade_weights.dtype))
         return num_pruned
 
     def sparsity_loss(self) -> torch.Tensor:

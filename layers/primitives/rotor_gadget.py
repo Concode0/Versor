@@ -19,6 +19,16 @@ from core.foundation.module import CliffordModule
 from core.foundation.validation import check_channels, check_multivector
 from core.runtime.algebra import CliffordAlgebra
 
+from ._utils import (
+    cache_matches,
+    channel_mix,
+    dense_from_indices,
+    grade_indices,
+    pair_mean,
+    require_choice,
+    require_positive_int,
+)
+
 
 class RotorGadget(CliffordModule):
     """Rotor-based linear transformation (Generalized Rotor Gadget).
@@ -69,30 +79,26 @@ class RotorGadget(CliffordModule):
             bias: Whether to include bias term (applied after transformation)
         """
         super().__init__(algebra)
+        if not hasattr(algebra, "per_channel_sandwich"):
+            raise ValueError("RotorGadget is dense-only and requires CliffordAlgebra.")
 
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.num_rotor_pairs = num_rotor_pairs
-        self.aggregation = aggregation
-        self.shuffle = shuffle
+        self.in_channels = require_positive_int(in_channels, "in_channels")
+        self.out_channels = require_positive_int(out_channels, "out_channels")
+        self.num_rotor_pairs = require_positive_int(num_rotor_pairs, "num_rotor_pairs")
+        self.aggregation = require_choice(aggregation, "aggregation", ("mean", "sum", "learned"))
+        self.shuffle = require_choice(shuffle, "shuffle", ("none", "fixed", "random"))
 
-        # Use algebra's precomputed grade masks for bivector indices
-        if algebra.num_grades > 2:
-            bv_mask = algebra.grade_masks[2]
-            self.register_buffer("bivector_indices", bv_mask.nonzero(as_tuple=False).squeeze(-1))
-        else:
-            self.register_buffer("bivector_indices", torch.tensor([], dtype=torch.long, device=algebra.device))
-        self.num_bivectors = len(self.bivector_indices)
-
-        if self.num_bivectors == 0:
+        if algebra.num_grades <= 2:
             raise ValueError(f"Algebra has no bivectors. RotorGadget requires at least one bivector for rotation.")
+        self.register_buffer("bivector_indices", grade_indices(algebra, 2, name="bivector grade"))
+        self.num_bivectors = self.bivector_indices.numel()
 
         # Rotor parameters: bivector coefficients for exponential map
         # Left rotors: [num_rotor_pairs, num_bivectors]
-        self.bivector_left = nn.Parameter(torch.randn(num_rotor_pairs, self.num_bivectors) * 0.1)
+        self.bivector_left = nn.Parameter(torch.randn(self.num_rotor_pairs, self.num_bivectors) * 0.1)
         tag_manifold(self.bivector_left, MANIFOLD_SPIN)
         # Right rotors: [num_rotor_pairs, num_bivectors]
-        self.bivector_right = nn.Parameter(torch.randn(num_rotor_pairs, self.num_bivectors) * 0.1)
+        self.bivector_right = nn.Parameter(torch.randn(self.num_rotor_pairs, self.num_bivectors) * 0.1)
         tag_manifold(self.bivector_right, MANIFOLD_SPIN)
 
         # Channel routing: block diagonal partitioning (paper style)
@@ -100,15 +106,14 @@ class RotorGadget(CliffordModule):
         self._setup_channel_routing()
 
         # Aggregation weights (if learned)
-        if aggregation == "learned":
-            # Learned weights for combining rotor outputs
-            self.agg_weights = nn.Parameter(torch.ones(num_rotor_pairs, out_channels) / num_rotor_pairs)
+        if self.aggregation == "learned":
+            self.agg_weights = nn.Parameter(torch.ones(self.num_rotor_pairs, self.out_channels) / self.num_rotor_pairs)
         else:
             self.register_buffer("agg_weights", None)
 
         # Optional bias
         if bias:
-            self.bias = nn.Parameter(torch.zeros(out_channels, algebra.dim))
+            self.bias = nn.Parameter(torch.zeros(self.out_channels, algebra.dim))
         else:
             self.register_buffer("bias", None)
 
@@ -122,34 +127,39 @@ class RotorGadget(CliffordModule):
         pair operates on a specific block. Optionally shuffles input channels
         before routing for regularization.
         """
-        # Compute block sizes
-        in_block_size = max(1, self.in_channels // self.num_rotor_pairs)
-        out_block_size = max(1, self.out_channels // self.num_rotor_pairs)
+        in_assignment = torch.div(
+            torch.arange(self.in_channels) * self.num_rotor_pairs,
+            self.in_channels,
+            rounding_mode="floor",
+        ).clamp_max(self.num_rotor_pairs - 1)
+        out_assignment = torch.div(
+            torch.arange(self.out_channels) * self.num_rotor_pairs,
+            self.out_channels,
+            rounding_mode="floor",
+        ).clamp_max(self.num_rotor_pairs - 1)
 
-        # Create routing indices
         in_indices = []
         out_indices = []
-
         for i in range(self.num_rotor_pairs):
-            # Input block for this rotor pair
-            in_start = i * in_block_size
-            in_end = min((i + 1) * in_block_size, self.in_channels)
-            in_indices.append((in_start, in_end))
-
-            # Output block for this rotor pair
-            out_start = i * out_block_size
-            out_end = min((i + 1) * out_block_size, self.out_channels)
-            out_indices.append((out_start, out_end))
+            in_members = (in_assignment == i).nonzero(as_tuple=False).flatten()
+            out_members = (out_assignment == i).nonzero(as_tuple=False).flatten()
+            if in_members.numel() == 0:
+                in_indices.append((self.in_channels, self.in_channels))
+            else:
+                in_indices.append((int(in_members[0]), int(in_members[-1]) + 1))
+            if out_members.numel() == 0:
+                out_indices.append((self.out_channels, self.out_channels))
+            else:
+                out_indices.append((int(out_members[0]), int(out_members[-1]) + 1))
 
         self.in_indices = in_indices
         self.out_indices = out_indices
 
-        # Precompute channel-to-rotor-pair mapping for vectorized forward
-        ch2pair = torch.zeros(self.in_channels, dtype=torch.long)
-        for i, (s, e) in enumerate(in_indices):
-            if e > s:
-                ch2pair[s:e] = i
+        ch2pair = in_assignment.to(dtype=torch.long)
         self.register_buffer("_ch2pair", ch2pair)
+        self.register_buffer("_channel_mix_mean", channel_mix(self.in_channels, self.out_channels, normalize=True))
+        self.register_buffer("_channel_mix_sum", channel_mix(self.in_channels, self.out_channels, normalize=False))
+        self.register_buffer("_pair_mean", pair_mean(ch2pair, self.num_rotor_pairs))
 
         # Set up channel shuffle permutation
         if self.shuffle == "fixed":
@@ -172,23 +182,24 @@ class RotorGadget(CliffordModule):
         Returns:
             Multivector tensor of shape [..., algebra.dim]
         """
-        batch_shape = bivector_coeffs.shape[:-1]
-        mv = torch.zeros(*batch_shape, self.algebra.dim, device=bivector_coeffs.device, dtype=bivector_coeffs.dtype)
-        # Expand indices to match batch shape for scatter_
-        idx = self.bivector_indices.expand(*batch_shape, -1)
-        mv.scatter_(-1, idx, bivector_coeffs)
-        return mv
+        return dense_from_indices(bivector_coeffs, self.bivector_indices, self.algebra.dim)
 
-    def _compute_rotors(self):
+    def _compute_rotors(self, device=None, dtype=None):
         """Compute rotor multivectors from bivector parameters.
 
         Returns:
             Tuple of (left_rotors, right_rotors_reversed) where each is
             a tensor of shape [num_rotor_pairs, algebra.dim]
         """
+        left = self.bivector_left
+        right = self.bivector_right
+        if device is not None or dtype is not None:
+            left = left.to(device=device, dtype=dtype)
+            right = right.to(device=device, dtype=dtype)
+
         # Convert bivector parameters to multivectors
-        B_left = self._bivector_to_multivector(self.bivector_left)  # [pairs, dim]
-        B_right = self._bivector_to_multivector(self.bivector_right)  # [pairs, dim]
+        B_left = self._bivector_to_multivector(left)  # [pairs, dim]
+        B_right = self._bivector_to_multivector(right)  # [pairs, dim]
 
         # Compute rotors via exponential map: R = exp(-0.5 * B)
         R_left = self.algebra.exp(-0.5 * B_left)  # [pairs, dim]
@@ -216,32 +227,30 @@ class RotorGadget(CliffordModule):
 
         # Apply input channel shuffle if enabled
         if self.shuffle == "fixed":
-            x = x[:, self.channel_permutation, :]
+            x = x.index_select(-2, self.channel_permutation)
         elif self.shuffle == "random":
             perm = torch.randperm(self.in_channels, device=x.device)
-            x = x[:, perm, :]
+            x = x.index_select(-2, perm)
 
         # Compute rotors (cached in eval mode)
-        if not self.training and self._cached_rotors is not None:
+        if not self.training and cache_matches(self._cached_rotors, x):
             R_left, R_right_rev = self._cached_rotors
         else:
-            R_left, R_right_rev = self._compute_rotors()
+            R_left, R_right_rev = self._compute_rotors(x.device, x.dtype)
             if not self.training:
                 self._cached_rotors = (R_left, R_right_rev)
 
-        # Vectorized sandwich: map each channel to its rotor pair
-        R_left_expanded = R_left[self._ch2pair].unsqueeze(0)  # [1, in_channels, D]
-        R_right_expanded = R_right_rev[self._ch2pair].unsqueeze(0)  # [1, in_channels, D]
-
-        # Two batched GPs instead of 2*K sequential GPs
-        temp = self.algebra.geometric_product(R_left_expanded, x)
-        concat_out = self.algebra.geometric_product(temp, R_right_expanded)
+        ch2pair = self._ch2pair.to(device=R_left.device)
+        R_left_by_channel = R_left[ch2pair]
+        R_right_by_channel = R_right_rev[ch2pair]
+        concat_out = self.algebra.per_channel_sandwich(R_left_by_channel, x, R_right_by_channel)
 
         # Map to output channels
         out = self._aggregate_to_output_channels(concat_out)
 
         if self.bias is not None:
-            out = out + self.bias.unsqueeze(0)
+            bias_shape = (1,) * (out.ndim - 2) + (self.out_channels, self.algebra.dim)
+            out = out + self.bias.view(bias_shape)
 
         return out
 
@@ -254,63 +263,12 @@ class RotorGadget(CliffordModule):
         Returns:
             Aggregated output [B, out_channels, dim]
         """
-        batch_size = x.shape[0]
-
         if self.aggregation == "learned":
-            # Weighted aggregation with learned weights
-            # agg_weights: [num_pairs, out_channels]
-            # Need to apply per-block
-            outputs = []
-            for i in range(self.num_rotor_pairs):
-                in_start, in_end = self.in_indices[i]
-                block_size = in_end - in_start
-                if block_size == 0:
-                    continue
+            pair_values = torch.einsum("ki,...id->...kd", self._pair_mean.to(device=x.device, dtype=x.dtype), x)
+            return torch.einsum("ko,...kd->...od", self.agg_weights.to(device=x.device, dtype=x.dtype), pair_values)
 
-                x_i = x[:, in_start:in_end, :]  # [B, block, dim]
-                # Average over block channels and weight
-                x_i_mean = x_i.mean(dim=1, keepdim=True)  # [B, 1, dim]
-                # Expand to output channels with weights
-                weighted = x_i_mean * self.agg_weights[i : i + 1, :, None]  # [B, out_ch, dim]
-                outputs.append(weighted)
-
-            out = torch.stack(outputs, dim=0).sum(dim=0)  # [B, out_ch, dim]
-
-        elif self.aggregation == "sum":
-            # Simple channel-wise sum with reshaping
-            if x.shape[1] == self.out_channels:
-                out = x
-            elif x.shape[1] > self.out_channels:
-                # Pool down by summing
-                fold = x.shape[1] // self.out_channels
-                out = (
-                    x[:, : fold * self.out_channels, :]
-                    .reshape(batch_size, self.out_channels, fold, self.algebra.dim)
-                    .sum(dim=2)
-                )
-            else:
-                # Expand by tiling
-                repeats = (self.out_channels + x.shape[1] - 1) // x.shape[1]
-                out = x.repeat(1, repeats, 1)[:, : self.out_channels, :]
-
-        else:  # 'mean'
-            # Mean pooling
-            if x.shape[1] == self.out_channels:
-                out = x
-            elif x.shape[1] > self.out_channels:
-                # Pool down by averaging
-                fold = x.shape[1] // self.out_channels
-                out = (
-                    x[:, : fold * self.out_channels, :]
-                    .reshape(batch_size, self.out_channels, fold, self.algebra.dim)
-                    .mean(dim=2)
-                )
-            else:
-                # Expand by tiling
-                repeats = (self.out_channels + x.shape[1] - 1) // x.shape[1]
-                out = x.repeat(1, repeats, 1)[:, : self.out_channels, :]
-
-        return out
+        mix = self._channel_mix_sum if self.aggregation == "sum" else self._channel_mix_mean
+        return torch.einsum("oi,...id->...od", mix.to(device=x.device, dtype=x.dtype), x)
 
     def train(self, mode: bool = True):
         """Override to invalidate rotor cache when switching to train mode."""

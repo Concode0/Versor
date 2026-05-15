@@ -8,8 +8,17 @@
 import torch
 import torch.nn as nn
 
+from core.foundation.layout import GradeLayout
 from core.foundation.module import CliffordModule
 from core.runtime.algebra import CliffordAlgebra
+
+from ._utils import (
+    check_multivector_storage,
+    lane_dim,
+    require_positive_int,
+    resolve_layer_layout,
+    scalar_mask,
+)
 
 
 class CliffordLayerNorm(CliffordModule):
@@ -27,7 +36,16 @@ class CliffordLayerNorm(CliffordModule):
             starts identical to the old (scale-discarding) behaviour.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, channels: int, eps: float = 1e-6, recover: bool = True):
+    def __init__(
+        self,
+        algebra: CliffordAlgebra,
+        channels: int,
+        eps: float = 1e-6,
+        recover: bool = True,
+        *,
+        grades=None,
+        layout: GradeLayout = None,
+    ):
         """Sets up normalization.
 
         Args:
@@ -37,15 +55,19 @@ class CliffordLayerNorm(CliffordModule):
             recover (bool): Whether to inject original scale into the scalar part.
         """
         super().__init__(algebra)
+        self.channels = require_positive_int(channels, "channels")
+        if eps <= 0:
+            raise ValueError(f"eps must be positive, got {eps}")
         self.eps = eps
         self.recover = recover
+        self.layout = resolve_layer_layout(algebra, layout=layout, grades=grades)
+        self.lane_dim = lane_dim(algebra, self.layout)
 
-        self.weight = nn.Parameter(torch.ones(channels))
-        self.bias = nn.Parameter(torch.zeros(channels))
-        # Learnable gate: how much of the original log-magnitude to push
-        # into the scalar part.  Zero-init -> backward compatible at start.
+        self.weight = nn.Parameter(torch.ones(self.channels))
+        self.bias = nn.Parameter(torch.zeros(self.channels))
+        self.register_buffer("scalar_mask", scalar_mask(algebra, self.layout))
         if recover:
-            self.norm_scale = nn.Parameter(torch.zeros(channels))
+            self.norm_scale = nn.Parameter(torch.zeros(self.channels))
         else:
             self.register_buffer("norm_scale", None)
 
@@ -58,25 +80,27 @@ class CliffordLayerNorm(CliffordModule):
         Returns:
             torch.Tensor: Normalized input.
         """
-        # Per-channel magnitude
-        norm = x.norm(dim=-1, keepdim=True)  # [B, C, 1]
+        check_multivector_storage(
+            x,
+            self.algebra,
+            channels=self.channels,
+            name="CliffordLayerNorm input",
+            layout=self.layout,
+            allow_dense=self.layout is None or self.layout.dim == self.algebra.dim,
+        )
+        channel_shape = (1,) * (x.ndim - 2) + (self.channels, 1)
 
-        # Normalize direction
-        x_normalized = x / (norm + self.eps)
+        norm = x.norm(dim=-1, keepdim=True).clamp_min(self.eps)
+        x_normalized = x / norm
+        out = x_normalized * self.weight.view(channel_shape)
 
-        # Affine transform on direction
-        out = x_normalized * self.weight.view(1, -1, 1)
-
-        # Add bias and optional log-magnitude to grade-0 via mask
-        g0 = self.algebra.grade_masks_float[0]  # [D], 1.0 at index 0
-        if g0.dtype != x.dtype:
-            g0 = g0.to(dtype=x.dtype)
-        out = out + self.bias.view(1, -1, 1) * g0
+        g0 = self.scalar_mask
+        if g0.device != x.device or g0.dtype != x.dtype:
+            g0 = g0.to(device=x.device, dtype=x.dtype)
+        out = out + self.bias.view(channel_shape) * g0
 
         if self.recover:
-            # Push original magnitude into scalar (grade-0) part.
-            # log1p keeps the value bounded and well-behaved for gradients.
-            log_norm = torch.log1p(norm.squeeze(-1)).unsqueeze(-1)  # [B, C, 1]
-            out = out + self.norm_scale.view(1, -1, 1) * log_norm * g0
+            log_norm = torch.log1p(norm)
+            out = out + self.norm_scale.view(channel_shape) * log_norm * g0
 
         return out

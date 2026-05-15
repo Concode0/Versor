@@ -8,9 +8,18 @@
 import torch
 import torch.nn as nn
 
+from core.foundation.layout import GradeLayout
 from core.foundation.module import CliffordModule
 from core.runtime.algebra import CliffordAlgebra
 from utils.compat import safe_linalg_solve
+
+from ._utils import (
+    check_multivector_storage,
+    grade_positions,
+    lane_dim,
+    require_positive_int,
+    resolve_layer_layout,
+)
 
 
 class BladeSelector(CliffordModule):
@@ -19,10 +28,10 @@ class BladeSelector(CliffordModule):
     Learns to weigh geometric grades, suppressing less relevant ones.
 
     Attributes:
-        weights (nn.Parameter): Soft gates [Channels, Dim].
+        weights (nn.Parameter): Gate logits [Channels, Dim].
     """
 
-    def __init__(self, algebra: CliffordAlgebra, channels: int):
+    def __init__(self, algebra: CliffordAlgebra, channels: int, *, grades=None, layout: GradeLayout = None):
         """Sets up the selector.
 
         Args:
@@ -30,17 +39,22 @@ class BladeSelector(CliffordModule):
             channels (int): Input features.
         """
         super().__init__(algebra)
+        self.channels = require_positive_int(channels, "channels")
+        self.layout = resolve_layer_layout(algebra, layout=layout, grades=grades)
+        self.lane_dim = lane_dim(algebra, self.layout)
 
-        self.weights = nn.Parameter(torch.Tensor(channels, algebra.dim))
+        self.weights = nn.Parameter(torch.Tensor(self.channels, self.lane_dim))
 
         self.reset_parameters()
 
     def reset_parameters(self):
-        """Initializes weights to one (pass-through)."""
-        nn.init.ones_(self.weights)
+        """Initialize logits so the selector starts as pass-through."""
+        nn.init.zeros_(self.weights)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Gates the grades.
+
+        The gate is ``2 * sigmoid(weights)`` so zero logits preserve the input.
 
         Args:
             x (torch.Tensor): Input [Batch, Channels, Dim].
@@ -48,9 +62,17 @@ class BladeSelector(CliffordModule):
         Returns:
             torch.Tensor: Filtered input.
         """
-        # Sigmoid gate
-        w = torch.sigmoid(self.weights).unsqueeze(0)
-        return x * w
+        check_multivector_storage(
+            x,
+            self.algebra,
+            channels=self.channels,
+            name="BladeSelector input",
+            layout=self.layout,
+            allow_dense=self.layout is None or self.layout.dim == self.algebra.dim,
+        )
+        gate_shape = (1,) * (x.ndim - 2) + (self.channels, self.lane_dim)
+        gate = 2.0 * torch.sigmoid(self.weights).view(gate_shape)
+        return x * gate
 
 
 class GeometricNeutralizer(CliffordModule):
@@ -67,7 +89,15 @@ class GeometricNeutralizer(CliffordModule):
         momentum (float): EMA momentum.
     """
 
-    def __init__(self, algebra: CliffordAlgebra, channels: int, momentum: float = 0.1):
+    def __init__(
+        self,
+        algebra: CliffordAlgebra,
+        channels: int,
+        momentum: float = 0.1,
+        *,
+        grades=None,
+        layout: GradeLayout = None,
+    ):
         """Initialize the neutralizer.
 
         Args:
@@ -76,16 +106,24 @@ class GeometricNeutralizer(CliffordModule):
             momentum (float): EMA momentum for covariance tracking.
         """
         super().__init__(algebra)
-        self.channels = channels
+        self.channels = require_positive_int(channels, "channels")
         self.momentum = momentum
+        if not 0.0 <= momentum <= 1.0:
+            raise ValueError(f"momentum must be in [0, 1], got {momentum}")
+        self.layout = resolve_layer_layout(algebra, layout=layout, grades=grades)
+        self.lane_dim = lane_dim(algebra, self.layout)
 
-        # Get indices for Grade-0 and Grade-2
-        self.register_buffer("g0_idx", algebra.grade_masks[0].nonzero(as_tuple=False).squeeze(-1))
-        self.register_buffer("g2_idx", algebra.grade_masks[2].nonzero(as_tuple=False).squeeze(-1))
+        if self.layout is None:
+            self.register_buffer("g0_idx", algebra.grade_indices((0,)))
+            self.register_buffer("g2_idx", algebra.grade_indices((2,)))
+        else:
+            self.register_buffer("g0_idx", grade_positions(self.layout, 0))
+            self.register_buffer("g2_idx", grade_positions(self.layout, 2))
+            if self.g0_idx.numel() == 0 or self.g2_idx.numel() == 0:
+                raise ValueError("GeometricNeutralizer layout must include grades 0 and 2")
 
-        # Dimensions for Cl(3,1): Grade-0 is 1, Grade-2 is 6
-        self.d0 = len(self.g0_idx)
-        self.d2 = len(self.g2_idx)
+        self.d0 = self.g0_idx.numel()
+        self.d2 = self.g2_idx.numel()
 
         # EMA Buffers for each channel
         # We track:
@@ -93,10 +131,10 @@ class GeometricNeutralizer(CliffordModule):
         #   - Mean of bivector (Grade-2): [C, D2]
         #   - Covariance(bivector, bivector): [C, D2, D2]
         #   - Covariance(bivector, scalar): [C, D2, D0]
-        self.register_buffer("running_mean_scalar", torch.zeros(channels, self.d0))
-        self.register_buffer("running_mean_bivec", torch.zeros(channels, self.d2))
-        self.register_buffer("running_cov_bb", torch.eye(self.d2).unsqueeze(0).repeat(channels, 1, 1))
-        self.register_buffer("running_cov_bs", torch.zeros(channels, self.d2, self.d0))
+        self.register_buffer("running_mean_scalar", torch.zeros(self.channels, self.d0))
+        self.register_buffer("running_mean_bivec", torch.zeros(self.channels, self.d2))
+        self.register_buffer("running_cov_bb", torch.eye(self.d2).unsqueeze(0).repeat(self.channels, 1, 1))
+        self.register_buffer("running_cov_bs", torch.zeros(self.channels, self.d2, self.d0))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Neutralizes the multivector signal using EMA statistics.
@@ -107,58 +145,53 @@ class GeometricNeutralizer(CliffordModule):
         Returns:
             torch.Tensor: Neutralized multivector.
         """
-        # x: [B, C, D]
-        scalar = x[..., self.g0_idx]  # [B, C, D0]
-        bivec = x[..., self.g2_idx]  # [B, C, D2]
-        B, C, _ = scalar.shape
+        check_multivector_storage(
+            x,
+            self.algebra,
+            channels=self.channels,
+            name="GeometricNeutralizer input",
+            layout=self.layout,
+            allow_dense=self.layout is None or self.layout.dim == self.algebra.dim,
+        )
+
+        x_flat = x.reshape(-1, self.channels, self.lane_dim)
+        scalar = x_flat[..., self.g0_idx]
+        bivec = x_flat[..., self.g2_idx]
+        batch = scalar.shape[0]
 
         if self.training:
-            # Compute batch statistics
-            batch_mean_s = scalar.mean(dim=0)  # [C, D0]
-            batch_mean_b = bivec.mean(dim=0)  # [C, D2]
+            batch_mean_s = scalar.mean(dim=0)
+            batch_mean_b = bivec.mean(dim=0)
 
-            # Center the batch
             s_centered = scalar - batch_mean_s.unsqueeze(0)
             b_centered = bivec - batch_mean_b.unsqueeze(0)
+            denom = max(batch - 1, 1)
 
-            # batch_cov_bb: [C, D2, D2]
-            batch_cov_bb = torch.einsum("bci, bcj -> cij", b_centered, b_centered) / (B - 1 + 1e-8)
-            # batch_cov_bs: [C, D2, D0]
-            batch_cov_bs = torch.einsum("bci, bcj -> cij", b_centered, s_centered) / (B - 1 + 1e-8)
+            batch_cov_bb = torch.einsum("bci,bcj->cij", b_centered, b_centered) / denom
+            batch_cov_bs = torch.einsum("bci,bcj->cij", b_centered, s_centered) / denom
 
-            # Update EMA buffers
-            self.running_mean_scalar = (1 - self.momentum) * self.running_mean_scalar + self.momentum * batch_mean_s
-            self.running_mean_bivec = (1 - self.momentum) * self.running_mean_bivec + self.momentum * batch_mean_b
-            self.running_cov_bb = (1 - self.momentum) * self.running_cov_bb + self.momentum * batch_cov_bb
-            self.running_cov_bs = (1 - self.momentum) * self.running_cov_bs + self.momentum * batch_cov_bs
+            with torch.no_grad():
+                self.running_mean_scalar.lerp_(batch_mean_s.detach(), self.momentum)
+                self.running_mean_bivec.lerp_(batch_mean_b.detach(), self.momentum)
+                self.running_cov_bb.lerp_(batch_cov_bb.detach(), self.momentum)
+                self.running_cov_bs.lerp_(batch_cov_bs.detach(), self.momentum)
 
-            # Use batch stats during training
-            cur_mean_s = batch_mean_s
             cur_mean_b = batch_mean_b
             cur_cov_bb = batch_cov_bb
             cur_cov_bs = batch_cov_bs
         else:
             # Use EMA stats during inference
-            cur_mean_s = self.running_mean_scalar
             cur_mean_b = self.running_mean_bivec
             cur_cov_bb = self.running_cov_bb
             cur_cov_bs = self.running_cov_bs
 
-        # Perform Projection
-        # Solve: cur_cov_bb * W = cur_cov_bs  => W = inv(cur_cov_bb) * cur_cov_bs
         reg = 1e-6 * torch.eye(self.d2, device=cur_cov_bb.device, dtype=cur_cov_bb.dtype).unsqueeze(0)
         weights = safe_linalg_solve(cur_cov_bb + reg, cur_cov_bs)
 
-        # Center based on current means
         b_centered = bivec - cur_mean_b.unsqueeze(0)
-
-        # Projection: [B, C, D0]
-        projection = torch.einsum("bci, cij -> bcj", b_centered, weights)
-
-        # Neutralized scalar
+        projection = torch.einsum("bci,cij->bcj", b_centered, weights)
         scalar_n = scalar - projection
 
-        # Construct the output
-        delta = torch.zeros_like(x)
+        delta = torch.zeros_like(x_flat)
         delta[..., self.g0_idx] = scalar_n - scalar
-        return x + delta
+        return (x_flat + delta).reshape_as(x)

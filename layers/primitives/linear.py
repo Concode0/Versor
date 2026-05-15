@@ -10,14 +10,16 @@
 Supports traditional matrix-based mixing and parameter-efficient rotor-based backends.
 """
 
-from typing import Literal, Optional
+from typing import Literal
 
 import torch
 import torch.nn as nn
 
+from core.foundation.layout import GradeLayout
 from core.foundation.module import CliffordModule
-from core.foundation.validation import check_channels, check_multivector
 from core.runtime.algebra import CliffordAlgebra
+
+from ._utils import check_multivector_storage, lane_dim, require_choice, require_positive_int, resolve_layer_layout
 
 
 class CliffordLinear(CliffordModule):
@@ -49,6 +51,8 @@ class CliffordLinear(CliffordModule):
         num_rotor_pairs: int = 4,
         aggregation: Literal["mean", "sum", "learned"] = "mean",
         shuffle: Literal["none", "fixed", "random"] = "none",
+        grades=None,
+        layout: GradeLayout = None,
     ):
         """Initialize Clifford Linear.
 
@@ -66,23 +70,29 @@ class CliffordLinear(CliffordModule):
                 - 'random': Random permutation each forward pass
         """
         super().__init__(algebra)
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.backend = backend
+        self.in_channels = require_positive_int(in_channels, "in_channels")
+        self.out_channels = require_positive_int(out_channels, "out_channels")
+        self.backend = require_choice(backend, "backend", ("traditional", "rotor"))
+        self.layout = resolve_layer_layout(algebra, layout=layout, grades=grades)
+        self.lane_dim = lane_dim(algebra, self.layout)
 
-        if backend == "traditional":
-            self.weight = nn.Parameter(torch.Tensor(out_channels, in_channels))
-            self.bias = nn.Parameter(torch.Tensor(out_channels, algebra.dim))
+        if self.backend == "traditional":
+            self.weight = nn.Parameter(torch.Tensor(self.out_channels, self.in_channels))
+            self.bias = nn.Parameter(torch.Tensor(self.out_channels, self.lane_dim))
             self.reset_parameters()
             self.gadget = None
 
-        elif backend == "rotor":
+        elif self.backend == "rotor":
+            if self.layout is not None:
+                raise ValueError(
+                    "CliffordLinear rotor backend is dense-only; use traditional backend for compact lanes."
+                )
             from .rotor_gadget import RotorGadget
 
             self.gadget = RotorGadget(
                 algebra=algebra,
-                in_channels=in_channels,
-                out_channels=out_channels,
+                in_channels=self.in_channels,
+                out_channels=self.out_channels,
                 num_rotor_pairs=num_rotor_pairs,
                 aggregation=aggregation,
                 shuffle=shuffle,
@@ -90,9 +100,6 @@ class CliffordLinear(CliffordModule):
             )
             self.weight = None
             self.bias = None
-
-        else:
-            raise ValueError(f"Unknown backend: {backend}. Must be 'traditional' or 'rotor'.")
 
     def reset_parameters(self):
         """Initialize weights with Xavier uniform and zero bias."""
@@ -109,20 +116,21 @@ class CliffordLinear(CliffordModule):
         Returns:
             torch.Tensor: Output [Batch, Out, Dim].
         """
-        check_multivector(x, self.algebra, "CliffordLinear input")
-        check_channels(x, self.in_channels, "CliffordLinear input")
+        check_multivector_storage(
+            x,
+            self.algebra,
+            channels=self.in_channels,
+            name="CliffordLinear input",
+            layout=self.layout,
+            allow_dense=self.layout is None or self.layout.dim == self.algebra.dim,
+        )
 
         if self.backend == "traditional":
-            # Traditional linear transformation
-            # x: [Batch, In, Dim]
-            # weight: [Out, In]
-            # out: [Batch, Out, Dim]
-            out = torch.einsum("oi,bid->bod", self.weight, x)
-            out = out + self.bias.unsqueeze(0)
+            out = torch.einsum("oi,...id->...od", self.weight, x)
+            bias_shape = (1,) * (x.ndim - 2) + (self.out_channels, self.lane_dim)
+            out = out + self.bias.view(bias_shape)
             return out
-        else:
-            # Rotor-based transformation
-            return self.gadget(x)
+        return self.gadget(x)
 
     def extra_repr(self) -> str:
         """String representation for debugging.
@@ -130,7 +138,7 @@ class CliffordLinear(CliffordModule):
         Returns:
             str: Layer parameters description
         """
-        if self.backend == "traditional":
-            return f"in_channels={self.in_channels}, out_channels={self.out_channels}, backend=traditional"
-        else:
-            return f"in_channels={self.in_channels}, out_channels={self.out_channels}, backend=rotor"
+        parts = [f"in_channels={self.in_channels}", f"out_channels={self.out_channels}", f"backend={self.backend}"]
+        if self.layout is not None:
+            parts.append(f"grades={self.layout.grades}")
+        return ", ".join(parts)
