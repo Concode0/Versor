@@ -111,8 +111,14 @@ class AlgebraRuntimeMixin:
         right_compact: bool = False,
         compact_output: bool = False,
         return_layout: bool = False,
+        pairwise: bool = False,
     ):
-        """Compute a declared grade-restricted product through a static executor."""
+        """Compute a declared grade-restricted product through a static executor.
+
+        By default, operands are multiplied elementwise over broadcastable
+        prefix dimensions. Set ``pairwise=True`` when the dimension before each
+        compact lane axis is an independent left/right item axis.
+        """
         left_layout = self._declared_layout(left_grades, left_layout)
         right_layout = self._declared_layout(right_grades, right_layout)
         if not left_compact and left_layout is not None and A.shape[-1] == left_layout.dim:
@@ -139,12 +145,10 @@ class AlgebraRuntimeMixin:
         )
         executor = self.planner.product_executor_for_request(request)
 
-        if request.left_compact or request.right_compact:
-            A_values = A if request.left_compact else executor.left_layout.compact(A)
-            B_values = B if request.right_compact else executor.right_layout.compact(B)
-            values = executor.forward_compact(A_values, B_values)
+        if pairwise:
+            values = self._execute_pairwise_product(A, B, request, executor)
         else:
-            values = executor(A, B)
+            values = self._execute_elementwise_product(A, B, request, executor)
 
         if return_layout:
             return values, executor.output_layout
@@ -213,3 +217,45 @@ class AlgebraRuntimeMixin:
         if default_grades is None:
             return None
         return self.layout(default_grades)
+
+    def _execute_elementwise_product(self, left, right, request, executor):
+        if request.left_compact or request.right_compact:
+            left_values = left if request.left_compact else executor.left_layout.compact(left)
+            right_values = right if request.right_compact else executor.right_layout.compact(right)
+            self._check_elementwise_prefix(left_values, right_values)
+            return executor.forward_compact(left_values, right_values)
+
+        self._check_elementwise_prefix(left, right)
+        return executor(left, right)
+
+    def _execute_pairwise_product(self, left, right, request, executor):
+        left_values = left if request.left_compact else executor.left_layout.compact(left)
+        right_values = right if request.right_compact else executor.right_layout.compact(right)
+        self._check_pairwise_prefix(left_values, right_values)
+        return executor.forward_pairwise_compact(left_values, right_values)
+
+    @staticmethod
+    def _check_elementwise_prefix(left: torch.Tensor, right: torch.Tensor) -> None:
+        try:
+            torch.broadcast_shapes(left.shape[:-1], right.shape[:-1])
+        except RuntimeError as exc:
+            raise ValueError(
+                "projected_product elementwise prefixes must be broadcastable; "
+                f"got left prefix {tuple(left.shape[:-1])} and right prefix {tuple(right.shape[:-1])}. "
+                "Use pairwise=True when left and right have distinct item axes."
+            ) from exc
+
+    @staticmethod
+    def _check_pairwise_prefix(left: torch.Tensor, right: torch.Tensor) -> None:
+        if left.ndim < 2 or right.ndim < 2:
+            raise ValueError(
+                "pairwise projected_product requires explicit item axes before the compact lane dimension; "
+                f"got left shape {tuple(left.shape)} and right shape {tuple(right.shape)}"
+            )
+        try:
+            torch.broadcast_shapes(left.shape[:-2], right.shape[:-2])
+        except RuntimeError as exc:
+            raise ValueError(
+                "pairwise projected_product batch prefixes must be broadcastable; "
+                f"got left prefix {tuple(left.shape[:-2])} and right prefix {tuple(right.shape[:-2])}"
+            ) from exc

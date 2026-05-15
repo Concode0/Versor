@@ -629,6 +629,26 @@ def test_multivector_compact_geometric_product_stays_compact_in_high_dimensions(
     assert torch.allclose(result.values[0, scalar_pos], torch.tensor(1.0))
 
 
+def test_multivector_compact_binary_wrappers_do_not_unwrap_dense_tensors():
+    algebra = make_algebra(10, 4, 2, device=DEVICE, dtype=torch.float32)
+    bivector_layout = algebra.layout((2,))
+    vector_layout = algebra.layout((1,))
+    bivector = Multivector(algebra, values=torch.randn(2, bivector_layout.dim), layout=bivector_layout)
+    vector = Multivector(algebra, values=torch.randn(2, vector_layout.dim), layout=vector_layout)
+
+    results = [
+        (bivector.geometric_product(vector), (1, 3)),
+        (bivector.wedge(vector), (3,)),
+        (bivector.inner(vector), (3,)),
+        (bivector.commutator(vector), (1,)),
+        (bivector.anti_commutator(vector), (3,)),
+    ]
+
+    for result, expected_grades in results:
+        assert result.is_compact
+        assert result.layout.grades == expected_grades
+
+
 def test_multivector_compact_addition_merges_layouts_without_dense_materialization():
     algebra = make_algebra(10, 4, 2, device=DEVICE, dtype=torch.float32)
     vector_layout = algebra.layout((1,))
@@ -684,6 +704,72 @@ def test_context_declared_grades_infer_compact_operand_shapes():
 
     assert output_layout.grades == (0, 2)
     assert torch.allclose(values[0, output_layout.basis_indices.index(0)], torch.tensor(1.0))
+
+
+def test_context_projected_product_pairwise_mixed_compact_widths():
+    algebra = make_algebra(16, 0, 0, kernel="context", device=DEVICE, dtype=torch.float32)
+    left_layout = algebra.layout((2,))
+    right_layout = algebra.layout((1,))
+    left = torch.randn(3, left_layout.dim)
+    right = torch.randn(4, right_layout.dim)
+
+    values, output_layout = algebra.projected_wedge(
+        left,
+        right,
+        left_layout=left_layout,
+        right_layout=right_layout,
+        output_grades=(3,),
+        pairwise=True,
+        compact_output=True,
+        return_layout=True,
+    )
+    executor = algebra.product_executor(
+        op="wedge",
+        left_grades=(2,),
+        right_grades=(1,),
+        output_grades=(3,),
+        dtype=torch.float32,
+        device=DEVICE,
+    )
+
+    assert output_layout.grades == (3,)
+    assert values.shape == (3, 4, output_layout.dim)
+    assert torch.allclose(values, executor.forward_pairwise_compact(left, right), atol=1e-6, rtol=1e-6)
+
+
+def test_context_projected_product_suggests_pairwise_for_mismatched_item_axes():
+    algebra = make_algebra(16, 0, 0, kernel="context", device=DEVICE, dtype=torch.float32)
+    left_layout = algebra.layout((2,))
+    right_layout = algebra.layout((1,))
+    left = torch.randn(3, left_layout.dim)
+    right = torch.randn(4, right_layout.dim)
+
+    with pytest.raises(ValueError, match="Use pairwise=True"):
+        algebra.projected_wedge(
+            left,
+            right,
+            left_layout=left_layout,
+            right_layout=right_layout,
+            output_grades=(3,),
+            compact_output=True,
+        )
+
+
+def test_context_pairwise_projected_product_requires_item_axes():
+    algebra = make_algebra(16, 0, 0, kernel="context", device=DEVICE, dtype=torch.float32)
+    left_layout = algebra.layout((2,))
+    right_layout = algebra.layout((1,))
+
+    with pytest.raises(ValueError, match="explicit item axes"):
+        algebra.projected_wedge(
+            torch.randn(left_layout.dim),
+            torch.randn(right_layout.dim),
+            left_layout=left_layout,
+            right_layout=right_layout,
+            output_grades=(3,),
+            pairwise=True,
+            compact_output=True,
+        )
 
 
 def test_context_declared_product_requires_compact_output_without_dense_materialization():
