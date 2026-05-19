@@ -59,6 +59,8 @@ def test_product_layer_pairwise_compact_widths_match_dense_reference():
     )
 
     actual = layer(left, right)
+    cache_size = len(context.planner._product_executors)
+    repeated = layer(left, right)
     expected_dense = dense.wedge(
         left_layout.dense(left).unsqueeze(2),
         right_layout.dense(right).unsqueeze(1),
@@ -70,6 +72,9 @@ def test_product_layer_pairwise_compact_widths_match_dense_reference():
 
     assert actual.shape == (2, 3, 4, output_layout.dim)
     assert torch.allclose(actual, expected)
+    assert torch.allclose(repeated, actual)
+    assert cache_size == 1
+    assert len(context.planner._product_executors) == cache_size
 
 
 def test_compact_layer_pipeline_trains_with_riemannian_optimizer_factory():
